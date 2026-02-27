@@ -15,6 +15,7 @@
     "release": "nx release"
   },
   "devDependencies": {
+    "@nx/js": "^20.4.6",
     "@types/node": "^22.13.10",
     "nx": "^20.4.6",
     "tsx": "^4.19.3",
