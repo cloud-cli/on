@@ -1,0 +1,23 @@
+{
+  "name": "on-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NX-powered monorepo for the on CLI and plugin ecosystem.",
+  "packageManager": "npm@10.8.2",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "nx": "nx",
+    "build": "nx run-many -t build",
+    "lint": "nx run-many -t lint",
+    "test": "nx run-many -t test",
+    "release": "nx release"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "nx": "^20.4.6",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
