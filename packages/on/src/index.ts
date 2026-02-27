@@ -7,23 +7,33 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 
-type SpawnRequest = {
-  command: string;
-  args?: string[];
-  cwd?: string;
-  env?: Record<string, string>;
-  detached?: boolean;
-};
-
-type OnConfig = {
-  defaults?: Omit<SpawnRequest, "command">;
-  routes?: Record<string, SpawnRequest>;
-};
-
 type CliOptions = {
   port: number;
   host: string;
   configPath?: string;
+};
+
+type WorkflowDefinition = {
+  secrets?: string[];
+  mappings?: Record<string, string>;
+  env?: Record<string, string>;
+  defaults?: {
+    image?: string;
+    volumes?: Record<string, string>;
+    args?: Record<string, string | number | boolean>;
+  };
+  steps?: string[];
+  dispatch?: string[];
+};
+
+type OnConfig = {
+  on?: Record<string, Record<string, WorkflowDefinition>>;
+};
+
+type WorkflowEvent = {
+  source: string;
+  event: string;
+  [key: string]: unknown;
 };
 
 const HELP_TEXT = `on - daemonized webhook runner
@@ -54,18 +64,6 @@ function sendJson(response: ServerResponse, statusCode: number, body: unknown): 
   response.end(JSON.stringify(body));
 }
 
-function mergeSpawnRequest(
-  defaults: OnConfig["defaults"],
-  route: SpawnRequest | undefined,
-  body: Partial<SpawnRequest>
-): Partial<SpawnRequest> {
-  return {
-    ...(defaults ?? {}),
-    ...(route ?? {}),
-    ...(body ?? {})
-  };
-}
-
 function toConfigPath(configPath: string): string {
   return path.isAbsolute(configPath) ? configPath : path.resolve(process.cwd(), configPath);
 }
@@ -93,6 +91,168 @@ function normalizePort(portValue: string): number {
   }
 
   return port;
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Incoming webhook payload must be a JSON object.");
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function resolvePath(target: unknown, pathExpression: string): unknown {
+  const normalized = pathExpression.trim().replace(/^\$\{/, "").replace(/}$/, "");
+  const pathParts = normalized.split(".").filter(Boolean);
+
+  let cursor: unknown = target;
+  for (const segment of pathParts) {
+    if (typeof cursor !== "object" || cursor === null || !(segment in cursor)) {
+      return undefined;
+    }
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+
+  return cursor;
+}
+
+function interpolate(template: string, context: Record<string, unknown>): string {
+  return template.replace(/\$\{([^}]+)}/g, (_all, expression: string) => {
+    const value = resolvePath(context, expression);
+    if (value === undefined || value === null) {
+      return "";
+    }
+    return String(value);
+  });
+}
+
+function parseSecretsFile(contents: string): Record<string, string> {
+  return contents
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"))
+    .reduce<Record<string, string>>((acc, line) => {
+      const equalsIndex = line.indexOf("=");
+      if (equalsIndex <= 0) {
+        return acc;
+      }
+
+      const key = line.slice(0, equalsIndex).trim();
+      const value = line.slice(equalsIndex + 1).trim();
+      acc[key] = value;
+      return acc;
+    }, {});
+}
+
+async function loadSecrets(secretPaths: string[] | undefined): Promise<Record<string, string>> {
+  const resolved: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === "string") {
+      resolved[key] = value;
+    }
+  }
+
+  for (const secretPath of secretPaths ?? []) {
+    const raw = await readFile(secretPath, "utf8");
+
+    if (secretPath.endsWith(".json")) {
+      const parsed = asObject(JSON.parse(raw));
+      for (const [key, value] of Object.entries(parsed)) {
+        if (value !== undefined && value !== null) {
+          resolved[key] = String(value);
+        }
+      }
+      continue;
+    }
+
+    Object.assign(resolved, parseSecretsFile(raw));
+  }
+
+  return resolved;
+}
+
+function withMappings(inputs: Record<string, unknown>, mappings: Record<string, string> | undefined): Record<string, unknown> {
+  if (!mappings) {
+    return { ...inputs };
+  }
+
+  const nextInputs = { ...inputs };
+  for (const [field, pathExpression] of Object.entries(mappings)) {
+    const normalized = pathExpression.startsWith("${") ? pathExpression : `\${${pathExpression}}`;
+    nextInputs[field] = resolvePath({ inputs: nextInputs }, normalized);
+  }
+
+  return nextInputs;
+}
+
+async function runStep(step: string, env: NodeJS.ProcessEnv): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(step, {
+      env,
+      shell: true,
+      stdio: "inherit"
+    });
+
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`Step failed with exit code ${code}: ${step}`));
+    });
+  });
+}
+
+async function processEvent(event: WorkflowEvent, config: OnConfig): Promise<void> {
+  if (typeof event.source !== "string" || typeof event.event !== "string") {
+    throw new Error("Incoming payload must include string fields 'source' and 'event'.");
+  }
+
+  const workflow = config.on?.[event.source]?.[event.event];
+  if (!workflow) {
+    throw new Error(`No workflow configured for source '${event.source}' and event '${event.event}'.`);
+  }
+
+  const inputs = withMappings({ ...event }, workflow.mappings);
+  const secrets = await loadSecrets(workflow.secrets);
+
+  const environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...Object.fromEntries(Object.entries(secrets).map(([key, value]) => [key, String(value)]))
+  };
+
+  const context = {
+    inputs,
+    secrets
+  };
+
+  for (const [key, template] of Object.entries(workflow.env ?? {})) {
+    environment[key] = interpolate(template, context);
+  }
+
+  if (workflow.defaults?.image) {
+    environment.ON_DEFAULT_IMAGE = workflow.defaults.image;
+  }
+
+  if (workflow.defaults?.volumes) {
+    environment.ON_DEFAULT_VOLUMES = JSON.stringify(workflow.defaults.volumes);
+  }
+
+  if (workflow.defaults?.args) {
+    environment.ON_DEFAULT_ARGS = JSON.stringify(workflow.defaults.args);
+  }
+
+  for (const step of workflow.steps ?? []) {
+    await runStep(step, environment);
+  }
+
+  for (const dispatchPath of workflow.dispatch ?? []) {
+    const raw = await readFile(dispatchPath, "utf8");
+    const dispatchedEvent = asObject(JSON.parse(raw)) as WorkflowEvent;
+    await processEvent(dispatchedEvent, config);
+  }
 }
 
 export function parseCliOptions(argv: string[]): CliOptions | null {
@@ -134,39 +294,13 @@ export async function startDaemon(options: CliOptions): Promise<ReturnType<typeo
 
     try {
       const rawBody = await readBody(request);
-      const body = rawBody.length > 0 ? (JSON.parse(rawBody) as Partial<SpawnRequest>) : {};
-      const route = config.routes?.[request.url ?? "/"];
-      const spawnRequest = mergeSpawnRequest(config.defaults, route, body);
-
-      if (!spawnRequest.command || typeof spawnRequest.command !== "string") {
-        sendJson(response, 400, {
-          error: "Missing spawn command. Provide {\"command\":\"...\"} in the webhook body or configure a route command."
-        });
-        return;
-      }
-
-      if (spawnRequest.args && !Array.isArray(spawnRequest.args)) {
-        sendJson(response, 400, { error: "'args' must be an array of strings when provided." });
-        return;
-      }
-
-      const child = spawn(spawnRequest.command, spawnRequest.args ?? [], {
-        cwd: spawnRequest.cwd,
-        env: {
-          ...process.env,
-          ...(spawnRequest.env ?? {})
-        },
-        detached: spawnRequest.detached ?? true,
-        stdio: "ignore"
-      });
-
-      child.unref();
+      const event = asObject(rawBody.length > 0 ? JSON.parse(rawBody) : {}) as WorkflowEvent;
+      await processEvent(event, config);
 
       sendJson(response, 202, {
         status: "accepted",
-        pid: child.pid,
-        command: spawnRequest.command,
-        args: spawnRequest.args ?? []
+        source: event.source,
+        event: event.event
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
