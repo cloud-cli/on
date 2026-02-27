@@ -38,7 +38,10 @@
     ],
     "projectsRelationship": "independent",
     "version": {
-      "conventionalCommits": true
+      "conventionalCommits": true,
+      "generatorOptions": {
+        "fallbackCurrentVersionResolver": "disk"
+      }
     },
     "git": {
       "commit": true,
