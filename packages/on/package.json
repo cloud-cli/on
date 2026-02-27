@@ -1,5 +1,5 @@
 {
-  "name": "on",
+  "name": "@cloud-cli/on",
   "version": "0.1.0",
   "description": "CLI entry point for the on plugin ecosystem.",
   "type": "module",
