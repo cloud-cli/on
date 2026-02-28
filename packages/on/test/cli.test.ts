@@ -1,11 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
+import { startDaemon } from "../src/index.js";
 
 const cliPath = path.resolve("src/index.ts");
+
+function nodeStep(source: string): string {
+  return `${process.execPath} -e ${JSON.stringify(source)}`;
+}
 
 test("prints help", () => {
   const result = spawnSync(process.execPath, ["--import", "tsx", cliPath, "--help"], {
@@ -17,58 +22,109 @@ test("prints help", () => {
   assert.match(result.stdout, /daemonized webhook runner/);
 });
 
-test("starts daemon and spawns a process from a webhook", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "on-cli-test-"));
-  const markerPath = path.join(tempDir, "marker.txt");
+test("executes workflow with mappings, secrets, env interpolation, defaults and dispatch", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "on-workflow-test-"));
+  const secretsPath = path.join(tempDir, ".env");
+  const resultPath = path.join(tempDir, "result.json");
+  const dispatchPayloadPath = path.join(tempDir, "dispatch.json");
+  const dispatchedMarkerPath = path.join(tempDir, "dispatched.txt");
+  const configPath = path.join(tempDir, "config.json");
 
-  const daemon = spawn(process.execPath, ["--import", "tsx", cliPath, "--port", "4011"], {
-    cwd: path.resolve("."),
-    stdio: ["ignore", "pipe", "pipe"]
-  });
+  await writeFile(secretsPath, "A_SECRET=top-secret\n");
 
-  await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error("daemon did not start in time"));
-    }, 4000);
-
-    daemon.stdout.on("data", (buffer) => {
-      const text = buffer.toString("utf8");
-      if (text.includes("on daemon listening")) {
-        clearTimeout(timeout);
-        resolve();
+  const config = {
+    on: {
+      github: {
+        published: {
+          secrets: [secretsPath],
+          mappings: {
+            image: "inputs.package.package_version.package_url"
+          },
+          env: {
+            A_SECRET: "${secrets.A_SECRET}",
+            A_VALUE: "${inputs.image}"
+          },
+          defaults: {
+            image: "node:20",
+            volumes: { ".": "/home" },
+            args: { net: "host" }
+          },
+          steps: [
+            nodeStep(
+              `const fs = require('node:fs'); fs.writeFileSync(${JSON.stringify(
+                resultPath
+              )}, JSON.stringify({ secret: process.env.A_SECRET, value: process.env.A_VALUE, image: process.env.ON_DEFAULT_IMAGE, volumes: process.env.ON_DEFAULT_VOLUMES, args: process.env.ON_DEFAULT_ARGS })); fs.writeFileSync(${JSON.stringify(
+                dispatchPayloadPath
+              )}, JSON.stringify({ source: 'internal', event: 'followup' }));`
+            )
+          ],
+          dispatch: [dispatchPayloadPath]
+        }
+      },
+      internal: {
+        followup: {
+          steps: [
+            nodeStep(`require('node:fs').writeFileSync(${JSON.stringify(dispatchedMarkerPath)}, 'ok');`)
+          ]
+        }
       }
-    });
-
-    daemon.once("exit", (code) => {
-      clearTimeout(timeout);
-      reject(new Error(`daemon exited unexpectedly with code ${code}`));
-    });
-  });
-
-  const payload = {
-    command: process.execPath,
-    args: ["-e", `require('node:fs').writeFileSync('${markerPath.replaceAll("\\", "\\\\")}', 'ok')`]
+    }
   };
 
-  const response = await fetch("http://127.0.0.1:4011", {
+  await writeFile(configPath, JSON.stringify(config, null, 2));
+
+  const server = await startDaemon({ port: 0, host: "127.0.0.1", configPath });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+
+  const response = await fetch(`http://127.0.0.1:${address.port}`, {
     method: "POST",
     headers: {
       "content-type": "application/json"
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({
+      source: "github",
+      event: "published",
+      package: {
+        package_version: {
+          package_url: "registry/image:v1"
+        }
+      }
+    })
   });
 
   assert.equal(response.status, 202);
 
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  const markerStats = await stat(markerPath);
-  assert.ok(markerStats.isFile());
+  const resultContents = JSON.parse(await readFile(resultPath, "utf8")) as Record<string, string>;
+  assert.equal(resultContents.secret, "top-secret");
+  assert.equal(resultContents.value, "registry/image:v1");
+  assert.equal(resultContents.image, "node:20");
+  assert.equal(resultContents.volumes, JSON.stringify({ ".": "/home" }));
+  assert.equal(resultContents.args, JSON.stringify({ net: "host" }));
 
-  daemon.kill("SIGTERM");
-  await new Promise((resolve) => daemon.once("exit", resolve));
+  const dispatchedMarker = await readFile(dispatchedMarkerPath, "utf8");
+  assert.equal(dispatchedMarker, "ok");
 
-  const markerContents = await readFile(markerPath, "utf8");
-  assert.equal(markerContents, "ok");
-
+  await new Promise<void>((resolve, reject) => server.close((error: Error | undefined) => (error ? reject(error) : resolve())));
   await rm(tempDir, { recursive: true, force: true });
+});
+
+test("returns 400 for payloads without source and event", async () => {
+  const server = await startDaemon({ port: 0, host: "127.0.0.1", configPath: undefined });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+
+  const response = await fetch(`http://127.0.0.1:${address.port}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ wrong: true })
+  });
+
+  assert.equal(response.status, 400);
+  const body = (await response.json()) as { error: string };
+  assert.match(body.error, /source/);
+
+  await new Promise<void>((resolve, reject) => server.close((error: Error | undefined) => (error ? reject(error) : resolve())));
 });
