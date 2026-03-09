@@ -19,7 +19,7 @@ jobs:
           node-version: 24
 
       - name: Install dependencies
-        run: pnpm i
+        run: npx -y pnpm i
 
       - name: Lint
         run: npm run lint
