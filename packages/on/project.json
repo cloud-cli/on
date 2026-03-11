@@ -4,36 +4,9 @@
   "sourceRoot": "packages/on/src",
   "projectType": "library",
   "targets": {
-    "build": {
-      "executor": "@nx/vite:build",
-      "outputs": ["{projectRoot}/dist"],
-      "options": {
-        "outputPath": "{projectRoot}/dist",
-        "buildLib": true
-      }
-    },
-    "lint": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "npm run lint",
-        "cwd": "{projectRoot}"
-      }
-    },
-    "test": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "npm run test",
-        "cwd": "{projectRoot}"
-      }
-    },
-    "nx-release-publish": {
-      "executor": "nx:run-commands",
-      "dependsOn": ["build"],
-      "options": {
-        "command": "npm publish --access public --provenance",
-        "cwd": "{projectRoot}"
-      }
-    }
+    "build": {},
+    "test": {},
+    "lint": {}
   },
   "tags": []
 }

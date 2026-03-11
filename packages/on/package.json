@@ -11,12 +11,6 @@
   "files": [
     "dist"
   ],
-  "scripts": {
-    "build": "tsc -p tsconfig.lib.json",
-    "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test --import tsx test/**/*.test.ts",
-    "prepack": "npm run build"
-  },
   "engines": {
     "node": ">=20"
   },

@@ -11,15 +11,31 @@
   },
   "targetDefaults": {
     "build": {
-      "inputs": ["production", "^production"]
+      "inputs": ["production", "^production"],
+      "executor": "@nx/vite:build",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "{projectRoot}/dist",
+        "buildLib": true
+      }
     },
     "lint": {
-      "inputs": ["default", "^default"]
+      "inputs": ["default", "^default"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm eslint",
+        "cwd": "{projectRoot}"
+      }
     },
     "test": {
       "inputs": ["default", "^default"]
     }
   },
+  "plugins": [
+    {
+      "plugin": "@nx/vitest"
+    }
+  ],
   "release": {
     "projects": ["on"],
     "projectsRelationship": "independent",

@@ -16,11 +16,15 @@
   },
   "devDependencies": {
     "@nx/js": "^20.8.4",
+    "@nx/vite": "^20.8.4",
     "@types/node": "^22.13.10",
     "nx": "^20.8.4",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
-    "@nx/vite": "^20.8.4",
     "vite": "^5.0.0"
+  },
+  "dependencies": {
+    "@nx/vitest": "22.5.4",
+    "vitest": "4.0.18"
   }
 }
