@@ -24,7 +24,7 @@ jobs:
           node-version: 24
 
       - name: Install dependencies
-        run: npx -y pnpm i
+        run: npm i -g pnpm && pnpm i
 
       - name: Release and publish
         env:
