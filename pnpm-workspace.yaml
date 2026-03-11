@@ -1,0 +1,7 @@
+linkWorkspacePackages: false
+strictPeerDependencies: true
+autoInstallPeers: true
+saveExact: true
+
+packages:
+  - "packages/**"

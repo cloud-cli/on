@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "NX-powered monorepo for the on CLI and plugin ecosystem.",
-  "packageManager": "npm@10.8.2",
+  "packageManager": "pnpm@10.30.3",
   "workspaces": [
     "packages/*"
   ],
@@ -19,6 +19,8 @@
     "@types/node": "^22.13.10",
     "nx": "^20.8.4",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "@nx/vite": "^20.8.4",
+    "vite": "^5.0.0"
   }
 }
