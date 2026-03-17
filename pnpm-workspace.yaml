@@ -1,0 +1,14 @@
+packages:
+  - packages/**
+
+autoInstallPeers: true
+
+linkWorkspacePackages: false
+
+onlyBuiltDependencies:
+  - esbuild
+  - nx
+
+saveExact: true
+
+strictPeerDependencies: true
