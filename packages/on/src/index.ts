@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -58,14 +62,20 @@ async function readBody(request: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {
+function sendJson(
+  response: ServerResponse,
+  statusCode: number,
+  body: unknown,
+): void {
   response.statusCode = statusCode;
   response.setHeader("content-type", "application/json");
   response.end(JSON.stringify(body));
 }
 
 function toConfigPath(configPath: string): string {
-  return path.isAbsolute(configPath) ? configPath : path.resolve(process.cwd(), configPath);
+  return path.isAbsolute(configPath)
+    ? configPath
+    : path.resolve(process.cwd(), configPath);
 }
 
 async function loadConfig(configPath?: string): Promise<OnConfig> {
@@ -87,7 +97,9 @@ function normalizePort(portValue: string): number {
   const port = Number.parseInt(portValue, 10);
 
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    throw new Error(`Invalid --port value '${portValue}'. Expected an integer from 0 to 65535.`);
+    throw new Error(
+      `Invalid --port value '${portValue}'. Expected an integer from 0 to 65535.`,
+    );
   }
 
   return port;
@@ -102,7 +114,10 @@ function asObject(value: unknown): Record<string, unknown> {
 }
 
 function resolvePath(target: unknown, pathExpression: string): unknown {
-  const normalized = pathExpression.trim().replace(/^\$\{/, "").replace(/}$/, "");
+  const normalized = pathExpression
+    .trim()
+    .replace(/^\$\{/, "")
+    .replace(/}$/, "");
   const pathParts = normalized.split(".").filter(Boolean);
 
   let cursor: unknown = target;
@@ -116,7 +131,10 @@ function resolvePath(target: unknown, pathExpression: string): unknown {
   return cursor;
 }
 
-function interpolate(template: string, context: Record<string, unknown>): string {
+function interpolate(
+  template: string,
+  context: Record<string, unknown>,
+): string {
   return template.replace(/\$\{([^}]+)}/g, (_all, expression: string) => {
     const value = resolvePath(context, expression);
     if (value === undefined || value === null) {
@@ -144,7 +162,9 @@ function parseSecretsFile(contents: string): Record<string, string> {
     }, {});
 }
 
-async function loadSecrets(secretPaths: string[] | undefined): Promise<Record<string, string>> {
+async function loadSecrets(
+  secretPaths: string[] | undefined,
+): Promise<Record<string, string>> {
   const resolved: Record<string, string> = {};
 
   for (const [key, value] of Object.entries(process.env)) {
@@ -172,14 +192,19 @@ async function loadSecrets(secretPaths: string[] | undefined): Promise<Record<st
   return resolved;
 }
 
-function withMappings(inputs: Record<string, unknown>, mappings: Record<string, string> | undefined): Record<string, unknown> {
+function withMappings(
+  inputs: Record<string, unknown>,
+  mappings: Record<string, string> | undefined,
+): Record<string, unknown> {
   if (!mappings) {
     return { ...inputs };
   }
 
   const nextInputs = { ...inputs };
   for (const [field, pathExpression] of Object.entries(mappings)) {
-    const normalized = pathExpression.startsWith("${") ? pathExpression : `\${${pathExpression}}`;
+    const normalized = pathExpression.startsWith("${")
+      ? pathExpression
+      : `\${${pathExpression}}`;
     nextInputs[field] = resolvePath({ inputs: nextInputs }, normalized);
   }
 
@@ -191,7 +216,7 @@ async function runStep(step: string, env: NodeJS.ProcessEnv): Promise<void> {
     const child = spawn(step, {
       env,
       shell: true,
-      stdio: "inherit"
+      stdio: "inherit",
     });
 
     child.once("error", reject);
@@ -205,14 +230,21 @@ async function runStep(step: string, env: NodeJS.ProcessEnv): Promise<void> {
   });
 }
 
-async function processEvent(event: WorkflowEvent, config: OnConfig): Promise<void> {
+async function processEvent(
+  event: WorkflowEvent,
+  config: OnConfig,
+): Promise<void> {
   if (typeof event.source !== "string" || typeof event.event !== "string") {
-    throw new Error("Incoming payload must include string fields 'source' and 'event'.");
+    throw new Error(
+      "Incoming payload must include string fields 'source' and 'event'.",
+    );
   }
 
   const workflow = config.on?.[event.source]?.[event.event];
   if (!workflow) {
-    throw new Error(`No workflow configured for source '${event.source}' and event '${event.event}'.`);
+    throw new Error(
+      `No workflow configured for source '${event.source}' and event '${event.event}'.`,
+    );
   }
 
   const inputs = withMappings({ ...event }, workflow.mappings);
@@ -220,12 +252,14 @@ async function processEvent(event: WorkflowEvent, config: OnConfig): Promise<voi
 
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
-    ...Object.fromEntries(Object.entries(secrets).map(([key, value]) => [key, String(value)]))
+    ...Object.fromEntries(
+      Object.entries(secrets).map(([key, value]) => [key, String(value)]),
+    ),
   };
 
   const context = {
     inputs,
-    secrets
+    secrets,
   };
 
   for (const [key, template] of Object.entries(workflow.env ?? {})) {
@@ -262,9 +296,9 @@ export function parseCliOptions(argv: string[]): CliOptions | null {
       port: { type: "string", short: "p" },
       host: { type: "string", short: "H", default: "127.0.0.1" },
       config: { type: "string", short: "c" },
-      help: { type: "boolean", short: "h", default: false }
+      help: { type: "boolean", short: "h", default: false },
     },
-    allowPositionals: false
+    allowPositionals: false,
   });
 
   if (values.help) {
@@ -279,11 +313,13 @@ export function parseCliOptions(argv: string[]): CliOptions | null {
   return {
     port: normalizePort(values.port),
     host: values.host,
-    configPath: values.config
+    configPath: values.config,
   };
 }
 
-export async function startDaemon(options: CliOptions): Promise<ReturnType<typeof createServer>> {
+export async function startDaemon(
+  options: CliOptions,
+): Promise<ReturnType<typeof createServer>> {
   const config = await loadConfig(options.configPath);
 
   const server = createServer(async (request, response) => {
@@ -294,13 +330,15 @@ export async function startDaemon(options: CliOptions): Promise<ReturnType<typeo
 
     try {
       const rawBody = await readBody(request);
-      const event = asObject(rawBody.length > 0 ? JSON.parse(rawBody) : {}) as WorkflowEvent;
+      const event = asObject(
+        rawBody.length > 0 ? JSON.parse(rawBody) : {},
+      ) as WorkflowEvent;
       await processEvent(event, config);
 
       sendJson(response, 202, {
         status: "accepted",
         source: event.source,
-        event: event.event
+        event: event.event,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -315,7 +353,9 @@ export async function startDaemon(options: CliOptions): Promise<ReturnType<typeo
 
   const address = server.address();
   if (address && typeof address === "object") {
-    console.log(`on daemon listening on http://${address.address}:${address.port}`);
+    console.log(
+      `on daemon listening on http://${address.address}:${address.port}`,
+    );
   }
 
   return server;
@@ -337,6 +377,4 @@ export async function main(): Promise<void> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  void main();
-}
+main();

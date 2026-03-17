@@ -1,12 +1,57 @@
 import { test, expect } from "vitest";
-import { spawnSync } from "node:child_process";
+import { ChildProcess, spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
-import { startDaemon } from "../src/index.js";
 import { AddressInfo } from "node:net";
+import { kill } from "node:process";
 
 const cliPath = path.resolve("./src/index.ts");
+const getPort = () =>
+  new Promise<number>((resolve, reject) => {
+    const server = require("node:net").createServer();
+    server.listen(0, () => {
+      const address = server.address() as AddressInfo;
+      const port = address.port;
+      server.close(() => resolve(port));
+    });
+    server.on("error", (err: Error) => reject(err));
+  });
+
+const startDaemon = async (options: {
+  port: number;
+  host: string;
+  configPath?: string;
+}) => {
+  const args = [
+    "--import",
+    "tsx",
+    cliPath,
+    "--port",
+    options.port.toString(),
+    "--host",
+    options.host,
+  ];
+
+  if (options.configPath) {
+    args.push("--config", options.configPath);
+  }
+
+  const daemon = spawn(process.execPath, args, {
+    stdio: "inherit",
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  return daemon;
+};
+
+async function killServer(server: ChildProcess) {
+  return new Promise((resolve) => {
+    server.on("exit", (code) => resolve(code));
+    server.kill();
+  });
+}
 
 function nodeStep(source: string): string {
   return `${process.execPath} -e ${JSON.stringify(source)}`;
@@ -78,12 +123,9 @@ test("executes workflow with mappings, secrets, env interpolation, defaults and 
 
   await writeFile(configPath, JSON.stringify(config, null, 2));
 
-  const server = await startDaemon({ port: 0, host: "127.0.0.1", configPath });
-  const address = server.address() as AddressInfo;
-
-  expect(address && typeof address === "object").toBeTruthy();
-
-  const response = await fetch(`http://127.0.0.1:${address.port}`, {
+  const port = await getPort();
+  const server = await startDaemon({ port, host: "127.0.0.1", configPath });
+  const response = await fetch(`http://127.0.0.1:${port}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -110,27 +152,21 @@ test("executes workflow with mappings, secrets, env interpolation, defaults and 
   expect(resultContents.volumes).toBe(JSON.stringify({ ".": "/home" }));
   expect(resultContents.args).toBe(JSON.stringify({ net: "host" }));
 
+  await killServer(server);
   const dispatchedMarker = await readFile(dispatchedMarkerPath, "utf8");
   expect(dispatchedMarker).toBe("ok");
-
-  await new Promise<void>((resolve, reject) =>
-    server.close((error: Error | undefined) =>
-      error ? reject(error) : resolve(),
-    ),
-  );
   await rm(tempDir, { recursive: true, force: true });
 });
 
 test("returns 400 for payloads without source and event", async () => {
+  const port = await getPort();
   const server = await startDaemon({
-    port: 0,
+    port,
     host: "127.0.0.1",
     configPath: undefined,
   });
-  const address = server.address();
-  expect(address && typeof address === "object").toBeTruthy();
 
-  const response = await fetch(`http://127.0.0.1:${address.port}`, {
+  const response = await fetch(`http://127.0.0.1:${port}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -138,13 +174,8 @@ test("returns 400 for payloads without source and event", async () => {
     body: JSON.stringify({ wrong: true }),
   });
 
+  await killServer(server);
   expect(response.status).toBe(400);
   const body = (await response.json()) as { error: string };
   expect(body.error).toMatch(/source/);
-
-  await new Promise<void>((resolve, reject) =>
-    server.close((error: Error | undefined) =>
-      error ? reject(error) : resolve(),
-    ),
-  );
 });
