@@ -33,6 +33,9 @@
   },
   "plugins": [
     {
+      "plugin": "@nx/vite"
+    },
+    {
       "plugin": "@nx/vitest"
     }
   ],

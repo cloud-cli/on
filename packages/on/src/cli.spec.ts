@@ -4,6 +4,7 @@ import path from "node:path";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { startDaemon } from "../src/index.js";
+import { AddressInfo } from "node:net";
 
 const cliPath = path.resolve("./src/index.ts");
 
@@ -78,7 +79,7 @@ test("executes workflow with mappings, secrets, env interpolation, defaults and 
   await writeFile(configPath, JSON.stringify(config, null, 2));
 
   const server = await startDaemon({ port: 0, host: "127.0.0.1", configPath });
-  const address = server.address();
+  const address = server.address() as AddressInfo;
 
   expect(address && typeof address === "object").toBeTruthy();
 

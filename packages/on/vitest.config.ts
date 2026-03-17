@@ -1,2 +1,2 @@
-import config from "../../vitest.config.js";
-export default config();
+import config from "../../vitest.config.base.js";
+export default config(import.meta.dirname);

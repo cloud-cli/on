@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config";
 
-export default function () {
+export default function (_projectRoot: string) {
   return defineConfig({
     test: {
       globals: true,
