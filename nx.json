@@ -5,7 +5,9 @@
     "production": [
       "default",
       "!{projectRoot}/test/**/*",
-      "!{projectRoot}/**/*.test.ts"
+      "!{projectRoot}/**/*.test.ts",
+      "!{projectRoot}/.eslintrc.json",
+      "!{projectRoot}/eslint.config.mjs"
     ],
     "sharedGlobals": []
   },
@@ -21,10 +23,13 @@
     },
     "lint": {
       "inputs": ["default", "^default"],
-      "executor": "nx:run-commands",
+      "executor": "@nx/eslint:lint",
+      "cache": true,
+      "outputs": ["{workspaceRoot}/.cache/.eslint-report"],
       "options": {
-        "command": "pnpm eslint",
-        "cwd": "{projectRoot}"
+        "lintFilePatterns": ["{projectRoot}/**/*.ts"],
+        "eslintConfig": "{workspaceRoot}/eslint.config.js",
+        "hasTypeAwareRules": true
       }
     },
     "test": {
@@ -37,6 +42,12 @@
     },
     {
       "plugin": "@nx/vitest"
+    },
+    {
+      "plugin": "@nx/eslint/plugin",
+      "options": {
+        "targetName": "eslint:lint"
+      }
     }
   ],
   "release": {
