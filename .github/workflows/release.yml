@@ -24,7 +24,10 @@ jobs:
           node-version: 24
 
       - name: Install dependencies
-        run: npm i -g pnpm && pnpm i && pnpm nx run-many -t build
+        run: npm i -g pnpm && pnpm i
+
+      - name: Build libraries
+        run: pnpm nx run-many -t build
 
       - name: Release and publish
         env:
