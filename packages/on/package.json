@@ -17,6 +17,9 @@
     "access": "public",
     "provenance": true
   },
+  "repository": {
+    "url": "https://github.com/cloud-cli/on"
+  },
   "dependencies": {
     "yaml": "^2.8.2"
   }
