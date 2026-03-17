@@ -4,9 +4,9 @@
   "description": "CLI entry point for the on plugin ecosystem.",
   "type": "module",
   "bin": {
-    "on": "./index.js"
+    "on": "./dist/on.js"
   },
-  "main": "./index.js",
+  "main": "./dist/on.js",
   "files": [
     "dist"
   ],
