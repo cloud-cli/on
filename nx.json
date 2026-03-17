@@ -49,21 +49,5 @@
         "targetName": "eslint:lint"
       }
     }
-  ],
-  "release": {
-    "projects": ["on"],
-    "projectsRelationship": "independent",
-    "version": {
-      "conventionalCommits": true,
-      "generatorOptions": {
-        "fallbackCurrentVersionResolver": "disk"
-      }
-    },
-    "git": {
-      "commit": true,
-      "tag": true,
-      "push": true,
-      "commitMessage": "chore(release): publish {projectName} {version}"
-    }
-  }
+  ]
 }

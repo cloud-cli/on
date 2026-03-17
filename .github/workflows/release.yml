@@ -26,10 +26,10 @@ jobs:
       - name: Install dependencies
         run: npm i -g pnpm && pnpm i
 
-      - name: Build libraries
-        run: pnpm nx run-many -t build
+      - name: Build and check libraries
+        run: pnpm nx run-many -t build,test
 
-      - name: Release and publish
+      - name: Publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
