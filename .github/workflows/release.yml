@@ -27,7 +27,9 @@ jobs:
         run: npm i -g pnpm && pnpm i
 
       - name: Build and check libraries
-        run: pnpm nx run-many -t build,test
+        run: |
+          pnpm nx run-many -t build,test;
+          find packages -name package.json -path */dist/* -delete;
 
       - name: Publish
         env:
