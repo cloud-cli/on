@@ -5,6 +5,7 @@
   "type": "module",
   "description": "NX-powered monorepo for the on CLI and plugin ecosystem.",
   "packageManager": "pnpm@10.30.3",
+  "license": "MIT",
   "workspaces": [
     "packages/*"
   ],
