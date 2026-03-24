@@ -1,44 +1,21 @@
 #!/usr/bin/env node
 
-import {
-  createServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
+import { createServer } from "node:http";
 import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { parse as parseYaml } from "yaml";
 
-type CliOptions = {
-  port: number;
-  host: string;
-  configPath?: string;
-};
-
-type WorkflowDefinition = {
-  secrets?: string[];
-  mappings?: Record<string, string>;
-  env?: Record<string, string>;
-  defaults?: {
-    image?: string;
-    volumes?: Record<string, string>;
-    args?: Record<string, string | number | boolean>;
-  };
-  steps?: string[];
-  dispatch?: string[];
-};
-
-type OnConfig = {
-  on?: Record<string, Record<string, WorkflowDefinition>>;
-};
-
-type WorkflowEvent = {
-  source: string;
-  event: string;
-  [key: string]: unknown;
-};
+import type { CliOptions, OnConfig, WorkflowEvent } from "./types.js";
+import {
+  asObject,
+  interpolate,
+  normalizePort,
+  readBody,
+  sendJson,
+  withMappings,
+} from "./utils.js";
+import { loadConfig } from "./config.js";
+import { loadSecrets } from "./secrets.js";
 
 const HELP_TEXT = `on - daemonized webhook runner
 
@@ -51,165 +28,6 @@ Options:
   --config, -c  Path to a YAML/JSON config file
   --help, -h    Show this help message
 `;
-
-async function readBody(request: IncomingMessage): Promise<string> {
-  const chunks: Buffer[] = [];
-
-  for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-
-  return Buffer.concat(chunks).toString("utf8");
-}
-
-function sendJson(
-  response: ServerResponse,
-  statusCode: number,
-  body: unknown,
-): void {
-  response.statusCode = statusCode;
-  response.setHeader("content-type", "application/json");
-  response.end(JSON.stringify(body));
-}
-
-function toConfigPath(configPath: string): string {
-  return path.isAbsolute(configPath)
-    ? configPath
-    : path.resolve(process.cwd(), configPath);
-}
-
-async function loadConfig(configPath?: string): Promise<OnConfig> {
-  if (!configPath) {
-    return {};
-  }
-
-  const resolvedPath = toConfigPath(configPath);
-  const raw = await readFile(resolvedPath, "utf8");
-
-  if (resolvedPath.endsWith(".yaml") || resolvedPath.endsWith(".yml")) {
-    return (parseYaml(raw) ?? {}) as OnConfig;
-  }
-
-  return JSON.parse(raw) as OnConfig;
-}
-
-function normalizePort(portValue: string): number {
-  const port = Number.parseInt(portValue, 10);
-
-  if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    throw new Error(
-      `Invalid --port value '${portValue}'. Expected an integer from 0 to 65535.`,
-    );
-  }
-
-  return port;
-}
-
-function asObject(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Incoming webhook payload must be a JSON object.");
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function resolvePath(target: unknown, pathExpression: string): unknown {
-  const normalized = pathExpression
-    .trim()
-    .replace(/^\$\{/, "")
-    .replace(/}$/, "");
-  const pathParts = normalized.split(".").filter(Boolean);
-
-  let cursor: unknown = target;
-  for (const segment of pathParts) {
-    if (typeof cursor !== "object" || cursor === null || !(segment in cursor)) {
-      return undefined;
-    }
-    cursor = (cursor as Record<string, unknown>)[segment];
-  }
-
-  return cursor;
-}
-
-function interpolate(
-  template: string,
-  context: Record<string, unknown>,
-): string {
-  return template.replace(/\$\{([^}]+)}/g, (_all, expression: string) => {
-    const value = resolvePath(context, expression);
-    if (value === undefined || value === null) {
-      return "";
-    }
-    return String(value);
-  });
-}
-
-function parseSecretsFile(contents: string): Record<string, string> {
-  return contents
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith("#"))
-    .reduce<Record<string, string>>((acc, line) => {
-      const equalsIndex = line.indexOf("=");
-      if (equalsIndex <= 0) {
-        return acc;
-      }
-
-      const key = line.slice(0, equalsIndex).trim();
-      const value = line.slice(equalsIndex + 1).trim();
-      acc[key] = value;
-      return acc;
-    }, {});
-}
-
-async function loadSecrets(
-  secretPaths: string[] | undefined,
-): Promise<Record<string, string>> {
-  const resolved: Record<string, string> = {};
-
-  for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value === "string") {
-      resolved[key] = value;
-    }
-  }
-
-  for (const secretPath of secretPaths ?? []) {
-    const raw = await readFile(secretPath, "utf8");
-
-    if (secretPath.endsWith(".json")) {
-      const parsed = asObject(JSON.parse(raw));
-      for (const [key, value] of Object.entries(parsed)) {
-        if (value !== undefined && value !== null) {
-          resolved[key] = String(value);
-        }
-      }
-      continue;
-    }
-
-    Object.assign(resolved, parseSecretsFile(raw));
-  }
-
-  return resolved;
-}
-
-function withMappings(
-  inputs: Record<string, unknown>,
-  mappings: Record<string, string> | undefined,
-): Record<string, unknown> {
-  if (!mappings) {
-    return { ...inputs };
-  }
-
-  const nextInputs = { ...inputs };
-  for (const [field, pathExpression] of Object.entries(mappings)) {
-    const normalized = pathExpression.startsWith("${")
-      ? pathExpression
-      : `\${${pathExpression}}`;
-    nextInputs[field] = resolvePath({ inputs: nextInputs }, normalized);
-  }
-
-  return nextInputs;
-}
 
 async function runStep(step: string, env: NodeJS.ProcessEnv): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -263,7 +81,7 @@ async function processEvent(
   };
 
   for (const [key, template] of Object.entries(workflow.env ?? {})) {
-    environment[key] = interpolate(template, context);
+    environment[key] = interpolate(template as string, context);
   }
 
   if (workflow.defaults?.image) {
