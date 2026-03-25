@@ -1,5 +1,11 @@
 # @cloud-cli/on
 
+## 0.1.3
+
+### Patch Changes
+
+- Always send a 2xx response to incoming webhooks
+
 ## 0.1.2
 
 ### Patch Changes
