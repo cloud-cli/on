@@ -3,7 +3,7 @@
 import { createServer } from "node:http";
 import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 
 import type {
   CliOptions,
@@ -25,7 +25,10 @@ import {
 import { loadConfig } from "./config.js";
 import { loadSecrets } from "./secrets.js";
 import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+const defaultWorkspace = "/workspace";
 const HELP_TEXT = `on - daemonized webhook runner
 
 Usage:
@@ -49,8 +52,6 @@ function prepareStep(step: StepDefinition, context: WorkflowContext) {
   step.args ||= defaults.args;
   step.run = interpolate(step.run, context);
 
-  step.volumes["."] ||= "/workspace";
-
   return step as NormalizedStepDefinition;
 }
 
@@ -66,11 +67,38 @@ function prepareArgs(
   );
 }
 
-function prepareVolumes(volumes: Record<string, string>) {
+function prepareVolumes(
+  volumes: Record<string, string>,
+  context: WorkflowContext,
+): string[] {
+  volumes["."] ||= defaultWorkspace;
   return Object.entries(volumes).flatMap(([hostPath, containerPath]) => [
     "-v",
-    `${hostPath === "." ? process.cwd() : hostPath}:${containerPath}`,
+    `${hostPath === "." ? context.workingDir : hostPath}:${containerPath}`,
   ]);
+}
+
+function prepareEnv(context: WorkflowContext) {
+  const { workflow, secrets } = context;
+  const env = {
+    ...process.env,
+    ...Object.fromEntries(
+      Object.entries(secrets).map(([key, value]) => [key, String(value)]),
+    ),
+    PWD: context.workingDir,
+  } as NodeJS.ProcessEnv;
+
+  if (workflow.env) {
+    if (typeof workflow.env !== "object") {
+      throw new Error("Workflow env field must be an object.");
+    }
+
+    for (const [key, template] of Object.entries(workflow.env)) {
+      env[key] = interpolate(template as string, context);
+    }
+  }
+
+  context.env = env;
 }
 
 async function runStep(
@@ -83,9 +111,9 @@ async function runStep(
 
   const prepared = prepareStep(step, context);
   const { args, image, volumes } = prepared;
-  const workdir = volumes["."];
-  const mappedVolumes = prepareVolumes(volumes);
+  const mappedVolumes = prepareVolumes(volumes, context);
   const mappedArgs = prepareArgs(args, context);
+  const workingDir = volumes["."];
 
   await new Promise<void>((resolve, reject) => {
     const child = spawn(
@@ -96,7 +124,7 @@ async function runStep(
         ...mappedVolumes,
         ...mappedArgs,
         "-w",
-        workdir,
+        workingDir,
         "--entrypoint",
         "sh",
         image,
@@ -118,8 +146,7 @@ async function runStep(
     });
 
     child.on("spawn", () => {
-      child.stdin?.write(prepared.run);
-      child.stdin?.end();
+      child.stdin?.end(prepared.run);
     });
   });
 }
@@ -166,16 +193,33 @@ async function processEvent(
 
   const inputs = withMappings({ ...event }, workflow.mappings);
   const secrets = await loadSecrets(workflow.secrets);
-  const context: WorkflowContext = { inputs, secrets, workflow, env: {} };
+  const workingDir = await mkdtemp(join(tmpdir(), "workflow"));
+  const context: WorkflowContext = {
+    inputs,
+    secrets,
+    workflow,
+    env: {},
+    workingDir,
+  };
 
   prepareEnv(context);
 
-  for (const step of workflow.steps ?? []) {
-    await runStep(step, context);
-  }
+  try {
+    for (const step of workflow.steps ?? []) {
+      await runStep(step, context);
+    }
 
-  for (const dispatchPath of workflow.triggers ?? []) {
-    await processEventFromFile(dispatchPath, config);
+    for (const dispatchPath of workflow.triggers ?? []) {
+      await processEventFromFile(dispatchPath, config);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `Error processing event ${event.source}:${event.event} - ${message}`,
+    );
+  } finally {
+    // Cleanup working directory
+    await rm(context.workingDir, { recursive: true, force: true });
   }
 }
 
@@ -188,28 +232,6 @@ async function processEventFromFile(dispatchPath: string, config: OnConfig) {
   const raw = await readFile(dispatchPath, "utf8");
   const dispatchedEvent = asObject(JSON.parse(raw)) as WorkflowEvent;
   await processEvent(dispatchedEvent, config);
-}
-
-function prepareEnv(context: WorkflowContext) {
-  const { workflow, secrets } = context;
-  const env = {
-    ...process.env,
-    ...Object.fromEntries(
-      Object.entries(secrets).map(([key, value]) => [key, String(value)]),
-    ),
-  } as NodeJS.ProcessEnv;
-
-  if (workflow.env) {
-    if (typeof workflow.env !== "object") {
-      throw new Error("Workflow env field must be an object.");
-    }
-
-    for (const [key, template] of Object.entries(workflow.env)) {
-      env[key] = interpolate(template as string, context);
-    }
-  }
-
-  context.env = env;
 }
 
 export function parseCliOptions(argv: string[]): CliOptions | null {

@@ -34,6 +34,7 @@ export interface WorkflowContext {
   secrets: Record<string, string>;
   workflow: WorkflowDefinition;
   env: NodeJS.ProcessEnv;
+  workingDir: string;
 }
 
 export interface OnConfig {
