@@ -4,7 +4,6 @@ import path from "node:path";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { AddressInfo } from "node:net";
-import { kill } from "node:process";
 
 const cliPath = path.resolve("./src/index.ts");
 const getPort = () =>
@@ -70,6 +69,7 @@ test("prints help", () => {
   expect(result.stdout).toMatch(/daemonized webhook runner/);
 });
 
+
 test("executes workflow with mappings, secrets, env interpolation, defaults and dispatch", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "on-workflow-test-"));
   const secretsPath = path.join(tempDir, ".env");
@@ -106,7 +106,7 @@ test("executes workflow with mappings, secrets, env interpolation, defaults and 
               )}, JSON.stringify({ source: 'internal', event: 'followup' }));`,
             ),
           ],
-          dispatch: [dispatchPayloadPath],
+          triggers: [dispatchPayloadPath],
         },
       },
       internal: {

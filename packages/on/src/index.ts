@@ -2,10 +2,17 @@
 
 import { createServer } from "node:http";
 import { parseArgs } from "node:util";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 
-import type { CliOptions, OnConfig, WorkflowEvent } from "./types.js";
+import type {
+  CliOptions,
+  OnConfig,
+  WorkflowEvent,
+  WorkflowContext,
+  StepDefinition,
+  NormalizedStepDefinition,
+} from "./types.js";
 import {
   asObject,
   interpolate,
@@ -16,6 +23,8 @@ import {
 } from "./utils.js";
 import { loadConfig } from "./config.js";
 import { loadSecrets } from "./secrets.js";
+import { existsSync } from "node:fs";
+import { env } from "node:process";
 
 const HELP_TEXT = `on - daemonized webhook runner
 
@@ -29,13 +38,56 @@ Options:
   --help, -h    Show this help message
 `;
 
-async function runStep(step: string, env: NodeJS.ProcessEnv): Promise<void> {
+function prepareStep(step: StepDefinition, context: WorkflowContext) {
+  if (typeof step.run !== "string") {
+    throw new Error("Each workflow step must have a 'run' command string.");
+  }
+  const defaults = context.workflow.defaults || {};
+
+  step.image ||= defaults.image;
+  step.volumes ||= defaults.volumes || {};
+  step.args ||= defaults.args;
+  step.run = interpolate(step.run, context);
+
+  step.volumes["."] ||= "/workspace";
+
+  return step as NormalizedStepDefinition;
+}
+
+async function runStep(
+  step: StepDefinition | string,
+  context: WorkflowContext,
+): Promise<void> {
+  if (typeof step === "string") {
+    step = { run: step };
+  }
+
+  const prepared = prepareStep(step, context);
+  const { args, image, volumes } = prepared;
+  const workdir = volumes["."];
+  const mappedVolumes = prepareVolumes(volumes);
+  const mappedArgs = prepareArgs(args, context);
+
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(step, {
-      env,
-      shell: true,
-      stdio: "inherit",
-    });
+    const child = spawn(
+      "docker",
+      [
+        "run",
+        "-i",
+        ...mappedVolumes,
+        ...mappedArgs,
+        "-w",
+        workdir,
+        "--entrypoint",
+        "sh",
+        image,
+      ] as string[],
+      {
+        env: context.env,
+        shell: true,
+        stdio: "inherit",
+      },
+    );
 
     child.once("error", reject);
     child.once("exit", (code) => {
@@ -45,7 +97,31 @@ async function runStep(step: string, env: NodeJS.ProcessEnv): Promise<void> {
       }
       reject(new Error(`Step failed with exit code ${code}: ${step}`));
     });
+
+    child.on("spawn", () => {
+      child.stdin?.write(prepared.run);
+      child.stdin?.end();
+    });
   });
+}
+
+function prepareArgs(
+  args: Record<string, string>[],
+  context: WorkflowContext,
+): string[] {
+  return args.flatMap((arg) =>
+    Object.entries(arg).flatMap(([key, value]) => [
+      `--${key}`,
+      interpolate(String(value), context),
+    ]),
+  );
+}
+
+function prepareVolumes(volumes: Record<string, string>) {
+  return Object.entries(volumes).flatMap(([hostPath, containerPath]) => [
+    "-v",
+    `${hostPath === "." ? process.cwd() : hostPath}:${containerPath}`,
+  ]);
 }
 
 async function processEvent(
@@ -59,52 +135,62 @@ async function processEvent(
   }
 
   const workflow = config.on?.[event.source]?.[event.event];
+
   if (!workflow) {
-    throw new Error(
-      `No workflow configured for source '${event.source}' and event '${event.event}'.`,
+    console.log(
+      `No workflow found for event ${event.source}:${event.event}, skipping.`,
     );
+    return;
+  }
+
+  if (!workflow.steps || workflow.steps.length === 0) {
+    console.warn(
+      `Workflow for event ${event.source}:${event.event} has no steps defined, skipping.`,
+    );
+    return;
   }
 
   const inputs = withMappings({ ...event }, workflow.mappings);
   const secrets = await loadSecrets(workflow.secrets);
-
-  const environment: NodeJS.ProcessEnv = {
-    ...process.env,
-    ...Object.fromEntries(
-      Object.entries(secrets).map(([key, value]) => [key, String(value)]),
-    ),
-  };
-
-  const context = {
-    inputs,
-    secrets,
-  };
-
-  for (const [key, template] of Object.entries(workflow.env ?? {})) {
-    environment[key] = interpolate(template as string, context);
-  }
-
-  if (workflow.defaults?.image) {
-    environment.ON_DEFAULT_IMAGE = workflow.defaults.image;
-  }
-
-  if (workflow.defaults?.volumes) {
-    environment.ON_DEFAULT_VOLUMES = JSON.stringify(workflow.defaults.volumes);
-  }
-
-  if (workflow.defaults?.args) {
-    environment.ON_DEFAULT_ARGS = JSON.stringify(workflow.defaults.args);
-  }
+  const context: WorkflowContext = { inputs, secrets, workflow, env: {} };
+  prepareEnv(context);
 
   for (const step of workflow.steps ?? []) {
-    await runStep(step, environment);
+    await runStep(step, context);
   }
 
-  for (const dispatchPath of workflow.dispatch ?? []) {
+  for (const dispatchPath of workflow.triggers ?? []) {
+    if (!existsSync(dispatchPath)) {
+      console.warn(`Trigger file does not exist: ${dispatchPath}`);
+      continue;
+    }
+
     const raw = await readFile(dispatchPath, "utf8");
     const dispatchedEvent = asObject(JSON.parse(raw)) as WorkflowEvent;
     await processEvent(dispatchedEvent, config);
   }
+}
+
+function prepareEnv(context: WorkflowContext) {
+  const { workflow, secrets } = context;
+  const env = {
+    ...process.env,
+    ...Object.fromEntries(
+      Object.entries(secrets).map(([key, value]) => [key, String(value)]),
+    ),
+  } as NodeJS.ProcessEnv;
+
+  if (workflow.env) {
+    if (typeof workflow.env !== "object") {
+      throw new Error("Workflow env field must be an object.");
+    }
+
+    for (const [key, template] of Object.entries(workflow.env)) {
+      env[key] = interpolate(template as string, context);
+    }
+  }
+
+  context.env = env;
 }
 
 export function parseCliOptions(argv: string[]): CliOptions | null {

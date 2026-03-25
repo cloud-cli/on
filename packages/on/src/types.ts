@@ -4,17 +4,36 @@ export interface CliOptions {
   configPath?: string;
 }
 
+export interface StepConfig {
+  image?: string;
+  volumes?: Record<string, string>;
+  args?: Array<Record<string, string>>;
+}
+
+export interface StepDefinition extends StepConfig {
+  run: string;
+}
+
+export interface NormalizedStepDefinition extends StepConfig {
+  run: string;
+  args: Array<Record<string, string>>;
+  volumes: Record<string, string>;
+}
+
 export interface WorkflowDefinition {
   secrets?: string[];
   mappings?: Record<string, string>;
   env?: Record<string, string>;
-  defaults?: {
-    image?: string;
-    volumes?: Record<string, string>;
-    args?: Record<string, string | number | boolean>;
-  };
-  steps?: string[];
-  dispatch?: string[];
+  defaults?: Partial<StepConfig>;
+  steps?: StepDefinition[] | string[];
+  triggers?: string[];
+}
+
+export interface WorkflowContext {
+  inputs: Record<string, unknown>;
+  secrets: Record<string, string>;
+  workflow: WorkflowDefinition;
+  env: NodeJS.ProcessEnv;
 }
 
 export interface OnConfig {

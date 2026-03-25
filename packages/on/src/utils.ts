@@ -9,6 +9,7 @@ export async function readBody(request: IncomingMessage): Promise<string> {
 
   return Buffer.concat(chunks).toString("utf8");
 }
+
 export function sendJson(
   response: ServerResponse,
   statusCode: number,
@@ -18,6 +19,7 @@ export function sendJson(
     .writeHead(statusCode, { "content-type": "application/json" })
     .end(JSON.stringify(body));
 }
+
 export function normalizePort(portValue: string): number {
   const port = Number.parseInt(portValue, 10);
 
@@ -29,6 +31,7 @@ export function normalizePort(portValue: string): number {
 
   return port;
 }
+
 export function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Incoming webhook payload must be a JSON object.");
@@ -36,6 +39,7 @@ export function asObject(value: unknown): Record<string, unknown> {
 
   return value as Record<string, unknown>;
 }
+
 export function resolvePath(target: unknown, pathExpression: string): unknown {
   const normalized = pathExpression
     .trim()
@@ -53,18 +57,18 @@ export function resolvePath(target: unknown, pathExpression: string): unknown {
 
   return cursor;
 }
-export function interpolate(
-  template: string,
-  context: Record<string, unknown>,
-): string {
-  return template.replace(/\$\{([^}]+)}/g, (_all, expression: string) => {
-    const value = resolvePath(context, expression);
-    if (value === undefined || value === null) {
-      return "";
-    }
-    return String(value);
-  });
+
+export function interpolate(template: string, context: any): string {
+  const f = Function(
+    "context",
+    "const { secrets = {}, inputs = {} } = context; return `${" +
+      template +
+      "}`;`",
+  );
+
+  return String(f(context) || "");
 }
+
 export function withMappings(
   inputs: Record<string, unknown>,
   mappings: Record<string, string> | undefined,
@@ -75,10 +79,7 @@ export function withMappings(
 
   const nextInputs = { ...inputs };
   for (const [field, pathExpression] of Object.entries(mappings)) {
-    const normalized = pathExpression.startsWith("${")
-      ? pathExpression
-      : `\${${pathExpression}}`;
-    nextInputs[field] = resolvePath({ inputs: nextInputs }, normalized);
+    nextInputs[field] = interpolate(`\${${pathExpression}}`, nextInputs);
   }
 
   return nextInputs;
