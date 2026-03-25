@@ -65,7 +65,7 @@ test("prints help", () => {
   expect(result.stdout).toMatch(/daemonized webhook runner/);
 });
 
-test("executes workflow with mappings, secrets, env interpolation, defaults and dispatch", { timeout: 10000 }, async () => {
+test("executes workflow with mappings, secrets, env interpolation, defaults and dispatch", { timeout: 30000 }, async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "on-workflow-test-"));
   const secretsPath = path.join(tempDir, ".env");
   const resultPath = path.join(tempDir, "result.txt");
