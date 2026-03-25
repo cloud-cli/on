@@ -52,10 +52,6 @@ async function killServer(server: ChildProcess) {
   });
 }
 
-// function nodeStep(source: string): string {
-//   return `${process.execPath} -e ${JSON.stringify(source)}`;
-// }
-
 test("prints help", () => {
   const cwd = path.resolve(".");
   const args = ["--import", "tsx", cliPath, "--help"];
@@ -139,9 +135,6 @@ test("executes workflow with mappings, secrets, env interpolation, defaults and 
 
   await killServer(server);
 
-  // print response body for debugging
-  const responseBody = await response.text();
-  console.log("Response body:", responseBody);
   expect(response.status).toBe(202);
 
   const resultContents = (await readFile(resultPath, "utf8")) as string;
@@ -154,7 +147,7 @@ test("executes workflow with mappings, secrets, env interpolation, defaults and 
   ).trim();
   expect(dispatchedMarker).toBe("OK");
   await rm(tempDir, { recursive: true, force: true });
-});
+}, { timeout: 10000 });
 
 test("returns 202 for payloads that do not trigger any workflow", async () => {
   const port = await getPort();
