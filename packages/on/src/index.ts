@@ -2,7 +2,7 @@
 
 import { createServer } from "node:http";
 import { parseArgs } from "node:util";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 
 import type {
@@ -12,6 +12,7 @@ import type {
   WorkflowContext,
   StepDefinition,
   NormalizedStepDefinition,
+  WorkflowDefinition,
 } from "./types.js";
 import {
   asObject,
@@ -24,7 +25,6 @@ import {
 import { loadConfig } from "./config.js";
 import { loadSecrets } from "./secrets.js";
 import { existsSync } from "node:fs";
-import { env } from "node:process";
 
 const HELP_TEXT = `on - daemonized webhook runner
 
@@ -54,6 +54,25 @@ function prepareStep(step: StepDefinition, context: WorkflowContext) {
   return step as NormalizedStepDefinition;
 }
 
+function prepareArgs(
+  args: Record<string, string>[],
+  context: WorkflowContext,
+): string[] {
+  return args.flatMap((arg) =>
+    Object.entries(arg).flatMap(([key, value]) => [
+      `--${key}`,
+      interpolate(String(value), context),
+    ]),
+  );
+}
+
+function prepareVolumes(volumes: Record<string, string>) {
+  return Object.entries(volumes).flatMap(([hostPath, containerPath]) => [
+    "-v",
+    `${hostPath === "." ? process.cwd() : hostPath}:${containerPath}`,
+  ]);
+}
+
 async function runStep(
   step: StepDefinition | string,
   context: WorkflowContext,
@@ -73,7 +92,7 @@ async function runStep(
       "docker",
       [
         "run",
-        "-i",
+        "-it",
         ...mappedVolumes,
         ...mappedArgs,
         "-w",
@@ -105,33 +124,15 @@ async function runStep(
   });
 }
 
-function prepareArgs(
-  args: Record<string, string>[],
-  context: WorkflowContext,
-): string[] {
-  return args.flatMap((arg) =>
-    Object.entries(arg).flatMap(([key, value]) => [
-      `--${key}`,
-      interpolate(String(value), context),
-    ]),
-  );
-}
-
-function prepareVolumes(volumes: Record<string, string>) {
-  return Object.entries(volumes).flatMap(([hostPath, containerPath]) => [
-    "-v",
-    `${hostPath === "." ? process.cwd() : hostPath}:${containerPath}`,
-  ]);
-}
-
-async function processEvent(
+function validateEvent(
   event: WorkflowEvent,
   config: OnConfig,
-): Promise<void> {
+): WorkflowDefinition | false {
   if (typeof event.source !== "string" || typeof event.event !== "string") {
-    throw new Error(
+    console.log(
       "Incoming payload must include string fields 'source' and 'event'.",
     );
+    return false;
   }
 
   const workflow = config.on?.[event.source]?.[event.event];
@@ -140,19 +141,33 @@ async function processEvent(
     console.log(
       `No workflow found for event ${event.source}:${event.event}, skipping.`,
     );
-    return;
+    return false;
   }
 
   if (!workflow.steps || workflow.steps.length === 0) {
     console.warn(
       `Workflow for event ${event.source}:${event.event} has no steps defined, skipping.`,
     );
+    return false;
+  }
+
+  return workflow as WorkflowDefinition;
+}
+
+async function processEvent(
+  event: WorkflowEvent,
+  config: OnConfig,
+): Promise<void> {
+  const workflow = validateEvent(event, config);
+
+  if (!workflow) {
     return;
   }
 
   const inputs = withMappings({ ...event }, workflow.mappings);
   const secrets = await loadSecrets(workflow.secrets);
   const context: WorkflowContext = { inputs, secrets, workflow, env: {} };
+
   prepareEnv(context);
 
   for (const step of workflow.steps ?? []) {
@@ -160,15 +175,19 @@ async function processEvent(
   }
 
   for (const dispatchPath of workflow.triggers ?? []) {
-    if (!existsSync(dispatchPath)) {
-      console.warn(`Trigger file does not exist: ${dispatchPath}`);
-      continue;
-    }
-
-    const raw = await readFile(dispatchPath, "utf8");
-    const dispatchedEvent = asObject(JSON.parse(raw)) as WorkflowEvent;
-    await processEvent(dispatchedEvent, config);
+    await processEventFromFile(dispatchPath, config);
   }
+}
+
+async function processEventFromFile(dispatchPath: string, config: OnConfig) {
+  if (!existsSync(dispatchPath)) {
+    console.warn(`Trigger file does not exist: ${dispatchPath}`);
+    return;
+  }
+
+  const raw = await readFile(dispatchPath, "utf8");
+  const dispatchedEvent = asObject(JSON.parse(raw)) as WorkflowEvent;
+  await processEvent(dispatchedEvent, config);
 }
 
 function prepareEnv(context: WorkflowContext) {
