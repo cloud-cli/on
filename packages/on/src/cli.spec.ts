@@ -93,6 +93,7 @@ test("executes workflow with mappings, secrets, env interpolation, defaults and 
         },
         steps: [
           "pwd",
+          "echo ${inputs}",
           "echo '{\"followup\":{}}' > /tmp/trigger.json",
           "echo ${env.A_SECRET} >> /tmp/result.txt",
           "echo ${inputs.url} >> /tmp/result.txt",

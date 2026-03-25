@@ -14,46 +14,49 @@ The current folder is mounted as a volume at /workspace by default. That can be 
 
 ```yaml
 on:
-  <source>:
-    <event-name>:
-      secrets:
-        - /path/to/secrets
-        - /path/to/.env
-      mappings:
-        <field>: <path.to.value.in.json.payload>
-      env:
-        A_SECRET: "${secrets.A_SECRET}"
-        A_VALUE: "${inputs.A_VALUE}"
-      defaults:
-        image: <docker-image>
-        volumes:
-          .: /home
-          /dev/shm: /dev/shm
-        args:
-          net: host
-          dns: 1.2.3.4
-      steps:
-        - pnpm i
-        - pnpm run build
-        - pnpm run release
-      artifacts:
-        - /path/to/file.txt
-        - /path/to/file.zip
-      trigger:
-        - path/to/output.json
+  <event-name>:
+    secrets:
+      - /path/to/secrets
+      - /path/to/.env
+    mappings:
+      <field>: <path.to.value.in.json.payload>
+    env:
+      A_SECRET: "${secrets.A_SECRET}"
+      A_VALUE: "${inputs.some.value}"
+    defaults:
+      image: <docker-image>
+      volumes:
+        .: /home
+        /dev/shm: /dev/shm
+      args:
+        net: host
+        dns: 1.2.3.4
+    steps:
+      - pnpm i
+      - pnpm run build
+      - pnpm run release
+      - echo '::set-output::name' $?
+    triggers:
+      - path/to/output.json
 ```
 
 ### Source
 
-Any event trigger can be defined here.
+Any event trigger can be defined here. Any event source is mapped to a key in the incoming webhook payload.
+For example:
 
-For example, source can be `github`, for a GitHub incoming webhook, or `time`, for a time-based trigger.
+Given the payload `{ published: { value: 123 } }`
 
-### Event name
+And the workflow
 
-Defines a trigger within an event.
+```yaml
+on:
+  published:
+    steps:
+      - echo ${inputs.value}
+```
 
-For example, if source is `github`, event can be `published`, for a GitHub push event.
+Then `inputs` is set to the payload value of `published`, which contains `value`.
 
 ### Secrets
 
