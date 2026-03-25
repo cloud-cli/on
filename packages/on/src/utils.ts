@@ -61,9 +61,7 @@ export function resolvePath(target: unknown, pathExpression: string): unknown {
 export function interpolate(template: string, context: any): string {
   const f = Function(
     "context",
-    "const { secrets = {}, inputs = {} } = context; return `${" +
-      template +
-      "}`;`",
+    "const { secrets = {}, inputs = {}, step = {}, env } = context;return `" + template + "`;",
   );
 
   return String(f(context) || "");
@@ -77,10 +75,10 @@ export function withMappings(
     return { ...inputs };
   }
 
-  const nextInputs = { ...inputs };
+  const context = { inputs };
   for (const [field, pathExpression] of Object.entries(mappings)) {
-    nextInputs[field] = interpolate(`\${${pathExpression}}`, nextInputs);
+    context.inputs[field] = interpolate(`\${${pathExpression}}`, context);
   }
 
-  return nextInputs;
+  return context.inputs;
 }

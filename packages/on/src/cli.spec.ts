@@ -72,44 +72,61 @@ test("prints help", () => {
 test("executes workflow with mappings, secrets, env interpolation, defaults and dispatch", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "on-workflow-test-"));
   const secretsPath = path.join(tempDir, ".env");
-  const resultPath = path.join(tempDir, "result.json");
-  const dispatchPayloadPath = path.join(tempDir, "dispatch.json");
+  const resultPath = path.join(tempDir, "result.txt");
   const dispatchedMarkerPath = path.join(tempDir, "dispatched.txt");
   const configPath = path.join(tempDir, "config.json");
+  const triggerPath = path.join(tempDir, "trigger.json");
 
   await writeFile(secretsPath, "A_SECRET=top-secret\n");
 
   const config = {
     on: {
-      github: {
-        published: {
-          secrets: [secretsPath],
-          mappings: {
-            image: "inputs.package.package_version.package_url",
-          },
-          env: {
-            A_SECRET: "${secrets.A_SECRET}",
-            A_VALUE: "${inputs.image}",
-          },
-          defaults: {
-            image: "node:latest",
-            volumes: { ".": "/home", [tempDir]: "/tmp" },
-            args: [{ net: "host" }],
-          },
-          steps: ["ls"],
-          // triggers: [dispatchPayloadPath],
+      published: {
+        secrets: [secretsPath],
+        mappings: {
+          url: "inputs.package.package_version.package_url",
         },
+        env: {
+          A_SECRET: "${secrets.A_SECRET}",
+          A_VALUE: "${inputs.image}",
+        },
+        defaults: {
+          image: "node:latest",
+          volumes: { ".": "/home", [tempDir]: "/tmp" },
+          args: [{ name: "published" }],
+        },
+        steps: [
+          "pwd",
+          "echo '{\"followup\":{}}' > /tmp/trigger.json",
+          "echo ${env.A_SECRET} >> /tmp/result.txt",
+          "echo ${inputs.url} >> /tmp/result.txt",
+          "echo ${step.image} >> /tmp/result.txt",
+        ],
+        triggers: [triggerPath],
       },
-      internal: {
-        followup: {
-          steps: ["touch dispatchedMarkerPath"],
-        },
+      followup: {
+        steps: [
+          {
+            run: "echo OK > /tmp/dispatched.txt",
+            volumes: { [tempDir]: "/tmp" },
+            image: "node:latest",
+          },
+        ],
       },
     },
   };
 
   await writeFile(configPath, JSON.stringify(config, null, 2));
 
+  const event = {
+    published: {
+      package: {
+        package_version: {
+          package_url: "registry/image:v1",
+        },
+      },
+    },
+  };
   const port = await getPort();
   const server = await startDaemon({ port, host: "127.0.0.1", configPath });
   const response = await fetch(`http://127.0.0.1:${port}`, {
@@ -117,35 +134,29 @@ test("executes workflow with mappings, secrets, env interpolation, defaults and 
     headers: {
       "content-type": "application/json",
     },
-    body: JSON.stringify({
-      source: "github",
-      event: "published",
-      package: {
-        package_version: {
-          package_url: "registry/image:v1",
-        },
-      },
-    }),
+    body: JSON.stringify(event),
   });
 
+  await killServer(server);
+
+  // print response body for debugging
+  const responseBody = await response.text();
+  console.log("Response body:", responseBody);
   expect(response.status).toBe(202);
 
-  const resultContents = JSON.parse(
-    await readFile(resultPath, "utf8"),
-  ) as Record<string, string>;
-  expect(resultContents.secret).toBe("top-secret");
-  expect(resultContents.value).toBe("registry/image:v1");
-  expect(resultContents.image).toBe("node:20");
-  expect(resultContents.volumes).toBe(JSON.stringify({ ".": "/home" }));
-  expect(resultContents.args).toBe(JSON.stringify({ net: "host" }));
+  const resultContents = (await readFile(resultPath, "utf8")) as string;
+  expect(resultContents).toContain("top-secret");
+  expect(resultContents).toContain("registry/image:v1");
+  expect(resultContents).toContain("node:latest");
 
-  await killServer(server);
-  const dispatchedMarker = await readFile(dispatchedMarkerPath, "utf8");
-  expect(dispatchedMarker).toBe("ok");
+  const dispatchedMarker = (
+    (await readFile(dispatchedMarkerPath, "utf8")) as string
+  ).trim();
+  expect(dispatchedMarker).toBe("OK");
   await rm(tempDir, { recursive: true, force: true });
 });
 
-test("returns 400 for payloads without source and event", async () => {
+test("returns 202 for payloads that do not trigger any workflow", async () => {
   const port = await getPort();
   const server = await startDaemon({
     port,
@@ -162,7 +173,5 @@ test("returns 400 for payloads without source and event", async () => {
   });
 
   await killServer(server);
-  expect(response.status).toBe(400);
-  const body = (await response.json()) as { error: string };
-  expect(body.error).toMatch(/source/);
+  expect(response.status).toBe(202);
 });

@@ -11,14 +11,14 @@ export function toConfigPath(configPath: string): string {
 
 export async function loadConfig(configPath?: string): Promise<OnConfig> {
   if (!configPath) {
-    return {};
+    return { on: {} };
   }
 
   const resolvedPath = toConfigPath(configPath);
   const raw = await readFile(resolvedPath, "utf8");
 
   if (resolvedPath.endsWith(".yaml") || resolvedPath.endsWith(".yml")) {
-    return (parseYaml(raw) ?? {}) as OnConfig;
+    return (parseYaml(raw) ?? { on: {} }) as OnConfig;
   }
 
   return JSON.parse(raw) as OnConfig;

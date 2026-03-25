@@ -31,6 +31,7 @@ export interface WorkflowDefinition {
 
 export interface WorkflowContext {
   inputs: Record<string, unknown>;
+  outputs: Record<string, unknown>;
   secrets: Record<string, string>;
   workflow: WorkflowDefinition;
   env: NodeJS.ProcessEnv;
@@ -38,11 +39,9 @@ export interface WorkflowContext {
 }
 
 export interface OnConfig {
-  on?: Record<string, Record<string, WorkflowDefinition>>;
+  on: Record<string, Record<string, WorkflowDefinition>>;
 }
 
 export interface WorkflowEvent {
-  source: string;
-  event: string;
   [key: string]: unknown;
 }

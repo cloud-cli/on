@@ -50,7 +50,7 @@ function prepareStep(step: StepDefinition, context: WorkflowContext) {
   step.image ||= defaults.image;
   step.volumes ||= defaults.volumes || {};
   step.args ||= defaults.args;
-  step.run = interpolate(step.run, context);
+  step.run = interpolate(step.run, { ...context, step });
 
   return step as NormalizedStepDefinition;
 }
@@ -59,7 +59,7 @@ function prepareArgs(
   args: Record<string, string>[],
   context: WorkflowContext,
 ): string[] {
-  return args.flatMap((arg) =>
+  return (args || []).flatMap((arg) =>
     Object.entries(arg).flatMap(([key, value]) => [
       `--${key}`,
       interpolate(String(value), context),
@@ -114,27 +114,25 @@ async function runStep(
   const mappedVolumes = prepareVolumes(volumes, context);
   const mappedArgs = prepareArgs(args, context);
   const workingDir = volumes["."];
+  const dockerArgs = [
+    "run",
+    "-i",
+    "--rm",
+    ...mappedVolumes,
+    ...mappedArgs,
+    "-w",
+    workingDir,
+    "--entrypoint",
+    "sh",
+    image,
+  ] as string[];
 
+  // console.debug("docker", dockerArgs.join(" "));
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(
-      "docker",
-      [
-        "run",
-        "-it",
-        ...mappedVolumes,
-        ...mappedArgs,
-        "-w",
-        workingDir,
-        "--entrypoint",
-        "sh",
-        image,
-      ] as string[],
-      {
-        env: context.env,
-        shell: true,
-        stdio: "inherit",
-      },
-    );
+    const child = spawn("docker", dockerArgs, { env: context.env });
+
+    child.stdout?.pipe(process.stdout);
+    child.stderr?.pipe(process.stderr);
 
     child.once("error", reject);
     child.once("exit", (code) => {
@@ -145,53 +143,52 @@ async function runStep(
       reject(new Error(`Step failed with exit code ${code}: ${step}`));
     });
 
-    child.on("spawn", () => {
-      child.stdin?.end(prepared.run);
-    });
+    child.stdin?.write(prepared.run);
+    child.stdin?.write("\nexit $?;\n");
+    child.stdin?.end();
   });
 }
 
-function validateEvent(
-  event: WorkflowEvent,
-  config: OnConfig,
-): WorkflowDefinition | false {
-  if (typeof event.source !== "string" || typeof event.event !== "string") {
-    console.log(
-      "Incoming payload must include string fields 'source' and 'event'.",
-    );
-    return false;
-  }
-
-  const workflow = config.on?.[event.source]?.[event.event];
+function validateEvent(event: WorkflowEvent, config: OnConfig) {
+  const eventKeys = Object.keys(event);
+  const acceptableEvents = Object.keys(config.on);
+  const key = acceptableEvents.find((key) => event[key]);
+  const workflow: WorkflowDefinition | null = key ? config.on[key] : null;
 
   if (!workflow) {
     console.log(
-      `No workflow found for event ${event.source}:${event.event}, skipping.`,
+      `No workflow defined for event keys: ${eventKeys.join(", ")}, only accepting ${acceptableEvents.join(", ")}.`,
     );
-    return false;
+    return null;
   }
 
   if (!workflow.steps || workflow.steps.length === 0) {
     console.warn(
       `Workflow for event ${event.source}:${event.event} has no steps defined, skipping.`,
     );
-    return false;
+    return null;
   }
 
-  return workflow as WorkflowDefinition;
+  const eventPayload = event[key as string];
+  return {
+    workflow: workflow as WorkflowDefinition,
+    event: eventPayload as Record<string, unknown>,
+  };
 }
 
 async function processEvent(
-  event: WorkflowEvent,
+  incomingEvent: WorkflowEvent,
   config: OnConfig,
-): Promise<void> {
-  const workflow = validateEvent(event, config);
+): Promise<Record<string, unknown> | void> {
+  const validated = validateEvent(incomingEvent, config);
 
-  if (!workflow) {
+  if (!validated) {
     return;
   }
 
-  const inputs = withMappings({ ...event }, workflow.mappings);
+  const { workflow, event } = validated;
+
+  const inputs = withMappings(event, workflow.mappings);
   const secrets = await loadSecrets(workflow.secrets);
   const workingDir = await mkdtemp(join(tmpdir(), "workflow"));
   const context: WorkflowContext = {
@@ -199,6 +196,7 @@ async function processEvent(
     secrets,
     workflow,
     env: {},
+    outputs: {},
     workingDir,
   };
 
@@ -214,13 +212,14 @@ async function processEvent(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(
-      `Error processing event ${event.source}:${event.event} - ${message}`,
-    );
+    console.error(`Error processing event: ${message}`);
+    console.debug(JSON.stringify(event));
   } finally {
     // Cleanup working directory
     await rm(context.workingDir, { recursive: true, force: true });
   }
+
+  return context.outputs;
 }
 
 async function processEventFromFile(dispatchPath: string, config: OnConfig) {
@@ -278,12 +277,12 @@ export async function startDaemon(
       const event = asObject(
         rawBody.length > 0 ? JSON.parse(rawBody) : {},
       ) as WorkflowEvent;
-      await processEvent(event, config);
+
+      const outputs = await processEvent(event, config);
 
       sendJson(response, 202, {
         status: "accepted",
-        source: event.source,
-        event: event.event,
+        outputs,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
