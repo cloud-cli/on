@@ -59,6 +59,18 @@ importers:
 
   packages/on:
     dependencies:
+      ansi_up:
+        specifier: 6.0.6
+        version: 6.0.6
+      yaml:
+        specifier: ^2.8.2
+        version: 2.8.2
+
+  packages/on/dist:
+    dependencies:
+      ansi_up:
+        specifier: 6.0.6
+        version: 6.0.6
       yaml:
         specifier: ^2.8.2
         version: 2.8.2
@@ -1326,6 +1338,9 @@ packages:
   ansi-styles@5.2.0:
     resolution: {integrity: sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA==}
     engines: {node: '>=10'}
+
+  ansi_up@6.0.6:
+    resolution: {integrity: sha512-yIa1x3Ecf8jWP4UWEunNjqNX6gzE4vg2gGz+xqRGY+TBSucnYp6RRdPV4brmtg6bQ1ljD48mZ5iGSEj7QEpRKA==}
 
   argparse@1.0.10:
     resolution: {integrity: sha512-o5Roy6tNG4SL/FOkCAN6RzjiakZS25RLYFrcMttJqbdd8BWrnA+fGz57iN5Pb06pvBGvl5gQ0B48dJlslXvoTg==}
@@ -4209,6 +4224,8 @@ snapshots:
       color-convert: 2.0.1
 
   ansi-styles@5.2.0: {}
+
+  ansi_up@6.0.6: {}
 
   argparse@1.0.10:
     dependencies:

@@ -4,7 +4,7 @@ import type { ServerOptions, WorkflowEvent } from "./types.js";
 import { sendJson, readBody, asObject } from "./utils.js";
 import { processEvent } from "./workflow.js";
 import { spawn } from "node:child_process";
-import { getReport } from "./reports.js";
+import { formatReportAsHTML, getReport } from "./reports.js";
 
 export async function startDaemon(
   options: ServerOptions,
@@ -35,15 +35,14 @@ export async function startDaemon(
     if (request.method === "GET" && request.url?.startsWith("/logs/")) {
       const id = request.url.split("/logs/")[1];
       const report = await getReport(id);
+      const reportHTML = await formatReportAsHTML(report);
 
       if (report) {
-        sendJson(response, 200, {
-          exitCode: report.outputs.slice(-1)[0]?.code ?? null,
-          stdout: report.outputs.map((o) => o.stdout),
-          stderr: report.outputs.map((o) => o.stderr),
-        });
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end(reportHTML);
       } else {
-        sendJson(response, 404, { error: "Report not found." });
+        response.writeHead(404, { "Content-Type": "text/html" });
+        response.end(formatReportAsHTML(null));
       }
       return;
     }

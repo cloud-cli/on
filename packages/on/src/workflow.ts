@@ -219,13 +219,13 @@ export async function processEvent(
     console.error(`Error processing event: ${message}`);
     console.debug(JSON.stringify(event));
   } finally {
-    // Cleanup working directory
     await rm(context.workingDir, { recursive: true, force: true });
   }
 
   await createReport({ id, parentId, children }, context.outputs);
+  // TODO save artifacts to a folder next to the report location and include links in the report
 
-  return { id: id, parentId, children, outputs: context.outputs };
+  return { id, parentId, children, outputs: context.outputs };
 }
 
 async function processEventFromFile(
