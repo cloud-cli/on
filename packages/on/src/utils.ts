@@ -32,12 +32,12 @@ export function normalizePort(portValue: string): number {
   return port;
 }
 
-export function asObject(value: unknown): Record<string, unknown> {
+export function asObject<T extends Record<string, unknown>>(value: unknown): T {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Incoming webhook payload must be a JSON object.");
   }
 
-  return value as Record<string, unknown>;
+  return value as T;
 }
 
 export function resolvePath(target: unknown, pathExpression: string): unknown {

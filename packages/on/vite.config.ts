@@ -1,2 +1,2 @@
-import config from "../../vite.config.base.js";
-export default config(import.meta.dirname);
+import { asLib } from "../../vite.config.base.js";
+export default asLib(import.meta.dirname, ["src/cli.ts"]);

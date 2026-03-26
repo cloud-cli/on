@@ -1,7 +1,8 @@
-export interface CliOptions {
+export interface ServerOptions {
   port: number;
   host: string;
   configPath?: string;
+  daemon?: boolean;
 }
 
 export interface StepConfig {
@@ -16,6 +17,7 @@ export interface StepDefinition extends StepConfig {
 
 export interface NormalizedStepDefinition extends StepConfig {
   run: string;
+  image: string;
   args: Array<Record<string, string>>;
   volumes: Record<string, string>;
 }
