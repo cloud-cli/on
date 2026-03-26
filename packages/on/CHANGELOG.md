@@ -1,5 +1,11 @@
 # @cloud-cli/on
 
+## 0.1.7
+
+### Patch Changes
+
+- Report endpoint is broken
+
 ## 0.1.6
 
 ### Patch Changes

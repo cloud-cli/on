@@ -35,14 +35,13 @@ export async function startDaemon(
     if (request.method === "GET" && request.url?.startsWith("/logs/")) {
       const id = request.url.split("/logs/")[1];
       const report = await getReport(id);
-      const reportHTML = await formatReportAsHTML(report);
 
       if (report) {
         response.writeHead(200, { "Content-Type": "text/html" });
-        response.end(reportHTML);
+        response.end(await formatReportAsHTML(report));
       } else {
         response.writeHead(404, { "Content-Type": "text/html" });
-        response.end(formatReportAsHTML(null));
+        response.end(await formatReportAsHTML(null));
       }
       return;
     }

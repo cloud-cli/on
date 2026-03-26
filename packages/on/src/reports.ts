@@ -1,9 +1,9 @@
-import { writeFile, mkdtemp } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { StepOutput } from "./types.js";
 import { AnsiUp } from "ansi_up";
-import { mkdirSync } from 'node:fs';
+import { mkdirSync } from "node:fs";
 
 const ansiUp = new AnsiUp();
 const tmpDir = join(tmpdir(), "workflow-reports");
@@ -41,7 +41,8 @@ export async function getReport(id: string): Promise<{
 } | null> {
   try {
     const reportPath = join(tmpDir, `${id}.json`);
-    const content = await import(reportPath, { with: { type: "json" } });
+    const rawText = await readFile(reportPath, "utf8");
+    const content = JSON.parse(rawText);
     return content as Report;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -73,9 +74,6 @@ export async function formatReportAsHTML(
     return notFound;
   }
 
-  // Use ANSI Up to convert ANSI escape codes in stdout/stderr to HTML
-  // Use Tailwind for styling
-  // Include links to parent and child reports if available
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
