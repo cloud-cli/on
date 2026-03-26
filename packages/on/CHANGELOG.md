@@ -1,5 +1,11 @@
 # @cloud-cli/on
 
+## 0.1.4
+
+### Patch Changes
+
+- Add reports endpoint and store workflow outputs
+
 ## 0.1.3
 
 ### Patch Changes
