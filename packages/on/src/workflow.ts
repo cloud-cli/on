@@ -12,9 +12,11 @@ import type {
   OnConfig,
   WorkflowDefinition,
   StepOutput,
+  EventOutput,
 } from "./types.js";
 import { interpolate, withMappings, asObject, toStringProxy } from "./utils.js";
-import { error } from "node:console";
+import { randomUUID } from "node:crypto";
+import { createReport } from "./reports.js";
 
 export const defaultWorkspace = "/workspace";
 export const defaultImage = "dhi.io/alpine-base:3.23-alpine3.23-dev";
@@ -80,67 +82,6 @@ function prepareEnv(context: WorkflowContext) {
   Object.assign(context.env, env);
 }
 
-async function runStep(
-  step: StepDefinition | string,
-  context: WorkflowContext,
-): Promise<void> {
-  if (typeof step === "string") {
-    step = { run: step };
-  }
-
-  const prepared = prepareStep(step, context);
-  const { args, image, volumes } = prepared;
-  const mappedVolumes = prepareVolumes(volumes, context);
-  const mappedArgs = prepareArgs(args, context);
-  const workingDir = volumes["."];
-  const dockerArgs = [
-    "run",
-    "-i",
-    "--rm",
-    ...mappedVolumes,
-    ...mappedArgs,
-    "-w",
-    workingDir,
-    "--entrypoint",
-    "sh",
-    image,
-  ] as string[];
-
-  await new Promise<StepOutput>((resolve, reject) => {
-    const child = spawn("docker", dockerArgs, {
-      env: context.env,
-    });
-
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    child.stdout?.on("data", (data) => {
-      stdout.push(data);
-    });
-    child.stderr?.on("data", (data) => {
-      stderr.push(data);
-    });
-
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      const stepOutput = {
-        code: code ?? 0,
-        cmd: prepared.run,
-        stdout: Buffer.concat(stdout).toString("utf-8"),
-        stderr: Buffer.concat(stderr).toString("utf-8"),
-      };
-
-      if (code === 0) {
-        return resolve(stepOutput);
-      }
-
-      reject(stepOutput);
-    });
-
-    child.stdin?.write(prepared.run);
-    child.stdin?.write("\nexit $?;\n");
-    child.stdin?.end();
-  });
-}
 function validateEvent(event: WorkflowEvent, config: OnConfig) {
   const eventKeys = Object.keys(event);
   const acceptableEvents = Object.keys(config.on);
@@ -167,14 +108,75 @@ function validateEvent(event: WorkflowEvent, config: OnConfig) {
     event: eventPayload as Record<string, unknown>,
   };
 }
+
+async function runStep(
+  step: StepDefinition | string,
+  context: WorkflowContext,
+): Promise<StepOutput> {
+  if (typeof step === "string") {
+    step = { run: step };
+  }
+
+  const prepared = prepareStep(step, context);
+  const { args, image, volumes } = prepared;
+  const mappedVolumes = prepareVolumes(volumes, context);
+  const mappedArgs = prepareArgs(args, context);
+  const workingDir = volumes["."];
+  const dockerArgs = [
+    "run",
+    "-i",
+    "--rm",
+    ...mappedVolumes,
+    ...mappedArgs,
+    "-w",
+    workingDir,
+    "--entrypoint",
+    "sh",
+    image,
+  ] as string[];
+
+  return new Promise<StepOutput>((resolve, reject) => {
+    const child = spawn("docker", dockerArgs, {
+      env: context.env,
+    });
+
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout?.on("data", (data) => {
+      stdout.push(data);
+    });
+    child.stderr?.on("data", (data) => {
+      stderr.push(data);
+    });
+
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      const stepOutput = {
+        code: code ?? 0,
+        cmd: prepared.run,
+        stdout: Buffer.concat(stdout).toString("utf-8"),
+        stderr: Buffer.concat(stderr).toString("utf-8"),
+      };
+
+      resolve(stepOutput);
+    });
+
+    child.stdin?.write(prepared.run);
+    child.stdin?.write("\nexit $?;\n");
+    child.stdin?.end();
+  });
+}
+
 export async function processEvent(
   incomingEvent: WorkflowEvent,
   config: OnConfig,
-): Promise<Record<string, unknown> | void> {
+  parentId?: string,
+): Promise<EventOutput> {
+  const id = randomUUID();
   const validated = validateEvent(incomingEvent, config);
 
   if (!validated) {
-    return;
+    return { id: id, parentId, outputs: [] };
   }
 
   const { workflow, event } = validated;
@@ -187,19 +189,30 @@ export async function processEvent(
     secrets,
     workflow,
     env: {},
-    outputs: {},
+    outputs: [],
     workingDir,
   });
 
   prepareEnv(context);
 
+  const children = [];
+
   try {
     for (const step of workflow.steps ?? []) {
-      await runStep(step, context);
+      const output = await runStep(step, context);
+      if (output.code !== 0) {
+        throw new Error(
+          `Step failed with code ${output.code}.\nstdout: ${output.stdout}\nstderr: ${output.stderr}`,
+        );
+      }
+      context.outputs.push(output);
     }
 
     for (const dispatchPath of workflow.triggers ?? []) {
-      await processEventFromFile(dispatchPath, config);
+      const next = await processEventFromFile(dispatchPath, config, parentId);
+      if (next) {
+        children.push(next.id);
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -210,10 +223,16 @@ export async function processEvent(
     await rm(context.workingDir, { recursive: true, force: true });
   }
 
-  return context.outputs;
+  await createReport({ id, parentId, children }, context.outputs);
+
+  return { id: id, parentId, children, outputs: context.outputs };
 }
 
-async function processEventFromFile(dispatchPath: string, config: OnConfig) {
+async function processEventFromFile(
+  dispatchPath: string,
+  config: OnConfig,
+  parentId?: string,
+) {
   if (!existsSync(dispatchPath)) {
     console.warn(`Trigger file does not exist: ${dispatchPath}`);
     return;
@@ -221,5 +240,5 @@ async function processEventFromFile(dispatchPath: string, config: OnConfig) {
 
   const raw = await readFile(dispatchPath, "utf8");
   const dispatchedEvent = asObject(JSON.parse(raw)) as WorkflowEvent;
-  await processEvent(dispatchedEvent, config);
+  return await processEvent(dispatchedEvent, config, parentId);
 }

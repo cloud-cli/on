@@ -22,6 +22,13 @@ export interface StepOutput {
   stderr: string;
 }
 
+export interface EventOutput {
+  id: string;
+  parentId?: string;
+  children?: string[];
+  outputs?: StepOutput[];
+}
+
 export interface NormalizedStepDefinition extends StepConfig {
   run: string;
   image: string;
@@ -40,7 +47,7 @@ export interface WorkflowDefinition {
 
 export interface WorkflowContext {
   inputs: Record<string, unknown>;
-  outputs: Record<string, unknown>;
+  outputs: Array<StepOutput>;
   secrets: Record<string, string>;
   workflow: WorkflowDefinition;
   env: NodeJS.ProcessEnv;
