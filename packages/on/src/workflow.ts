@@ -11,20 +11,24 @@ import type {
   WorkflowEvent,
   OnConfig,
   WorkflowDefinition,
+  StepOutput,
 } from "./types.js";
-import { interpolate, withMappings, asObject } from "./utils.js";
+import { interpolate, withMappings, asObject, toStringProxy } from "./utils.js";
+import { error } from "node:console";
 
 export const defaultWorkspace = "/workspace";
+export const defaultImage = "dhi.io/alpine-base:3.23-alpine3.23-dev";
 
 function prepareStep(step: StepDefinition, context: WorkflowContext) {
   if (typeof step.run !== "string") {
     throw new Error("Each workflow step must have a 'run' command string.");
   }
+
   const defaults = context.workflow.defaults || {};
 
-  step.image ||= defaults.image;
+  step.image ||= defaults.image || defaultImage;
   step.volumes ||= defaults.volumes || {};
-  step.args ||= defaults.args;
+  step.args ||= defaults.args || [];
   step.run = interpolate(step.run, { ...context, step });
 
   return step as NormalizedStepDefinition;
@@ -73,7 +77,7 @@ function prepareEnv(context: WorkflowContext) {
     }
   }
 
-  context.env = env;
+  Object.assign(context.env, env);
 }
 
 async function runStep(
@@ -102,19 +106,34 @@ async function runStep(
     image,
   ] as string[];
 
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn("docker", dockerArgs, { env: context.env });
+  await new Promise<StepOutput>((resolve, reject) => {
+    const child = spawn("docker", dockerArgs, {
+      env: context.env,
+    });
 
-    child.stdout?.pipe(process.stdout);
-    child.stderr?.pipe(process.stderr);
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout?.on("data", (data) => {
+      stdout.push(data);
+    });
+    child.stderr?.on("data", (data) => {
+      stderr.push(data);
+    });
 
     child.once("error", reject);
     child.once("exit", (code) => {
+      const stepOutput = {
+        code: code ?? 0,
+        cmd: prepared.run,
+        stdout: Buffer.concat(stdout).toString("utf-8"),
+        stderr: Buffer.concat(stderr).toString("utf-8"),
+      };
+
       if (code === 0) {
-        resolve();
-        return;
+        return resolve(stepOutput);
       }
-      reject(new Error(`Step failed with exit code ${code}: ${step}`));
+
+      reject(stepOutput);
     });
 
     child.stdin?.write(prepared.run);
@@ -163,14 +182,14 @@ export async function processEvent(
   const inputs = withMappings(event, workflow.mappings);
   const secrets = await loadSecrets(workflow.secrets);
   const workingDir = await mkdtemp(join(tmpdir(), "workflow"));
-  const context: WorkflowContext = {
+  const context = toStringProxy<WorkflowContext>({
     inputs,
     secrets,
     workflow,
     env: {},
     outputs: {},
     workingDir,
-  };
+  });
 
   prepareEnv(context);
 

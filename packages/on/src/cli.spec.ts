@@ -5,6 +5,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { AddressInfo } from "node:net";
 import net from "node:net";
+import { existsSync } from "node:fs";
 
 const processes = new Set<ChildProcess>();
 const cliPath = path.resolve("./src/cli.ts");
@@ -53,10 +54,12 @@ const startDaemon = async (options: { configPath?: string }) => {
     args.push("--config", options.configPath);
   }
 
-  const server = spawn(process.execPath, args, { stdio: "pipe" });
+  const server = spawn(process.execPath, args);
 
   processes.add(server);
   server.once("exit", () => processes.delete(server));
+  server.stdout?.pipe(process.stdout);
+  server.stderr?.pipe(process.stderr);
 
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -154,6 +157,7 @@ test(
 
     expect(response.status).toBe(202);
 
+    expect(existsSync(resultPath)).toBe(true);
     const resultContents = (await readFile(resultPath, "utf8")) as string;
     expect(resultContents).toContain("top-secret");
     expect(resultContents).toContain("registry/image:v1");
@@ -199,6 +203,7 @@ test("stop workflow if one step fails", async () => {
 
   expect(response.status).toBe(202);
 
+  expect(existsSync(resultPath)).toBe(true);
   const resultContents = await readFile(resultPath, "utf8");
   expect(resultContents).toContain("first");
   expect(resultContents).not.toContain("second");
@@ -215,3 +220,36 @@ test("returns 202 for payloads that do not trigger any workflow", async () => {
   expect(response.status).toBe(202);
 });
 
+test("converts objects to JSON when interpolating", async () => {
+  const tempDir = await getTempDir();
+  const resultPath = path.join(tempDir, "result.txt");
+  const configPath = path.join(tempDir, "config.json");
+
+  const config = {
+    on: {
+      test: {
+        steps: ["echo ${inputs} > /tmp/result.txt"],
+        defaults: {
+          image: "node:latest",
+          volumes: { [tempDir]: "/tmp" },
+        },
+      },
+    },
+  };
+
+  await writeFile(configPath, JSON.stringify(config, null, 2));
+
+  const event = { test: { a: 1, b: [1, 2], c: { nested: true } } };
+  const { sendEvent, stop } = await startDaemon({ configPath });
+  const response = await sendEvent(event);
+
+  await stop();
+
+  expect(response.status).toBe(202);
+
+  expect(existsSync(resultPath)).toBe(true);
+  const resultContents = (await readFile(resultPath, "utf8")).trim();
+  expect(resultContents).toBe(JSON.stringify(event.test));
+
+  await cleanUp(tempDir);
+});

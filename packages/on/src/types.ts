@@ -15,6 +15,13 @@ export interface StepDefinition extends StepConfig {
   run: string;
 }
 
+export interface StepOutput {
+  code: number;
+  cmd: string;
+  stdout: string;
+  stderr: string;
+}
+
 export interface NormalizedStepDefinition extends StepConfig {
   run: string;
   image: string;
