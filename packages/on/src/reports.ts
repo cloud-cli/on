@@ -3,9 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { StepOutput } from "./types.js";
 import { AnsiUp } from "ansi_up";
+import { mkdirSync } from 'node:fs';
 
 const ansiUp = new AnsiUp();
 const tmpDir = join(tmpdir(), "workflow-reports");
+mkdirSync(tmpDir, { recursive: true });
 
 export async function createReport(
   ids: { id: string; parentId?: string; children?: string[] },
