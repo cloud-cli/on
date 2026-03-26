@@ -38,7 +38,9 @@ export async function startDaemon(
 
       if (report) {
         sendJson(response, 200, {
-          logs: report.outputs.flatMap((o) => o.logs),
+          exitCode: report.outputs.slice(-1)[0]?.code ?? null,
+          stdout: report.outputs.map((o) => o.stdout),
+          stderr: report.outputs.map((o) => o.stderr),
         });
       } else {
         sendJson(response, 404, { error: "Report not found." });
