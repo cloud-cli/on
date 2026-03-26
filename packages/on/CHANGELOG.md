@@ -1,5 +1,12 @@
 # @cloud-cli/on
 
+## 0.1.5
+
+### Patch Changes
+
+- create HTML page for reports
+- 44ec0ee: Report URL is broken
+
 ## 0.1.4
 
 ### Patch Changes
