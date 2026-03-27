@@ -15,7 +15,7 @@ Options:
   --daemon      Run as a background service
   --port, -p    HTTP port for incoming webhooks (default: 11235)
   --host, -H    Host binding for the HTTP server (default: 127.0.0.1)
-  --config, -c  Path to a YAML/JSON config file (default: workflows.yaml)
+  --config, -c  Path to a YAML/JSON config file or a folder with multiple files. (default: workflows.yaml)
   --help, -h    Show this help message
 `;
 
