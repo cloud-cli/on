@@ -1,7 +1,9 @@
-import { ChildProcess, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import type { WorkflowContext, NormalizedStepDefinition } from "./types.js";
 import { interpolate } from "./utils.js";
-import { defaultImage, defaultWorkspace } from "./workflow.js";
+
+export const defaultWorkspace = "/workspace";
+export const defaultImage = "dhi.io/alpine-base:3.23-alpine3.23-dev";
 
 export function prepareDockerStep(
   step: NormalizedStepDefinition,

@@ -13,12 +13,12 @@ export async function createReport(
   ids: { id: string; parentId?: string; children?: string[] },
   context: WorkflowContext,
 ): Promise<void> {
-  const { outputs } = context;
+  const { outputs, ...ctx } = context;
   try {
     const reportPath = join(tmpDir, `${ids.id}.json`);
     await writeFile(
       reportPath,
-      JSON.stringify({ ...ids, outputs }, null, 2),
+      JSON.stringify({ ...ids, outputs, context: ctx }, null, 2),
       "utf8",
     );
   } catch (error) {

@@ -19,8 +19,6 @@ import { randomUUID } from "node:crypto";
 import { createReport } from "./reports.js";
 import { prepareShell } from "./docker.js";
 
-export const defaultWorkspace = "/workspace";
-export const defaultImage = "dhi.io/alpine-base:3.23-alpine3.23-dev";
 const SHELL = process.env.SHELL || "sh";
 
 function prepareEnv(context: WorkflowContext) {
@@ -60,7 +58,7 @@ function validateEvent(eventPayload: WorkflowEvent, config: OnConfig) {
     return null;
   }
 
-  if (!workflow.steps || workflow.steps.length === 0) {
+  if (!workflow.steps?.length) {
     console.warn(
       `Workflow for event ${event.source}:${event.event} has no steps defined, skipping.`,
     );
@@ -82,6 +80,8 @@ async function runStep(
 ): Promise<StepOutput> {
   const stdout: Buffer[] = [];
   const stderr: Buffer[] = [];
+  const cmd = interpolate(step.run, context);
+
   const shell =
     context.runner === "docker"
       ? prepareShell(step, context)
@@ -91,13 +91,8 @@ async function runStep(
           cwd: context.workingDir,
         });
 
-  shell.stdout?.on("data", (data) => {
-    stdout.push(data);
-  });
-
-  shell.stderr?.on("data", (data) => {
-    stderr.push(data);
-  });
+  shell.stdout?.on("data", (data) => stdout.push(data));
+  shell.stderr?.on("data", (data) => stderr.push(data));
 
   return new Promise<StepOutput>((resolve, reject) => {
     shell.once("error", reject);
@@ -112,7 +107,7 @@ async function runStep(
       resolve(stepOutput);
     });
 
-    shell.stdin?.write(step.run);
+    shell.stdin?.write(cmd);
     shell.stdin?.write("\nexit $?;\n");
     shell.stdin?.end();
   });
@@ -131,7 +126,6 @@ function normalizeSteps(
       throw new Error("Each workflow step must have a 'run' command string.");
     }
 
-    step.run = interpolate(step.run, { ...context, step });
     return step as NormalizedStepDefinition;
   });
 }
@@ -145,12 +139,15 @@ export async function processEvent(
   const validated = validateEvent(incomingEvent, config);
 
   if (!validated) {
-    return { id: id, parentId, children: [], context: null };
+    return { id, parentId, children: [], context: null };
   }
 
   const { workflow, event } = validated;
 
-  const inputs = withMappings(event, workflow.mappings);
+  const inputs = workflow.mappings
+    ? withMappings(event, workflow.mappings)
+    : event;
+
   const secrets = await loadSecrets(workflow.secrets);
   const workingDir = await mkdtemp(join(tmpdir(), "workflow"));
   const context = toStringProxy<WorkflowContext>({
@@ -160,6 +157,7 @@ export async function processEvent(
     env: {},
     outputs: [],
     workingDir,
+    runner: config.runner || "docker",
   });
 
   const children = [];
@@ -200,7 +198,7 @@ export async function processEvent(
   return { id, parentId, children, context };
 }
 
-async function processEventFromFile(
+export async function processEventFromFile(
   dispatchPath: string,
   config: OnConfig,
   parentId?: string,

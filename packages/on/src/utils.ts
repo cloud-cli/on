@@ -58,7 +58,6 @@ export function resolvePath(target: unknown, pathExpression: string): unknown {
   return cursor;
 }
 
-// wrap an object into a recursive proxy that replaces `toString` with JSON.stringify for objects and converts undefined/null to empty strings for interpolation
 export function toStringProxy<T>(value: unknown): T {
   if (typeof value === "object" && value !== null) {
     return new Proxy(value, {
@@ -85,11 +84,10 @@ export function toStringProxy<T>(value: unknown): T {
 }
 
 export function interpolate(template: string, context: any): string {
+  const keys = Object.keys(context);
   const f = Function(
     "context",
-    "const { secrets = {}, inputs = {}, step = {}, env } = context;return `" +
-      template +
-      "`;",
+    "const { " + keys.join(", ") + " } = context;return `" + template + "`;",
   );
 
   return String(f(context) || "");

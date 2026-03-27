@@ -101,6 +101,7 @@ test(
     await writeFile(secretsPath, "A_SECRET=top-secret\n");
 
     const config = {
+      runner: "docker",
       on: {
         published: {
           secrets: [secretsPath],
@@ -122,7 +123,7 @@ test(
             "echo '{\"followup\":{}}' > /tmp/trigger.json",
             "echo ${env.A_SECRET} >> /tmp/result.txt",
             "echo ${inputs.url} >> /tmp/result.txt",
-            "echo ${step.image} >> /tmp/result.txt",
+            "echo ${workflow.defaults.image} >> /tmp/result.txt",
           ],
           triggers: [triggerPath],
         },

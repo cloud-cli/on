@@ -1,8 +1,8 @@
 export interface ServerOptions {
   port: number;
   host: string;
-  configPath?: string;
-  daemon?: boolean;
+  configPath: string;
+  daemon: boolean;
 }
 
 export interface StepConfig {
@@ -56,6 +56,8 @@ export interface WorkflowContext {
 }
 
 export interface OnConfig {
+  description?: string;
+  runner: "docker" | "shell";
   on: Record<string, Record<string, WorkflowDefinition>>;
 }
 

@@ -1,5 +1,11 @@
 # @cloud-cli/on
 
+## 0.1.8
+
+### Patch Changes
+
+- Add option to run workflow on a shell in the host machine
+
 ## 0.1.7
 
 ### Patch Changes
