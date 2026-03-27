@@ -1,7 +1,7 @@
 import { writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { StepOutput } from "./types.js";
+import { StepOutput, WorkflowContext } from "./types.js";
 import { AnsiUp } from "ansi_up";
 import { mkdirSync } from "node:fs";
 
@@ -11,8 +11,9 @@ mkdirSync(tmpDir, { recursive: true });
 
 export async function createReport(
   ids: { id: string; parentId?: string; children?: string[] },
-  outputs: StepOutput[],
+  context: WorkflowContext,
 ): Promise<void> {
+  const { outputs } = context;
   try {
     const reportPath = join(tmpDir, `${ids.id}.json`);
     await writeFile(

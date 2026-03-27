@@ -46,7 +46,8 @@ function prepareEnv(context: WorkflowContext) {
   Object.assign(context.env, env);
 }
 
-function validateEvent(event: WorkflowEvent, config: OnConfig) {
+function validateEvent(eventPayload: WorkflowEvent, config: OnConfig) {
+  const { event, source } = eventPayload;
   const eventKeys = Object.keys(event);
   const acceptableEvents = Object.keys(config.on);
   const key = acceptableEvents.find((key) => event[key]);
@@ -66,11 +67,12 @@ function validateEvent(event: WorkflowEvent, config: OnConfig) {
     return null;
   }
 
-  const eventPayload = event[key as string];
+  const payload = event[key as string];
 
   return {
+    source,
     workflow: workflow as WorkflowDefinition,
-    event: eventPayload as Record<string, unknown>,
+    event: payload as Record<string, unknown>,
   };
 }
 

@@ -32,8 +32,8 @@ export async function startDaemon(
       return;
     }
 
-    if (request.method === "GET" && request.url?.startsWith("/logs/")) {
-      const id = request.url.split("/logs/")[1];
+    if (request.method === "GET" && request.url?.startsWith("/reports/")) {
+      const id = request.url.split("/reports/")[1];
       const report = await getReport(id);
 
       if (report) {
@@ -52,11 +52,13 @@ export async function startDaemon(
     }
 
     try {
+      const source = request.url?.slice(1) || "";
       const body = Buffer.concat(await request.toArray()).toString();
-      const event = asObject<WorkflowEvent>(JSON.parse(body || "{}"));
+      const eventBody = asObject<WorkflowEvent['event']>(JSON.parse(body || "{}"));
+      const event: WorkflowEvent = { source, event: eventBody };
       const outputs = await processEvent(event, config);
       const logUrl = (id: string) =>
-        new URL("/logs/" + id, `http://${request.headers.host}`);
+        new URL("/reports/" + id, `http://${request.headers.host}`);
 
       sendJson(response, 202, {
         id: outputs.id,

@@ -26,7 +26,7 @@ export interface EventOutput {
   id: string;
   parentId?: string;
   children?: string[];
-  outputs?: StepOutput[];
+  context: WorkflowContext | null;
 }
 
 export interface NormalizedStepDefinition extends StepConfig {
@@ -46,6 +46,7 @@ export interface WorkflowDefinition {
 }
 
 export interface WorkflowContext {
+  runner: "docker" | "shell";
   inputs: Record<string, unknown>;
   outputs: Array<StepOutput>;
   secrets: Record<string, string>;
@@ -59,5 +60,6 @@ export interface OnConfig {
 }
 
 export interface WorkflowEvent {
-  [key: string]: unknown;
+  source: string;
+  event: { [key: string]: unknown };
 }
