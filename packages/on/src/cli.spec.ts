@@ -101,9 +101,9 @@ test(
     await writeFile(secretsPath, "A_SECRET=top-secret\n");
 
     const config = {
-      runner: "docker",
       on: {
         published: {
+          runner: "docker",
           secrets: [secretsPath],
           mappings: {
             url: "inputs.package.package_version.package_url",
@@ -181,6 +181,7 @@ test("stop workflow if one step fails", async () => {
   const config = {
     on: {
       test: {
+        // omitted runner to pick up the default "docker"
         steps: [
           "echo first > /tmp/result.txt",
           "cat /not/existing",
@@ -211,6 +212,78 @@ test("stop workflow if one step fails", async () => {
 
   await cleanUp(tempDir);
 });
+
+test("run workflow on shell", async () => {
+  const tempDir = await getTempDir();
+  const resultPath = path.join(tempDir, "result.txt");
+  const configPath = path.join(tempDir, "config.json");
+
+  const config = {
+    on: {
+      test: {
+        runner: "shell",
+        steps: [
+          {
+            run: "echo works > result.txt",
+            workingDir: tempDir,
+          },
+        ],
+      },
+    },
+  };
+
+  await writeFile(configPath, JSON.stringify(config, null, 2));
+
+  const event = { test: {} };
+  const { sendEvent, stop } = await startDaemon({ configPath });
+  const response = await sendEvent(event);
+
+  await stop();
+
+  expect(response.status).toBe(202);
+  expect(existsSync(resultPath)).toBe(true);
+  const resultContents = await readFile(resultPath, "utf8");
+  expect(resultContents).toContain("works");
+
+  await cleanUp(tempDir);
+});
+
+test("skip workflow based on conditions", async () => {
+  const tempDir = await getTempDir();
+  const resultPath = path.join(tempDir, "result.txt");
+  const configPath = path.join(tempDir, "config.json");
+
+  const config = {
+    on: {
+      test: {
+        runner: "shell",
+        if: [
+          "${inputs.value} === 123 ",
+        ],
+        steps: [
+          {
+            run: "echo works > result.txt",
+            workingDir: tempDir,
+          },
+        ],
+      },
+    },
+  };
+
+  await writeFile(configPath, JSON.stringify(config, null, 2));
+
+  const event = { test: { value: 456 } };
+  const { sendEvent, stop } = await startDaemon({ configPath });
+  const response = await sendEvent(event);
+
+  await stop();
+
+  expect(response.status).toBe(202);
+  expect(existsSync(resultPath)).toBe(false);
+
+  await cleanUp(tempDir);
+});
+
 
 test("returns 202 for payloads that do not trigger any workflow", async () => {
   const { sendEvent, stop } = await startDaemon({ configPath: undefined });

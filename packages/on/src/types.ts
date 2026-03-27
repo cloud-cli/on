@@ -34,15 +34,18 @@ export interface NormalizedStepDefinition extends StepConfig {
   image: string;
   args: Array<Record<string, string>>;
   volumes: Record<string, string>;
+  workingDir?: string;
 }
 
 export interface WorkflowDefinition {
+  runner?: "docker" | "shell";
   secrets?: string[];
   mappings?: Record<string, string>;
   env?: Record<string, string>;
   defaults?: Partial<StepConfig>;
   steps?: StepDefinition[] | string[];
   triggers?: string[];
+  if?: string[];
 }
 
 export interface WorkflowContext {
@@ -57,7 +60,6 @@ export interface WorkflowContext {
 
 export interface OnConfig {
   description?: string;
-  runner: "docker" | "shell";
   on: Record<string, Record<string, WorkflowDefinition>>;
 }
 

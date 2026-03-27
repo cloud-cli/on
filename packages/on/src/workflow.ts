@@ -88,7 +88,7 @@ async function runStep(
       : spawn(SHELL, {
           shell: true,
           env: context.env,
-          cwd: context.workingDir,
+          cwd: step.workingDir || context.workingDir,
         });
 
   shell.stdout?.on("data", (data) => stdout.push(data));
@@ -157,8 +157,21 @@ export async function processEvent(
     env: {},
     outputs: [],
     workingDir,
-    runner: config.runner || "docker",
+    runner: workflow.runner || "docker",
   });
+
+  if (workflow.if) {
+    // evaluate conditions as JavaScript expressions for truthy values, as an OR list - if any condition is truthy, the workflow runs
+    const conditions = workflow.if.map((c) => interpolate(c, context));
+    const shouldRun = conditions.some((c) => Function("return " + c)());
+
+    if (!shouldRun) {
+      console.log(
+        `Workflow for event ${event.source}:${event.event} skipped due to no matching conditions.`,
+      );
+      return { id, parentId, children: [], context: null };
+    }
+  }
 
   const children = [];
 

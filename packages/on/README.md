@@ -25,12 +25,13 @@ curl -X POST http://localhost:11235/ -d '{ "event-name": {...} }'
 
 ```yaml
 description: Run tests and build
-runner: docker
-vars:
+
+vars: &vars
   image: node:latest
 
 on:
-  - event-name:
+  event-name:
+    runner: docker
     if:
       - ${inputs.action} == 'published'
     secrets:
@@ -42,7 +43,7 @@ on:
       A_SECRET: "${secrets.A_SECRET}"
       A_VALUE: "${inputs.some.value}"
     defaults:
-      image: ${vars.image}
+      <<: *vars
       volumes:
         .: /home
         /dev/shm: /dev/shm
@@ -65,9 +66,9 @@ curl -X POST http://localhost:11235/ -d '{ "package": {...} }'
 
 ```yaml
 description: Auto-release library
-runner: shell
 on:
   event-name:
+    runner: shell
     secrets:
       - /path/to/secrets
       - /path/to/.env

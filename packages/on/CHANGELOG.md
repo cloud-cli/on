@@ -1,5 +1,11 @@
 # @cloud-cli/on
 
+## 0.1.9
+
+### Patch Changes
+
+- Implement conditions per workflow
+
 ## 0.1.8
 
 ### Patch Changes
