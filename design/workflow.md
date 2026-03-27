@@ -3,28 +3,46 @@
 This is a task runner using webhooks to process incoming events.
 
 Every event is sent to a daemon as an HTTP request, with a JSON body, and can trigger one or more workflows.
+Every workflow is a set of steps, which can run on containers or in a shell on the host.
 
-Every workflow is a set of steps that run inside a docker container.
+## Running on Docker
 
-All steps run in the same workspace folder.
+- Steps run inside a docker container.
+- All steps run in the same workspace folder.
+- The current folder is mounted as a volume at /workspace by default. This can be changed by specifying a volume with `.` as the host path.
 
-The current folder is mounted as a volume at /workspace by default. That can be changed by specifying a volume with `.` as the host path.
+## Running on the host machine
+
+- Steps are sent as stdin to a shell subprocess
 
 ## General configuration syntax
 
+Running with Docker:
+
+```sh
+curl -X POST http://localhost:11235/ -d '{ "event-name": {...} }'
+```
+
 ```yaml
+description: Run tests and build
+runner: docker
+vars:
+  image: node:latest
+
 on:
-  <event-name>:
+  - event-name:
+    if:
+      - ${inputs.action} == 'published'
     secrets:
       - /path/to/secrets
       - /path/to/.env
     mappings:
-      <field>: <path.to.value.in.json.payload>
+      <field>: <path.to.value.in.inputs>
     env:
       A_SECRET: "${secrets.A_SECRET}"
       A_VALUE: "${inputs.some.value}"
     defaults:
-      image: <docker-image>
+      image: ${vars.image}
       volumes:
         .: /home
         /dev/shm: /dev/shm
@@ -34,20 +52,49 @@ on:
     steps:
       - pnpm i
       - pnpm run build
-      - pnpm run release
-      - echo '::set-output::name' $?
+      - pnpm run test
     triggers:
       - path/to/output.json
 ```
 
-### Source
+Running with a shell on the same machine as the server:
 
-Any event trigger can be defined here. Any event source is mapped to a key in the incoming webhook payload.
-For example:
+```sh
+curl -X POST http://localhost:11235/ -d '{ "package": {...} }'
+```
 
-Given the payload `{ published: { value: 123 } }`
+```yaml
+description: Auto-release library
+runner: shell
+on:
+  event-name:
+    secrets:
+      - /path/to/secrets
+      - /path/to/.env
+    mappings:
+      <field>: <path.to.value.in.json.payload>
+    env:
+      A_SECRET: "${secrets.A_SECRET}"
+      A_VALUE: "${inputs.some.value}"
+    steps:
+      - pnpm i
+      - pnpm run build
+      - pnpm run release
+    triggers:
+      - path/to/output.json
+```
 
-And the workflow
+### Event Payload
+
+The webhooks can have any shape. To match events to workflows, we look for the top-level keys in the request body, and matching workflows that expect them to be present.
+
+For example, given the request:
+
+```sh
+curl -X POST http://localhost:11235/ -d '{ "published": { "value" : 123 } }'
+```
+
+Then the workflow should map the `published` key:
 
 ```yaml
 on:
@@ -56,7 +103,29 @@ on:
       - echo ${inputs.value}
 ```
 
-Then `inputs` is set to the payload value of `published`, which contains `value`.
+Here, the expression `inputs` in the workflow context is defined as the value set in the `published` key from the parsed JSON.
+The expression `${inputs.value}` contains `123`.
+
+To differentiate between events coming from the same place, multiple webhooks can be created.
+The incoming webhook URL can have a path, and that is considered as the event source.
+
+Consider this request:
+
+```sh
+curl -X POST http://localhost:11235/source -d '{ "event": { "value" : 123 } }'
+```
+
+The key `source` is added to the event payload. The workflow should now be defined as:
+
+```yaml
+on:
+  source:
+    published:
+      steps:
+        - echo ${inputs.value}
+```
+
+This difference in payload processing allows multiple webhooks from the same source, to separate different events with a similar JSON body.
 
 ### Secrets
 
