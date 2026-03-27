@@ -7,57 +7,21 @@ import { loadSecrets } from "./secrets.js";
 import type {
   StepDefinition,
   WorkflowContext,
-  NormalizedStepDefinition,
   WorkflowEvent,
   OnConfig,
   WorkflowDefinition,
   StepOutput,
   EventOutput,
+  NormalizedStepDefinition,
 } from "./types.js";
 import { interpolate, withMappings, asObject, toStringProxy } from "./utils.js";
 import { randomUUID } from "node:crypto";
 import { createReport } from "./reports.js";
+import { prepareShell } from "./docker.js";
 
 export const defaultWorkspace = "/workspace";
 export const defaultImage = "dhi.io/alpine-base:3.23-alpine3.23-dev";
-
-function prepareStep(step: StepDefinition, context: WorkflowContext) {
-  if (typeof step.run !== "string") {
-    throw new Error("Each workflow step must have a 'run' command string.");
-  }
-
-  const defaults = context.workflow.defaults || {};
-
-  step.image ||= defaults.image || defaultImage;
-  step.volumes ||= defaults.volumes || {};
-  step.args ||= defaults.args || [];
-  step.run = interpolate(step.run, { ...context, step });
-
-  return step as NormalizedStepDefinition;
-}
-
-function prepareArgs(
-  args: Record<string, string>[],
-  context: WorkflowContext,
-): string[] {
-  return (args || []).flatMap((arg) =>
-    Object.entries(arg).flatMap(([key, value]) => [
-      `--${key}`,
-      interpolate(String(value), context),
-    ]),
-  );
-}
-
-function prepareVolumes(
-  volumes: Record<string, string>,
-  context: WorkflowContext,
-): string[] {
-  volumes["."] ||= defaultWorkspace;
-  return Object.entries(volumes).flatMap(([hostPath, containerPath]) => [
-    "-v",
-    `${hostPath === "." ? context.workingDir : hostPath}:${containerPath}`,
-  ]);
-}
+const SHELL = process.env.SHELL || "sh";
 
 function prepareEnv(context: WorkflowContext) {
   const { workflow, secrets } = context;
@@ -103,6 +67,7 @@ function validateEvent(event: WorkflowEvent, config: OnConfig) {
   }
 
   const eventPayload = event[key as string];
+
   return {
     workflow: workflow as WorkflowDefinition,
     event: eventPayload as Record<string, unknown>,
@@ -110,50 +75,34 @@ function validateEvent(event: WorkflowEvent, config: OnConfig) {
 }
 
 async function runStep(
-  step: StepDefinition | string,
+  step: NormalizedStepDefinition,
   context: WorkflowContext,
 ): Promise<StepOutput> {
-  if (typeof step === "string") {
-    step = { run: step };
-  }
+  const stdout: Buffer[] = [];
+  const stderr: Buffer[] = [];
+  const shell =
+    context.runner === "docker"
+      ? prepareShell(step, context)
+      : spawn(SHELL, {
+          shell: true,
+          env: context.env,
+          cwd: context.workingDir,
+        });
 
-  const prepared = prepareStep(step, context);
-  const { args, image, volumes } = prepared;
-  const mappedVolumes = prepareVolumes(volumes, context);
-  const mappedArgs = prepareArgs(args, context);
-  const workingDir = volumes["."];
-  const dockerArgs = [
-    "run",
-    "-i",
-    "--rm",
-    ...mappedVolumes,
-    ...mappedArgs,
-    "-w",
-    workingDir,
-    "--entrypoint",
-    "sh",
-    image,
-  ] as string[];
+  shell.stdout?.on("data", (data) => {
+    stdout.push(data);
+  });
+
+  shell.stderr?.on("data", (data) => {
+    stderr.push(data);
+  });
 
   return new Promise<StepOutput>((resolve, reject) => {
-    const child = spawn("docker", dockerArgs, {
-      env: context.env,
-    });
-
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    child.stdout?.on("data", (data) => {
-      stdout.push(data);
-    });
-    child.stderr?.on("data", (data) => {
-      stderr.push(data);
-    });
-
-    child.once("error", reject);
-    child.once("exit", (code) => {
+    shell.once("error", reject);
+    shell.once("exit", (code) => {
       const stepOutput = {
         code: code ?? 0,
-        cmd: prepared.run,
+        cmd: step.run,
         stdout: Buffer.concat(stdout).toString("utf-8"),
         stderr: Buffer.concat(stderr).toString("utf-8"),
       };
@@ -161,9 +110,27 @@ async function runStep(
       resolve(stepOutput);
     });
 
-    child.stdin?.write(prepared.run);
-    child.stdin?.write("\nexit $?;\n");
-    child.stdin?.end();
+    shell.stdin?.write(step.run);
+    shell.stdin?.write("\nexit $?;\n");
+    shell.stdin?.end();
+  });
+}
+
+function normalizeSteps(
+  steps: Array<StepDefinition | string>,
+  context: WorkflowContext,
+): NormalizedStepDefinition[] {
+  return steps.map((step) => {
+    if (typeof step === "string") {
+      step = { run: step };
+    }
+
+    if (typeof step.run !== "string") {
+      throw new Error("Each workflow step must have a 'run' command string.");
+    }
+
+    step.run = interpolate(step.run, { ...context, step });
+    return step as NormalizedStepDefinition;
   });
 }
 
@@ -176,7 +143,7 @@ export async function processEvent(
   const validated = validateEvent(incomingEvent, config);
 
   if (!validated) {
-    return { id: id, parentId, outputs: [] };
+    return { id: id, parentId, children: [], context: null };
   }
 
   const { workflow, event } = validated;
@@ -193,18 +160,21 @@ export async function processEvent(
     workingDir,
   });
 
-  prepareEnv(context);
-
   const children = [];
 
   try {
-    for (const step of workflow.steps ?? []) {
+    prepareEnv(context);
+    const steps = normalizeSteps(workflow.steps || [], context);
+
+    for (const step of steps) {
       const output = await runStep(step, context);
+
       if (output.code !== 0) {
         throw new Error(
           `Step failed with code ${output.code}.\nstdout: ${output.stdout}\nstderr: ${output.stderr}`,
         );
       }
+
       context.outputs.push(output);
     }
 
@@ -222,10 +192,10 @@ export async function processEvent(
     await rm(context.workingDir, { recursive: true, force: true });
   }
 
-  await createReport({ id, parentId, children }, context.outputs);
-  // TODO save artifacts to a folder next to the report location and include links in the report
+  await createReport({ id, parentId, children }, context);
+  // TODO save artifacts and context to a folder along with the report location and include links in the report
 
-  return { id, parentId, children, outputs: context.outputs };
+  return { id, parentId, children, context };
 }
 
 async function processEventFromFile(
@@ -239,6 +209,9 @@ async function processEventFromFile(
   }
 
   const raw = await readFile(dispatchPath, "utf8");
-  const dispatchedEvent = asObject(JSON.parse(raw)) as WorkflowEvent;
+  const dispatchedEvent = {
+    event: asObject(JSON.parse(raw)),
+    source: "file",
+  } as WorkflowEvent;
   return await processEvent(dispatchedEvent, config, parentId);
 }
