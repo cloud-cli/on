@@ -13,9 +13,9 @@ Usage:
 
 Options:
   --daemon      Run as a background service
-  --port, -p    HTTP port for incoming webhooks (required)
+  --port, -p    HTTP port for incoming webhooks (default: 11235)
   --host, -H    Host binding for the HTTP server (default: 127.0.0.1)
-  --config, -c  Path to a YAML/JSON config file
+  --config, -c  Path to a YAML/JSON config file (default: workflows.yaml)
   --help, -h    Show this help message
 `;
 
@@ -23,9 +23,9 @@ export function parseCliOptions(argv: string[]): ServerOptions | null {
   const { values } = parseArgs({
     args: argv,
     options: {
-      port: { type: "string", short: "p" },
+      port: { type: "string", short: "p", default: "11235" },
       host: { type: "string", short: "H", default: "127.0.0.1" },
-      config: { type: "string", short: "c" },
+      config: { type: "string", short: "c", default: "workflows.yaml" },
       help: { type: "boolean", short: "h", default: false },
       daemon: { type: "boolean", short: "d", default: false },
     },
