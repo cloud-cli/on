@@ -22,6 +22,14 @@ export interface StepOutput {
   stderr: string;
 }
 
+export interface WorkflowRunner<
+  TStep extends StepDefinition = StepDefinition,
+  TContext extends WorkflowContext = WorkflowContext,
+  TOutput extends StepOutput = StepOutput,
+> {
+  run(step: TStep, context: TContext): Promise<TOutput>;
+}
+
 export interface EventOutput {
   id: string;
   parentId?: string;
