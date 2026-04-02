@@ -7,6 +7,10 @@
     "on": "./dist/on.js"
   },
   "main": "./dist/on.js",
+  "exports": {
+    ".": "./dist/on.js",
+    "./types": "./dist/types.js"
+  },
   "files": [
     "dist"
   ],
@@ -22,6 +26,7 @@
     "url": "https://github.com/cloud-cli/on"
   },
   "dependencies": {
+    "@cloud-cli/on-devkit": "workspace:*",
     "ansi_up": "6.0.6",
     "yaml": "^2.8.2"
   }

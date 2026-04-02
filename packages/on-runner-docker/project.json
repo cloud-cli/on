@@ -1,0 +1,12 @@
+{
+  "name": "on-runner-docker",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/on-runner-docker/src",
+  "projectType": "library",
+  "targets": {
+    "build": {},
+    "test": {},
+    "lint": {}
+  },
+  "tags": []
+}

@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "esnext",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
@@ -10,8 +10,14 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "types": [
-      "node"
-    ]
+    "types": ["node"],
+    "paths": {
+      "@cloud-cli/on": ["./packages/on/src/index.ts"],
+      "@cloud-cli/on-devkit": ["./packages/on-devkit/src/index.ts"],
+      "@cloud-cli/on-runner-docker": [
+        "./packages/on-runner-docker/src/index.ts"
+      ],
+      "@cloud-cli/on-runner-shell": ["./packages/on-runner-shell/src/index.ts"]
+    }
   }
 }

@@ -87,91 +87,88 @@ test("prints help", () => {
   expect(result.stdout).toMatch(/daemonized webhook runner/);
 });
 
-test(
-  "executes workflow with mappings, secrets, env interpolation, defaults and dispatch",
-  { timeout: 30000 },
-  async () => {
-    const tempDir = await getTempDir();
-    const secretsPath = path.join(tempDir, ".env");
-    const resultPath = path.join(tempDir, "result.txt");
-    const dispatchedMarkerPath = path.join(tempDir, "dispatched.txt");
-    const configPath = path.join(tempDir, "config.json");
-    const triggerPath = path.join(tempDir, "trigger.json");
+test("executes a full workflow example", { timeout: 30000 }, async () => {
+  const tempDir = await getTempDir();
+  const secretsPath = path.join(tempDir, ".env");
+  const resultPath = path.join(tempDir, "result.txt");
+  const dispatchedMarkerPath = path.join(tempDir, "dispatched.txt");
+  const configPath = path.join(tempDir, "config.json");
+  const triggerPath = path.join(tempDir, "trigger.json");
 
-    await writeFile(secretsPath, "A_SECRET=top-secret\n");
+  await writeFile(secretsPath, "A_SECRET=top-secret\n");
 
-    const config = {
-      on: {
-        published: {
-          runner: "docker",
-          secrets: [secretsPath],
-          mappings: {
-            url: "inputs.package.package_version.package_url",
-          },
-          env: {
-            A_SECRET: "${secrets.A_SECRET}",
-            A_VALUE: "${inputs.image}",
-          },
-          defaults: {
-            image: "node:latest",
-            volumes: { ".": "/home", [tempDir]: "/tmp" },
-            args: [{ name: "published" }],
-          },
-          steps: [
-            "pwd",
-            "echo ${inputs}",
-            "echo '{\"followup\":{}}' > /tmp/trigger.json",
-            "echo ${env.A_SECRET} >> /tmp/result.txt",
-            "echo ${inputs.url} >> /tmp/result.txt",
-            "echo ${workflow.defaults.image} >> /tmp/result.txt",
-          ],
-          triggers: [triggerPath],
-        },
-        followup: {
-          steps: [
-            {
-              run: "echo OK > /tmp/dispatched.txt",
-              volumes: { [tempDir]: "/tmp" },
-              image: "node:latest",
-            },
-          ],
-        },
-      },
-    };
-
-    await writeFile(configPath, JSON.stringify(config, null, 2));
-
-    const event = {
+  const config = {
+    on: {
       published: {
-        package: {
-          package_version: {
-            package_url: "registry/image:v1",
+        runner: "docker",
+        secrets: [secretsPath],
+        mappings: {
+          url: "inputs.package.package_version.package_url",
+        },
+        env: {
+          A_SECRET: "${secrets.A_SECRET}",
+          A_VALUE: "${inputs.image}",
+        },
+        defaults: {
+          image: "node:latest",
+          volumes: { ".": "/home", [tempDir]: "/tmp" },
+          args: [{ name: "published" }],
+        },
+        steps: [
+          "pwd",
+          "echo ${inputs}",
+          "echo '{\"followup\":{}}' > /tmp/trigger.json",
+          "echo ${env.A_SECRET} >> /tmp/result.txt",
+          "echo ${inputs.url} >> /tmp/result.txt",
+          "echo ${workflow.defaults.image} >> /tmp/result.txt",
+        ],
+        triggers: [triggerPath],
+      },
+      followup: {
+        runner: "docker",
+        steps: [
+          {
+            run: "echo OK > /tmp/dispatched.txt",
+            volumes: { [tempDir]: "/tmp" },
+            image: "node:latest",
           },
+        ],
+      },
+    },
+  };
+
+  await writeFile(configPath, JSON.stringify(config, null, 2));
+
+  const event = {
+    published: {
+      package: {
+        package_version: {
+          package_url: "registry/image:v1",
         },
       },
-    };
+    },
+  };
 
-    const { sendEvent, stop } = await startDaemon({ configPath });
-    const response = await sendEvent(event);
+  const { sendEvent, stop } = await startDaemon({ configPath });
+  const response = await sendEvent(event);
 
-    await stop();
+  await stop();
 
-    expect(response.status).toBe(202);
+  expect(response.status).toBe(202);
 
-    expect(existsSync(resultPath)).toBe(true);
-    const resultContents = (await readFile(resultPath, "utf8")) as string;
-    expect(resultContents).toContain("top-secret");
-    expect(resultContents).toContain("registry/image:v1");
-    expect(resultContents).toContain("node:latest");
+  expect(existsSync(resultPath)).toBe(true);
+  const resultContents = (await readFile(resultPath, "utf8")) as string;
+  expect(resultContents).toContain("top-secret");
+  expect(resultContents).toContain("registry/image:v1");
+  expect(resultContents).toContain("node:latest");
 
-    const dispatchedMarker = (
-      (await readFile(dispatchedMarkerPath, "utf8")) as string
-    ).trim();
-    expect(dispatchedMarker).toBe("OK");
+  const dispatchedMarker = (
+    (await readFile(dispatchedMarkerPath, "utf8")) as string
+  ).trim();
+  expect(dispatchedMarker).toBe("OK");
 
-    await cleanUp(tempDir);
-  },
-);
+  await cleanUp(tempDir);
+});
 
 test("stop workflow if one step fails", async () => {
   const tempDir = await getTempDir();
@@ -257,9 +254,7 @@ test("skip workflow based on conditions", async () => {
     on: {
       test: {
         runner: "shell",
-        if: [
-          "${inputs.value} === 123 ",
-        ],
+        if: ["${inputs.value} === 123 "],
         steps: [
           {
             run: "echo works > result.txt",
@@ -283,7 +278,6 @@ test("skip workflow based on conditions", async () => {
 
   await cleanUp(tempDir);
 });
-
 
 test("returns 202 for payloads that do not trigger any workflow", async () => {
   const { sendEvent, stop } = await startDaemon({ configPath: undefined });
