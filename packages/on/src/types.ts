@@ -1,3 +1,5 @@
+import type { StepOutput } from "@cloud-cli/on-devkit";
+
 export interface ServerOptions {
   port: number;
   host: string;
@@ -5,29 +7,17 @@ export interface ServerOptions {
   daemon: boolean;
 }
 
-export interface StepConfig {
-  image?: string;
-  volumes?: Record<string, string>;
-  args?: Array<Record<string, string>>;
-}
-
-export interface StepDefinition extends StepConfig {
+export interface StepDefinition {
+  workingDir?: string;
+  runner?: string;
   run: string;
 }
 
-export interface StepOutput {
-  code: number;
-  cmd: string;
-  stdout: string;
-  stderr: string;
-}
-
-export interface WorkflowRunner<
-  TStep extends StepDefinition = StepDefinition,
-  TContext extends WorkflowContext = WorkflowContext,
-  TOutput extends StepOutput = StepOutput,
-> {
-  run(step: TStep, context: TContext): Promise<TOutput>;
+export interface WorkflowRunner {
+  run(
+    cmd: StepDefinition,
+    context: WorkflowContext,
+  ): Promise<StepOutput> | void;
 }
 
 export interface EventOutput {
@@ -37,27 +27,19 @@ export interface EventOutput {
   context: WorkflowContext | null;
 }
 
-export interface NormalizedStepDefinition extends StepConfig {
-  run: string;
-  image: string;
-  args: Array<Record<string, string>>;
-  volumes: Record<string, string>;
-  workingDir?: string;
-}
-
 export interface WorkflowDefinition {
-  runner?: "docker" | "shell";
+  runner?: string;
   secrets?: string[];
   mappings?: Record<string, string>;
   env?: Record<string, string>;
-  defaults?: Partial<StepConfig>;
+  defaults?: Partial<StepDefinition>;
   steps?: StepDefinition[] | string[];
   triggers?: string[];
   if?: string[];
 }
 
 export interface WorkflowContext {
-  runner: "docker" | "shell";
+  runner: string;
   inputs: Record<string, unknown>;
   outputs: Array<StepOutput>;
   secrets: Record<string, string>;

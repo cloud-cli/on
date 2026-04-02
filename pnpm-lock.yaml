@@ -57,14 +57,15 @@ importers:
         specifier: 4.1.0
         version: 4.1.0(@types/node@22.19.13)(vite@7.3.1(@types/node@22.19.13)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.2))
 
+  packages/devkit: {}
+
+  packages/devkit/dist: {}
+
   packages/on:
     dependencies:
-      '@cloud-cli/on-runner-docker':
+      '@cloud-cli/on-devkit':
         specifier: workspace:*
-        version: link:../on-runner-docker
-      '@cloud-cli/on-runner-shell':
-        specifier: workspace:*
-        version: link:../on-runner-shell
+        version: link:../devkit/dist
       ansi_up:
         specifier: 6.0.6
         version: 6.0.6
@@ -75,6 +76,8 @@ importers:
   packages/on-runner-docker: {}
 
   packages/on-runner-shell: {}
+
+  packages/on-runner-shell/dist: {}
 
   packages/on/dist:
     dependencies:

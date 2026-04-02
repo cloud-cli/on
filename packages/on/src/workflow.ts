@@ -2,30 +2,18 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path/posix";
-import { dockerRunner } from "@cloud-cli/on-runner-docker";
-import { shellRunner } from "@cloud-cli/on-runner-shell";
 import { loadSecrets } from "./secrets.js";
 import type {
-  StepDefinition,
   WorkflowContext,
   WorkflowEvent,
   OnConfig,
   WorkflowDefinition,
-  StepOutput,
   EventOutput,
-  NormalizedStepDefinition,
-  WorkflowRunner,
 } from "./types.js";
 import { interpolate, withMappings, asObject, toStringProxy } from "./utils.js";
 import { randomUUID } from "node:crypto";
 import { createReport } from "./reports.js";
-const runners: Record<
-  WorkflowContext["runner"],
-  WorkflowRunner<NormalizedStepDefinition, WorkflowContext, StepOutput>
-> = {
-  docker: dockerRunner,
-  shell: shellRunner,
-};
+import { normalizeSteps, runStep } from "./step.js";
 
 function prepareEnv(context: WorkflowContext) {
   const { workflow, secrets } = context;
@@ -71,6 +59,16 @@ function validateEvent(eventPayload: WorkflowEvent, config: OnConfig) {
     return null;
   }
 
+  if (
+    !workflow.runner &&
+    workflow.steps.some((step) => typeof step === "string" || !step.runner)
+  ) {
+    console.warn(
+      `Workflow for event ${event.source}:${event.event} has no steps defined, skipping.`,
+    );
+    return null;
+  }
+
   const payload = event[key as string];
 
   return {
@@ -78,31 +76,6 @@ function validateEvent(eventPayload: WorkflowEvent, config: OnConfig) {
     workflow: workflow as WorkflowDefinition,
     event: payload as Record<string, unknown>,
   };
-}
-
-async function runStep(
-  step: NormalizedStepDefinition,
-  context: WorkflowContext,
-): Promise<StepOutput> {
-  const runner = runners[context.runner];
-  return runner.run(step, context);
-}
-
-function normalizeSteps(
-  steps: Array<StepDefinition | string>,
-  context: WorkflowContext,
-): NormalizedStepDefinition[] {
-  return steps.map((step) => {
-    if (typeof step === "string") {
-      step = { run: step };
-    }
-
-    if (typeof step.run !== "string") {
-      throw new Error("Each workflow step must have a 'run' command string.");
-    }
-
-    return step as NormalizedStepDefinition;
-  });
 }
 
 export async function processEvent(
@@ -132,7 +105,7 @@ export async function processEvent(
     env: {},
     outputs: [],
     workingDir,
-    runner: workflow.runner || "docker",
+    runner: workflow.runner,
   });
 
   if (workflow.if) {
@@ -152,7 +125,7 @@ export async function processEvent(
 
   try {
     prepareEnv(context);
-    const steps = normalizeSteps(workflow.steps || [], context);
+    const steps = normalizeSteps(workflow.steps || []);
 
     for (const step of steps) {
       const output = await runStep(step, context);

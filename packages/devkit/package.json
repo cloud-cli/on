@@ -1,0 +1,29 @@
+{
+  "name": "@cloud-cli/on-devkit",
+  "version": "0.1.0",
+  "description": "Toolbelt for workflows",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/on-devkit.js"
+    },
+    "./types": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "license": "MIT",
+  "repository": {
+    "url": "https://github.com/cloud-cli/on"
+  },
+  "dependencies": {}
+}

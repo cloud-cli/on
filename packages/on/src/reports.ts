@@ -1,7 +1,8 @@
 import { writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { StepOutput, WorkflowContext } from "./types.js";
+import type { StepOutput } from "@cloud-cli/on-devkit";
+import type { WorkflowContext } from "@cloud-cli/on";
 import { AnsiUp } from "ansi_up";
 import { mkdirSync } from "node:fs";
 
