@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "baseUrl": ".",
     "strict": true,
     "declaration": true,
     "declarationMap": true,
@@ -12,6 +13,12 @@
     "skipLibCheck": true,
     "types": [
       "node"
-    ]
+    ],
+    "paths": {
+      "@cloud-cli/on": ["./packages/on/src/index.ts"],
+      "@cloud-cli/on/types": ["./packages/on/src/types.ts"],
+      "@cloud-cli/on-runner-docker": ["./packages/on-runner-docker/src/index.ts"],
+      "@cloud-cli/on-runner-shell": ["./packages/on-runner-shell/src/index.ts"]
+    }
   }
 }

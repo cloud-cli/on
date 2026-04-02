@@ -59,6 +59,12 @@ importers:
 
   packages/on:
     dependencies:
+      '@cloud-cli/on-runner-docker':
+        specifier: workspace:*
+        version: link:../on-runner-docker
+      '@cloud-cli/on-runner-shell':
+        specifier: workspace:*
+        version: link:../on-runner-shell
       ansi_up:
         specifier: 6.0.6
         version: 6.0.6
@@ -66,14 +72,17 @@ importers:
         specifier: ^2.8.2
         version: 2.8.2
 
-  packages/on/dist:
+  packages/on-runner-docker:
     dependencies:
-      ansi_up:
-        specifier: 6.0.6
-        version: 6.0.6
-      yaml:
-        specifier: ^2.8.2
-        version: 2.8.2
+      '@cloud-cli/on':
+        specifier: workspace:*
+        version: link:../on
+
+  packages/on-runner-shell:
+    dependencies:
+      '@cloud-cli/on':
+        specifier: workspace:*
+        version: link:../on
 
 packages:
 

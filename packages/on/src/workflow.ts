@@ -1,8 +1,9 @@
-import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path/posix";
+import { dockerRunner } from "@cloud-cli/on-runner-docker";
+import { shellRunner } from "@cloud-cli/on-runner-shell";
 import { loadSecrets } from "./secrets.js";
 import type {
   StepDefinition,
@@ -13,13 +14,18 @@ import type {
   StepOutput,
   EventOutput,
   NormalizedStepDefinition,
+  WorkflowRunner,
 } from "./types.js";
 import { interpolate, withMappings, asObject, toStringProxy } from "./utils.js";
 import { randomUUID } from "node:crypto";
 import { createReport } from "./reports.js";
-import { prepareShell } from "./docker.js";
-
-const SHELL = process.env.SHELL || "sh";
+const runners: Record<
+  WorkflowContext["runner"],
+  WorkflowRunner<NormalizedStepDefinition, WorkflowContext, StepOutput>
+> = {
+  docker: dockerRunner,
+  shell: shellRunner,
+};
 
 function prepareEnv(context: WorkflowContext) {
   const { workflow, secrets } = context;
@@ -78,39 +84,8 @@ async function runStep(
   step: NormalizedStepDefinition,
   context: WorkflowContext,
 ): Promise<StepOutput> {
-  const stdout: Buffer[] = [];
-  const stderr: Buffer[] = [];
-  const cmd = interpolate(step.run, context);
-
-  const shell =
-    context.runner === "docker"
-      ? prepareShell(step, context)
-      : spawn(SHELL, {
-          shell: true,
-          env: context.env,
-          cwd: step.workingDir || context.workingDir,
-        });
-
-  shell.stdout?.on("data", (data) => stdout.push(data));
-  shell.stderr?.on("data", (data) => stderr.push(data));
-
-  return new Promise<StepOutput>((resolve, reject) => {
-    shell.once("error", reject);
-    shell.once("exit", (code) => {
-      const stepOutput = {
-        code: code ?? 0,
-        cmd: step.run,
-        stdout: Buffer.concat(stdout).toString("utf-8"),
-        stderr: Buffer.concat(stderr).toString("utf-8"),
-      };
-
-      resolve(stepOutput);
-    });
-
-    shell.stdin?.write(cmd);
-    shell.stdin?.write("\nexit $?;\n");
-    shell.stdin?.end();
-  });
+  const runner = runners[context.runner];
+  return runner.run(step, context);
 }
 
 function normalizeSteps(

@@ -1,0 +1,12 @@
+{
+  "name": "on-runner-shell",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/on-runner-shell/src",
+  "projectType": "library",
+  "targets": {
+    "build": {},
+    "test": {},
+    "lint": {}
+  },
+  "tags": []
+}
