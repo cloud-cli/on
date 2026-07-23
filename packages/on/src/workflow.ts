@@ -17,7 +17,7 @@ import type {
 import { interpolate, withMappings, asObject, toStringProxy } from "./utils.js";
 import { randomUUID } from "node:crypto";
 import { createReport } from "./reports.js";
-import { prepareShell, resetTmpfsState, ensureTmpfsVolume } from "./docker.js";
+import { prepareShell, resetTmpfsState, ensureTmpfsVolume, setTmpfsEnvVars } from "./docker.js";
 
 const SHELL = process.env.SHELL || "sh";
 
@@ -237,8 +237,15 @@ export async function processEvent(
         const currentVolName = typeof step.tmpfs === "string" ? step.tmpfs : ensureTmpfsVolume(context);
         const newEnv = loadAndCleanTmpfs(context, currentVolName);
         
-        // Update context.env with the parsed values
-        Object.assign(context.env, newEnv);
+        // Track which keys came from tmpfs so they can be passed to containers via -e flags
+        const tmpfsVars = new Set<string>();
+        Object.keys(newEnv).forEach((key) => {
+          context.env[key] = String(newEnv[key]);
+          tmpfsVars.add(key);
+        });
+
+        // Update the tracked set for this workflow
+        setTmpfsEnvVars(workflowId, tmpfsVars);
       }
 
       context.outputs.push(output);

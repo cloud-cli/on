@@ -9,8 +9,12 @@ export const defaultImage = "dhi.io/alpine-base:3.23-alpine3.23-dev";
 // Map to store tmpfs volume names per workflow ID for daemon concurrency safety
 const tmpfsVolumeCache = new Map<string, string>();
 
+// Map to track which env vars came from tmpfs (per workflow) for container injection
+export const tmpfsEnvVarsCache = new Map<string, Set<string>>();
+
 export function resetTmpfsState(workflowId: string) {
   tmpfsVolumeCache.delete(workflowId);
+  tmpfsEnvVarsCache.delete(workflowId);
 }
 
 export function ensureTmpfsVolume(context: WorkflowContext): string {
@@ -35,6 +39,15 @@ export function ensureTmpfsVolume(context: WorkflowContext): string {
 export function getTmpfsVolumeName(context: WorkflowContext): string | null {
   const workflowId = context.inputs?.workflowId as string;
   return tmpfsVolumeCache.get(workflowId) ?? null;
+}
+
+export function getTmpfsEnvVars(context: WorkflowContext): Set<string> | undefined {
+  const workflowId = context.inputs?.workflowId as string;
+  return tmpfsEnvVarsCache.get(workflowId);
+}
+
+export function setTmpfsEnvVars(workflowId: string, vars: Set<string>): void {
+  tmpfsEnvVarsCache.set(workflowId, vars);
 }
 
 export function prepareDockerStep(
@@ -92,8 +105,11 @@ export function prepareDockerVolumes(
 export function prepareEnvArgs(
   context: WorkflowContext,
 ): string[] {
-  // Pass all context.env variables as docker env args (for tmpfs-passed vars)
-  const envKeys = Object.keys(context.env || {});
+  // Only pass env vars that came from tmpfs (tracked per workflow)
+  const tmpfsVars = getTmpfsEnvVars(context);
+  if (!tmpfsVars || tmpfsVars.size === 0) return [];
+  
+  const envKeys = Object.keys(context.env || {}).filter((key) => tmpfsVars.has(key));
   return envKeys.flatMap((key) => ["-e", `${key}=${interpolate(String(context.env[key]), context)}`]);
 }
 
