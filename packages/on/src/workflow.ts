@@ -17,7 +17,7 @@ import type {
 import { interpolate, withMappings, asObject, toStringProxy } from "./utils.js";
 import { randomUUID } from "node:crypto";
 import { createReport } from "./reports.js";
-import { prepareShell, resetTmpfsState, ensureTmpfsVolume, getTmpfsVolumeName } from "./docker.js";
+import { prepareShell, resetTmpfsState, ensureTmpfsVolume } from "./docker.js";
 
 const SHELL = process.env.SHELL || "sh";
 
@@ -217,8 +217,8 @@ export async function processEvent(
   try {
     prepareEnv(context);
     
-    // Initialize tmpfs volume name cache
-    resetTmpfsState();
+    // Initialize tmpfs volume name cache for this workflow run
+    resetTmpfsState(workflowId);
     ensureTmpfsVolume(context);
 
     const steps = normalizeSteps(workflow.steps || [], context);

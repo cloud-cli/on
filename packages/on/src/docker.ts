@@ -6,25 +6,35 @@ import { randomUUID } from "node:crypto";
 export const defaultWorkspace = "/workspace";
 export const defaultImage = "dhi.io/alpine-base:3.23-alpine3.23-dev";
 
-let tmpfsVolumeNameCache: string | null = null;
+// Map to store tmpfs volume names per workflow ID for daemon concurrency safety
+const tmpfsVolumeCache = new Map<string, string>();
 
-export function resetTmpfsState() {
-  tmpfsVolumeNameCache = null;
+export function resetTmpfsState(workflowId: string) {
+  tmpfsVolumeCache.delete(workflowId);
 }
 
-export function ensureTmpfsVolume(context?: WorkflowContext): string {
-  if (!tmpfsVolumeNameCache) {
-    const id = context?.inputs?.workflowId || randomUUID().slice(0, 8);
-    const name = `on_tmpfs_env_${id}`;
-    try {
-      // Create a tmpfs (in-memory) volume
-      execSync(`docker volume create --driver local --opt type=tmpfs --opt o=size=100M ${name}`, { stdio: "ignore" });
-    } catch (e) {
-      // Ignore if exists already
-    }
-    tmpfsVolumeNameCache = name;
+export function ensureTmpfsVolume(context: WorkflowContext): string {
+  const workflowId = context.inputs?.workflowId as string;
+  
+  if (tmpfsVolumeCache.has(workflowId)) {
+    return tmpfsVolumeCache.get(workflowId)!;
   }
-  return tmpfsVolumeNameCache;
+  
+  const id = workflowId || randomUUID().slice(0, 8);
+  const name = `on_tmpfs_env_${id}`;
+  try {
+    // Create a tmpfs (in-memory) volume
+    execSync(`docker volume create --driver local --opt type=tmpfs --opt o=size=100M ${name}`, { stdio: "ignore" });
+  } catch (e) {
+    // Ignore if exists already
+  }
+  tmpfsVolumeCache.set(workflowId, name);
+  return name;
+}
+
+export function getTmpfsVolumeName(context: WorkflowContext): string | null {
+  const workflowId = context.inputs?.workflowId as string;
+  return tmpfsVolumeCache.get(workflowId) ?? null;
 }
 
 export function prepareDockerStep(
@@ -79,6 +89,14 @@ export function prepareDockerVolumes(
   ]);
 }
 
+export function prepareEnvArgs(
+  context: WorkflowContext,
+): string[] {
+  // Pass all context.env variables as docker env args (for tmpfs-passed vars)
+  const envKeys = Object.keys(context.env || {});
+  return envKeys.flatMap((key) => ["-e", `${key}=${interpolate(String(context.env[key]), context)}`]);
+}
+
 export function prepareShell(
   step: NormalizedStepDefinition,
   context: WorkflowContext,
@@ -87,6 +105,7 @@ export function prepareShell(
   const { args, image, volumes } = prepared;
   const mappedVolumes = prepareDockerVolumes(volumes, context);
   const mappedArgs = prepareDockerArgs(args, context);
+  const envArgs = prepareEnvArgs(context);
   const workingDir = volumes["."];
   
   const dockerArgs = [
@@ -95,6 +114,7 @@ export function prepareShell(
     "--rm",
     ...mappedVolumes,
     ...mappedArgs,
+    ...envArgs,
     "-w",
     workingDir,
     "--entrypoint",
