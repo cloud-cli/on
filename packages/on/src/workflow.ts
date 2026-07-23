@@ -1,5 +1,5 @@
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { spawn, execSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path/posix";
@@ -17,7 +17,7 @@ import type {
 import { interpolate, withMappings, asObject, toStringProxy } from "./utils.js";
 import { randomUUID } from "node:crypto";
 import { createReport } from "./reports.js";
-import { prepareShell } from "./docker.js";
+import { prepareShell, resetTmpfsState, ensureTmpfsVolume, getTmpfsVolumeName } from "./docker.js";
 
 const SHELL = process.env.SHELL || "sh";
 
@@ -42,6 +42,43 @@ function prepareEnv(context: WorkflowContext) {
   }
 
   Object.assign(context.env, env);
+}
+
+function getHostMountPoint(volumeName: string): string {
+  try {
+    const output = execSync(`docker volume inspect -f '{{.Mountpoint}}' ${volumeName}`).toString().trim();
+    return output;
+  } catch (e) {
+    console.warn(`Failed to inspect docker volume:`, e);
+    return "";
+  }
+}
+
+function loadAndCleanTmpfs(context: WorkflowContext, volName: string): Record<string, string> {
+  const loaded: Record<string, string> = {};
+  const volPath = getHostMountPoint(volName);
+  
+  if (!volPath || !existsSync(volPath)) return loaded;
+
+  try {
+    const files = readdirSync(volPath).filter((f) => f.endsWith(".json"));
+    
+    for (const file of files) {
+      const content = readFileSync(join(volPath, file), "utf-8");
+      try {
+        const data = JSON.parse(content);
+        // Assuming the JSON object contains key-value pairs to expand env
+        Object.assign(loaded, withMappings(data, context.workflow.mappings));
+      } catch {}
+      
+      // Remove files as requested
+      unlinkSync(join(volPath, file));
+    }
+  } catch (e) {
+    console.warn(`Failed to process tmpfs:`, e);
+  }
+
+  return loaded;
 }
 
 function validateEvent(eventPayload: WorkflowEvent, config: OnConfig) {
@@ -148,10 +185,13 @@ export async function processEvent(
     ? withMappings(event, workflow.mappings)
     : event;
 
+  // Unique ID to ensure the tmpfs volume is consistent across all steps in this run
+  const workflowId = randomUUID().slice(0, 8);
+  
   const secrets = await loadSecrets(workflow.secrets);
   const workingDir = await mkdtemp(join(tmpdir(), "workflow"));
   const context = toStringProxy<WorkflowContext>({
-    inputs,
+    inputs: { ...inputs, workflowId }, 
     secrets,
     workflow,
     env: {},
@@ -161,7 +201,6 @@ export async function processEvent(
   });
 
   if (workflow.if) {
-    // evaluate conditions as JavaScript expressions for truthy values, as an OR list - if any condition is truthy, the workflow runs
     const conditions = workflow.if.map((c) => interpolate(c, context));
     const shouldRun = conditions.some((c) => Function("return " + c)());
 
@@ -177,6 +216,11 @@ export async function processEvent(
 
   try {
     prepareEnv(context);
+    
+    // Initialize tmpfs volume name cache
+    resetTmpfsState();
+    ensureTmpfsVolume(context);
+
     const steps = normalizeSteps(workflow.steps || [], context);
 
     for (const step of steps) {
@@ -186,6 +230,15 @@ export async function processEvent(
         throw new Error(
           `Step failed with code ${output.code}.\nstdout: ${output.stdout}\nstderr: ${output.stderr}`,
         );
+      }
+
+      // Load tmpfs env vars if step used them
+      if (step.tmpfs) {
+        const currentVolName = typeof step.tmpfs === "string" ? step.tmpfs : ensureTmpfsVolume(context);
+        const newEnv = loadAndCleanTmpfs(context, currentVolName);
+        
+        // Update context.env with the parsed values
+        Object.assign(context.env, newEnv);
       }
 
       context.outputs.push(output);
@@ -206,7 +259,6 @@ export async function processEvent(
   }
 
   await createReport({ id, parentId, children }, context);
-  // TODO save artifacts and context to a folder along with the report location and include links in the report
 
   return { id, parentId, children, context };
 }

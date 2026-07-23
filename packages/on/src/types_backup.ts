@@ -9,7 +9,6 @@ export interface StepConfig {
   image?: string;
   volumes?: Record<string, string>;
   args?: Array<Record<string, string>>;
-  tmpfs?: boolean | string;
 }
 
 export interface StepDefinition extends StepConfig {
