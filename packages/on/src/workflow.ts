@@ -1,9 +1,8 @@
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path/posix';
+import { join } from 'node:path';
 import { createReport } from './reports.js';
 import * as docker from './runners/docker.js';
 import * as shell from './runners/shell.js';
@@ -14,9 +13,7 @@ import type {
   OnConfig,
   Runner,
   StepDefinition,
-  StepOutput,
   WorkflowContext,
-  WorkflowDefinition,
   WorkflowEvent,
 } from './types.js';
 import { asObject, interpolate, toStringProxy, withMappings } from './utils.js';
@@ -137,7 +134,8 @@ export async function processEvent(event: WorkflowEvent, config: OnConfig, paren
       const output = await runner.run(workflow, event, step, context);
 
       if (output.code !== 0 && !step.continueOnError) {
-        throw new Error(`Step failed with code ${output.code}.\nstdout: ${output.stdout}\nstderr: ${output.stderr}`);
+        error = Error(`Step failed with code ${output.code}.\nstdout: ${output.stdout}\nstderr: ${output.stderr}`);
+        break;
       }
 
       context.outputs.push(output);
@@ -145,6 +143,10 @@ export async function processEvent(event: WorkflowEvent, config: OnConfig, paren
 
     if (runner.teardown) {
       await runner.teardown(workflow, event);
+    }
+
+    if (error) {
+      throw error;
     }
 
     // TODO tmpfs with JSON outputs for next steps
