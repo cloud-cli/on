@@ -67,9 +67,6 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
         return;
       }
 
-      const outputs = await processEvent(event, config);
-      const logUrl = (id: string) => new URL('/reports/' + id, url);
-
       sendJson(response, 202, {
         id: outputs.id,
         logUrl: logUrl(outputs.id).href,
@@ -85,10 +82,15 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
             logUrl: logUrl(childId).href,
           })) || [],
       });
+
+      const outputs = await processEvent(event, config);
+      const logUrl = (id: string) => new URL('/reports/' + id, url);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error processing webhook:', error);
-      sendJson(response, 400, { error: message });
+      if (!response.headersSent) {
+        sendJson(response, 400, { error: message });
+      }
     }
   });
 
