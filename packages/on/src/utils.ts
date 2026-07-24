@@ -67,7 +67,12 @@ export function interpolate(template: string, context: any): string {
   const keys = Object.keys(context);
   const f = Function('context', 'const { ' + keys.join(', ') + ' } = context;return `' + template + '`;');
 
-  return String(f(context) || '');
+  try {
+    return String(f(context) || '');
+  } catch (e) {
+    console.log('Syntax error in mapped property: ' + template, e);
+    return '';
+  }
 }
 
 export function withMappings(
