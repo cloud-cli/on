@@ -25,7 +25,7 @@ export function parseCliOptions(argv: string[]): ServerOptions | null {
     options: {
       port: { type: "string", short: "p", default: process.env.PORT || "11235" },
       host: { type: "string", short: "H", default: "127.0.0.1" },
-      config: { type: "string", short: "c", default: "workflows.yaml" },
+      config: { type: "string", short: "c", default: process.env.WORKFLOW_CONFIG_PATH || "workflows.yaml" },
       help: { type: "boolean", short: "h", default: false },
       daemon: { type: "boolean", short: "d", default: false },
     },
