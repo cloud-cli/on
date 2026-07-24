@@ -23,7 +23,7 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
 
   const config = await loadConfig(options.configPath);
   const server = createServer(async (request, response) => {
-    const url = new URL(String(request.url), request.headers.host || 'http://localhost');
+    const url = new URL(String(request.url), 'http://localhost');
 
     if (request.method === 'GET' && url.pathname === '/health') {
       sendJson(response, 200, { status: 'OK' });
