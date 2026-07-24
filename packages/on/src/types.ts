@@ -23,12 +23,14 @@ export interface EventOutput {
   parentId?: string;
   children?: string[];
   context: WorkflowContext | null;
+  error?: any
 }
 
 export interface NormalizedStepDefinition extends Record<string, any> {
   run: string;
   args: Array<Record<string, string>>;
-  workingDir?: string;
+  workingDir: string;
+  envDir: string;
 }
 
 export interface WorkflowDefinition {
@@ -42,6 +44,7 @@ export interface WorkflowDefinition {
 }
 
 export interface WorkflowContext {
+  source: string;
   runner: string;
   inputs: Record<string, unknown>;
   outputs: Array<StepOutput>;
@@ -62,7 +65,8 @@ export interface WorkflowEvent {
 }
 
 export interface Runner {
-  prepare(wf: WorkflowDefinition, event: WorkflowEvent): Promise<void>;
+  setup?(wf: WorkflowDefinition, event: WorkflowEvent): Promise<void>;
+  teardown?(wf: WorkflowDefinition, event: WorkflowEvent): Promise<void>;
   run(
     wf: WorkflowDefinition,
     event: WorkflowEvent,

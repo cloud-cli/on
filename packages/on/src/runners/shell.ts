@@ -1,24 +1,28 @@
 import { spawn } from 'node:child_process';
 import type { StepDefinition, StepOutput, WorkflowContext, WorkflowDefinition, WorkflowEvent } from '../types.js';
+import { interpolate } from '../utils.js';
+import { join, resolve } from 'node:path';
 
 const SHELL = process.env.SHELL || '/bin/sh';
 
-export async function prepare(wf: WorkflowDefinition, event: WorkflowEvent) {
+export async function setup(_wf: WorkflowDefinition, _event: WorkflowEvent) {
   // TODO
 }
 
 export async function run(
-  wf: WorkflowDefinition,
-  event: WorkflowEvent,
+  _wf: WorkflowDefinition,
+  _event: WorkflowEvent,
   step: StepDefinition,
   context: WorkflowContext,
 ): Promise<StepOutput> {
-  const stdout: any[] = [];
-  const stderr: any[] = [];
+  const stdout: Buffer[] = [];
+  const stderr: Buffer[] = [];
+  const cmd = interpolate(step.run, context);
+  const workingDir = step.workingDir ? join(context.workingDir, resolve('/', step.workingDir)) : context.workingDir;
   const shell = spawn(SHELL, {
     shell: true,
     env: context.env,
-    cwd: step.workingDir || context.workingDir,
+    cwd: workingDir,
   });
 
   shell.stdout?.on('data', (data) => stdout.push(data));
@@ -33,6 +37,8 @@ export async function run(
         stdout: Buffer.concat(stdout).toString('utf-8'),
         stderr: Buffer.concat(stderr).toString('utf-8'),
       };
+
+      // TODO read and update env
 
       resolve(stepOutput);
     });

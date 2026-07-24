@@ -1,29 +1,34 @@
-import { writeFile, readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { StepOutput, WorkflowContext } from "./types.js";
-import { AnsiUp } from "ansi_up";
-import { mkdirSync } from "node:fs";
+import { writeFile, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { StepOutput, WorkflowContext } from './types.js';
+import { AnsiUp } from 'ansi_up';
+import { mkdirSync } from 'node:fs';
 
 const ansiUp = new AnsiUp();
-const tmpDir = join(tmpdir(), "workflow-reports");
+const tmpDir = join(tmpdir(), 'workflow-reports');
 mkdirSync(tmpDir, { recursive: true });
 
 export async function createReport(
   ids: { id: string; parentId?: string; children?: string[] },
-  context: WorkflowContext,
+  context: WorkflowContext | null,
+  error: any,
 ): Promise<void> {
-  const { outputs, ...ctx } = context;
+  let report;
+
+  if (context) {
+    const { outputs, ...ctx } = context;
+    report = { ...ids, outputs, context: ctx };
+  } else {
+    report = { ...ids, outputs: [{ code: -1, cmd: '', stdout: '', stderr: String(error) }], context: null };
+  }
+
   try {
     const reportPath = join(tmpDir, `${ids.id}.json`);
-    await writeFile(
-      reportPath,
-      JSON.stringify({ ...ids, outputs, context: ctx }, null, 2),
-      "utf8",
-    );
+    await writeFile(reportPath, JSON.stringify(report, null, 2), 'utf8');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("Error writing report:", message);
+    console.error('Error writing report:', message);
   }
 }
 
@@ -42,12 +47,12 @@ export async function getReport(id: string): Promise<{
 } | null> {
   try {
     const reportPath = join(tmpDir, `${id}.json`);
-    const rawText = await readFile(reportPath, "utf8");
+    const rawText = await readFile(reportPath, 'utf8');
     const content = JSON.parse(rawText);
     return content as Report;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("Error reading report:", message);
+    console.error('Error reading report:', message);
     return null;
   }
 }
@@ -68,9 +73,7 @@ export const notFound = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export async function formatReportAsHTML(
-  report: Report | null,
-): Promise<string> {
+export async function formatReportAsHTML(report: Report | null): Promise<string> {
   if (!report) {
     return notFound;
   }
@@ -100,18 +103,15 @@ ${report.outputs
   </div>
 `,
   )
-  .join("")}
+  .join('')}
 <div class="mt-4">
-${report.parentId ? `<a href="/reports/${report.parentId}" class="text-blue-500 hover:underline">View Parent Report</a>` : ""}
+${report.parentId ? `<a href="/reports/${report.parentId}" class="text-blue-500 hover:underline">View Parent Report</a>` : ''}
 ${
   report.children && report.children.length > 0
     ? `<div class="mt-2">Child Reports:<ul>${report.children
-        .map(
-          (childId) =>
-            `<li><a href="/reports/${childId}" class="text-blue-500 hover:underline">${childId}</a></li>`,
-        )
-        .join("")}</ul></div>`
-    : ""
+        .map((childId) => `<li><a href="/reports/${childId}" class="text-blue-500 hover:underline">${childId}</a></li>`)
+        .join('')}</ul></div>`
+    : ''
 }
 
 </div>

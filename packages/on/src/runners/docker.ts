@@ -1,5 +1,4 @@
 import { execSync, spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
@@ -160,7 +159,11 @@ function loadAndCleanTmpfs(context: WorkflowContext, volName: string): Record<st
   return loaded;
 }
 
-export async function prepare(wf: WorkflowDefinition, event: WorkflowEvent) {
+export async function setup(wf: WorkflowDefinition, event: WorkflowEvent) {
+  // TODO
+}
+
+export async function teardown(wf: WorkflowDefinition, event: WorkflowEvent) {
   // TODO
 }
 
@@ -170,8 +173,9 @@ export async function run(
   step: NormalizedStepDefinition,
   context: WorkflowContext,
 ): Promise<StepOutput> {
-  const stdout: any[] = [];
-  const stderr: any[] = [];
+  const stdout: Buffer[] = [];
+  const stderr: Buffer[] = [];
+  const cmd = interpolate(step.run, context);
   const shell = prepareShell(step, context);
 
   shell.stdout?.on('data', (data) => stdout.push(data));
