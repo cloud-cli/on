@@ -34,7 +34,7 @@ export async function run(
     shell.once('exit', (code) => {
       const stepOutput = {
         code: code ?? 0,
-        cmd: step.run,
+        cmd: cmd,
         stdout: Buffer.concat(stdout).toString('utf-8'),
         stderr: Buffer.concat(stderr).toString('utf-8'),
       };
