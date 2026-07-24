@@ -1,14 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-
-export async function readBody(request: IncomingMessage): Promise<string> {
-  const chunks: Buffer[] = [];
-
-  for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-
-  return Buffer.concat(chunks).toString("utf8");
-}
+import { WorkflowEvent } from './types.js';
 
 export function sendJson(
   response: ServerResponse,
@@ -94,7 +85,7 @@ export function interpolate(template: string, context: any): string {
 }
 
 export function withMappings(
-  inputs: Record<string, unknown>,
+  inputs: WorkflowEvent['event'],
   mappings: Record<string, string> | undefined,
 ): Record<string, unknown> {
   if (!mappings) {

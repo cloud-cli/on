@@ -1,0 +1,14 @@
+name: Docker
+
+on:
+  push:
+    branches:
+    - main
+
+
+jobs:
+  build:
+    uses: cloud-cli/workflows/.github/workflows/docker-ghcr-build.yml@main
+    with:
+      baseImage: cloud-cli/node:latest
+      type: node

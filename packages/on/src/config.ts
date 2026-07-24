@@ -7,7 +7,7 @@ import { existsSync } from "node:fs";
 export function toConfigPath(configPath: string): string {
   return path.isAbsolute(configPath)
     ? configPath
-    : path.resolve(process.cwd(), configPath);
+    : path.join(process.cwd(), path.resolve('/', configPath));
 }
 
 export async function loadConfig(configPath: string): Promise<OnConfig> {
