@@ -8,4 +8,4 @@ FROM ghcr.io/cloud-cli/node:latest
 COPY --from=builder /home/app/packages/on/dist/on.js ./on.mjs
 ENV WORKFLOW_HOST "0.0.0.0"
 ENTRYPOINT [ "node" ]
-CMD [ "on.js" ]
+CMD [ "on.mjs" ]
