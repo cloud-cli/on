@@ -86,7 +86,8 @@ export async function processEvent(event: WorkflowEvent, config: OnConfig, paren
   let error;
 
   if (!workflow) {
-    return { id, parentId, children: [], context: null };
+    // return { id, parentId, children: [], context: null };
+    return null;
   }
 
   const children: string[] = [];
@@ -114,7 +115,8 @@ export async function processEvent(event: WorkflowEvent, config: OnConfig, paren
 
       if (!shouldRun) {
         console.log(`Workflow for event ${event.source}:${event.event} skipped due to no matching conditions.`);
-        return { id, parentId, children: [], context: null };
+        // return { id, parentId, children: [], context: null };
+        return null;
       }
     }
 

@@ -28,7 +28,7 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
       console.log(`[${new Date().toISOString().slice(0, 19)}] ${response.statusCode} ${request.method} ${request.url}`);
     });
 
-    const url = new URL(String(request.url), 'http://localhost');
+    const url = new URL(String(request.url), request.headers['x-forwarded-host'] || 'http://localhost');
 
     if (request.method === 'GET' && url.pathname === '/health') {
       sendJson(response, 200, { status: 'OK' });
@@ -76,21 +76,23 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
 
       const outputs = await processEvent(event, config);
 
-      console.log({
-        id: outputs.id,
-        logUrl: logUrl(outputs.id).href,
-        parent: !outputs.parentId
-          ? null
-          : {
-              id: outputs.parentId,
-              logUrl: outputs.parentId ? logUrl(outputs.parentId).href : undefined,
-            },
-        children:
-          outputs.children?.map((childId) => ({
-            id: childId,
-            logUrl: logUrl(childId).href,
-          })) || [],
-      });
+      if (outputs) {
+        console.log({
+          id: outputs.id,
+          logUrl: logUrl(outputs.id).href,
+          parent: !outputs.parentId
+            ? null
+            : {
+                id: outputs.parentId,
+                logUrl: outputs.parentId ? logUrl(outputs.parentId).href : undefined,
+              },
+          children:
+            outputs.children?.map((childId) => ({
+              id: childId,
+              logUrl: logUrl(childId).href,
+            })) || [],
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error processing webhook:', error);
