@@ -86,7 +86,6 @@ export async function processEvent(event: WorkflowEvent, config: OnConfig, paren
   let error;
 
   if (!workflow) {
-    // return { id, parentId, children: [], context: null };
     return null;
   }
 
@@ -114,8 +113,7 @@ export async function processEvent(event: WorkflowEvent, config: OnConfig, paren
       const shouldRun = conditions.some((c) => Function('return ' + c)());
 
       if (!shouldRun) {
-        console.log(`Workflow for event ${event.source}:${event.event} skipped due to no matching conditions.`);
-        // return { id, parentId, children: [], context: null };
+        console.log(`Workflow for event ${event.source} skipped due to no matching conditions.`);
         return null;
       }
     }
@@ -169,8 +167,7 @@ export async function processEvent(event: WorkflowEvent, config: OnConfig, paren
     // }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`Error processing event: ${message}`);
-    console.debug(JSON.stringify(event));
+    console.error(`Error processing event: ${message}`, JSON.stringify(event));
   } finally {
     if (context) {
       await rm(context.workingDir, { recursive: true, force: true });

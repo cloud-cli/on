@@ -70,7 +70,6 @@ const cleanUp = (tempDir: string) => rm(tempDir, { recursive: true, force: true 
 test('prints help', () => {
   const cwd = path.resolve('.');
   const args = ['--import', 'tsx', cliPath, '--help'];
-
   const result = spawnSync(process.execPath, args, {
     cwd,
     encoding: 'utf8',
@@ -80,80 +79,75 @@ test('prints help', () => {
   expect(result.stdout).toMatch(/daemonized webhook runner/);
 });
 
-test(
-  'executes workflow with mappings, secrets, env interpolation, defaults and dispatch',
-  { timeout: 30000 },
-  async () => {
-    const tempDir = await getTempDir();
-    const secretsPath = path.join(tempDir, '.env');
-    const resultPath = path.join(tempDir, randomUUID() + '.txt');
-    const configPath = path.join(tempDir, 'config.json');
+test('executes workflow with mappings, secrets, env interpolation and defaults', { timeout: 30000 }, async () => {
+  const tempDir = await getTempDir();
+  const secretsPath = path.join(tempDir, '.env');
+  const resultPath = path.join(tempDir, randomUUID() + '.txt');
+  const configPath = path.join(tempDir, 'config.json');
 
-    await writeFile(secretsPath, 'A_SECRET=top-secret\n');
+  await writeFile(secretsPath, 'A_SECRET=top-secret\n');
 
-    const config = {
-      on: {
-        'github.published': {
-          runner: 'shell',
-          secrets: [secretsPath],
-          mappings: {
-            url: 'inputs.package.package_version.package_url',
-          },
-          env: {
-            A_SECRET: '${secrets.A_SECRET}',
-            A_VALUE: '${inputs.image}',
-            TMP: tempDir,
-            RESULTS: resultPath,
-          },
-          defaults: {
-            image: 'node:latest',
-            args: [{ name: 'published' }],
-          },
-          steps: [
-            'pwd',
-            'echo ${inputs}',
-            'echo ${env.A_SECRET} | tee -a ${env.RESULTS}',
-            'echo ${inputs.url} | tee -a ${env.RESULTS}',
-            'echo ${workflow.defaults.image} | tee -a ${env.RESULTS}',
-            'ls ${env.TMP}',
-            'cat ${env.RESULTS}',
-          ],
+  const config = {
+    on: {
+      'github.published': {
+        runner: 'shell',
+        secrets: [secretsPath],
+        mappings: {
+          url: 'inputs.package.package_version.package_url',
         },
-      },
-    };
-
-    await writeFile(configPath, JSON.stringify(config, null, 2));
-
-    const event = {
-      action: 'published',
-      package: {
-        package_version: {
-          package_url: 'registry/image:v1',
+        env: {
+          A_SECRET: '${secrets.A_SECRET}',
+          A_VALUE: '${inputs.image}',
+          TMP: tempDir,
+          RESULTS: resultPath,
         },
+        defaults: {
+          image: 'node:latest',
+          args: [{ name: 'published' }],
+        },
+        steps: [
+          'pwd',
+          'echo ${inputs}',
+          'echo ${env.A_SECRET} | tee -a ${env.RESULTS}',
+          'echo ${inputs.url} | tee -a ${env.RESULTS}',
+          'echo ${workflow.defaults.image} | tee -a ${env.RESULTS}',
+          'cat ${env.RESULTS}',
+        ],
       },
-    };
+    },
+  };
 
-    const body = JSON.stringify(event);
-    const headers = {
-      'x-hub-signature': 'sha1=' + createHmac('sha1', WEBHOOKS_GITHUB_SECRET).update(body).digest('hex'),
-    };
-    const { sendEvent, stop } = await startDaemon({ configPath });
-    const response = await sendEvent(event, headers, '/github');
+  await writeFile(configPath, JSON.stringify(config, null, 2));
 
-    await stop();
+  const event = {
+    action: 'published',
+    package: {
+      package_version: {
+        package_url: 'registry/image:v1',
+      },
+    },
+  };
 
-    expect(response.ok).toBe(true);
-    expect(response.status).toBe(202);
+  const body = JSON.stringify(event);
+  const headers = {
+    'x-hub-signature': 'sha1=' + createHmac('sha1', WEBHOOKS_GITHUB_SECRET).update(body).digest('hex'),
+  };
+  const { sendEvent, stop } = await startDaemon({ configPath });
+  const response = await sendEvent(event, headers, '/github');
 
-    expect(existsSync(resultPath)).toBe(true);
-    const resultContents = (await readFile(resultPath, 'utf8')) as string;
-    expect(resultContents).toContain('top-secret');
-    expect(resultContents).toContain('registry/image:v1');
-    expect(resultContents).toContain('node:latest');
+  await stop();
 
-    await cleanUp(tempDir);
-  },
-);
+  expect(response.ok).toBe(true);
+  expect(response.status).toBe(202);
+
+  expect(existsSync(resultPath)).toBe(true);
+  const resultContents = (await readFile(resultPath, 'utf8')) as string;
+  expect(resultContents).toContain('top-secret');
+  expect(resultContents).toContain('registry/image:v1');
+  expect(resultContents).toContain('node:latest');
+
+  await cleanUp(tempDir);
+});
 
 test('stop workflow if one step fails', async () => {
   const tempDir = await getTempDir();
