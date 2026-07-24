@@ -239,9 +239,12 @@ test('converts objects to JSON when interpolating', async () => {
   const config = {
     on: {
       test: {
-        steps: ['echo ${inputs} > result.txt'],
+        runner: 'shell',
+        steps: ['echo ${inputs} > ${env.RESULTS}'],
+        env: {
+          RESULTS: resultPath,
+        },
         defaults: {
-          image: 'node:latest',
           workingDir: tempDir,
         },
       },
@@ -260,7 +263,7 @@ test('converts objects to JSON when interpolating', async () => {
 
   expect(existsSync(resultPath)).toBe(true);
   const resultContents = (await readFile(resultPath, 'utf8')).trim();
-  expect(resultContents).toBe(JSON.stringify(event.test));
+  expect(resultContents).toBe(JSON.stringify(event));
 
   await cleanUp(tempDir);
 });
