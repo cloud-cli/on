@@ -81,7 +81,7 @@ function normalizeSteps(steps: Array<StepDefinition | string>, context: Workflow
 }
 
 export async function processEvent(event: WorkflowEvent, config: OnConfig, parentId?: string): Promise<EventOutput> {
-  const id = randomUUID();
+  const id = event.id || randomUUID();
   const workflow = findWorkflowForEvent(event, config);
   let error;
 

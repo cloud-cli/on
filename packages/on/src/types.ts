@@ -60,6 +60,7 @@ export interface OnConfig {
 }
 
 export interface WorkflowEvent {
+  id?: string;
   source: string;
   event: { [key: string]: unknown };
 }

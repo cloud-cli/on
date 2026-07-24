@@ -6,6 +6,7 @@ import { processEvent } from './workflow.js';
 import { spawn } from 'node:child_process';
 import { formatReportAsHTML, getReport } from './reports.js';
 import preprocessors from './event-preprocess.js';
+import { randomUUID } from 'node:crypto';
 
 export async function startDaemon(options: ServerOptions): Promise<ReturnType<typeof createServer> | null> {
   if (options.daemon) {
@@ -26,7 +27,7 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
     response.on('finish', () => {
       console.log(`[${new Date().toISOString().slice(0, 19)}] ${response.statusCode} ${request.method} ${request.url}`);
     });
-    
+
     const url = new URL(String(request.url), 'http://localhost');
 
     if (request.method === 'GET' && url.pathname === '/health') {
@@ -67,11 +68,14 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
         return;
       }
 
-      sendJson(response, 202, {});
-      
       const logUrl = (id: string) => new URL('/reports/' + id, url);
+      const id = randomUUID();
+      event.id = id;
+
+      sendJson(response, 202, { results_url: logUrl(id) });
+
       const outputs = await processEvent(event, config);
-      
+
       console.log({
         id: outputs.id,
         logUrl: logUrl(outputs.id).href,
