@@ -7,6 +7,7 @@ import { createReport } from './reports.js';
 import * as docker from './runners/docker.js';
 import * as shell from './runners/shell.js';
 import { loadSecrets } from './secrets.js';
+import { DEBUG } from './env.js';
 import type {
   EventOutput,
   NormalizedStepDefinition,
@@ -61,6 +62,7 @@ function findWorkflowForEvent(eventPayload: WorkflowEvent, config: OnConfig) {
     return null;
   }
 
+  // TODO copy object to avoid mutations from workflow runs
   return workflow;
 }
 
@@ -143,6 +145,13 @@ export async function processEvent(event: WorkflowEvent, config: OnConfig, paren
 
     if (runner.teardown) {
       await runner.teardown(workflow, event);
+    }
+
+    if (DEBUG) {
+      console.log(
+        'WORKFLOW ' + id,
+        context?.outputs.map((o) => `<${o.code}> ${o.cmd} ${o.stdout} ${o.stderr}`).join('\n') || error || '<none>',
+      );
     }
 
     if (error) {

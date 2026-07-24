@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import type { StepDefinition, StepOutput, WorkflowContext, WorkflowDefinition, WorkflowEvent } from '../types.js';
 import { interpolate } from '../utils.js';
 import { join, resolve } from 'node:path';
+import { DEBUG } from '../env.js';
 
 const SHELL = process.env.SHELL || '/bin/sh';
 
@@ -25,8 +26,8 @@ export async function run(
     cwd: workingDir,
   });
 
-  shell.stdout?.on('data', (data) => stdout.push(data));
-  shell.stderr?.on('data', (data) => stderr.push(data));
+  shell.stdout.on('data', (data) => stdout.push(data));
+  shell.stderr.on('data', (data) => stderr.push(data));
 
   return new Promise<StepOutput>((resolve, reject) => {
     shell.once('error', reject);
@@ -43,8 +44,11 @@ export async function run(
       resolve(stepOutput);
     });
 
-    shell.stdin?.write(cmd);
-    shell.stdin?.write('\nexit $?;\n');
-    shell.stdin?.end();
+    if (DEBUG) {
+      console.log('SHELL', cmd);
+    }
+
+    shell.stdin.write(cmd + '\n\nexit $?;\n');
+    shell.stdin.end();
   });
 }

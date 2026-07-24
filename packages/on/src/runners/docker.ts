@@ -9,6 +9,7 @@ import type {
   WorkflowEvent,
 } from '../types.js';
 import { interpolate, withMappings } from '../utils.js';
+import { DEBUG }  from '../env.js';
 
 export const defaultWorkspace = '/workspace';
 export const defaultImage = 'dhi.io/alpine-base:3.23-alpine3.23-dev';
@@ -193,6 +194,10 @@ export async function run(
 
       resolve(stepOutput);
     });
+
+    if (DEBUG) {
+      console.log('DOCKER', cmd);
+    }
 
     shell.stdin?.write(cmd);
     shell.stdin?.write('\nexit $?;\n');

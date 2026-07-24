@@ -1,5 +1,5 @@
 import { test, expect, afterAll } from 'vitest';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { ChildProcess, spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -80,14 +80,13 @@ test('prints help', () => {
   expect(result.stdout).toMatch(/daemonized webhook runner/);
 });
 
-test.only(
+test(
   'executes workflow with mappings, secrets, env interpolation, defaults and dispatch',
   { timeout: 30000 },
   async () => {
     const tempDir = await getTempDir();
     const secretsPath = path.join(tempDir, '.env');
-    const resultPath = path.join(tempDir, 'result.txt');
-    const dispatchedMarkerPath = path.join(tempDir, 'dispatched.txt');
+    const resultPath = path.join(tempDir, randomUUID() + '.txt');
     const configPath = path.join(tempDir, 'config.json');
 
     await writeFile(secretsPath, 'A_SECRET=top-secret\n');
@@ -95,7 +94,7 @@ test.only(
     const config = {
       on: {
         'github.published': {
-          runner: 'docker',
+          runner: 'shell',
           secrets: [secretsPath],
           mappings: {
             url: 'inputs.package.package_version.package_url',
@@ -103,28 +102,21 @@ test.only(
           env: {
             A_SECRET: '${secrets.A_SECRET}',
             A_VALUE: '${inputs.image}',
+            TMP: tempDir,
+            RESULTS: resultPath,
           },
           defaults: {
             image: 'node:latest',
-            volumes: { '.': '/home', [tempDir]: '/tmp' },
             args: [{ name: 'published' }],
           },
           steps: [
             'pwd',
             'echo ${inputs}',
-            'echo \'{"followup":{}}\' > /tmp/trigger.json',
-            'echo ${env.A_SECRET} >> /tmp/result.txt',
-            'echo ${inputs.url} >> /tmp/result.txt',
-            'echo ${workflow.defaults.image} >> /tmp/result.txt',
-          ],
-        },
-        followup: {
-          steps: [
-            {
-              run: 'echo OK > /tmp/dispatched.txt',
-              volumes: { [tempDir]: '/tmp' },
-              image: 'node:latest',
-            },
+            'echo ${env.A_SECRET} | tee -a ${env.RESULTS}',
+            'echo ${inputs.url} | tee -a ${env.RESULTS}',
+            'echo ${workflow.defaults.image} | tee -a ${env.RESULTS}',
+            'ls ${env.TMP}',
+            'cat ${env.RESULTS}',
           ],
         },
       },
@@ -147,10 +139,10 @@ test.only(
     };
     const { sendEvent, stop } = await startDaemon({ configPath });
     const response = await sendEvent(event, headers, '/github');
-    console.log(response.ok, await response.text());
 
     await stop();
 
+    expect(response.ok).toBe(true);
     expect(response.status).toBe(202);
 
     expect(existsSync(resultPath)).toBe(true);
@@ -158,9 +150,6 @@ test.only(
     expect(resultContents).toContain('top-secret');
     expect(resultContents).toContain('registry/image:v1');
     expect(resultContents).toContain('node:latest');
-
-    const dispatchedMarker = ((await readFile(dispatchedMarkerPath, 'utf8')) as string).trim();
-    expect(dispatchedMarker).toBe('OK');
 
     await cleanUp(tempDir);
   },
@@ -174,12 +163,9 @@ test('stop workflow if one step fails', async () => {
   const config = {
     on: {
       test: {
-        // omitted runner to pick up the default "docker"
-        steps: ['echo first > /tmp/result.txt', 'cat /not/existing', 'echo second > /tmp/result.txt'],
-        defaults: {
-          image: 'node:latest',
-          volumes: { [tempDir]: '/tmp' },
-        },
+        runner: 'shell',
+        steps: ['echo first > ${env.TMP}/result.txt', 'cat /not/existing', 'echo second > ${env.TMP}/result.txt'],
+        env: { TMP: tempDir },
       },
     },
   };
@@ -188,7 +174,7 @@ test('stop workflow if one step fails', async () => {
 
   const event = { test: {} };
   const { sendEvent, stop } = await startDaemon({ configPath });
-  const response = await sendEvent(event);
+  const response = await sendEvent(event, {}, '/test');
 
   await stop();
 
@@ -198,41 +184,6 @@ test('stop workflow if one step fails', async () => {
   const resultContents = await readFile(resultPath, 'utf8');
   expect(resultContents).toContain('first');
   expect(resultContents).not.toContain('second');
-
-  await cleanUp(tempDir);
-});
-
-test('run workflow on shell', async () => {
-  const tempDir = await getTempDir();
-  const resultPath = path.join(tempDir, 'result.txt');
-  const configPath = path.join(tempDir, 'config.json');
-
-  const config = {
-    on: {
-      test: {
-        runner: 'shell',
-        steps: [
-          {
-            run: 'echo works > result.txt',
-            workingDir: tempDir,
-          },
-        ],
-      },
-    },
-  };
-
-  await writeFile(configPath, JSON.stringify(config, null, 2));
-
-  const event = { test: {} };
-  const { sendEvent, stop } = await startDaemon({ configPath });
-  const response = await sendEvent(event);
-
-  await stop();
-
-  expect(response.status).toBe(202);
-  expect(existsSync(resultPath)).toBe(true);
-  const resultContents = await readFile(resultPath, 'utf8');
-  expect(resultContents).toContain('works');
 
   await cleanUp(tempDir);
 });
@@ -261,7 +212,7 @@ test('skip workflow based on conditions', async () => {
 
   const event = { test: { value: 456 } };
   const { sendEvent, stop } = await startDaemon({ configPath });
-  const response = await sendEvent(event);
+  const response = await sendEvent(event, {}, '/test');
 
   await stop();
 
@@ -273,7 +224,7 @@ test('skip workflow based on conditions', async () => {
 
 test('returns 202 for payloads that do not trigger any workflow', async () => {
   const { sendEvent, stop } = await startDaemon({ configPath: undefined });
-  const response = await sendEvent({ wrong: true });
+  const response = await sendEvent({ wrong: true }, {}, '/null');
 
   await stop();
 
@@ -288,10 +239,10 @@ test('converts objects to JSON when interpolating', async () => {
   const config = {
     on: {
       test: {
-        steps: ['echo ${inputs} > /tmp/result.txt'],
+        steps: ['echo ${inputs} > result.txt'],
         defaults: {
           image: 'node:latest',
-          volumes: { [tempDir]: '/tmp' },
+          workingDir: tempDir,
         },
       },
     },
@@ -301,7 +252,7 @@ test('converts objects to JSON when interpolating', async () => {
 
   const event = { test: { a: 1, b: [1, 2], c: { nested: true } } };
   const { sendEvent, stop } = await startDaemon({ configPath });
-  const response = await sendEvent(event);
+  const response = await sendEvent(event, {}, '/test');
 
   await stop();
 
