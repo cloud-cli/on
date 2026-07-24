@@ -23,7 +23,7 @@ export function parseCliOptions(argv: string[]): ServerOptions | null {
   const { values } = parseArgs({
     args: argv,
     options: {
-      port: { type: "string", short: "p", default: "11235" },
+      port: { type: "string", short: "p", default: process.env.PORT || "11235" },
       host: { type: "string", short: "H", default: "127.0.0.1" },
       config: { type: "string", short: "c", default: "workflows.yaml" },
       help: { type: "boolean", short: "h", default: false },

@@ -1,19 +1,20 @@
-# Workflow Design
+# @cloud-cli/on
 
-This is a task runner using webhooks to process incoming events.
+This is a task runner using webhooks to process incoming events and run workflows based on the inputs.
 
 Every event is sent to a daemon as an HTTP request, with a JSON body, and can trigger one or more workflows.
 Every workflow is a set of steps, which can run on containers or in a shell on the host.
 
 ## Running on Docker
 
-- Steps run inside a docker container.
+- Every step runs inside a docker container.
 - All steps run in the same workspace folder.
-- The current folder is mounted as a volume at /workspace by default. This can be changed by specifying a volume with `.` as the host path.
+- Every step has its own container instance, and outputs can be added to the environment by writing JSON files to a folder
+- The current folder is mounted as a volume at /workspace by default. This can be changed by specifying a volume with `.` as the host path, specified in the step definitions.
 
 ## Running on the host machine
 
-- Steps are sent as stdin to a shell subprocess
+- Steps are sent as stdin to a shell subprocess running a shell (process.env.SHELL or /bin/sh)
 
 ## General configuration syntax
 

@@ -5,14 +5,10 @@ export interface ServerOptions {
   daemon: boolean;
 }
 
-export interface StepConfig {
-  image?: string;
-  volumes?: Record<string, string>;
-  args?: Array<Record<string, string>>;
-}
-
-export interface StepDefinition extends StepConfig {
+export interface StepDefinition {
   run: string;
+  args?: Array<Record<string, string>>;
+  workingDir?: string;
 }
 
 export interface StepOutput {
@@ -27,29 +23,29 @@ export interface EventOutput {
   parentId?: string;
   children?: string[];
   context: WorkflowContext | null;
+  error?: any
 }
 
-export interface NormalizedStepDefinition extends StepConfig {
+export interface NormalizedStepDefinition extends Record<string, any> {
   run: string;
-  image: string;
   args: Array<Record<string, string>>;
-  volumes: Record<string, string>;
-  workingDir?: string;
+  workingDir: string;
+  envDir: string;
 }
 
 export interface WorkflowDefinition {
-  runner?: "docker" | "shell";
+  runner: 'docker' | 'shell';
   secrets?: string[];
   mappings?: Record<string, string>;
   env?: Record<string, string>;
-  defaults?: Partial<StepConfig>;
+  defaults?: any;
   steps?: StepDefinition[] | string[];
-  triggers?: string[];
   if?: string[];
 }
 
 export interface WorkflowContext {
-  runner: "docker" | "shell";
+  source: string;
+  runner: string;
   inputs: Record<string, unknown>;
   outputs: Array<StepOutput>;
   secrets: Record<string, string>;
@@ -60,10 +56,21 @@ export interface WorkflowContext {
 
 export interface OnConfig {
   description?: string;
-  on: Record<string, Record<string, WorkflowDefinition>>;
+  on: Record<string, WorkflowDefinition>;
 }
 
 export interface WorkflowEvent {
   source: string;
   event: { [key: string]: unknown };
+}
+
+export interface Runner {
+  setup?(wf: WorkflowDefinition, event: WorkflowEvent): Promise<void>;
+  teardown?(wf: WorkflowDefinition, event: WorkflowEvent): Promise<void>;
+  run(
+    wf: WorkflowDefinition,
+    event: WorkflowEvent,
+    step: StepDefinition,
+    context: WorkflowContext,
+  ): Promise<StepOutput>;
 }
