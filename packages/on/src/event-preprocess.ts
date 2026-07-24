@@ -9,12 +9,13 @@ function github(request: IncomingMessage, body: string): WorkflowEvent | null {
   const payloadSignature = 'sha1=' + createHmac('sha1', secret).update(body).digest('hex');
 
   if (payloadSignature !== requestSignature) {
+    console.log('Github: Bad signature', payloadSignature, requestSignature);
     return null;
   }
 
   const json = JSON.parse(body);
   const event = { source: 'github.' + (eventSource || json.action), event: json };
-  console.log('GITHUB', event);
+
   return event;
 }
 

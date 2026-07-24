@@ -78,11 +78,11 @@ export function withMappings(
     return event.event;
   }
 
-  const context = { ...event.event };
+  const context: any = { inputs: event.event };
 
   for (const [field, pathExpression] of Object.entries(mappings)) {
-    context[field] = interpolate(`\${${pathExpression}}`, context);
+    context.inputs[field] = interpolate(`\${${pathExpression}}`, context);
   }
 
-  return context;
+  return context.inputs;
 }

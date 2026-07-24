@@ -59,7 +59,7 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
 
       if (!event) {
         response.writeHead(400);
-        response.end();
+        response.end('No event matched');
         return;
       }
 
