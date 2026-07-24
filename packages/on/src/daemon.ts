@@ -63,11 +63,16 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
 
       if (!event) {
         response.writeHead(400);
-        response.end('No event matched');
+        response.end('No events matched this request');
         return;
       }
 
-      sendJson(response, 202, {
+      const logUrl = (id: string) => new URL('/reports/' + id, url);
+      sendJson(response, 202, { logUrl });
+      
+      const outputs = await processEvent(event, config);
+      
+      console.log({
         id: outputs.id,
         logUrl: logUrl(outputs.id).href,
         parent: !outputs.parentId
@@ -82,9 +87,6 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
             logUrl: logUrl(childId).href,
           })) || [],
       });
-
-      const outputs = await processEvent(event, config);
-      const logUrl = (id: string) => new URL('/reports/' + id, url);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error processing webhook:', error);
