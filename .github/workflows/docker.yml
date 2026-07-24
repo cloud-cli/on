@@ -9,3 +9,5 @@ on:
 jobs:
   build:
     uses: cloud-cli/workflows/.github/workflows/docker-ghcr-build.yml@main
+    with:
+      arch: linux/amd64
