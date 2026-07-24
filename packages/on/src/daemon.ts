@@ -67,9 +67,9 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
         return;
       }
 
-      const logUrl = (id: string) => new URL('/reports/' + id, url);
-      sendJson(response, 202, { logUrl });
+      sendJson(response, 202, {});
       
+      const logUrl = (id: string) => new URL('/reports/' + id, url);
       const outputs = await processEvent(event, config);
       
       console.log({
