@@ -35,9 +35,6 @@ importers:
       '@typescript-eslint/parser':
         specifier: 8.57.1
         version: 8.57.1(eslint@8.57.1)(typescript@5.9.3)
-      eslint:
-        specifier: ~8.57.0
-        version: 8.57.1
       nx:
         specifier: ^22.5.4
         version: 22.5.4

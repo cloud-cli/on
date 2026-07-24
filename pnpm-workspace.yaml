@@ -10,5 +10,3 @@ onlyBuiltDependencies:
   - nx
 
 saveExact: true
-
-strictPeerDependencies: true

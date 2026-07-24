@@ -1,6 +1,0 @@
-{
-  "title": "feat: add tmpfs support for shared in-memory env vars between docker steps",
-  "head": "feat/tmpfs-env-var-support",
-  "base": "main",
-  "body": "## Summary\nThis PR implements an in-memory `tmpfs` option for Docker steps to allow environment variable sharing between steps.\n\n## Changes\n- **types.ts**: Added `tmpfs?: boolean | string` to `StepConfig`.\n- **docker.ts**: \n  - Created helper functions to manage persistent docker volumes with `type=tmpfs` (in-memory).\n  - Injects an `ENV` variable (`/tmp/on_env`) into containers so scripts can write to it.\n  - Fixed a bug where arguments starting with `-` were double-prefixed.\n- **workflow.ts**: \n  - Added logic to load, parse, and clean up JSON files from the tmpfs mount point after each step.\n  - Ensures the volume is consistent across all steps in a single workflow run using a unique `workflowId`.\n\n## Usage Example\n```yaml\nsteps:\n  - tmpfs: true\n    run: echo '{\"MY_VAR\": \"value1\"}' > $ENV/output.json\n  - tmpfs: true\n    run: echo $MY_VAR # outputs value1\n```"
-}
