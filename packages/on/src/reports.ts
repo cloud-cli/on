@@ -5,8 +5,9 @@ import { StepOutput, WorkflowContext } from './types.js';
 import { AnsiUp } from 'ansi_up';
 import { mkdirSync } from 'node:fs';
 
+const reportsPath = process.env.WORKFLOW_REPORTS_PATH || tmpdir();
 const ansiUp = new AnsiUp();
-const tmpDir = join(tmpdir(), 'workflow-reports');
+const tmpDir = join(reportsPath, 'workflow-reports');
 mkdirSync(tmpDir, { recursive: true });
 
 export async function createReport(
