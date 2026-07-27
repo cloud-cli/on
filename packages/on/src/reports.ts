@@ -74,6 +74,7 @@ export async function formatReportAsHTML(report: Report | null): Promise<string>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Workflow Report - ${report.id}</title>
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<style>.empty_hidden:empty { display: none !important; }</style>
 </head>
 <body class="bg-gray-100 p-4">
 <div class="max-w-4xl mx-auto bg-white shadow-md rounded-lg p-6">
@@ -81,14 +82,10 @@ export async function formatReportAsHTML(report: Report | null): Promise<string>
 ${report.outputs
   .map(
     (output, index) => `
-  <div class="mb-4 space-y-1">
+  <div class="mb-2 space-y-1">
     <h2 class="font-semibold mb-1">#${index + 1}: ${output.cmd} (${output.code})</h2>
-    <div class="bg-gray-800 text-green-400 text-xs p-2 rounded overflow-x-auto empty:hidden">
-      <pre>${ansiUp.ansi_to_html(output.stdout)}</pre>
-    </div>
-    <div class="bg-gray-800 text-red-400 text-xs p-2 rounded overflow-x-auto empty:hidden">
-      <pre>${ansiUp.ansi_to_html(output.stderr)}</pre>
-    </div>
+    <pre class="bg-gray-800 text-green-400 text-xs p-2 rounded overflow-x-auto block empty_hidden">${ansiUp.ansi_to_html(output.stdout)}</pre>
+    <pre class="bg-gray-800 text-red-400 text-xs p-2 rounded overflow-x-auto block empty_hidden">${ansiUp.ansi_to_html(output.stderr)}</pre>
   </div>
 `,
   )
