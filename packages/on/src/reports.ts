@@ -81,12 +81,12 @@ export async function formatReportAsHTML(report: Report | null): Promise<string>
 ${report.outputs
   .map(
     (output, index) => `
-  <div class="mb-6">
-    <h2 class="text-xl font-semibold mb-2">#${index + 1}: ${output.cmd} (${output.code})</h2>
-    <div class="bg-gray-800 text-green-400 p-4 rounded mb-2 overflow-x-auto">
+  <div class="mb-4 space-y-1">
+    <h2 class="font-semibold mb-1">#${index + 1}: ${output.cmd} (${output.code})</h2>
+    <div class="bg-gray-800 text-green-400 text-xs p-2 rounded overflow-x-auto empty:hidden">
       <pre>${ansiUp.ansi_to_html(output.stdout)}</pre>
     </div>
-    <div class="bg-gray-800 text-red-400 p-4 rounded overflow-x-auto">
+    <div class="bg-gray-800 text-red-400 text-xs p-2 rounded overflow-x-auto empty:hidden">
       <pre>${ansiUp.ansi_to_html(output.stderr)}</pre>
     </div>
   </div>
