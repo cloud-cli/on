@@ -119,7 +119,11 @@ ${
 </body>
 </html>`;
 
-  for (const v of Object.values(process.env)) {
+  const masked = [process.env, report.context?.secrets, report.context?.env]
+    .flatMap((o) => (o ? Object.values(o) : []))
+    .filter(Boolean) as string[];
+
+  for (const v of masked) {
     html = html.replaceAll(v, '****');
   }
 
