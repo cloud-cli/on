@@ -33,12 +33,7 @@ export async function createReport(
   }
 }
 
-export async function getReport(id: string): Promise<{
-  id: string;
-  parentId?: string;
-  children?: string[];
-  outputs: StepOutput[];
-} | null> {
+export async function getReport(id: string): Promise<Report | null> {
   try {
     const reportPath = join(tmpDir, `${id}.json`);
     const rawText = await readFile(reportPath, 'utf8');
