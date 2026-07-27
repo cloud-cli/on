@@ -23,7 +23,7 @@ export interface EventOutput {
   parentId?: string;
   children?: string[];
   context: WorkflowContext | null;
-  error?: any
+  error?: any;
 }
 
 export interface NormalizedStepDefinition extends Record<string, any> {
@@ -74,4 +74,12 @@ export interface Runner {
     step: StepDefinition,
     context: WorkflowContext,
   ): Promise<StepOutput>;
+}
+
+export interface Report {
+  id: string;
+  parentId?: string;
+  children?: string[];
+  outputs: StepOutput[];
+  context: WorkflowContext | null;
 }

@@ -1,7 +1,7 @@
 import { writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { StepOutput, WorkflowContext } from './types.js';
+import { StepOutput, WorkflowContext, Report } from './types.js';
 import { AnsiUp } from 'ansi_up';
 import { mkdirSync } from 'node:fs';
 
@@ -15,11 +15,11 @@ export async function createReport(
   context: WorkflowContext | null,
   error: any,
 ): Promise<void> {
-  let report;
+  let report: Report;
 
   if (context) {
     const { outputs, ...ctx } = context;
-    report = { ...ids, outputs, context: ctx };
+    report = { ...ids, outputs, context: ctx as WorkflowContext };
   } else {
     report = { ...ids, outputs: [{ code: -1, cmd: '', stdout: '', stderr: String(error) }], context: null };
   }
@@ -32,13 +32,6 @@ export async function createReport(
     console.error('Error writing report:', message);
   }
 }
-
-export type Report = {
-  id: string;
-  parentId?: string;
-  children?: string[];
-  outputs: StepOutput[];
-};
 
 export async function getReport(id: string): Promise<{
   id: string;
