@@ -79,7 +79,7 @@ export async function formatReportAsHTML(report: Report | null): Promise<string>
     return notFound;
   }
 
-  const html = `<!DOCTYPE html>
+  let html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -118,6 +118,10 @@ ${
 </div>
 </body>
 </html>`;
+
+  for (const v of Object.values(process.env)) {
+    html = html.replaceAll(v, '****');
+  }
 
   return html;
 }
