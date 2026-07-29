@@ -28,7 +28,18 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
       console.log(`[${new Date().toISOString().slice(0, 19)}] ${response.statusCode} ${request.method} ${request.url}`);
     });
 
-    const url = new URL(String(request.url), 'http://' + (request.headers['x-forwarded-host'] || 'localhost'));
+    let url;
+
+    try {
+      url = new URL(
+        String(request.url), 
+        (request.headers['x-forwarded-proto'] || 'http') + '://' + (request.headers['x-forwarded-host'] || 'localhost')
+      );
+    } catch (e) {
+      console.log(e);
+      response.writeHead(400).end();
+      return;
+    }
 
     if (request.method === 'GET' && url.pathname === '/health') {
       sendJson(response, 200, { status: 'OK' });
