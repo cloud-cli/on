@@ -7,6 +7,8 @@ import { spawn } from 'node:child_process';
 import { formatReportAsHTML, getReport } from './reports.js';
 import preprocessors from './event-preprocess.js';
 import { randomUUID } from 'node:crypto';
+import { readdir } from 'node:fs/promises';
+import { reportsPath } from './env.js';
 
 export async function startServer(options: ServerOptions): Promise<ReturnType<typeof createServer> | null> {
   if (options.daemon) {
@@ -44,6 +46,17 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
 
     if (request.method === 'GET' && url.pathname === '/health') {
       sendJson(response, 200, { status: 'OK' });
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/reports') {
+      const list = await readdir(reportsPath);
+      const page = list.map((f) => {
+        const id = f.replace('.json', '');
+        return `<div><a href="/reports/${id}">${id}</a></div>`;
+      });
+
+      response.writeHead(200, { 'content-type': 'text/html' }).end(page);
       return;
     }
 

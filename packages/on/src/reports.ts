@@ -1,14 +1,12 @@
 import { writeFile, readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { StepOutput, WorkflowContext, Report } from './types.js';
+import { WorkflowContext, Report } from './types.js';
 import { AnsiUp } from 'ansi_up';
 import { mkdirSync } from 'node:fs';
+import { reportsPath } from './env.js';
 
-const reportsPath = process.env.WORKFLOW_REPORTS_PATH || tmpdir();
 const ansiUp = new AnsiUp();
-const tmpDir = join(reportsPath, 'workflow-reports');
-mkdirSync(tmpDir, { recursive: true });
+mkdirSync(reportsPath, { recursive: true });
 
 export async function createReport(
   ids: { id: string; parentId?: string; children?: string[] },
@@ -25,7 +23,7 @@ export async function createReport(
   }
 
   try {
-    const reportPath = join(tmpDir, `${ids.id}.json`);
+    const reportPath = join(reportsPath, `${ids.id}.json`);
     await writeFile(reportPath, JSON.stringify(report, null, 2), 'utf8');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -35,7 +33,7 @@ export async function createReport(
 
 export async function getReport(id: string): Promise<Report | null> {
   try {
-    const reportPath = join(tmpDir, `${id}.json`);
+    const reportPath = join(reportsPath, `${id}.json`);
     const rawText = await readFile(reportPath, 'utf8');
     const content = JSON.parse(rawText);
     return content as Report;
@@ -95,7 +93,9 @@ async function rerun(id) {
 <div class="max-w-4xl mx-auto bg-white shadow-md rounded-lg p-6">
 <h1 class="text-2xl font-bold mb-4">Workflow Report - ${report.id}</h1>
 ` +
-    (report.context ? `<div class="p-1 flex items-center justify-end"><button onclick="rerun('${report.id}')"></button></div>` : '') +
+    (report.context
+      ? `<div class="p-1 flex items-center justify-end"><button onclick="rerun('${report.id}')"></button></div>`
+      : '') +
     report.outputs
       .map(
         (output, index) => `
