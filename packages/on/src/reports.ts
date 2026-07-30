@@ -94,7 +94,7 @@ async function rerun(id) {
 <h1 class="text-2xl font-bold mb-4">Workflow Report - ${report.id}</h1>
 ` +
     (report.context
-      ? `<div class="p-1 flex items-center justify-end"><button onclick="rerun('${report.id}')"></button></div>`
+      ? `<div class="p-1 flex items-center justify-end"><button onclick="rerun('${report.id}')">Run again</button></div>`
       : '') +
     report.outputs
       .map(

@@ -101,7 +101,7 @@ export async function processEvent(
     const secrets = await loadSecrets(workflow.secrets);
 
     context = toStringProxy<WorkflowContext>({
-      runner: workflow.runner || 'docker',
+      runner: workflow.runner,
       source: event.source,
       workflowId: workflowId,
       inputs,
