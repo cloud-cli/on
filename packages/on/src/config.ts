@@ -17,7 +17,7 @@ export async function loadConfig(configPath: string): Promise<OnConfig> {
     return { on: {} };
   }
 
-  const files = [];
+  const files: string[] = [];
   const pathStat = await stat(fullPath);
 
   if (pathStat.isDirectory()) {
