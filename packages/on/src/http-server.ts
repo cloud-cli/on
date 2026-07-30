@@ -24,74 +24,46 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
     return null;
   }
 
-  const logUrl = (id: string, url) => new URL('/reports/' + id, url);
+  const logUrl = (id: string, url: URL) => new URL('/reports/' + id, url);
   const config = await loadConfig(options.configPath);
-  const server = createServer(async (request, response) => {
-    response.on('finish', () => {
-      console.log(`[${new Date().toISOString().slice(0, 19)}] ${response.statusCode} ${request.method} ${request.url}`);
+
+  async function onListReports(request, response, url) {
+    const list = await readdir(reportsPath);
+    const page = list.map((f) => {
+      const id = f.replace('.json', '');
+      return `<div><a href="/reports/${id}">${id}</a></div>`;
     });
 
-    let url;
+    response.writeHead(200, { 'content-type': 'text/html' }).end(page);
+  }
 
-    try {
-      url = new URL(
-        String(request.url),
-        (request.headers['x-forwarded-proto'] || 'http') + '://' + (request.headers['x-forwarded-host'] || 'localhost'),
-      );
-    } catch (e) {
-      console.log(e);
-      response.writeHead(400).end();
+  async function onReRun(request, response, url) {
+    const id = url.pathname.split('/reports/')[1];
+    const report = await getReport(id);
+
+    if (!report?.context) {
+      response.writeHead(400).end('Report not found or invalid');
       return;
     }
 
-    if (request.method === 'GET' && url.pathname === '/health') {
-      sendJson(response, 200, { status: 'OK' });
-      return;
-    }
+    const output = await reRunWorkflow(report.context);
 
-    if (request.method === 'GET' && url.pathname === '/reports') {
-      const list = await readdir(reportsPath);
-      const page = list.map((f) => {
-        const id = f.replace('.json', '');
-        return `<div><a href="/reports/${id}">${id}</a></div>`;
-      });
+    response.writeHead(202, { 'Content-Type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        url: logUrl(output.id, url).href,
+      }),
+    );
+  }
 
-      response.writeHead(200, { 'content-type': 'text/html' }).end(page);
-      return;
-    }
+  async function onGetReport(request, response, url) {
+    const id = url.pathname.split('/reports/')[1];
+    const report = await getReport(id);
+    response.writeHead(report ? 200 : 404, { 'Content-Type': 'text/html' });
+    response.end(await formatReportAsHTML(report));
+  }
 
-    if (request.method === 'POST' && url.pathname.startsWith('/reports/')) {
-      const id = url.pathname.split('/reports/')[1];
-      const report = await getReport(id);
-
-      if (!report?.context) {
-        response.writeHead(400).end('Report not found or invalid');
-      }
-
-      const output = await reRunWorkflow(report.context);
-
-      response.writeHead(202, { 'Content-Type': 'application/json' });
-      response.end(
-        JSON.stringify({
-          url: logUrl(output.id, url).href,
-        }),
-      );
-      return;
-    }
-
-    if (request.method === 'GET' && url.pathname.startsWith('/reports/')) {
-      const id = url.pathname.split('/reports/')[1];
-      const report = await getReport(id);
-      response.writeHead(report ? 200 : 404, { 'Content-Type': 'text/html' });
-      response.end(await formatReportAsHTML(report));
-      return;
-    }
-
-    if (request.method !== 'POST') {
-      sendJson(response, 405, { error: 'Only POST webhooks are supported.' });
-      return;
-    }
-
+  async function onWebhookIncoming(request, response, url) {
     try {
       let event: WorkflowEvent | null;
       const source = url.pathname.slice(1);
@@ -115,7 +87,7 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
       const id = randomUUID();
       event.id = id;
 
-      sendJson(response, 202, { results_url: logUrl(id) });
+      sendJson(response, 202, { results_url: logUrl(id, url) });
 
       const outputs = await processEvent(event, config);
 
@@ -143,6 +115,52 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
         sendJson(response, 400, { error: message });
       }
     }
+  }
+
+  const server = createServer(async function (request, response) {
+    response.on('finish', () => {
+      console.log(`[${new Date().toISOString().slice(0, 19)}] ${response.statusCode} ${request.method} ${request.url}`);
+    });
+
+    let url;
+
+    try {
+      url = new URL(
+        String(request.url),
+        (request.headers['x-forwarded-proto'] || 'http') + '://' + (request.headers['x-forwarded-host'] || 'localhost'),
+      );
+    } catch (e) {
+      console.log(e);
+      response.writeHead(400).end();
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/health') {
+      sendJson(response, 200, { status: 'OK' });
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/reports') {
+      onListReports(request, response, url);
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname.startsWith('/reports/')) {
+      onReRun(request, response, url);
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname.startsWith('/reports/')) {
+      onGetReport(request, response, url);
+      return;
+    }
+
+    if (request.method !== 'POST') {
+      sendJson(response, 405, { error: 'Only POST webhooks are supported.' });
+      return;
+    }
+
+    onWebhookIncoming(request, response, url);
   });
 
   await new Promise<void>((resolve, reject) => {
