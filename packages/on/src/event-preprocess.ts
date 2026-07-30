@@ -14,7 +14,10 @@ function github(request: IncomingMessage, body: string): WorkflowEvent | null {
   }
 
   const json = JSON.parse(body);
-  const event = { source: 'github.' + (eventSource || json.action), event: json };
+  const event = {
+    source: 'github.' + (eventSource || json.action),
+    event: json,
+  };
 
   return event;
 }

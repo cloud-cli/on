@@ -10,6 +10,18 @@ import { randomUUID } from 'node:crypto';
 import { readdir } from 'node:fs/promises';
 import { reportsPath } from './env.js';
 
+function getUrl(request: any) {
+  try {
+    return new URL(
+      String(request.url),
+      (request.headers['x-forwarded-proto'] || 'http') + '://' + (request.headers['x-forwarded-host'] || 'localhost'),
+    );
+  } catch (e) {
+    console.log(e);
+    return null;
+  }
+}
+
 export async function startServer(options: ServerOptions): Promise<ReturnType<typeof createServer> | null> {
   if (options.daemon) {
     const skipDaemon = process.argv.slice(1).filter((arg) => arg !== '--daemon' && arg !== '-d');
@@ -37,8 +49,8 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
     response.writeHead(200, { 'content-type': 'text/html' }).end(page);
   }
 
-  async function onReRun(_req, response, url) {
-    const id = url.pathname.split('/reports/')[1];
+  async function onReRun(req, response, { id }) {
+    const url = getUrl(req)!;
     const report = await getReport(id);
 
     if (!report?.context) {
@@ -56,14 +68,15 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
     );
   }
 
-  async function onGetReport(_req, response, url) {
-    const id = url.pathname.split('/reports/')[1];
+  async function onGetReport(_, response, { id }) {
     const report = await getReport(id);
     response.writeHead(report ? 200 : 404, { 'Content-Type': 'text/html' });
     response.end(await formatReportAsHTML(report));
   }
 
-  async function onWebhookIncoming(request, response, url) {
+  async function onWebhookIncoming(request, response) {
+    const url = getUrl(request)!;
+
     try {
       let event: WorkflowEvent | null;
       const source = url.pathname.slice(1);
@@ -118,22 +131,16 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
   }
 
   const server = createServer(async function (request, response) {
-    response.on('finish', () => {
-      console.log(`[${new Date().toISOString().slice(0, 19)}] ${response.statusCode} ${request.method} ${request.url}`);
-    });
+    const url = getUrl(request);
 
-    let url;
-
-    try {
-      url = new URL(
-        String(request.url),
-        (request.headers['x-forwarded-proto'] || 'http') + '://' + (request.headers['x-forwarded-host'] || 'localhost'),
-      );
-    } catch (e) {
-      console.log(e);
+    if (!url) {
       response.writeHead(400).end();
       return;
     }
+
+    response.on('finish', () => {
+      console.log(`[${new Date().toISOString().slice(0, 19)}] ${response.statusCode} ${request.method} ${request.url}`);
+    });
 
     if (request.method === 'GET' && url.pathname === '/health') {
       sendJson(response, 200, { status: 'OK' });
@@ -141,17 +148,19 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
     }
 
     if (request.method === 'GET' && url.pathname === '/reports') {
-      onListReports(request, response, url);
+      onListReports(request, response);
       return;
     }
 
     if (request.method === 'POST' && url.pathname.startsWith('/reports/')) {
-      onReRun(request, response, url);
+      const id = url.pathname.replace('/reports/', '');
+      onReRun(request, response, { id });
       return;
     }
 
     if (request.method === 'GET' && url.pathname.startsWith('/reports/')) {
-      onGetReport(request, response, url);
+      const id = url.pathname.replace('/reports/', '');
+      onGetReport(request, response, { id });
       return;
     }
 
@@ -160,7 +169,7 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
       return;
     }
 
-    onWebhookIncoming(request, response, url);
+    onWebhookIncoming(request, response);
   });
 
   await new Promise<void>((resolve, reject) => {
