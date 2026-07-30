@@ -2,8 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": ".",
-    "lib": ["dom", "esnext"]
+    "lib": ["dom", "esnext"],
+    "noImplicitAny": false,
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["dist/**/*", "node_modules", "src/**/*.spec.ts"]
+  "exclude": ["dist/**/*", "node_modules", "src/**/*.spec.ts"],
 }

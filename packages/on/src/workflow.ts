@@ -168,15 +168,14 @@ export async function reRunWorkflow(context: WorkflowContext): Promise<EventOutp
 }
 
 async function runWorkflow(context: WorkflowContext) {
-  const runner: Runner = runnerMap.get(context.runner);
-  let error;
-
+  const runner: Runner | undefined = runnerMap.get(context.runner);
   if (!runner) {
     throw new Error('Invalid runner: ' + context.runner);
   }
 
   context.workingDir = await mkdtemp(join(tmpdir(), 'workflow'));
 
+  let error;
   if (runner.setup) {
     await runner.setup(context.workflow, context.inputs);
   }

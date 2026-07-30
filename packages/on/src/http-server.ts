@@ -27,7 +27,7 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
   const logUrl = (id: string, url: URL) => new URL('/reports/' + id, url);
   const config = await loadConfig(options.configPath);
 
-  async function onListReports(request, response, url) {
+  async function onListReports(_req, response) {
     const list = await readdir(reportsPath);
     const page = list.map((f) => {
       const id = f.replace('.json', '');
@@ -37,7 +37,7 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
     response.writeHead(200, { 'content-type': 'text/html' }).end(page);
   }
 
-  async function onReRun(request, response, url) {
+  async function onReRun(_req, response, url) {
     const id = url.pathname.split('/reports/')[1];
     const report = await getReport(id);
 
@@ -56,7 +56,7 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
     );
   }
 
-  async function onGetReport(request, response, url) {
+  async function onGetReport(_req, response, url) {
     const id = url.pathname.split('/reports/')[1];
     const report = await getReport(id);
     response.writeHead(report ? 200 : 404, { 'Content-Type': 'text/html' });
