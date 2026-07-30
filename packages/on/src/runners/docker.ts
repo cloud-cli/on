@@ -6,10 +6,10 @@ import type {
   StepOutput,
   WorkflowContext,
   WorkflowDefinition,
-  WorkflowEvent,
+  WorkflowEventInputs,
 } from '../types.js';
 import { interpolate, withMappings } from '../utils.js';
-import { DEBUG }  from '../env.js';
+import { DEBUG } from '../env.js';
 
 export const defaultWorkspace = '/workspace';
 export const defaultImage = 'dhi.io/alpine-base:3.23-alpine3.23-dev';
@@ -160,17 +160,17 @@ function loadAndCleanTmpfs(context: WorkflowContext, volName: string): Record<st
   return loaded;
 }
 
-export async function setup(wf: WorkflowDefinition, event: WorkflowEvent) {
-  // TODO
-}
+// export async function setup(wf: WorkflowDefinition, event: WorkflowEventInputs) {
+//   // TODO
+// }
 
-export async function teardown(wf: WorkflowDefinition, event: WorkflowEvent) {
-  // TODO
-}
+// export async function teardown(wf: WorkflowDefinition, event: WorkflowEventInputs) {
+//   // TODO
+// }
 
 export async function run(
   _wf: WorkflowDefinition,
-  _event: WorkflowEvent,
+  _inputs: WorkflowEventInputs,
   step: NormalizedStepDefinition,
   context: WorkflowContext,
 ): Promise<StepOutput> {

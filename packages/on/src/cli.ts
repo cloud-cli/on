@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { parseArgs } from "node:util";
+import { parseArgs } from 'node:util';
 
-import type { ServerOptions } from "./types.js";
-import { normalizePort } from "./utils.js";
-import { startDaemon } from "./daemon.js";
+import type { ServerOptions } from './types.js';
+import { normalizePort } from './utils.js';
+import { startServer } from './http-server.js';
 
 const HELP_TEXT = `on - daemonized webhook runner
 
@@ -23,11 +23,11 @@ export function parseCliOptions(argv: string[]): ServerOptions | null {
   const { values } = parseArgs({
     args: argv,
     options: {
-      port: { type: "string", short: "p", default: process.env.PORT || "11235" },
-      host: { type: "string", short: "H", default: process.env.WORKFLOW_HOST || "127.0.0.1" },
-      config: { type: "string", short: "c", default: process.env.WORKFLOW_CONFIG_PATH || "workflows.yaml" },
-      help: { type: "boolean", short: "h", default: false },
-      daemon: { type: "boolean", short: "d", default: false },
+      port: { type: 'string', short: 'p', default: process.env.PORT || '11235' },
+      host: { type: 'string', short: 'H', default: process.env.WORKFLOW_HOST || '127.0.0.1' },
+      config: { type: 'string', short: 'c', default: process.env.WORKFLOW_CONFIG_PATH || 'workflows.yaml' },
+      help: { type: 'boolean', short: 'h', default: false },
+      daemon: { type: 'boolean', short: 'd', default: false },
     },
     allowPositionals: false,
   });
@@ -38,7 +38,7 @@ export function parseCliOptions(argv: string[]): ServerOptions | null {
   }
 
   if (!values.port) {
-    throw new Error("Missing required option --port.");
+    throw new Error('Missing required option --port.');
   }
 
   return {
@@ -57,7 +57,7 @@ export async function main(): Promise<void> {
       return;
     }
 
-    await startDaemon(options);
+    await startServer(options);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`on: ${message}`);

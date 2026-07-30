@@ -1,5 +1,5 @@
 export * from "./config.js";
-export * from "./daemon.js";
+export * from "./http-server.js";
 export * from "./types.js";
 export * from "./utils.js";
 export * from "./reports.js";

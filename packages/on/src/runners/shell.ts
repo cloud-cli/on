@@ -1,18 +1,14 @@
 import { spawn } from 'node:child_process';
-import type { StepDefinition, StepOutput, WorkflowContext, WorkflowDefinition, WorkflowEvent } from '../types.js';
+import type { StepDefinition, StepOutput, WorkflowContext, WorkflowDefinition, WorkflowEventInputs } from '../types.js';
 import { interpolate } from '../utils.js';
 import { join, resolve } from 'node:path';
 import { DEBUG } from '../env.js';
 
 const SHELL = process.env.SHELL || '/bin/sh';
 
-export async function setup(_wf: WorkflowDefinition, _event: WorkflowEvent) {
-  // TODO
-}
-
 export async function run(
   _wf: WorkflowDefinition,
-  _event: WorkflowEvent,
+  _event: WorkflowEventInputs,
   step: StepDefinition,
   context: WorkflowContext,
 ): Promise<StepOutput> {

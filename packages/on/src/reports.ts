@@ -67,7 +67,8 @@ export async function formatReportAsHTML(report: Report | null): Promise<string>
     return notFound;
   }
 
-  let html = `<!DOCTYPE html>
+  let html =
+    `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -75,22 +76,38 @@ export async function formatReportAsHTML(report: Report | null): Promise<string>
 <title>Workflow Report - ${report.id}</title>
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 <style>.empty_hidden:empty { display: none !important; }</style>
+<script>
+async function rerun(id) {
+  document.body.innerHTML = '<div class="text-green-400">Running...</div>';
+  const res = await fetch('/reports/${report.id}', { method: 'POST' });
+
+  if (res.ok) {
+    const body = await res.json();
+    window.location = body.url;
+    return;
+  }
+
+  document.body.innerHTML = '<div class="text-red-400">' + await res.text() + '</div>';
+}
+</script>
 </head>
 <body class="bg-gray-100 p-4">
 <div class="max-w-4xl mx-auto bg-white shadow-md rounded-lg p-6">
 <h1 class="text-2xl font-bold mb-4">Workflow Report - ${report.id}</h1>
-${report.outputs
-  .map(
-    (output, index) => `
+` +
+    (report.context ? `<div class="p-1 flex items-center justify-end"><button onclick="rerun('${report.id}')"></button></div>` : '') +
+    report.outputs
+      .map(
+        (output, index) => `
   <div class="mb-2 space-y-1">
     <h2 class="font-semibold mb-1">#${index + 1}: ${output.cmd} (${output.code})</h2>
     <pre class="bg-gray-800 text-green-400 text-xs p-2 rounded overflow-x-auto block empty_hidden">${ansiUp.ansi_to_html(output.stdout)}</pre>
     <pre class="bg-gray-800 text-red-400 text-xs p-2 rounded overflow-x-auto block empty_hidden">${ansiUp.ansi_to_html(output.stderr)}</pre>
   </div>
 `,
-  )
-  .join('')}
-<div class="mt-4">
+      )
+      .join('') +
+    `<div class="mt-4">
 ${report.parentId ? `<a href="/reports/${report.parentId}" class="text-blue-500 hover:underline">View Parent Report</a>` : ''}
 ${
   report.children && report.children.length > 0

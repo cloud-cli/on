@@ -80,10 +80,14 @@ function normalizeSteps(steps: Array<StepDefinition | string>, context: Workflow
   });
 }
 
-export async function processEvent(event: WorkflowEvent, config: OnConfig, parentId?: string): Promise<EventOutput | null> {
-  const id = event.id || randomUUID();
+export async function processEvent(
+  event: WorkflowEvent,
+  config: OnConfig,
+  parentId?: string,
+): Promise<EventOutput | null> {
+  const workflowId = event.id || randomUUID();
   const workflow = findWorkflowForEvent(event, config);
-  let error;
+  let runError;
 
   if (!workflow) {
     return null;
@@ -95,17 +99,18 @@ export async function processEvent(event: WorkflowEvent, config: OnConfig, paren
   try {
     const inputs = withMappings(event, workflow.mappings);
     const secrets = await loadSecrets(workflow.secrets);
-    const workingDir = await mkdtemp(join(tmpdir(), 'workflow'));
+
     context = toStringProxy<WorkflowContext>({
+      runner: workflow.runner || 'docker',
       source: event.source,
-      workflowId: id,
+      workflowId: workflowId,
       inputs,
       secrets,
       workflow,
       env: {},
       outputs: [],
-      workingDir,
-      runner: workflow.runner || 'docker',
+      steps: [],
+      workingDir: '',
     });
 
     if (workflow.if) {
@@ -119,43 +124,11 @@ export async function processEvent(event: WorkflowEvent, config: OnConfig, paren
     }
 
     prepareContextEnv(context);
+    context.steps = normalizeSteps(workflow.steps || [], context);
+    runError = await runWorkflow(context);
 
-    const runner = runnerMap.get(context.runner);
-
-    if (!runner) {
-      throw new Error('Invalid runner: ' + context.runner);
-    }
-
-    const steps = normalizeSteps(workflow.steps || [], context);
-
-    if (runner.setup) {
-      await runner.setup(workflow, event);
-    }
-
-    for (const step of steps) {
-      const output = await runner.run(workflow, event, step, context);
-
-      if (output.code !== 0 && !step.continueOnError) {
-        error = Error(`Step failed with code ${output.code}.\nstdout: ${output.stdout}\nstderr: ${output.stderr}`);
-        break;
-      }
-
-      context.outputs.push(output);
-    }
-
-    if (runner.teardown) {
-      await runner.teardown(workflow, event);
-    }
-
-    if (DEBUG) {
-      console.log(
-        'WORKFLOW ' + id,
-        context?.outputs.map((o) => `<${o.code}> ${o.cmd} ${o.stdout} ${o.stderr}`).join('\n') || error || '<none>',
-      );
-    }
-
-    if (error) {
-      throw error;
+    if (runError) {
+      throw runError;
     }
 
     // TODO tmpfs with JSON outputs for next steps
@@ -165,18 +138,65 @@ export async function processEvent(event: WorkflowEvent, config: OnConfig, paren
     //     children.push(next.id);
     //   }
     // }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
     console.error(`Error processing event: ${message}`, JSON.stringify(event));
   } finally {
     if (context) {
       await rm(context.workingDir, { recursive: true, force: true });
     }
+
+    if (DEBUG) {
+      console.log(
+        'WORKFLOW ' + workflowId,
+        context?.outputs.map((o) => `<${o.code}> ${o.cmd} ${o.stdout} ${o.stderr}`).join('\n') || runError || '<none>',
+      );
+    }
   }
 
-  await createReport({ id, parentId, children }, context, error);
+  await createReport({ id: workflowId, parentId, children }, context, runError);
 
-  return { id, parentId, children, context, error };
+  return { id: workflowId, parentId, children, context, error: runError };
+}
+
+export async function reRunWorkflow(context: WorkflowContext): Promise<EventOutput> {
+  context.workflowId = randomUUID();
+  const runError = await runWorkflow(context);
+  const report = { id: context.workflowId, parentId: undefined, children: [] };
+  await createReport(report, context, runError);
+  return { ...report, context, error: runError };
+}
+
+async function runWorkflow(context: WorkflowContext) {
+  const runner: Runner = runnerMap.get(context.runner);
+  let error;
+
+  if (!runner) {
+    throw new Error('Invalid runner: ' + context.runner);
+  }
+
+  context.workingDir = await mkdtemp(join(tmpdir(), 'workflow'));
+
+  if (runner.setup) {
+    await runner.setup(context.workflow, context.inputs);
+  }
+
+  for (const step of context.steps) {
+    const output = await runner.run(context.workflow, context.inputs, step, context);
+
+    if (output.code !== 0 && !step.continueOnError) {
+      error = new Error(`Step failed with code ${output.code}.\nstdout: ${output.stdout}\nstderr: ${output.stderr}`);
+      break;
+    }
+
+    context.outputs.push(output);
+  }
+
+  if (runner.teardown) {
+    await runner.teardown(context.workflow, context.inputs);
+  }
+
+  return error;
 }
 
 export async function processEventFromFile(dispatchPath: string, config: OnConfig, parentId?: string) {

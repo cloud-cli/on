@@ -89,5 +89,5 @@ export function withMappings(
     context.inputs[field] = interpolate(`\${${pathExpression}}`, context);
   }
 
-  return context.inputs;
+  return context.inputs as WorkflowEvent['event'];
 }

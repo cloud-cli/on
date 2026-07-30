@@ -50,8 +50,10 @@ export interface WorkflowContext {
   outputs: Array<StepOutput>;
   secrets: Record<string, string>;
   workflow: WorkflowDefinition;
+  workflowId: string;
   env: NodeJS.ProcessEnv;
   workingDir: string;
+  steps: Array<NormalizedStepDefinition>;
 }
 
 export interface OnConfig {
@@ -59,18 +61,20 @@ export interface OnConfig {
   on: Record<string, WorkflowDefinition>;
 }
 
+export type WorkflowEventInputs = Record<string, unknown>;
+
 export interface WorkflowEvent {
   id?: string;
   source: string;
-  event: { [key: string]: unknown };
+  event: WorkflowEventInputs;
 }
 
 export interface Runner {
-  setup?(wf: WorkflowDefinition, event: WorkflowEvent): Promise<void>;
-  teardown?(wf: WorkflowDefinition, event: WorkflowEvent): Promise<void>;
+  setup?(wf: WorkflowDefinition, inputs: WorkflowEventInputs): Promise<void>;
+  teardown?(wf: WorkflowDefinition, inputs: WorkflowEventInputs): Promise<void>;
   run(
     wf: WorkflowDefinition,
-    event: WorkflowEvent,
+    inputs: WorkflowEventInputs,
     step: StepDefinition,
     context: WorkflowContext,
   ): Promise<StepOutput>;

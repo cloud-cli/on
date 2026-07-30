@@ -2,13 +2,13 @@ import { createServer } from 'node:http';
 import { loadConfig } from './config.js';
 import type { ServerOptions, WorkflowEvent } from './types.js';
 import { sendJson, asObject } from './utils.js';
-import { processEvent } from './workflow.js';
+import { processEvent, reRunWorkflow } from './workflow.js';
 import { spawn } from 'node:child_process';
 import { formatReportAsHTML, getReport } from './reports.js';
 import preprocessors from './event-preprocess.js';
 import { randomUUID } from 'node:crypto';
 
-export async function startDaemon(options: ServerOptions): Promise<ReturnType<typeof createServer> | null> {
+export async function startServer(options: ServerOptions): Promise<ReturnType<typeof createServer> | null> {
   if (options.daemon) {
     const skipDaemon = process.argv.slice(1).filter((arg) => arg !== '--daemon' && arg !== '-d');
     const args = process.execArgv.concat(skipDaemon);
@@ -22,6 +22,7 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
     return null;
   }
 
+  const logUrl = (id: string, url) => new URL('/reports/' + id, url);
   const config = await loadConfig(options.configPath);
   const server = createServer(async (request, response) => {
     response.on('finish', () => {
@@ -32,8 +33,8 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
 
     try {
       url = new URL(
-        String(request.url), 
-        (request.headers['x-forwarded-proto'] || 'http') + '://' + (request.headers['x-forwarded-host'] || 'localhost')
+        String(request.url),
+        (request.headers['x-forwarded-proto'] || 'http') + '://' + (request.headers['x-forwarded-host'] || 'localhost'),
       );
     } catch (e) {
       console.log(e);
@@ -43,6 +44,25 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
 
     if (request.method === 'GET' && url.pathname === '/health') {
       sendJson(response, 200, { status: 'OK' });
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname.startsWith('/reports/')) {
+      const id = url.pathname.split('/reports/')[1];
+      const report = await getReport(id);
+
+      if (!report?.context) {
+        response.writeHead(400).end('Report not found or invalid');
+      }
+
+      const output = await reRunWorkflow(report.context);
+
+      response.writeHead(202, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          url: logUrl(output.id, url).href,
+        }),
+      );
       return;
     }
 
@@ -79,7 +99,6 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
         return;
       }
 
-      const logUrl = (id: string) => new URL('/reports/' + id, url);
       const id = randomUUID();
       event.id = id;
 
@@ -90,17 +109,17 @@ export async function startDaemon(options: ServerOptions): Promise<ReturnType<ty
       if (outputs) {
         console.log({
           id: outputs.id,
-          logUrl: logUrl(outputs.id).href,
+          logUrl: logUrl(outputs.id, url).href,
           parent: !outputs.parentId
             ? null
             : {
                 id: outputs.parentId,
-                logUrl: outputs.parentId ? logUrl(outputs.parentId).href : undefined,
+                logUrl: outputs.parentId ? logUrl(outputs.parentId, url).href : undefined,
               },
           children:
             outputs.children?.map((childId) => ({
               id: childId,
-              logUrl: logUrl(childId).href,
+              logUrl: logUrl(childId, url).href,
             })) || [],
         });
       }
