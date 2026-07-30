@@ -41,12 +41,25 @@ export async function startServer(options: ServerOptions): Promise<ReturnType<ty
 
   async function onListReports(_req, response) {
     const list = await readdir(reportsPath);
-    const page = list.map((f) => {
+    const links = list.map((f) => {
       const id = f.replace('.json', '');
-      return `<div><a href="/reports/${id}">${id}</a></div>`;
+      return `<a class="block p-1 hover:bg-gray-300 w-full" href="/reports/${id}">${id}</a>`;
     });
 
-    response.writeHead(200, { 'content-type': 'text/html' }).end(page);
+    response.writeHead(200, { 'content-type': 'text/html' }).end(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 p-4">
+    ${links.join('\n')}
+</body>
+</html>
+`);
   }
 
   async function onReRun(req, response, { id }) {

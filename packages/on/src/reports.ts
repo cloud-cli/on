@@ -76,7 +76,7 @@ export async function formatReportAsHTML(report: Report | null): Promise<string>
 <style>.empty_hidden:empty { display: none !important; }</style>
 <script>
 async function rerun(id) {
-  document.body.innerHTML = '<div class="text-green-400">Running...</div>';
+  document.body.innerHTML = '<div class="text-green-400 p-2 bg-black border rounded shadow">Running...</div>';
   const res = await fetch('/reports/${report.id}', { method: 'POST' });
 
   if (res.ok) {
