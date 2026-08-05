@@ -1,89 +1,48 @@
-export interface ServerOptions {
-  port: number;
-  host: string;
-  configPath: string;
-  daemon: boolean;
-}
+import { Readable } from 'node:stream';
 
-export interface StepDefinition {
-  run: string;
-  args?: Array<Record<string, string>>;
-  workingDir?: string;
-}
-
-export interface StepOutput {
-  code: number;
-  cmd: string;
-  stdout: string;
-  stderr: string;
-}
-
-export interface EventOutput {
-  id: string;
-  parentId?: string;
-  children?: string[];
-  context: WorkflowContext | null;
-  error?: any;
-}
-
-export interface NormalizedStepDefinition extends Record<string, any> {
-  run: string;
-  args: Array<Record<string, string>>;
-  workingDir: string;
-  envDir: string;
-}
-
-export interface WorkflowDefinition {
-  runner: 'docker' | 'shell';
-  secrets?: string[];
-  mappings?: Record<string, string>;
+export interface StepContext {
+  jobId: string;
+  stepId: string;
+  workspacePath: string;
+  command: string;
   env?: Record<string, string>;
-  defaults?: any;
-  steps?: StepDefinition[] | string[];
-  if?: string[];
+  image?: string; // Optional: Docker container image
+  timeoutMs?: number;
 }
 
-export interface WorkflowContext {
-  source: string;
-  runner: string;
-  inputs: Record<string, unknown>;
-  outputs: Array<StepOutput>;
-  secrets: Record<string, string>;
-  workflow: WorkflowDefinition;
-  workflowId: string;
-  env: NodeJS.ProcessEnv;
-  workingDir: string;
-  steps: Array<NormalizedStepDefinition>;
+export interface StepResult {
+  exitCode: number;
+  durationMs: number;
+  error?: Error;
 }
 
-export interface OnConfig {
-  description?: string;
-  on: Record<string, WorkflowDefinition>;
+export interface StepExecutionHandle {
+  /**
+   * Promise that resolves when step completes or fails
+   */
+  done: Promise<StepResult>;
+
+  /**
+   * Safely kills the step process tree
+   */
+  cancel(): Promise<void>;
+
+  /**
+   * Path to where logs are being written on disk
+   */
+  logFilePath: string;
 }
 
-export type WorkflowEventInputs = Record<string, unknown>;
+export interface ExecutionDriver {
+  name: string;
 
-export interface WorkflowEvent {
-  id?: string;
-  source: string;
-  event: WorkflowEventInputs;
-}
+  /**
+   * Validates if host can run this driver (e.g., systemd is present)
+   */
+  isSupported(): Promise<boolean>;
 
-export interface Runner {
-  setup?(wf: WorkflowDefinition, inputs: WorkflowEventInputs): Promise<void>;
-  teardown?(wf: WorkflowDefinition, inputs: WorkflowEventInputs): Promise<void>;
-  run(
-    wf: WorkflowDefinition,
-    inputs: WorkflowEventInputs,
-    step: StepDefinition,
-    context: WorkflowContext,
-  ): Promise<StepOutput>;
-}
-
-export interface Report {
-  id: string;
-  parentId?: string;
-  children?: string[];
-  outputs: StepOutput[];
-  context: WorkflowContext | null;
+  /**
+   * Executes a step context
+   */
+  execute(ctx: StepContext): Promise<StepExecutionHandle>;
 }
