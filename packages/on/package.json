@@ -6,10 +6,11 @@
   "bin": {
     "on": "./dist/on.js"
   },
+  "exports": {
+    "./*": "./dist/*"
+  },
   "main": "./dist/on.js",
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "engines": {
     "node": ">=20"
   },
