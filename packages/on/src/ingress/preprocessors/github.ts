@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import type { PreprocessedWebhook, WebhookPreprocessor } from '../types.js';
 
 export class GitHubPreprocessor implements WebhookPreprocessor {
   name = 'github';
@@ -27,9 +28,9 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
         clone_url: body.repository?.clone_url,
         commit_sha: body.after || body.head_commit?.id,
         author: body.pusher?.name || body.sender?.login,
-        action: body.action // e.g., 'opened', 'synchronize' for PRs
+        action: body.action, // e.g., 'opened', 'synchronize' for PRs
       },
-      rawBody: body
+      rawBody: body,
     };
   }
 }

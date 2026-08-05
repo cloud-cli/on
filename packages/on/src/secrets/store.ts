@@ -7,7 +7,9 @@ export class SecretStore {
   /**
    * Initialize secrets from host environment or a specified .env file
    */
-  constructor(envFilePath?: string) {
+  constructor(private envFilePath?: string) {}
+
+  reload() {
     // 1. Load host process.env variables prefixed with SECRET_
     for (const [key, val] of Object.entries(process.env)) {
       if (key.startsWith('SECRET_') && val) {
@@ -17,8 +19,8 @@ export class SecretStore {
     }
 
     // 2. Override/add from .env file if present
-    if (envFilePath && fs.existsSync(envFilePath)) {
-      const parsed = dotenv.parse(fs.readFileSync(envFilePath));
+    if (this.envFilePath && fs.existsSync(this.envFilePath)) {
+      const parsed = dotenv.parse(fs.readFileSync(this.envFilePath));
       for (const [key, val] of Object.entries(parsed)) {
         this.secrets.set(key, val);
       }
@@ -37,6 +39,6 @@ export class SecretStore {
    * Returns a list of secret values to be redacted from logs
    */
   getSecretValuesForRedaction(): string[] {
-    return Array.from(this.secrets.values()).filter(v => v.length > 3); // Avoid masking tiny strings
+    return Array.from(this.secrets.values()).filter((v) => v.length > 3); // Avoid masking tiny strings
   }
 }

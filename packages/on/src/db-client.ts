@@ -1,6 +1,6 @@
 const baseURL = process.env.DATABASE_URL;
 
-let pragmas = [];
+let pragmas: string[] = [];
 
 async function query(method, statement, data, pragma = pragmas) {
   const req = await fetch(new URL('/query', baseURL), {

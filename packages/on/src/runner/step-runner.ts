@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseEnv } from 'node:util'; // Built-in Node.js parser!
+import { parseEnv } from 'node:util';
+import type { ExecutionDriver, StepContext } from '../types.js';
 
 export async function executeStepAndCollectState(
   stepCtx: StepContext,
