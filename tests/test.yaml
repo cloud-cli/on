@@ -1,0 +1,39 @@
+name: Test Integration Pipeline
+
+on:
+  github:
+    if: inputs.event == 'push' && inputs.branch == 'main'
+
+strategy:
+  matrix:
+    environment:
+      - 'staging'
+      - 'production'
+
+steps:
+  # Step 1: In-Process JS Step (eval:)
+  - id: init-timestamp
+    name: Generate Timestamp via JS
+    eval: |
+      JSON.stringify({
+        started_at: new Date().toISOString(),
+        target_env: env.MATRIX_ENVIRONMENT
+      })
+
+  # Step 2: Host Shell Script (run:) using exported values
+  - id: execute-build
+    name: Run Shell Task & Set Env
+    run: |
+      echo "Starting build for matrix env: $MATRIX_ENVIRONMENT"
+      echo "Timestamp output from step 1: ${{ steps.init-timestamp.outputs }}"
+
+      # Export environment variable for next step
+      echo "BUILD_STATUS=completed_successfully" >> $WORKFLOW_ENV
+      echo "artifact_name=app-${MATRIX_ENVIRONMENT}.tar.gz" >> $WORKFLOW_OUTPUT
+
+  # Step 3: Verification Step using exported environment
+  - id: verify
+    name: Verify Exported State
+    run: |
+      echo "Verified status: $BUILD_STATUS"
+      echo "Artifact generated: ${{ steps.execute-build.outputs.artifact_name }}"
