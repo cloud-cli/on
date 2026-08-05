@@ -5,7 +5,7 @@ import { parseEnv } from 'node:util'; // Built-in Node.js parser!
 export async function executeStepAndCollectState(
   stepCtx: StepContext,
   driver: ExecutionDriver,
-  currentWorkflowEnv: Record<string, string>
+  currentWorkflowEnv: Record<string, string>,
 ) {
   // 1. Create temporary state files for this step
   const envFilePath = path.join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.env`);
@@ -19,7 +19,7 @@ export async function executeStepAndCollectState(
     ...currentWorkflowEnv,
     ...stepCtx.env,
     WORKFLOW_ENV: envFilePath,
-    WORKFLOW_OUTPUT: outputFilePath
+    WORKFLOW_OUTPUT: outputFilePath,
   };
 
   // 3. Execute step
