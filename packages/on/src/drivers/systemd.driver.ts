@@ -10,11 +10,10 @@ export class SystemdDriver implements ExecutionDriver {
   name = 'systemd';
 
   /**
-   * Check if host machine is running systemd
+   * Check if systemd bus is available on Linux host
    */
   async isSupported(): Promise<boolean> {
     try {
-      // /run/systemd/system is created by systemd PID 1 on boot
       return fs.existsSync('/run/systemd/system');
     } catch {
       return false;
@@ -23,101 +22,140 @@ export class SystemdDriver implements ExecutionDriver {
 
   async execute(ctx: StepContext): Promise<StepExecutionHandle> {
     const startTime = Date.now();
+    let logFd: number | null = null;
+    let logFilePath = '';
 
-    // 1. Sanitize unit name for systemd (e.g. job-001-step-build)
+    // 1. Guard Log Directory & File Handle Creation
+    try {
+      const logDir = path.join(ctx.workspacePath, '.logs');
+      fs.mkdirSync(logDir, { recursive: true });
+      logFilePath = path.join(logDir, `step-${ctx.stepId}.log`);
+      logFd = fs.openSync(logFilePath, 'a');
+    } catch (err: any) {
+      return {
+        done: Promise.resolve({
+          exitCode: 1,
+          durationMs: 0,
+          error: new Error(`Failed to initialize step log file: ${err.message}`),
+        }),
+        cancel: async () => {},
+        logFilePath: '',
+      };
+    }
+
+    // 2. Format Sanitized Systemd Unit Name
     const unitName = `workflow-${ctx.jobId}-${ctx.stepId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
 
-    // 2. Prepare Log File Descriptor
-    const logDir = path.join(ctx.workspacePath, '.logs');
-    fs.mkdirSync(logDir, { recursive: true });
-    const logFilePath = path.join(logDir, `step-${ctx.stepId}.log`);
-    const logFd = fs.openSync(logFilePath, 'a');
-
-    // 3. Build systemd-run flags
+    // 3. Build systemd-run Flags
     const systemdFlags: string[] = [
       `--unit=${unitName}`,
-      '--wait',                             // Block until unit completes
-      '--pipe',                             // Stream stdio directly
-      `--working-directory=${ctx.workspacePath}`
+      '--wait', // Block until unit completes
+      '--pipe', // Stream stdio directly to file handle
+      `--working-directory=${ctx.workspacePath}`,
     ];
 
-    // Inject Environment Variables into systemd unit
     if (ctx.env) {
       for (const [key, val] of Object.entries(ctx.env)) {
         systemdFlags.push(`--setenv=${key}=${val}`);
       }
     }
 
-    // Apply memory/timeout limits if provided
     if (ctx.timeoutMs) {
       const timeoutSec = Math.ceil(ctx.timeoutMs / 1000);
       systemdFlags.push(`--property=RuntimeMaxSec=${timeoutSec}`);
     }
 
-    // 4. Construct Command (Host Shell vs Docker)
+    // 4. Construct Command
     let commandArgs: string[];
 
     if (ctx.image) {
       commandArgs = [
-        'docker', 'run', '--rm', '--init',
-        `--name=${unitName}`,               // Match docker container name for easy cancellation
-        '-v', `${ctx.workspacePath}:/workspace`,
-        '-w', '/workspace',
+        'docker',
+        'run',
+        '--rm',
+        '--init',
+        `--name=${unitName}`, // Predictable container name for stopping
+        '-v',
+        `${ctx.workspacePath}:/workspace`,
+        '-w',
+        '/workspace',
         ctx.image,
-        'sh', '-c', ctx.command
+        'sh',
+        '-c',
+        ctx.command,
       ];
     } else {
       commandArgs = ['sh', '-c', ctx.command];
     }
 
     // 5. Spawn systemd-run
-    const child = spawn('systemd-run', [...systemdFlags, '--', ...commandArgs], {
-      stdio: [
-        'ignore', // stdin
-        logFd,    // stdout -> OS File Descriptor
-        logFd     // stderr -> OS File Descriptor
-      ]
-    });
+    let child;
+    try {
+      child = spawn('systemd-run', [...systemdFlags, '--', ...commandArgs], {
+        stdio: ['ignore', logFd, logFd],
+      });
+    } catch (spawnErr: any) {
+      try {
+        if (logFd !== null) fs.closeSync(logFd);
+      } catch {}
+      return {
+        done: Promise.resolve({
+          exitCode: 1,
+          durationMs: Date.now() - startTime,
+          error: new Error(`Failed to spawn systemd-run: ${spawnErr.message}`),
+        }),
+        cancel: async () => {},
+        logFilePath,
+      };
+    }
 
     let isCancelled = false;
 
-    // 6. Handle Process Completion
+    // 6. Safe Promise Resolution & File Handle Cleanup
     const done = new Promise<StepResult>((resolve) => {
-      child.on('close', (code) => {
-        try { fs.closeSync(logFd); } catch {}
+      let isResolved = false;
 
-        resolve({
+      const safeResolve = (result: StepResult) => {
+        if (isResolved) return; // Prevent double-resolution
+        isResolved = true;
+
+        try {
+          if (logFd !== null) fs.closeSync(logFd);
+        } catch {}
+
+        resolve(result);
+      };
+
+      child.on('close', (code) => {
+        safeResolve({
           exitCode: code ?? (isCancelled ? 130 : 1),
           durationMs: Date.now() - startTime,
-          error: isCancelled ? new Error('Step cancelled by user/systemd') : undefined
+          error: isCancelled ? new Error('Step cancelled by user or systemd timeout') : undefined,
         });
       });
 
       child.on('error', (err) => {
-        try { fs.closeSync(logFd); } catch {}
-
-        resolve({
+        safeResolve({
           exitCode: 1,
           durationMs: Date.now() - startTime,
-          error: err
+          error: err,
         });
       });
     });
 
-    // 7. Systemd-Native Cancellation
+    // 7. Systemd / Docker Graceful Cancellation
     const cancel = async (): Promise<void> => {
       isCancelled = true;
-
       try {
-        // If Docker was running, stop container gracefully first
         if (ctx.image) {
+          // Stop docker container gracefully if running
           await execAsync(`docker stop -t 2 ${unitName}`).catch(() => {});
         }
 
-        // Stop the transient unit (sends SIGTERM, then SIGKILL to entire cgroup)
+        // Stop systemd transient unit (sends SIGTERM -> SIGKILL to Cgroup tree)
         await execAsync(`systemctl stop ${unitName}.service`).catch(() => {});
       } catch {
-        // Unit might already be dead
+        // Unit or container may already be stopped
       }
     };
 
