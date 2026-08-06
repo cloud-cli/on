@@ -13,9 +13,9 @@
   },
   "scripts": {
     "build": "tsc",
-    "start": "node dist/cli.js start",
-    "dev": "tsx src/cli.ts start",
-    "validate": "tsx src/cli.ts validate"
+    "start": "node dist/index.js start",
+    "dev": "tsx src/index.ts start",
+    "validate": "tsx src/index.ts validate"
   },
   "dependencies": {
     "acorn": "^8.17.0",
