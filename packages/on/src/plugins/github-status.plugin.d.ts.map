@@ -1,0 +1,1 @@
+{"version":3,"file":"github-status.plugin.d.ts","sourceRoot":"","sources":["github-status.plugin.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,cAAc,EAAE,eAAe,EAAE,MAAM,YAAY,CAAC;AAE7D,qBAAa,kBAAmB,YAAW,cAAc;IACvD,IAAI,SAA0B;IAExB,eAAe,CAAC,EAAE,EAAE,eAAe,iBAIxC;IAEK,gBAAgB,CAAC,EAAE,EAAE,eAAe,EAAE,MAAM,EAAE,SAAS,GAAG,QAAQ,iBAOvE;YAEa,YAAY;CAI3B"}

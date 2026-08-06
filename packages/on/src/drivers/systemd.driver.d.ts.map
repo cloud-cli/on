@@ -1,0 +1,1 @@
+{"version":3,"file":"systemd.driver.d.ts","sourceRoot":"","sources":["systemd.driver.ts"],"names":[],"mappings":"AAIA,OAAO,EAAE,eAAe,EAAE,WAAW,EAAE,mBAAmB,EAAc,MAAM,aAAa,CAAC;AAI5F,qBAAa,aAAc,YAAW,eAAe;IACnD,IAAI,SAAa;IAEjB;;OAEG;IACG,WAAW,IAAI,OAAO,CAAC,OAAO,CAAC,CAMpC;IAEK,OAAO,CAAC,GAAG,EAAE,WAAW,GAAG,OAAO,CAAC,mBAAmB,CAAC,CA4I5D;CACF"}
