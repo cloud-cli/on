@@ -242,7 +242,7 @@ async function executeRunStep(params: {
 
   // Periodically poll SQLite for mid-run job cancellation signals
   const cancelCheckInterval = setInterval(async () => {
-    if (await queue.isCancelled(jobId)) {
+    if (await queue.isCancelled(+jobId)) {
       console.log(`[${workerId}] 🛑 Job #${jobId} was cancelled! Halting step execution.`);
       isCancelled = true;
       clearInterval(cancelCheckInterval);

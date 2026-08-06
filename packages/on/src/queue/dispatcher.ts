@@ -93,7 +93,7 @@ export class QueueManager {
   /**
    * Marks a job as completed or failed
    */
-  async finishJob(jobId: number, status: 'success' | 'failed') {
+  async finishJob(jobId: string | number, status: string) {
     await db.run(
       `
       UPDATE jobs
