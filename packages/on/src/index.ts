@@ -15,11 +15,11 @@ import { RunnerConfig, resolveConfig } from './config.js';
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
-    config: { type: 'string', short: 'c', default: './runner.config.mjs' },
-    database: { type: 'string', short: 'd', default: process.env.DATABASE_URL },
-    workflows: { type: 'string', short: 'w', default: '.on/' },
-    port: { type: 'string', short: 'p', default: process.env.PORT || 11235 },
-    workers: { type: 'string', short: 'k', default: '5' },
+    config: { type: 'string', short: 'c', default: process.env.RUNNER_CONFIG_PATH || './runner.config.mjs' },
+    database: { type: 'string', short: 'd', default: process.env.RUNNER_DATABASE_URL },
+    workflows: { type: 'string', short: 'w', default: process.env.RUNNER_WORKFLOWS_PATH || '.on/' },
+    port: { type: 'string', short: 'p', default: String(process.env.PORT || '11235') },
+    workers: { type: 'string', short: 'k', default: process.env.RUNNER_WORKERS || '5' },
     help: { type: 'boolean', short: 'h' },
   },
 });
@@ -39,11 +39,11 @@ Commands:
   validate        Parses and validates workflow YAML files without running
 
 Options:
-  -c, --config     Path to runner.config.mjs (default: ./runner.config.mjs)
-  -d, --database   SQLite Database URL
-  -w, --workflows  Path to where your workflows are defined (default: .on/)
-  -p, --port       Port for Webhook Ingress Server
-  -k, --workers    Number of worker thread loops to spawn
+  -c, --config     Path to runner.config.mjs (default: ./runner.config.mjs, env: RUNNER_CONFIG_PATH)
+  -d, --database   SQLite Database URL (env: RUNNER_DATABASE_URL)
+  -w, --workflows  Path to where your workflows are defined (default: .on/, env: RUNNER_WORKFLOWS_PATH)
+  -p, --port       Port for Webhook Ingress Server (default: 11235, env: PORT)
+  -k, --workers    Number of worker thread loops to spawn (default: 5, env: RUNNER_WORKERS)
   -h, --help       Show this help message
   `);
 }
@@ -55,7 +55,7 @@ if (values.help) {
 
 async function loadConfig(): Promise<RunnerConfig | null> {
   const cliOverrides = {
-    port: values.port ? Number(values.port) : undefined,
+    port: Number(values.port),
     sqliteUrl: values.database,
     workflowsDir: values.workflows,
     workersCount: values.workers ? Number(values.workers) : undefined,
