@@ -17,7 +17,7 @@ export class QueueManager {
    * Initializes the database schema.
    */
   async init() {
-    await this.db.run(`
+    await db.run(`
       CREATE TABLE IF NOT EXISTS jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         workflow_id TEXT NOT NULL,
@@ -56,7 +56,7 @@ export class QueueManager {
       INSERT INTO jobs (workflow_id, concurrency_key, payload)
       VALUES (?, ?, ?);
     `,
-      [workflowId, concurrencyKey || null, JSON.stringify(payload)],
+      [workflowId, concurrencyKey || '', JSON.stringify(payload)],
     );
 
     return res;
@@ -122,7 +122,7 @@ export class QueueManager {
    * Save complete execution report JSON to DB
    */
   async saveReport(jobId: string | number, report: any): Promise<void> {
-    await this.db.run(`UPDATE jobs SET report = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [
+    await db.run(`UPDATE jobs SET report = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [
       JSON.stringify(report),
       jobId,
     ]);
@@ -132,14 +132,14 @@ export class QueueManager {
    * Fetch job details + report by ID
    */
   async getJob(jobId: string | number): Promise<any> {
-    return this.db.get(`SELECT * FROM jobs WHERE id = ?`, [jobId]);
+    return db.get(`SELECT * FROM jobs WHERE id = ?`, [jobId]);
   }
 
   /**
    * List recent jobs for dashboard status monitoring
    */
   async listJobs(limit = 50): Promise<any[]> {
-    return this.db.all(
+    return db.all(
       `SELECT id, workflow_id, status, concurrency_key, worker_id, created_at, updated_at, report
        FROM jobs
        ORDER BY id DESC

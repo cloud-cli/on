@@ -45,7 +45,7 @@ export class YamlLoader {
         });
       }
     } catch (err: any) {
-      console.error(`❌ Error parsing workflow '${file}':`, err.message);
+      console.error(`❌ Error parsing workflow '${path}':`, err.message);
       return [];
     }
 

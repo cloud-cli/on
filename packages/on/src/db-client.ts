@@ -2,7 +2,12 @@ const baseURL = process.env.DATABASE_URL;
 
 let pragmas: string[] = [];
 
-async function query(method: 'get' | 'run' | 'all', statement: string, data?: string[], pragma = pragmas) {
+async function query(
+  method: 'get' | 'run' | 'all',
+  statement: string,
+  data?: Array<string | number | null>,
+  pragma = pragmas,
+) {
   let req;
   let error;
   let retries = 1;

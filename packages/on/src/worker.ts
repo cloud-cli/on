@@ -83,7 +83,7 @@ async function processJob(
       config,
     });
 
-    stepReports.push(stepResult.report);
+    stepReports.push(stepResult.report as StepReport);
 
     if (stepResult.isCancelled) {
       isCancelled = true;
