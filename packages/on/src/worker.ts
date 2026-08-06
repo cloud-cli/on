@@ -4,6 +4,10 @@ import { QueueManager } from './queue/dispatcher.js';
 import { SecretStore } from './secrets/store.js';
 import { StepContext } from './types.js';
 
+export function startWorkers(count, queue: QueueManager, secrets: SecretStore, config: any) {
+  return Array(count).fill((_, i) => startWorkerLoop(`worker-${i}`, queue, secrets, config));
+}
+
 export async function startWorkerLoop(workerId: string, queue: QueueManager, secrets: SecretStore, config: any) {
   const driver = await resolveDriver();
   console.log(`[${workerId}] 🚀 Worker started. Driver: ${driver.name}`);

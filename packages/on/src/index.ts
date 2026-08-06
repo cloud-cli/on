@@ -1,87 +1,133 @@
+#!/usr/bin/env node
+
+import { parseArgs } from 'node:util';
 import path from 'node:path';
-import fs from 'node:fs';
+import fs, { statSync } from 'node:fs';
 import { QueueManager } from './queue/dispatcher.js';
 import { SecretStore } from './secrets/store.js';
-import { WebhookServer, type WorkflowDefinition } from './ingress/server.js';
+import { WebhookServer } from './ingress/server.js';
 import { WorkflowIncludeResolver } from './parser/include-resolver.js';
 import { expandMatrix } from './parser/matrix-expander.js';
-import { startWorkerLoop } from './worker.js';
+import { startWorkers } from './worker.js';
+import { YamlLoader } from './parser/loader.js';
 
-async function bootstrap() {
-  console.log('🚀 Bootstrapping Workflow Runner Engine...\n');
+const { values, positionals } = parseArgs({
+  allowPositionals: true,
+  options: {
+    config: { type: 'string', short: 'c', default: './runner.config.mjs' },
+    database: { type: 'string', short: 'd', default: process.env.DATABASE_URL },
+    workflows: { type: 'string', short: 'w', default: '.on/' },
+    port: { type: 'string', short: 'p', default: process.env.PORT },
+    workers: { type: 'string', short: 'k', default: '5' },
+    help: { type: 'boolean', short: 'h' },
+  },
+});
 
-  // 1. Load Host Secrets & Config
-  const secrets = new SecretStore('./.env');
-  const configPath = path.resolve('./runner.config.mjs');
+const command = positionals[0] || 'start';
 
+function printHelp() {
+  console.log(`
+🏃 Runner CLI 🏃
+
+Usage:
+  on <command> [options]
+
+Commands:
+  start       Runs both Webhook Ingress Server and Workers (Default)
+  server      Runs Webhook Ingress Server only (API Gateway mode)
+  worker      Runs Worker Polling loops only (Scalable Worker mode)
+  validate    Parses and validates workflow YAML files without running
+
+Options:
+  -c, --config     Path to runner.config.mjs (default: ./runner.config.mjs)
+  -d, --database   SQLite Database URL
+  -w, --workflows  Path to where your workflows are defined (default: .on/)
+  -p, --port       Port for Webhook Ingress Server
+  -k, --workers    Number of worker thread loops to spawn
+  -h, --help       Show this help message
+  `);
+}
+
+if (values.help) {
+  printHelp();
+  process.exit(0);
+}
+
+async function loadConfig() {
+  const configPath = path.resolve(values.config);
   let config = {
-    port: 3000,
-    adminToken: 'super-secret-admin-token',
-    sqliteUrl: 'https://server.example.com',
-    workflowsDir: './workflows',
-    workersCount: 2,
+    port: Number(values.port),
+    adminToken: process.env.RUNNER_ADMIN_SECRET || '',
+    sqliteUrl: values.database,
+    workflowsDir: values.workflows,
+    workersCount: Number(values.workers),
+    storagePath: process.env.RUNNER_TMP || '/tmp/workspaces',
   };
 
   if (fs.existsSync(configPath)) {
-    const loadedConfig = (await import(configPath)).default;
-    config = { ...config, ...loadedConfig };
-  }
-
-  // 2. Initialize Queue Manager & SQLite Schema
-  const queue = new QueueManager('ingress-node');
-  await queue.init();
-  console.log('✅ SQLite Queue initialized.');
-
-  // 3. Load, Resolve & Expand Workflow YAML Files
-  const resolver = new WorkflowIncludeResolver(config.workflowsDir);
-  const rawWorkflows: WorkflowDefinition[] = [];
-
-  const workflowFiles = fs.readdirSync(config.workflowsDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
-
-  for (const file of workflowFiles) {
-    try {
-      // Resolve includes & partials
-      const resolved = resolver.resolve(file);
-
-      // Expand matrix strategy into concrete job specs
-      const expandedWorkflows = expandMatrix(resolved);
-
-      for (const wf of expandedWorkflows) {
-        rawWorkflows.push({
-          id: wf.id || wf.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-          name: wf.name,
-          on: {
-            provider: Object.keys(wf.on || {})[0] || 'generic',
-            if: wf.on?.[Object.keys(wf.on || {})[0]]?.if,
-          },
-          concurrency: wf.concurrency,
-          steps: wf.steps,
-        });
-      }
-    } catch (err: any) {
-      console.error(`❌ Error parsing workflow '${file}':`, err.message);
+    if (false === statSync(configPath).isFile()) {
+      console.error(`Config path ${configPath} is not a file!`);
+    } else {
+      const userConfig = (await import(configPath)).default;
+      config = { ...config, ...userConfig };
     }
   }
 
-  console.log(`📋 Loaded ${rawWorkflows.length} active workflow definitions.`);
-
-  // 4. Start HTTP Webhook Ingress Server
-  const server = new WebhookServer({
-    queue,
-    secrets,
-    adminToken: config.adminToken,
-    workflows: rawWorkflows,
-  });
-
-  await server.listen(config.port);
-
-  // 5. Spin up Worker Polling Loops
-  console.log(`⚙️  Spinning up ${config.workersCount} worker thread loops...`);
-  for (let i = 1; i <= config.workersCount; i++) {
-    startWorkerLoop(`worker-${i}`, queue, secrets, config);
-  }
-
-  console.log('\n✨ Workflow Engine is LIVE and ready for incoming webhooks!\n');
+  return config;
 }
 
-bootstrap().catch(console.error);
+async function main() {
+  const config = await loadConfig();
+  const secrets = new SecretStore('./.env');
+  const queue = new QueueManager('cli-node');
+  await queue.init();
+
+  switch (command) {
+    case 'validate': {
+      console.log('🔍 Validating Workflows in:', config.workflowsDir);
+      const resolver = new WorkflowIncludeResolver(config.workflowsDir);
+      const files = fs.readdirSync(config.workflowsDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
+
+      for (const file of files) {
+        const resolved = resolver.resolve(file);
+        const expanded = expandMatrix(resolved);
+        console.log(`  ✅ ${file} -> Valid! (${expanded.length} job matrix variant(s) generated)`);
+      }
+      break;
+    }
+
+    case 'server': {
+      console.log('🌐 Starting Ingress Gateway mode...');
+      const server = new WebhookServer({
+        queue,
+        secrets,
+        adminToken: config.adminToken,
+        workflows: [],
+      });
+      await server.listen(config.port);
+      break;
+    }
+
+    case 'worker': {
+      console.log(`⚙️ Starting ${config.workersCount} Worker Loop(s)...`);
+      startWorkers(config.workersCount, queue, secrets, config);
+      break;
+    }
+
+    case 'start': {
+      console.log('🚀 Starting Full Runner Engine (Ingress + Workers)...');
+
+      const workflows = YamlLoader.from(config.workflowsDir);
+      WebhookServer.withPort({ queue, secrets, adminToken: config.adminToken, workflows, port: config.port });
+      startWorkers(config.workersCount, queue, secrets, config);
+      break;
+    }
+
+    default:
+      console.error(`❌ Unknown command: '${command}'`);
+      printHelp();
+      process.exit(1);
+  }
+}
+
+main().catch(console.error);

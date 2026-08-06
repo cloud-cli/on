@@ -4,21 +4,7 @@ import { QueueManager } from '../queue/dispatcher.js';
 import { SecretStore } from '../secrets/store.js';
 import { SafeExpressionEvaluator } from '../evaluator/safe-eval.js';
 import { GitHubPreprocessor } from './preprocessors/github.js';
-import { WebhookPreprocessor } from './types.js';
-
-export interface WorkflowDefinition {
-  id: string;
-  name: string;
-  on: {
-    provider: string; // 'github', 'generic', etc.
-    if?: string; // Expression: "inputs.event == 'push' && inputs.branch == 'main'"
-  };
-  concurrency?: {
-    group: string;
-    cancelInProgress?: boolean;
-  };
-  steps: any[];
-}
+import { WebhookPreprocessor, WebhookServerOptions, WorkflowDefinition } from './types.js';
 
 export class WebhookServer {
   private server: http.Server;
@@ -28,12 +14,12 @@ export class WebhookServer {
   private secrets: SecretStore;
   private adminToken: string;
 
-  constructor(options: {
-    queue: QueueManager;
-    secrets: SecretStore;
-    adminToken: string;
-    workflows: WorkflowDefinition[];
-  }) {
+  static withPort(options: WebhookServerOptions & { port: number }) {
+    const { port, ...o } = options;
+    return new WebhookServer(o).listen(port);
+  }
+
+  constructor(options: WebhookServerOptions) {
     this.queue = options.queue;
     this.secrets = options.secrets;
     this.adminToken = options.adminToken;

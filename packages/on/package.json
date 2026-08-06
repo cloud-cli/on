@@ -7,9 +7,9 @@
     "./*": "./dist/*"
   },
   "files": ["dist"],
-  "main": "dist/index.js",
+  "main": "dist/on.js",
   "bin": {
-    "on": "dist/cli.js"
+    "on": "dist/on.js"
   },
   "scripts": {
     "build": "tsc",
