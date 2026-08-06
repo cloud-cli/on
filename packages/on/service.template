@@ -1,0 +1,18 @@
+[Unit]
+Description=Cloud CLI Runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env npx -y @cloud-cli/on 
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+# Environment=RUNNER_CONFIG_PATH=
+#  Environment=RUNNER_DATABASE_URL=
+#  Environment=RUNNER_WORKFLOWS_PATH=
+#  Environment=PORT=
+#  Environment=RUNNER_WORKERS=
+
+[Install]
+WantedBy=multi-user.target
