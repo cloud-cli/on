@@ -5,6 +5,7 @@ import { SecretStore } from '../secrets/store.js';
 import { SafeExpressionEvaluator } from '../evaluator/safe-eval.js';
 import { GitHubPreprocessor } from './preprocessors/github.js';
 import { WebhookPreprocessor, WebhookServerOptions, WorkflowDefinition } from './types.js';
+import { HtmlReporter } from '../reporters/html.reporter.js';
 
 export class WebhookServer {
   private server: http.Server;
@@ -123,7 +124,7 @@ export class WebhookServer {
         // Evaluate workflow trigger condition if defined (e.g. `if: inputs.event == 'push'`)
         if (workflow.on.if) {
           try {
-            const shouldRun = SafeExpressionEvaluator.evaluate(workflow.on.if, { inputs });
+            const shouldRun = SafeExpressionEvaluator.evaluateCondition(workflow.on.if, { inputs });
             if (!shouldRun) continue;
           } catch (evalErr: any) {
             console.error(`⚠️ Condition evaluation error in workflow [${workflow.id}]:`, evalErr.message);
@@ -134,7 +135,7 @@ export class WebhookServer {
         // 4. Resolve Concurrency Key (if specified)
         let concurrencyKey: string | undefined;
         if (workflow.concurrency?.group) {
-          concurrencyKey = SafeExpressionEvaluator.evaluate(workflow.concurrency.group, { inputs });
+          concurrencyKey = await SafeExpressionEvaluator.evaluateValue(workflow.concurrency.group, { inputs });
         }
 
         // 5. Enqueue Job to SQLite
