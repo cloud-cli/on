@@ -1,3 +1,6 @@
+import { QueueManager } from '../queue/dispatcher.js';
+import { SecretStore } from '../secrets/store.js';
+
 export interface PreprocessedWebhook {
   isValid: boolean;
   event: string;
@@ -30,4 +33,3 @@ export interface WebhookServerOptions {
   adminToken: string;
   workflows: WorkflowDefinition[];
 }
-
