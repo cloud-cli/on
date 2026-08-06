@@ -17,21 +17,19 @@ export class QueueManager {
    * Initializes the database schema.
    */
   async init() {
-    await db.run(
-      `
+    await this.db.run(`
       CREATE TABLE IF NOT EXISTS jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         workflow_id TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
         concurrency_key TEXT,
-        status TEXT DEFAULT 'pending',
         worker_id TEXT,
-        payload JSON,
+        report TEXT, -- Stores WorkflowExecutionReport JSON
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        started_at DATETIME,
-        finished_at DATETIME
-      );
-    `,
-    );
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
     await this.clearStaleJobs();
   }
@@ -117,6 +115,36 @@ export class QueueManager {
   async clearStaleJobs() {
     return await db.run(
       `UPDATE jobs SET status = 'pending', worker_id = NULL WHERE status = 'running' AND started_at < datetime('now', '-1 hour');`,
+    );
+  }
+
+  /**
+   * Save complete execution report JSON to DB
+   */
+  async saveReport(jobId: string | number, report: any): Promise<void> {
+    await this.db.run(`UPDATE jobs SET report = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [
+      JSON.stringify(report),
+      jobId,
+    ]);
+  }
+
+  /**
+   * Fetch job details + report by ID
+   */
+  async getJob(jobId: string | number): Promise<any> {
+    return this.db.get(`SELECT * FROM jobs WHERE id = ?`, [jobId]);
+  }
+
+  /**
+   * List recent jobs for dashboard status monitoring
+   */
+  async listJobs(limit = 50): Promise<any[]> {
+    return this.db.all(
+      `SELECT id, workflow_id, status, concurrency_key, worker_id, created_at, updated_at, report
+       FROM jobs
+       ORDER BY id DESC
+       LIMIT ?`,
+      [limit],
     );
   }
 }

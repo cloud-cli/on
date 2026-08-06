@@ -10,6 +10,7 @@ import { WorkflowIncludeResolver } from './parser/include-resolver.js';
 import { expandMatrix } from './parser/matrix-expander.js';
 import { startWorkers } from './worker.js';
 import { YamlLoader } from './parser/yaml-loader.js';
+import { RunnerConfig, resolveConfig } from './config.js';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -17,7 +18,7 @@ const { values, positionals } = parseArgs({
     config: { type: 'string', short: 'c', default: './runner.config.mjs' },
     database: { type: 'string', short: 'd', default: process.env.DATABASE_URL },
     workflows: { type: 'string', short: 'w', default: '.on/' },
-    port: { type: 'string', short: 'p', default: process.env.PORT },
+    port: { type: 'string', short: 'p', default: process.env.PORT || 11235 },
     workers: { type: 'string', short: 'k', default: '5' },
     help: { type: 'boolean', short: 'h' },
   },
@@ -33,7 +34,7 @@ Usage:
 
 Commands:
   start           Runs both Webhook Ingress Server and Workers (Default)
-  statt-server    Runs Webhook Ingress Server only (API Gateway mode)
+  start-server    Runs Webhook Ingress Server only (API Gateway mode)
   start-workers   Runs Worker Polling loops only (Scalable Worker mode)
   validate        Parses and validates workflow YAML files without running
 
@@ -52,32 +53,33 @@ if (values.help) {
   process.exit(0);
 }
 
-async function loadConfig() {
-  const configPath = path.resolve(values.config);
-  let config = {
-    port: Number(values.port),
-    adminToken: process.env.RUNNER_ADMIN_SECRET || '',
+async function loadConfig(): Promise<RunnerConfig | null> {
+  const cliOverrides = {
+    port: values.port ? Number(values.port) : undefined,
     sqliteUrl: values.database,
     workflowsDir: values.workflows,
-    workersCount: Number(values.workers),
-    storagePath: process.env.RUNNER_TMP || '/tmp/workspaces',
+    workersCount: values.workers ? Number(values.workers) : undefined,
   };
 
-  if (fs.existsSync(configPath)) {
-    if (false === statSync(configPath).isFile()) {
-      console.error(`Config path ${configPath} is not a file!`);
-    } else {
-      const userConfig = (await import(configPath)).default;
-      config = { ...config, ...userConfig };
-    }
+  let userFileConfig = {};
+  const configPath = path.resolve(values.config);
+
+  if (fs.existsSync(configPath) && statSync(configPath).isFile()) {
+    userFileConfig = (await import(configPath)).default || {};
   }
 
-  if (!fs.existsSync(config.workflowsDir)) {
-    console.warn(`⚠️ Warning: Workflows directory '${config.workflowsDir}' not found.`);
+  // Merge CLI flags over file config over defaults
+  const finalConfig = resolveConfig({
+    ...userFileConfig,
+    ...cliOverrides,
+  });
+
+  if (!fs.existsSync(finalConfig.workflowsDir)) {
+    console.warn(`⚠️ Warning: Workflows directory '${finalConfig.workflowsDir}' not found.`);
     return null;
   }
 
-  return config;
+  return finalConfig;
 }
 
 function onValidate(config) {
@@ -120,6 +122,10 @@ async function init() {
 async function main() {
   const command = positionals[0] || 'start';
   const config = await loadConfig();
+
+  if (!config) {
+    process.exit(1);
+  }
 
   switch (command) {
     case 'validate': {
