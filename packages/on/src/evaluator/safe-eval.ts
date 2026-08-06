@@ -5,10 +5,8 @@ export const BUILTIN_HELPERS: Record<string, Function | object> = {
   String: (val: any) => String(val ?? ''),
   Number: (val: any) => Number(val),
   Boolean: (val: any) => Boolean(val),
-  JSON: {
-    parse: (str: string) => JSON.parse(str),
-    stringify: (obj: any) => JSON.stringify(obj, null, 2),
-  },
+  json_parse: (str: string) => JSON.parse(str),
+  json_stringify: (obj: any) => JSON.stringify(obj, null, 2),
 };
 
 export class SafeExpressionEvaluator {
@@ -22,16 +20,18 @@ export class SafeExpressionEvaluator {
       return expression;
     }
 
+    expression = expression.trim();
+
     // Strip leading/trailing ${{ ... }} wrappers if present
     const cleanExpr =
-      expression.trim().startsWith('${{') && expression.trim().endsWith('}}')
-        ? expression.trim().slice(4, -2).trim()
-        : expression.trim();
+      expression.startsWith('${{') && expression.endsWith('}}') ? expression.slice(3, -2).trim() : expression;
 
-    const ast = acorn.parseExpressionAt(cleanExpr, 0, {
-      ecmaVersion: 2020,
-      allowAwaitOutsideFunction: false,
-    });
+    let ast: any;
+    try {
+      ast = acorn.parseExpressionAt(cleanExpr, 0, { ecmaVersion: 2020, allowAwaitOutsideFunction: false });
+    } catch (parseErr: any) {
+      throw new Error(`Invalid expression syntax in '${cleanExpr}': ${parseErr.message}`);
+    }
 
     return this.evalNodeAsync(ast, context);
   }

@@ -17,7 +17,7 @@ export class QueueManager {
    * Initializes the database schema.
    */
   async init() {
-    return void await db.run(
+    await db.run(
       `
       CREATE TABLE IF NOT EXISTS jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,8 +31,9 @@ export class QueueManager {
         finished_at DATETIME
       );
     `,
-      [],
     );
+
+    await this.clearStaleJobs();
   }
 
   /**
@@ -46,7 +47,7 @@ export class QueueManager {
         `
         UPDATE jobs
         SET status = 'cancelling'
-        WHERE concurrency_key = ? AND status IN ('pending', 'running')
+        WHERE concurrency_key = ? AND status IN ('pending', 'running');
       `,
         [concurrencyKey],
       );
@@ -55,7 +56,7 @@ export class QueueManager {
     const res = await db.run(
       `
       INSERT INTO jobs (workflow_id, concurrency_key, payload)
-      VALUES (?, ?, ?)
+      VALUES (?, ?, ?);
     `,
       [workflowId, concurrencyKey || null, JSON.stringify(payload)],
     );
@@ -99,7 +100,7 @@ export class QueueManager {
       `
       UPDATE jobs
       SET status = ?, finished_at = CURRENT_TIMESTAMP
-      WHERE id = ?
+      WHERE id = ?;
     `,
       [status, jobId],
     );
@@ -109,7 +110,13 @@ export class QueueManager {
    * Checks if the current job has been marked for cancellation by another event
    */
   async isCancelled(jobId: number): Promise<boolean> {
-    const job = await db.get(`SELECT status FROM jobs WHERE id = ?`, [jobId]);
+    const job = await db.get(`SELECT status FROM jobs WHERE id = ?;`, [jobId]);
     return job?.status === 'cancelling';
+  }
+
+  async clearStaleJobs() {
+    return await db.run(
+      `UPDATE jobs SET status = 'pending', worker_id = NULL WHERE status = 'running' AND started_at < datetime('now', '-1 hour');`,
+    );
   }
 }

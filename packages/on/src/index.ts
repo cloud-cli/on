@@ -9,7 +9,7 @@ import { WebhookServer } from './ingress/server.js';
 import { WorkflowIncludeResolver } from './parser/include-resolver.js';
 import { expandMatrix } from './parser/matrix-expander.js';
 import { startWorkers } from './worker.js';
-import { YamlLoader } from './parser/loader.js';
+import { YamlLoader } from './parser/yaml-loader.js';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -70,6 +70,11 @@ async function loadConfig() {
       const userConfig = (await import(configPath)).default;
       config = { ...config, ...userConfig };
     }
+  }
+
+  if (!fs.existsSync(config.workflowsDir)) {
+    console.warn(`⚠️ Warning: Workflows directory '${config.workflowsDir}' not found.`);
+    return null;
   }
 
   return config;
@@ -148,5 +153,14 @@ async function main() {
       process.exit(1);
   }
 }
+
+const cleanupAndExit = async (signal: string) => {
+  console.log(`\n🛑 Received ${signal}. Gracefully shutting down workers...`);
+  // Cancel active jobs / close DB connections here
+  process.exit(0);
+};
+
+process.on('SIGINT', () => cleanupAndExit('SIGINT'));
+process.on('SIGTERM', () => cleanupAndExit('SIGTERM'));
 
 main().catch(console.error);

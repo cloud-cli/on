@@ -59,26 +59,32 @@ export class WebhookServer {
    */
   private async handleWebhook(provider: string, req: http.IncomingMessage, res: http.ServerResponse) {
     try {
-      // 1. Buffer raw body chunks (CRITICAL: Do not convert to JSON yet, or HMAC verification will fail!)
+      // 5MB
+      const MAX_PAYLOAD_SIZE = 5 * 1024 * 1024;
       const chunks: Buffer[] = [];
+      let receivedBytes = 0;
+
       for await (const chunk of req) {
+        receivedBytes += chunk.length;
+        if (receivedBytes > MAX_PAYLOAD_SIZE) {
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Payload size exceeds limit' }));
+        }
+
         chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
       }
+
       const rawBuffer = Buffer.concat(chunks);
 
       let body: any = {};
       try {
         body = JSON.parse(rawBuffer.toString('utf-8'));
-      } catch {
-        // Body might be plain text or form-urlencoded
-      }
+      } catch {}
 
-      // Convert headers to lower-case key-value pairs
       const headers = Object.fromEntries(
         Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), Array.isArray(v) ? v[0] : v || '']),
       );
 
-      // 2. Resolve Preprocessor
       const preprocessor = this.preprocessors.get(provider);
       const secret = this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`);
 
@@ -106,8 +112,13 @@ export class WebhookServer {
 
         // Evaluate workflow trigger condition if defined (e.g. `if: inputs.event == 'push'`)
         if (workflow.on.if) {
-          const shouldRun = SafeExpressionEvaluator.evaluate(workflow.on.if, { inputs });
-          if (!shouldRun) continue; // Skip workflow if condition evaluates to false
+          try {
+            const shouldRun = SafeExpressionEvaluator.evaluate(workflow.on.if, { inputs });
+            if (!shouldRun) continue;
+          } catch (evalErr: any) {
+            console.error(`⚠️ Condition evaluation error in workflow [${workflow.id}]:`, evalErr.message);
+            continue; // Skip this workflow without crashing server
+          }
         }
 
         // 4. Resolve Concurrency Key (if specified)

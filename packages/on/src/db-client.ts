@@ -2,22 +2,35 @@ const baseURL = process.env.DATABASE_URL;
 
 let pragmas: string[] = [];
 
-async function query(method, statement, data, pragma = pragmas) {
-  const req = await fetch(new URL('/query', baseURL), {
-    method: 'POST',
-    body: JSON.stringify({
-      s: statement,
-      d: data,
-      m: method,
-      p: pragma,
-    }),
-  });
+async function query(method: 'get' | 'run' | 'all', statement: string, data?: string[], pragma = pragmas) {
+  let req;
+  let error;
+  let retries = 1;
+  let max = 3;
 
-  if (req.ok) {
-    return await req.json();
+  while (retries < max) {
+    try {
+      req = await fetch(new URL('/query', baseURL), {
+        method: 'POST',
+        body: JSON.stringify({
+          s: statement,
+          d: data,
+          m: method,
+          p: pragma,
+        }),
+      });
+
+      if (req.ok) {
+        return await req.json();
+      }
+
+      await new Promise((r) => setTimeout(r, retries++ * 1000));
+    } catch (e) {
+      error = e;
+    }
   }
 
-  throw new Error(await req.text());
+  throw new Error(error || (await req.text()));
 }
 
 export const get = query.bind(null, 'get');
