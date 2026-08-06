@@ -23,20 +23,19 @@ const { values, positionals } = parseArgs({
   },
 });
 
-const command = positionals[0] || 'start';
-
 function printHelp() {
   console.log(`
 🏃 Runner CLI 🏃
 
 Usage:
-  on <command> [options]
+  npx -y @cloud-cli/on <command> [options]
+  pnpm dlx -y @cloud-cli/on <command> [options]
 
 Commands:
-  start       Runs both Webhook Ingress Server and Workers (Default)
-  server      Runs Webhook Ingress Server only (API Gateway mode)
-  worker      Runs Worker Polling loops only (Scalable Worker mode)
-  validate    Parses and validates workflow YAML files without running
+  start           Runs both Webhook Ingress Server and Workers (Default)
+  statt-server    Runs Webhook Ingress Server only (API Gateway mode)
+  start-workers   Runs Worker Polling loops only (Scalable Worker mode)
+  validate        Parses and validates workflow YAML files without running
 
 Options:
   -c, --config     Path to runner.config.mjs (default: ./runner.config.mjs)
@@ -76,50 +75,70 @@ async function loadConfig() {
   return config;
 }
 
-async function main() {
-  const config = await loadConfig();
+function onValidate(config) {
+  console.log('🔍 Validating Workflows in:', config.workflowsDir);
+  const resolver = new WorkflowIncludeResolver(config.workflowsDir);
+  const files = fs.readdirSync(config.workflowsDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
+
+  for (const file of files) {
+    const resolved = resolver.resolve(file);
+    const expanded = expandMatrix(resolved);
+    console.log(`  ✅ ${file} -> Valid! (${expanded.length} job matrix variant(s) generated)`);
+  }
+}
+
+async function onServe(config, workflows) {
+  const { queue, secrets } = await init();
+
+  WebhookServer.withPort({
+    queue,
+    secrets,
+    adminToken: config.adminToken,
+    workflows,
+    port: config.port,
+  });
+}
+
+async function onWorkers(config) {
+  const { queue, secrets } = await init();
+  startWorkers(config.workersCount, queue, secrets, config);
+}
+
+async function init() {
   const secrets = new SecretStore('./.env');
   const queue = new QueueManager('cli-node');
   await queue.init();
 
+  return { secrets, queue };
+}
+
+async function main() {
+  const command = positionals[0] || 'start';
+  const config = await loadConfig();
+
   switch (command) {
     case 'validate': {
-      console.log('🔍 Validating Workflows in:', config.workflowsDir);
-      const resolver = new WorkflowIncludeResolver(config.workflowsDir);
-      const files = fs.readdirSync(config.workflowsDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
-
-      for (const file of files) {
-        const resolved = resolver.resolve(file);
-        const expanded = expandMatrix(resolved);
-        console.log(`  ✅ ${file} -> Valid! (${expanded.length} job matrix variant(s) generated)`);
-      }
+      onValidate(config);
       break;
     }
 
-    case 'server': {
-      console.log('🌐 Starting Ingress Gateway mode...');
-      const server = new WebhookServer({
-        queue,
-        secrets,
-        adminToken: config.adminToken,
-        workflows: [],
-      });
-      await server.listen(config.port);
+    case 'start-server': {
+      console.log('🌐 Starting Ingress Gateway...');
+      onServe(config, []);
       break;
     }
 
-    case 'worker': {
+    case 'start-workers': {
       console.log(`⚙️ Starting ${config.workersCount} Worker Loop(s)...`);
-      startWorkers(config.workersCount, queue, secrets, config);
+      onWorkers(config);
       break;
     }
 
     case 'start': {
       console.log('🚀 Starting Full Runner Engine (Ingress + Workers)...');
-
       const workflows = YamlLoader.from(config.workflowsDir);
-      WebhookServer.withPort({ queue, secrets, adminToken: config.adminToken, workflows, port: config.port });
-      startWorkers(config.workersCount, queue, secrets, config);
+      onServe(config, workflows);
+      onWorkers(config);
       break;
     }
 
