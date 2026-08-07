@@ -1,4 +1,4 @@
-import { spawn, exec } from 'node:child_process';
+import { spawn, exec, ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -88,7 +88,8 @@ export class SystemdDriver implements ExecutionDriver {
       console.log('$ systemd-run', [...systemdFlags, '--', ...commandArgs].join(' '));
     }
 
-    let child;
+    let child: ChildProcess;
+
     try {
       child = spawn('systemd-run', [...systemdFlags, '--', ...commandArgs], {
         stdio: ['ignore', logFd, logFd],
@@ -97,6 +98,7 @@ export class SystemdDriver implements ExecutionDriver {
       try {
         fs.closeSync(logFd);
       } catch {}
+
       return {
         done: Promise.resolve({
           exitCode: 1,
@@ -124,9 +126,10 @@ export class SystemdDriver implements ExecutionDriver {
         resolve(result);
       };
 
-      child.on('close', (code) => {
+      child.on('close', (code, signal) => {
+        const exitCode = code !== null ? code : signal ? (isCancelled ? 130 : 1) : 0;
         safeResolve({
-          exitCode: code ?? (isCancelled ? 130 : 1),
+          exitCode,
           durationMs: Date.now() - startTime,
           error: isCancelled ? new Error('Step cancelled by user or systemd timeout') : undefined,
         });
