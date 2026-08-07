@@ -114,9 +114,9 @@ export class QueueManager {
         worker_id TEXT,
         report TEXT, -- Stores WorkflowExecutionReport JSON
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+      );`);
   }
 
   /**
@@ -140,12 +140,6 @@ export class QueueManager {
    * List recent jobs for dashboard status monitoring
    */
   async listJobs(limit = 50): Promise<any[]> {
-    return db.all(
-      `SELECT id, workflow_id, status, concurrency_key, worker_id, created_at, updated_at, report
-       FROM jobs
-       ORDER BY id DESC
-       LIMIT ?`,
-      [limit],
-    );
+    return db.all(`SELECT * FROM jobs ORDER BY id DESC LIMIT ?;`, [limit]);
   }
 }
