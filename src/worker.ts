@@ -8,11 +8,14 @@ import {
   JobRecord,
   RunnerConfig,
   StepContext,
+  StepExecutionHandle,
   StepReport,
   StepResult,
   WorkflowExecutionReport,
   WorkflowStep,
 } from './types.js';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 
 interface StepResultAndReport {
   failed: boolean;
@@ -241,18 +244,29 @@ async function executeRunStep(params: {
   const stepCtx: StepContext = {
     jobId: jobId.toString(),
     stepId,
-    workspacePath: `${config.storagePath || '/tmp/workspaces'}/job-${jobId}`,
+    workspacePath: `${config.storagePath}/job-${jobId}`,
     command: step.run,
     image: step.image,
     env: {
       ...executionContext.env,
       ...evaluatedStepEnv,
+      ...envFiles,
     },
     timeoutMs: step.timeoutMs,
   };
 
-  const handle = await driver.execute(stepCtx);
+  const envFilePath = path.join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.env`);
+  const outputFilePath = path.join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.out`);
+  const envFiles = {
+    WORKFLOW_ENV: envFilePath,
+    WORKFLOW_OUTPUT: outputFilePath,
+  };
+
+  let result: StepResult;
   let isCancelled = false;
+  let handle: StepExecutionHandle;
+
+  handle = await driver.execute(stepCtx);
 
   // Periodically poll SQLite for mid-run job cancellation signals
   const cancelCheckInterval = setInterval(async () => {
@@ -264,7 +278,7 @@ async function executeRunStep(params: {
     }
   }, 3000);
 
-  const result = await handle.done;
+  result = await handle.done;
   clearInterval(cancelCheckInterval);
 
   const failed = result.exitCode !== 0 || isCancelled;
@@ -273,6 +287,15 @@ async function executeRunStep(params: {
   if (failed) {
     console.error(`[${workerId}] ❌ Step [${stepId}] failed with status: ${stepStatus}`);
   }
+
+  const outputs = existsSync(outputFilePath) ? parseEnv(readFileSync(outputFilePath, 'utf-8')) : {};
+
+  if (existsSync(envFilePath)) {
+    const newEnv = parseEnv(readFileSync(envFilePath, 'utf-8'));
+    Object.assign(executionContext.env, newEnv);
+    unlinkSync(envFilePath);
+  }
+  if (existsSync(outputFilePath)) unlinkSync(outputFilePath);
 
   executionContext.steps[stepId] = { status: stepStatus, exitCode: result.exitCode };
 

@@ -4,7 +4,7 @@ import { AnsiUp } from 'ansi_up';
 import { Reporter, WorkflowExecutionReport } from '../types.js';
 
 export class HtmlReporter implements Reporter {
-  name = 'html-reporter';
+  name = 'html';
   private outputDir: string;
   private ansiUp: AnsiUp;
 

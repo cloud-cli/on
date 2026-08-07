@@ -136,10 +136,10 @@ import { HtmlReporter, SlackReporter, JsonFileReporter } from '@cloud-cli/on/rep
 
 export default {
   port: 3000,
-  workersCount: 5,
-  workflowsDir: '.on/',
+  workers: 5,
+  workflows: '.on/',
   storagePath: '/tmp/workspaces',
-  sqliteUrl: 'sqlite.db',
+  database: 'https://remote.db.com/',
 
   // Global environment variables passed to all steps
   env: {

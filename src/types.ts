@@ -207,11 +207,11 @@ export interface RunnerConfig {
   /** Admin Secret for API / webhook operations */
   adminToken: string;
   /** SQLite Database connection URL / path */
-  sqliteUrl: string;
+  database: string;
   /** Directory where workflow YAML files live */
-  workflowsDir: string;
+  workflows: string;
   /** Number of concurrent worker loops to spawn */
-  workersCount: number;
+  workers: number;
   /** Storage path for job workspaces and step logs */
   storagePath: string;
   /** Global environment variables injected into all step runs */

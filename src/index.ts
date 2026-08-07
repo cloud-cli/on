@@ -58,9 +58,9 @@ if (values.help) {
 async function loadConfig(): Promise<RunnerConfig | null> {
   const configFromCli: UserRunnerConfig = {
     port: Number(values.port),
-    sqliteUrl: values.database,
-    workflowsDir: values.workflows,
-    workersCount: values.workers ? Number(values.workers) : undefined,
+    database: values.database,
+    workflows: values.workflows,
+    workers: values.workers ? Number(values.workers) : undefined,
   };
 
   let configFromFile = {};
@@ -72,20 +72,20 @@ async function loadConfig(): Promise<RunnerConfig | null> {
 
   const config = resolveConfig(configFromFile, configFromCli);
 
-  if (!existsSync(config.workflowsDir)) {
-    console.warn(`⚠️ Warning: Workflows directory '${config.workflowsDir}' not found.`);
+  if (!existsSync(config.workflows)) {
+    console.warn(`⚠️ Warning: Workflows directory '${config.workflows}' not found.`);
     return null;
   }
 
-  setUrl(config.sqliteUrl);
+  setUrl(config.database);
 
   return config;
 }
 
 function onValidate(config: RunnerConfig) {
-  console.log('🔍 Validating Workflows in:', config.workflowsDir);
-  const resolver = new WorkflowIncludeResolver(config.workflowsDir);
-  const files = readdirSync(config.workflowsDir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
+  console.log('🔍 Validating Workflows in:', config.workflows);
+  const resolver = new WorkflowIncludeResolver(config.workflows);
+  const files = readdirSync(config.workflows).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
 
   for (const file of files) {
     const resolved = resolver.resolve(file);
@@ -124,18 +124,18 @@ async function main() {
     }
 
     case 'start-workers': {
-      console.log(`⚙️ Starting ${config.workersCount} Worker Loop(s)...`);
+      console.log(`⚙️ Starting ${config.workers} Worker Loop(s)...`);
       const { queue, secrets } = await init();
-      startWorkers(config.workersCount, queue, secrets, config);
+      startWorkers(config.workers, queue, secrets, config);
       break;
     }
 
     case 'start': {
       console.log('🚀 Starting Full Runner Engine (Ingress + Workers)...');
-      const workflows = await YamlLoader.from(config.workflowsDir);
+      const workflows = await YamlLoader.from(config.workflows);
       const { queue, secrets } = await init();
       WebhookServer.withPort({ queue, secrets, adminToken: config.adminToken, workflows, port: config.port });
-      startWorkers(config.workersCount, queue, secrets, config);
+      startWorkers(config.workers, queue, secrets, config);
       break;
     }
 

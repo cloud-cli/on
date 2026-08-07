@@ -7,9 +7,9 @@ export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: U
   return {
     port: configFromFile.port ?? configFromCli.port ?? 11235,
     adminToken: configFromFile.adminToken ?? process.env.RUNNER_ADMIN_SECRET ?? '',
-    sqliteUrl: configFromFile.sqliteUrl ?? configFromCli.sqliteUrl ?? process.env.DATABASE_URL ?? '',
-    workflowsDir: configFromFile.workflowsDir ?? configFromCli.workflowsDir ?? '.on/',
-    workersCount: configFromFile.workersCount ?? configFromCli.workersCount ?? 5,
+    database: configFromFile.database ?? configFromCli.database ?? process.env.DATABASE_URL ?? '',
+    workflows: configFromFile.workflows ?? configFromCli.workflows ?? '.on/',
+    workers: configFromFile.workers ?? configFromCli.workers ?? 5,
     storagePath: configFromFile.storagePath ?? process.env.RUNNER_TMP ?? '/tmp/workspaces',
     env: configFromFile.env ?? {},
     reporters: configFromFile.reporters ?? [],

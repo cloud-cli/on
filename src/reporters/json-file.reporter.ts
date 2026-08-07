@@ -3,7 +3,7 @@ import path from 'node:path';
 import { Reporter, WorkflowExecutionReport } from '../types.js';
 
 export class JsonFileReporter implements Reporter {
-  name = 'json-file-reporter';
+  name = 'json-file';
   private outputDir: string;
 
   constructor(options: { outputDir: string }) {
