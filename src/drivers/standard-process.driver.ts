@@ -70,12 +70,12 @@ export class StandardProcessDriver implements ExecutionDriver {
       child = spawn(cmd, args, {
         cwd: workingDir,
         env: { ...process.env, ...ctx.env },
-        detached: true, // Creates separate Process Group ID
+        detached: true,
         stdio: ['ignore', logFd, logFd],
       });
     } catch (spawnErr: any) {
       try {
-        if (logFd !== null) fs.closeSync(logFd);
+        fs.closeSync(logFd);
       } catch {}
       return {
         done: Promise.resolve({
@@ -101,9 +101,8 @@ export class StandardProcessDriver implements ExecutionDriver {
 
         if (timeoutTimer) clearTimeout(timeoutTimer);
 
-        // Always close log File Descriptor safely
         try {
-          if (logFd !== null) fs.closeSync(logFd);
+          fs.closeSync(logFd);
         } catch {}
 
         resolve(result);
