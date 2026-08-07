@@ -1,6 +1,6 @@
 {
   "name": "@cloud-cli/on",
-  "version": "1.2.1",
+  "version": "1.2.3",
   "description": "CLI entry point for the on plugin ecosystem.",
   "type": "module",
   "packageManager": "pnpm@10.30.3",
@@ -11,7 +11,9 @@
       "default": "./dist/on.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "main": "dist/on.js",
   "bin": {
     "on": "dist/on.js"
@@ -35,6 +37,7 @@
     "@types/node": "^26.1.2",
     "@typescript-eslint/eslint-plugin": "^8.66.0",
     "@typescript-eslint/parser": "^8.66.0",
+    "eslint": "10.8.0",
     "tsx": "^4.23.10",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.66.0",
