@@ -13,8 +13,8 @@ export class StandardProcessDriver implements ExecutionDriver {
   async execute(ctx: StepContext): Promise<StepExecutionHandle> {
     let logFd: number | null = null;
     const startTime = Date.now();
-    const logFilePath = path.join(logDir, `step-${ctx.stepId}.log`);
     const logDir = path.join(ctx.workspacePath, '.logs');
+    const logFilePath = path.join(logDir, `step-${ctx.stepId}.log`);
     const workingDir = path.join(ctx.workspacePath, 'wd');
 
     try {
