@@ -7,7 +7,9 @@ export class SecretStore {
   /**
    * Initialize secrets from host environment or a specified .env file
    */
-  constructor(private envFilePath?: string) {}
+  constructor(private envFilePath?: string) {
+    this.reload();
+  }
 
   reload() {
     // 1. Load host process.env variables prefixed with SECRET_
