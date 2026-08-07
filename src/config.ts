@@ -1,38 +1,17 @@
-import { Reporter } from './reporters/types.js';
-
-export interface RunnerConfig {
-  /** Ingress HTTP Gateway Port */
-  port: number;
-  /** Admin Secret for API / webhook operations */
-  adminToken: string;
-  /** SQLite Database connection URL / path */
-  sqliteUrl: string;
-  /** Directory where workflow YAML files live */
-  workflowsDir: string;
-  /** Number of concurrent worker loops to spawn */
-  workersCount: number;
-  /** Storage path for job workspaces and step logs */
-  storagePath: string;
-  /** Global environment variables injected into all step runs */
-  env: Record<string, string>;
-  /** Registered reporter plugins (JSON, Slack, HTML, etc.) */
-  reporters: Reporter[];
-}
-
-export type UserRunnerConfig = Partial<RunnerConfig>;
+import { RunnerConfig, UserRunnerConfig } from './types.js';
 
 /**
  * Merges user config overrides with baseline defaults
  */
-export function resolveConfig(userConfig: UserRunnerConfig = {}): RunnerConfig {
+export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: UserRunnerConfig): RunnerConfig {
   return {
-    port: userConfig.port ?? 3000,
-    adminToken: userConfig.adminToken ?? process.env.RUNNER_ADMIN_SECRET ?? '',
-    sqliteUrl: userConfig.sqliteUrl ?? process.env.DATABASE_URL ?? 'sqlite.db',
-    workflowsDir: userConfig.workflowsDir ?? '.on/',
-    workersCount: userConfig.workersCount ?? 5,
-    storagePath: userConfig.storagePath ?? process.env.RUNNER_TMP ?? '/tmp/workspaces',
-    env: userConfig.env ?? {},
-    reporters: userConfig.reporters ?? [],
+    port: configFromFile.port ?? configFromCli.port ?? 11235,
+    adminToken: configFromFile.adminToken ?? process.env.RUNNER_ADMIN_SECRET ?? '',
+    sqliteUrl: configFromFile.sqliteUrl ?? configFromCli.sqliteUrl ?? process.env.DATABASE_URL ?? '',
+    workflowsDir: configFromFile.workflowsDir ?? configFromCli.workflowsDir ?? '.on/',
+    workersCount: configFromFile.workersCount ?? configFromCli.workersCount ?? 5,
+    storagePath: configFromFile.storagePath ?? process.env.RUNNER_TMP ?? '/tmp/workspaces',
+    env: configFromFile.env ?? {},
+    reporters: configFromFile.reporters ?? [],
   };
 }

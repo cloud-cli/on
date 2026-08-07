@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { parseEnv } from 'node:util';
 import type { ExecutionDriver, StepContext } from '../types.js';
@@ -8,18 +8,9 @@ export async function executeStepAndCollectState(
   driver: ExecutionDriver,
   currentWorkflowEnv: Record<string, string>,
 ) {
-  // 1. Create temporary state files for this step
-  const envFilePath = path.join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.env`);
-  const outputFilePath = path.join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.out`);
-
-  fs.writeFileSync(envFilePath, '');
-  fs.writeFileSync(outputFilePath, '');
-
-  let newEnv = {};
-  let outputs = {};
+  const { envFilePath, outputFilePath } = createTmpFiles(stepCtx);
 
   try {
-    // 2. Inject environment file paths into step execution context
     const stepEnv = {
       ...currentWorkflowEnv,
       ...stepCtx.env,
@@ -27,27 +18,27 @@ export async function executeStepAndCollectState(
       WORKFLOW_OUTPUT: outputFilePath,
     };
 
-    // 3. Execute step
     const handle = await driver.execute({ ...stepCtx, env: stepEnv });
     const result = await handle.done;
-
-    // 4. Parse step-exported environment variables using Node's built-in parseEnv
-    if (fs.existsSync(envFilePath)) {
-      newEnv = parseEnv(fs.readFileSync(envFilePath, 'utf-8'));
-    }
-
-    if (fs.existsSync(outputFilePath)) {
-      outputs = parseEnv(fs.readFileSync(outputFilePath, 'utf-8'));
-    }
 
     if (result.exitCode !== 0) {
       return { result, newEnv: {}, outputs: {} };
     }
 
+    const newEnv = parseEnv(readFileSync(envFilePath, 'utf-8'));
+    const outputs = parseEnv(readFileSync(outputFilePath, 'utf-8'));
+
     return { result, newEnv, outputs };
   } finally {
-    // ALWAYS cleans up temp state files, regardless of success or failure
-    if (fs.existsSync(envFilePath)) fs.unlinkSync(envFilePath);
-    if (fs.existsSync(outputFilePath)) fs.unlinkSync(outputFilePath);
+    if (existsSync(envFilePath)) unlinkSync(envFilePath);
+    if (existsSync(outputFilePath)) unlinkSync(outputFilePath);
   }
+}
+
+function createTmpFiles(stepCtx: StepContext) {
+  const envFilePath = path.join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.env`);
+  const outputFilePath = path.join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.out`);
+  writeFileSync(envFilePath, '');
+  writeFileSync(outputFilePath, '');
+  return { envFilePath, outputFilePath };
 }

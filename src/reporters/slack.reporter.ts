@@ -1,4 +1,4 @@
-import { Reporter, WorkflowExecutionReport } from './types.js';
+import { Reporter, WorkflowExecutionReport } from '../types.js';
 
 export class SlackReporter implements Reporter {
   name = 'slack-reporter';

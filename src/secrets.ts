@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import fs from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 export class SecretStore {
   private secrets = new Map<string, string>();
@@ -19,8 +19,8 @@ export class SecretStore {
     }
 
     // 2. Override/add from .env file if present
-    if (this.envFilePath && fs.existsSync(this.envFilePath)) {
-      const parsed = dotenv.parse(fs.readFileSync(this.envFilePath));
+    if (this.envFilePath && existsSync(this.envFilePath)) {
+      const parsed = dotenv.parse(readFileSync(this.envFilePath));
       for (const [key, val] of Object.entries(parsed)) {
         this.secrets.set(key, val);
       }

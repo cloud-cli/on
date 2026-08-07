@@ -1,5 +1,4 @@
-const baseURL = process.env.DATABASE_URL;
-
+let baseURL = process.env.DATABASE_URL;
 let pragmas: string[] = [];
 
 async function query(
@@ -49,3 +48,7 @@ export function pragma(p) {
 }
 
 export default { query, get, run, all, pragma };
+
+export function setUrl(u) {
+  baseURL = u;
+}

@@ -1,10 +1,10 @@
 import http from 'node:http';
 import { URL } from 'node:url';
-import { QueueManager } from '../queue/dispatcher.js';
-import { SecretStore } from '../secrets/store.js';
-import { SafeExpressionEvaluator } from '../evaluator/safe-eval.js';
+import { QueueManager } from '../queue.js';
+import { SecretStore } from '../secrets.js';
+import { SafeExpressionEvaluator } from '../safe-eval.js';
 import { GitHubPreprocessor } from './preprocessors/github.js';
-import { WebhookPreprocessor, WebhookServerOptions, WorkflowDefinition } from './types.js';
+import { WebhookPreprocessor, WebhookServerOptions, WorkflowDefinition } from '../types.js';
 import { HtmlReporter } from '../reporters/html.reporter.js';
 
 export class WebhookServer {

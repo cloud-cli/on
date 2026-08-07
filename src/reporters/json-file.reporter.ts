@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Reporter, WorkflowExecutionReport } from './types.js';
+import { Reporter, WorkflowExecutionReport } from '../types.js';
 
 export class JsonFileReporter implements Reporter {
   name = 'json-file-reporter';

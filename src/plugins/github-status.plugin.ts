@@ -1,4 +1,4 @@
-import { WorkflowPlugin, WorkflowContext } from './types.js';
+import { WorkflowPlugin, WorkflowContext } from '../types.js';
 
 export class GitHubStatusPlugin implements WorkflowPlugin {
   name = 'github-commit-status';

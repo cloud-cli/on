@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { AnsiUp } from 'ansi_up';
-import { Reporter, WorkflowExecutionReport } from './types.js';
+import { Reporter, WorkflowExecutionReport } from '../types.js';
 
 export class HtmlReporter implements Reporter {
   name = 'html-reporter';

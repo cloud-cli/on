@@ -2,7 +2,7 @@ import { readdir } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { WorkflowIncludeResolver } from './include-resolver.js';
 import { expandMatrix } from './matrix-expander.js';
-import { WorkflowDefinition } from '../ingress/types.js';
+import { WorkflowDefinition } from '../types.js';
 
 export class YamlLoader {
   static async from(path: string) {

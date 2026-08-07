@@ -1,14 +1,5 @@
-import db from '../db-client.js';
-
-export interface JobRecord {
-  id: number;
-  workflow_id: string;
-  concurrency_key: string | null;
-  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelling';
-  worker_id: string | null;
-  payload: string; // JSON string of the Job Context/Steps
-  created_at: string;
-}
+import db from './db-client.js';
+import { WorkflowExecutionReport, JobPayload, JobRecord, JobStatus } from './types.js';
 
 export class QueueManager {
   constructor(private workerId: string) {}
@@ -17,20 +8,7 @@ export class QueueManager {
    * Initializes the database schema.
    */
   async init() {
-    await db.run(`
-      CREATE TABLE IF NOT EXISTS jobs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        workflow_id TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending',
-        concurrency_key TEXT,
-        worker_id TEXT,
-        report TEXT, -- Stores WorkflowExecutionReport JSON
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
+    await this.createTables();
     await this.clearStaleJobs();
   }
 
@@ -38,7 +16,7 @@ export class QueueManager {
    * Enqueues a new job into the database.
    * Includes simple GitHub-style concurrency cancellation.
    */
-  async enqueue(workflowId: string, payload: any, concurrencyKey?: string) {
+  async enqueue(workflowId: string, payload: JobPayload, concurrencyKey?: string) {
     // If a concurrency key is provided, cancel existing pending/running jobs in that group
     if (concurrencyKey) {
       await db.run(
@@ -93,7 +71,7 @@ export class QueueManager {
   /**
    * Marks a job as completed or failed
    */
-  async finishJob(jobId: string | number, status: string) {
+  async finishJob(jobId: string | number, status: JobStatus) {
     await db.run(
       `
       UPDATE jobs
@@ -114,14 +92,37 @@ export class QueueManager {
 
   async clearStaleJobs() {
     return await db.run(
-      `UPDATE jobs SET status = 'pending', worker_id = NULL WHERE status = 'running' AND started_at < datetime('now', '-1 hour');`,
+      `UPDATE jobs
+       SET
+        status = 'pending',
+        worker_id = NULL
+       WHERE
+        status = 'running'
+        AND
+        started_at < datetime('now', '-1 hour');`,
     );
+  }
+
+  async createTables() {
+    return db.run(`
+      CREATE TABLE IF NOT EXISTS jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workflow_id TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        concurrency_key TEXT,
+        worker_id TEXT,
+        report TEXT, -- Stores WorkflowExecutionReport JSON
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
   }
 
   /**
    * Save complete execution report JSON to DB
    */
-  async saveReport(jobId: string | number, report: any): Promise<void> {
+  async saveReport(jobId: string | number, report: WorkflowExecutionReport): Promise<void> {
     await db.run(`UPDATE jobs SET report = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [
       JSON.stringify(report),
       jobId,

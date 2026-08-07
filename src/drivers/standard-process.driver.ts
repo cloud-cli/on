@@ -7,7 +7,7 @@ export class StandardProcessDriver implements ExecutionDriver {
   name = 'standard-process';
 
   async isSupported(): Promise<boolean> {
-    return true; // Supported on all OS platforms
+    return true;
   }
 
   async execute(ctx: StepContext): Promise<StepExecutionHandle> {
@@ -15,7 +15,6 @@ export class StandardProcessDriver implements ExecutionDriver {
     let logFd: number | null = null;
     let logFilePath = '';
 
-    // 1. Guard Log Directory & File Handle Creation
     try {
       const logDir = path.join(ctx.workspacePath, '.logs');
       fs.mkdirSync(logDir, { recursive: true });
@@ -33,7 +32,6 @@ export class StandardProcessDriver implements ExecutionDriver {
       };
     }
 
-    // 2. Format Execution Command
     let cmd: string;
     let args: string[];
 
@@ -58,7 +56,6 @@ export class StandardProcessDriver implements ExecutionDriver {
       args = ['-c', ctx.command];
     }
 
-    // 3. Spawn Detached Child Process
     let child: ChildProcess;
     try {
       child = spawn(cmd, args, {
@@ -131,7 +128,6 @@ export class StandardProcessDriver implements ExecutionDriver {
       });
     });
 
-    // 5. Cancellation Hook
     const cancel = async (): Promise<void> => {
       isCancelled = true;
       this.killProcessGroup(child);

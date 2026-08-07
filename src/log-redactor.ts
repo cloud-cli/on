@@ -9,7 +9,7 @@ export class SecretRedactorStream extends Transform {
     this.secretValues = secretValues.sort((a, b) => b.length - a.length);
   }
 
-  _transform(chunk: any, encoding: BufferEncoding, callback: TransformCallback) {
+  _transform(chunk: any, _encoding: BufferEncoding, callback: TransformCallback) {
     let logString = chunk.toString('utf-8');
 
     // Replace all known secret values with ***

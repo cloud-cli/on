@@ -9,9 +9,6 @@ const execAsync = promisify(exec);
 export class SystemdDriver implements ExecutionDriver {
   name = 'systemd';
 
-  /**
-   * Check if systemd bus is available on Linux host
-   */
   async isSupported(): Promise<boolean> {
     try {
       return fs.existsSync('/run/systemd/system');
@@ -25,7 +22,6 @@ export class SystemdDriver implements ExecutionDriver {
     let logFd: number | null = null;
     let logFilePath = '';
 
-    // 1. Guard Log Directory & File Handle Creation
     try {
       const logDir = path.join(ctx.workspacePath, '.logs');
       fs.mkdirSync(logDir, { recursive: true });
@@ -43,10 +39,8 @@ export class SystemdDriver implements ExecutionDriver {
       };
     }
 
-    // 2. Format Sanitized Systemd Unit Name
     const unitName = `workflow-${ctx.jobId}-${ctx.stepId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
 
-    // 3. Build systemd-run Flags
     const systemdFlags: string[] = [
       `--unit=${unitName}`,
       '--wait', // Block until unit completes
@@ -65,7 +59,6 @@ export class SystemdDriver implements ExecutionDriver {
       systemdFlags.push(`--property=RuntimeMaxSec=${timeoutSec}`);
     }
 
-    // 4. Construct Command
     let commandArgs: string[];
 
     if (ctx.image) {
@@ -74,7 +67,7 @@ export class SystemdDriver implements ExecutionDriver {
         'run',
         '--rm',
         '--init',
-        `--name=${unitName}`, // Predictable container name for stopping
+        `--name=${unitName}`,
         '-v',
         `${ctx.workspacePath}:/workspace`,
         '-w',
@@ -111,7 +104,6 @@ export class SystemdDriver implements ExecutionDriver {
 
     let isCancelled = false;
 
-    // 6. Safe Promise Resolution & File Handle Cleanup
     const done = new Promise<StepResult>((resolve) => {
       let isResolved = false;
 
@@ -143,9 +135,9 @@ export class SystemdDriver implements ExecutionDriver {
       });
     });
 
-    // 7. Systemd / Docker Graceful Cancellation
     const cancel = async (): Promise<void> => {
       isCancelled = true;
+
       try {
         if (ctx.image) {
           // Stop docker container gracefully if running

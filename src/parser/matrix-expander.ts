@@ -1,16 +1,4 @@
-export interface MatrixStrategy {
-  matrix?: Record<string, (string | number | boolean)[]>;
-  'max-parallel'?: number;
-}
-
-export interface ParsedWorkflow {
-  id?: string;
-  name: string;
-  strategy?: MatrixStrategy;
-  env?: Record<string, string>;
-  steps: any[];
-  [key: string]: any;
-}
+import { ParsedWorkflow } from '../types';
 
 /**
  * Expands a workflow definition containing a `strategy.matrix` into dynamic single-instance workflow jobs.
@@ -41,10 +29,7 @@ export function expandMatrix(workflow: ParsedWorkflow): ParsedWorkflow[] {
   // Clone workflow instance for each Cartesian matrix combination
   return combinations.map((combination, index) => {
     const clone: ParsedWorkflow = JSON.parse(JSON.stringify(workflow));
-
-    // Remove top-level strategy key after expansion
     delete clone.strategy;
-
     // Create matrix identity label: "node=20, os=ubuntu"
     const matrixLabel = Object.entries(combination)
       .map(([k, v]) => `${k}=${v}`)

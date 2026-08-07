@@ -1,10 +1,24 @@
-import { JobRecord, QueueManager } from './queue/dispatcher.js';
-import { SecretStore } from './secrets/store.js';
 import { resolveDriver } from './drivers/index.js';
-import { StepContext, StepResult, ExecutionDriver } from './types.js';
-import { SafeExpressionEvaluator } from './evaluator/safe-eval.js';
-import { WorkflowExecutionReport, StepReport } from './reporters/types.js';
-import { RunnerConfig } from './config.js';
+import { SafeExpressionEvaluator } from './safe-eval.js';
+import { QueueManager } from './queue.js';
+import { SecretStore } from './secrets.js';
+import {
+  ExecutionDriver,
+  JobPayload,
+  JobRecord,
+  RunnerConfig,
+  StepContext,
+  StepReport,
+  StepResult,
+  WorkflowExecutionReport,
+  WorkflowStep,
+} from './types.js';
+
+interface StepResultAndReport {
+  failed: boolean;
+  isCancelled: boolean;
+  report: StepReport;
+}
 
 export function startWorkers(count: number, queue: QueueManager, secrets: SecretStore, config: RunnerConfig) {
   return Array.from({ length: count }, (_, i) => startWorkerLoop(`worker-${i + 1}`, queue, secrets, config));
@@ -52,7 +66,7 @@ async function processJob(
 ) {
   console.log(`\n[${workerId}] 📦 Claimed Job #${job.id} (Workflow: ${job.workflow_id})`);
 
-  const payload = typeof job.payload === 'string' ? JSON.parse(job.payload) : job.payload;
+  const payload = (typeof job.payload === 'string' ? JSON.parse(job.payload) : job.payload) as JobPayload;
   const steps = payload.steps || [];
   const inputs = payload.inputs || {};
   const jobStartTime = Date.now();
@@ -83,7 +97,7 @@ async function processJob(
       config,
     });
 
-    stepReports.push(stepResult.report as StepReport);
+    stepReports.push(stepResult.report);
 
     if (stepResult.isCancelled) {
       isCancelled = true;
@@ -129,14 +143,14 @@ async function processJob(
 async function executeSingleStep(params: {
   workerId: string;
   jobId: string | number;
-  step: any;
+  step: WorkflowStep;
   stepIndex: number;
   totalSteps: number;
   executionContext: Record<string, any>;
   driver: ExecutionDriver;
   queue: QueueManager;
   config: RunnerConfig;
-}) {
+}): Promise<StepResultAndReport> {
   const { workerId, step, stepIndex, totalSteps, executionContext } = params;
   const stepId = step.id || `step-${stepIndex}`;
   const stepName = step.name || stepId;
@@ -158,7 +172,7 @@ async function executeEvalStep(
   stepName: string,
   evalExpr: string,
   executionContext: Record<string, any>,
-) {
+): Promise<StepResultAndReport> {
   const startTime = Date.now();
   try {
     const evalResult = await SafeExpressionEvaluator.evaluateExpression(evalExpr, executionContext);
@@ -213,7 +227,7 @@ async function executeRunStep(params: {
   driver: ExecutionDriver;
   queue: QueueManager;
   config: RunnerConfig;
-}) {
+}): Promise<StepResultAndReport> {
   const { workerId, jobId, step, stepId, stepName, executionContext, driver, queue, config } = params;
 
   // Evaluate step environment variables using deterministic evaluateValue rule
@@ -250,7 +264,7 @@ async function executeRunStep(params: {
     }
   }, 3000);
 
-  const result: StepResult = await handle.done;
+  const result = await handle.done;
   clearInterval(cancelCheckInterval);
 
   const failed = result.exitCode !== 0 || isCancelled;
