@@ -23,7 +23,7 @@ Designed with a strict **security-first boundary**, native **JavaScript AST eval
 
 ```text
 my-project/
-├── .on/                     # Workflow definitions directory
+├── on/                     # Workflow definitions directory
 │   ├── release.yml
 │   └── test.yml
 ├── .env                     # Local secrets (git-ignored)
@@ -58,7 +58,7 @@ SECRET_GITHUB_WEBHOOK_SECRET="my-webhook-secret"
 
 `SECRET_GITHUB_WEBHOOK_SECRET` is required to validate incoming webhooks from GitHub
 
-### 3. Define a Workflow (`.on/release.yml`)
+### 3. Define a Workflow (`on/release.yml`)
 
 ```yaml
 name: Build and Publish Release
@@ -121,7 +121,7 @@ npx @cloud-cli/on [command] [options]
 | `-h` | `--help`      | —                     | -                     | Prints CLI help message and exits.        |
 | `-c` | `--config`    | `./runner.config.mjs` | `RUNNER_CONFIG_FILE`  | Path to JavaScript configuration file.    |
 | `-d` | `--database`  | -                     | `RUNNER_DATABASE_URL` | SQLite database file path or HTTP URL.    |
-| `-w` | `--workflows` | `.on/`                | `RUNNER_WORKFLOWS`    | Directory where workflow YAML files live. |
+| `-w` | `--workflows` | `on/`                 | `RUNNER_WORKFLOWS`    | Directory where workflow YAML files live. |
 | `-p` | `--port`      | `11235`               | `PORT`                | Port for the Ingress HTTP server.         |
 | `-k` | `--workers`   | `5`                   | `RUNNER_WORKERS`      | Number of worker loop threads to spawn.   |
 |      |               |                       | `RUNNER_ADMIN_SECRET` | Admin token to refresh secrets via API    |
