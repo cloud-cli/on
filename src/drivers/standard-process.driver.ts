@@ -56,6 +56,8 @@ export class StandardProcessDriver implements ExecutionDriver {
       args = ['-c', ctx.command];
     }
 
+    fs.mkdirSync(`${ctx.workspacePath}/wd`, { recursive: true });
+
     let child: ChildProcess;
     try {
       child = spawn(cmd, args, {

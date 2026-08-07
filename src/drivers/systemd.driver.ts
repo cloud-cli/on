@@ -81,6 +81,8 @@ export class SystemdDriver implements ExecutionDriver {
       commandArgs = [process.env.SHELL || 'sh', '-c', ctx.command];
     }
 
+    fs.mkdirSync(`${ctx.workspacePath}/wd`, { recursive: true });
+
     // 5. Spawn systemd-run
     let child;
     try {

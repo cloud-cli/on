@@ -3,6 +3,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { WorkflowIncludeResolver } from './include-resolver.js';
 import { expandMatrix } from './matrix-expander.js';
 import { WorkflowDefinition } from '../types.js';
+import { randomUUID } from 'node:crypto';
 
 export class YamlLoader {
   static async from(path: string) {
@@ -34,7 +35,7 @@ export class YamlLoader {
 
       for (const wf of expandedWorkflows) {
         workflows.push({
-          id: wf.id || wf.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+          id: (wf.id || wf.name)?.toLowerCase().replace(/[^a-z0-9]/g, '-') ?? randomUUID(),
           name: wf.name,
           on: {
             provider: Object.keys(wf.on || {})[0] || 'generic',
