@@ -37,8 +37,8 @@ export class HtmlReporter implements Reporter {
     // Render Steps & Logs
     const stepRows = execReport.steps
       .map((step, idx) => {
-        let rawLog = '';
-        if (step.logFilePath && fs.existsSync(step.logFilePath)) {
+        let rawLog = step.logContent;
+        if (!rawLog && step.logFilePath && fs.existsSync(step.logFilePath)) {
           try {
             rawLog = fs.readFileSync(step.logFilePath, 'utf-8');
           } catch {}

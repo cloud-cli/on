@@ -48,6 +48,8 @@ export class SystemdDriver implements ExecutionDriver {
       '--wait',
       '--pipe',
       '--collect',
+      '-p',
+      'RemainAfterExit=no',
       `--working-directory=${workingDir}`,
     ];
 
@@ -128,6 +130,7 @@ export class SystemdDriver implements ExecutionDriver {
 
       child.on('close', (code, signal) => {
         const exitCode = code !== null ? code : signal ? (isCancelled ? 130 : 1) : 0;
+        console.log('close [exitCode, code, signal]', exitCode, code, signal);
         safeResolve({
           exitCode,
           durationMs: Date.now() - startTime,
@@ -136,6 +139,7 @@ export class SystemdDriver implements ExecutionDriver {
       });
 
       child.on('error', (err) => {
+        console.log('error [exitCode, error]', 1, err);
         safeResolve({
           exitCode: 1,
           durationMs: Date.now() - startTime,

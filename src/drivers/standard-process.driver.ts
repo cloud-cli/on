@@ -11,10 +11,9 @@ export class StandardProcessDriver implements ExecutionDriver {
   }
 
   async execute(ctx: StepContext): Promise<StepExecutionHandle> {
-    const startTime = Date.now();
     let logFd: number | null = null;
-    let logFilePath = '';
-
+    const startTime = Date.now();
+    const logFilePath = path.join(logDir, `step-${ctx.stepId}.log`);
     const logDir = path.join(ctx.workspacePath, '.logs');
     const workingDir = path.join(ctx.workspacePath, 'wd');
 
@@ -23,7 +22,6 @@ export class StandardProcessDriver implements ExecutionDriver {
       fs.mkdirSync(workingDir, { recursive: true });
       fs.chmodSync(workingDir, 0o777);
       console.log(`📁 Created workspace at ${workingDir}`);
-      logFilePath = path.join(logDir, `step-${ctx.stepId}.log`);
       logFd = fs.openSync(logFilePath, 'a');
     } catch (err: any) {
       return {

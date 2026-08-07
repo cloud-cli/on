@@ -178,6 +178,7 @@ export interface StepReport {
   error?: string;
   outputs: Record<string, any>;
   logFilePath: string;
+  logContent?: string;
 }
 
 export interface WorkflowExecutionReport {

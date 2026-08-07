@@ -4,7 +4,7 @@ import { QueueManager } from './queue.js';
 import { SecretStore } from './secrets.js';
 import { SafeExpressionEvaluator } from './safe-eval.js';
 import { GitHubPreprocessor } from './preprocessors/github.js';
-import { WebhookPreprocessor, WebhookServerOptions, WorkflowDefinition } from './types.js';
+import { WebhookPreprocessor, WebhookServerOptions, WorkflowDefinition, WorkflowExecutionReport } from './types.js';
 import { HtmlReporter } from './reporters/html.reporter.js';
 
 export class WebhookServer {
@@ -270,7 +270,7 @@ export class WebhookServer {
       return res.end('<h1>404 - Report Not Found</h1>');
     }
 
-    const reportData = JSON.parse(job.report);
+    const reportData = JSON.parse(job.report) as WorkflowExecutionReport;
 
     // Fetch logs on-demand
     const logsMap = await this.queue.getJobLogs(jobId);

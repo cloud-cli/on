@@ -126,7 +126,7 @@ export class QueueManager {
   /**
    * Save lightweight summary report (NO heavy logs in this JSON!)
    */
-  async saveReport(jobId: string | number, report: any): Promise<void> {
+  async saveReport(jobId: string | number, report: WorkflowExecutionReport): Promise<void> {
     await db.run(`UPDATE jobs SET report = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [
       JSON.stringify(report),
       jobId,

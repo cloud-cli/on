@@ -310,11 +310,9 @@ async function executeRunStep(params: {
   clearInterval(cancelCheckInterval);
   activeStepHandle = null; // Unbind handle when step finishes
 
-  // Read raw terminal stdout/stderr log file from workspace disk
   if (handle.logFilePath && fs.existsSync(handle.logFilePath)) {
     try {
       const logContent = fs.readFileSync(handle.logFilePath, 'utf-8');
-      // Save log content into separate `step_logs` table
       await queue.saveStepLog(jobId, stepId, logContent);
     } catch (logErr: any) {
       console.error(`[${workerId}] ⚠️ Failed to read step log file:`, logErr.message);
