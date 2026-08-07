@@ -59,7 +59,7 @@ export class HtmlReporter implements Reporter {
         <div class="border border-gray-800 rounded-xl overflow-hidden bg-gray-900/50 mb-4">
           <div class="flex items-center justify-between p-4 bg-gray-800/40 border-b border-gray-800">
             <div class="flex items-center gap-3">
-              <span class="text-xs font-mono text-gray-500">#${idx + 1}</span>
+              <span class="text-xs font-mono text-gray-500">#${idx + 1} ${step.exitCode !== 0 ? '(' + step.exitCode + ')' : ''}</span>
               <h3 class="font-semibold text-gray-200">${step.name}</h3>
               <span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${stepBadge}">
                 ${step.status.toUpperCase()}
