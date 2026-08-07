@@ -184,6 +184,12 @@ async function executeSingleStep(params: {
   }
 }
 
+interface ExecOutput {
+  failed: boolean;
+  isCancelled: boolean;
+  report: StepReport;
+}
+
 /**
  * In-Process JS `eval:` Step Execution
  */
@@ -194,7 +200,7 @@ async function executeEvalStep(params: {
   stepName: string;
   evalExpr: string;
   executionContext: Record<string, any>;
-}) {
+}): Promise<ExecOutput> {
   const { queue, jobId, stepId, stepName, evalExpr, executionContext } = params;
   const startTime = Date.now();
 
@@ -268,7 +274,7 @@ async function executeRunStep(params: {
   driver: ExecutionDriver;
   queue: QueueManager;
   config: RunnerConfig;
-}) {
+}): Promise<ExecOutput> {
   const { workerId, jobId, step, stepId, stepName, executionContext, driver, queue, config } = params;
 
   // Evaluate step environment variables
@@ -344,6 +350,7 @@ async function executeRunStep(params: {
       exitCode: result.exitCode,
       error: result.error?.message,
       outputs: {},
+      logContent: '',
     },
   };
 }
