@@ -45,7 +45,7 @@ export class SystemdDriver implements ExecutionDriver {
       `--unit=${unitName}`,
       '--wait', // Block until unit completes
       '--pipe', // Stream stdio directly to file handle
-      `--working-directory=${ctx.workspacePath}`,
+      `--working-directory=${ctx.workspacePath}/wd`,
     ];
 
     if (ctx.env) {
@@ -69,7 +69,7 @@ export class SystemdDriver implements ExecutionDriver {
         '--init',
         `--name=${unitName}`,
         '-v',
-        `${ctx.workspacePath}:/workspace`,
+        `${ctx.workspacePath}/wd:/workspace`,
         '-w',
         '/workspace',
         ctx.image,
@@ -78,7 +78,7 @@ export class SystemdDriver implements ExecutionDriver {
         ctx.command,
       ];
     } else {
-      commandArgs = ['sh', '-c', ctx.command];
+      commandArgs = [process.env.SHELL || 'sh', '-c', ctx.command];
     }
 
     // 5. Spawn systemd-run

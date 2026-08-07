@@ -4,9 +4,6 @@ import { WorkflowExecutionReport, JobPayload, JobRecord, JobStatus } from './typ
 export class QueueManager {
   constructor(private workerId: string) {}
 
-  /**
-   * Initializes the database schema.
-   */
   async init() {
     await this.createTables();
     await this.clearStaleJobs();
@@ -20,22 +17,16 @@ export class QueueManager {
     // If a concurrency key is provided, cancel existing pending/running jobs in that group
     if (concurrencyKey) {
       await db.run(
-        `
-        UPDATE jobs
-        SET status = 'cancelling'
-        WHERE concurrency_key = ? AND status IN ('pending', 'running');
-      `,
+        `UPDATE jobs SET status = 'cancelling' WHERE concurrency_key = ? AND status IN ('pending', 'running');`,
         [concurrencyKey],
       );
     }
 
-    const res = await db.run(
-      `
-      INSERT INTO jobs (workflow_id, concurrency_key, payload)
-      VALUES (?, ?, ?);
-    `,
-      [workflowId, concurrencyKey || '', JSON.stringify(payload)],
-    );
+    const res = await db.run(`INSERT INTO jobs (workflow_id, concurrency_key, payload) VALUES (?, ?, ?);`, [
+      workflowId,
+      concurrencyKey || '',
+      JSON.stringify(payload),
+    ]);
 
     return res;
   }
@@ -72,14 +63,7 @@ export class QueueManager {
    * Marks a job as completed or failed
    */
   async finishJob(jobId: string | number, status: JobStatus) {
-    await db.run(
-      `
-      UPDATE jobs
-      SET status = ?, finished_at = CURRENT_TIMESTAMP
-      WHERE id = ?;
-    `,
-      [status, jobId],
-    );
+    await db.run(`UPDATE jobs SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?;`, [status, jobId]);
   }
 
   /**
@@ -92,11 +76,7 @@ export class QueueManager {
 
   async clearStaleJobs() {
     return await db.run(
-      `UPDATE jobs
-       SET
-        status = 'pending', worker_id = NULL
-       WHERE
-        status = 'running' AND started_at < datetime('now', '-1 hour');`,
+      `UPDATE jobs SET status = 'pending', worker_id = NULL WHERE status = 'running' AND started_at < datetime('now', '-1 hour');`,
     );
   }
 
@@ -112,6 +92,7 @@ export class QueueManager {
         report TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        finished_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );`);
   }

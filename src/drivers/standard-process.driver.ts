@@ -42,7 +42,7 @@ export class StandardProcessDriver implements ExecutionDriver {
         '--rm',
         '--init',
         '-v',
-        `${ctx.workspacePath}:/workspace`,
+        `${ctx.workspacePath}/wd:/workspace`,
         '-w',
         '/workspace',
         '--entrypoint',
@@ -52,14 +52,14 @@ export class StandardProcessDriver implements ExecutionDriver {
         ctx.command,
       ];
     } else {
-      cmd = 'sh';
+      cmd = process.env.SHELL || 'sh';
       args = ['-c', ctx.command];
     }
 
     let child: ChildProcess;
     try {
       child = spawn(cmd, args, {
-        cwd: ctx.workspacePath,
+        cwd: ctx.workspacePath + '/wd',
         env: { ...process.env, ...ctx.env },
         detached: true, // Creates separate Process Group ID
         stdio: ['ignore', logFd, logFd],
