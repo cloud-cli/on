@@ -54,8 +54,9 @@ Secrets are automatically loaded from `.env` at the root of your project. Prefix
 SECRET_NPM_TOKEN="npm_1234567890abcdef"
 SECRET_GITHUB_TOKEN="ghp_1234567890abcdef"
 SECRET_GITHUB_WEBHOOK_SECRET="my-webhook-secret"
-
 ```
+
+`SECRET_GITHUB_WEBHOOK_SECRET` is required to validate incoming webhooks from GitHub
 
 ### 3. Define a Workflow (`.on/release.yml`)
 
@@ -124,6 +125,8 @@ npx @cloud-cli/on [command] [options]
 | `-p` | `--port`      | `11235`               | `PORT`                | Port for the Ingress HTTP server.         |
 | `-k` | `--workers`   | `5`                   | `RUNNER_WORKERS`      | Number of worker loop threads to spawn.   |
 |      |               |                       | `RUNNER_ADMIN_SECRET` | Admin token to refresh secrets via API    |
+
+### Secrets
 
 ---
 
@@ -195,7 +198,7 @@ Within `${...}`, `if:`, and `eval:` contexts, the following object scopes are ex
 
 - **`inputs`**: Payload key-values received from incoming webhooks.
 - **`env`**: Merged environment variables from global config and workflow definitions.
-- **`secrets`**: Unmasked secret values loaded from `.env` (`SECRET_` prefix stripped).
+- **`secrets`**: Unmasked secret values loaded from `.env` or environment variables (`SECRET_` prefix stripped).
 - **`steps`**: Execution statuses and outputs from previous steps in the workflow (`steps.<id>.status`, `steps.<id>.outputs`).
 - **`BUILTIN_HELPERS`**: JS utilities including `String`, `Number`, `Boolean`, and `JSON.parse` / `JSON.stringify`.
 
