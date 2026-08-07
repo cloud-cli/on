@@ -283,7 +283,7 @@ async function executeRunStep(params: {
     jobId: jobId.toString(),
     stepId,
     workspacePath: `${config.storagePath}/job-${jobId}`,
-    command: step.run,
+    command: step.run!,
     image: step.image,
     env: {
       ...executionContext.env,

@@ -146,7 +146,7 @@ export class QueueManager {
    * Retrieve all step logs for a specific job (called ON-DEMAND by /runs/:jobId)
    */
   async getJobLogs(jobId: string | number): Promise<Record<string, string>> {
-    const rows = await this.db.all(`SELECT step_id, log_content FROM step_logs WHERE job_id = ?`, [jobId]);
+    const rows = await db.all(`SELECT step_id, log_content FROM step_logs WHERE job_id = ?`, [jobId]);
 
     const logMap: Record<string, string> = {};
     for (const row of rows) {
