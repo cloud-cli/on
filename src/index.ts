@@ -108,7 +108,7 @@ function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: UserRunn
     adminToken: configFromFile.adminToken ?? _.RUNNER_ADMIN_SECRET ?? '',
     database: configFromFile.database ?? configFromCli.database ?? _.RUNNER_DATABASE_URL ?? '',
     workflows: configFromFile.workflows ?? configFromCli.workflows ?? _.RUNNER_WORKFLOWS ?? '.on/',
-    workers: configFromFile.workers ?? configFromCli.workers ?? _.RUNNER_WORKERS ?? 5,
+    workers: Number(configFromFile.workers ?? configFromCli.workers ?? _.RUNNER_WORKERS ?? 5),
     storagePath: configFromFile.storagePath ?? _.RUNNER_TMP ?? '/tmp/workspaces',
     env: configFromFile.env ?? {},
     reporters: configFromFile.reporters ?? [],

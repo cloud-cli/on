@@ -1,8 +1,11 @@
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import { resolveDriver } from './drivers/index.js';
-import { SafeExpressionEvaluator } from './safe-eval.js';
 import { QueueManager } from './queue.js';
+import { SafeExpressionEvaluator } from './safe-eval.js';
 import { SecretStore } from './secrets.js';
-import {
+import { join } from 'node:path';
+import type {
   ExecutionDriver,
   JobPayload,
   JobRecord,
@@ -14,8 +17,6 @@ import {
   WorkflowExecutionReport,
   WorkflowStep,
 } from './types.js';
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
-import { parseEnv } from 'node:util';
 
 interface StepResultAndReport {
   failed: boolean;
@@ -254,9 +255,10 @@ async function executeRunStep(params: {
     timeoutMs: step.timeoutMs,
   };
 
-  const envFilePath = path.join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.env`);
-  const outputFilePath = path.join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.out`);
-  Object.assign(stepCtx.env, {
+  const envFilePath = join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.env`);
+  const outputFilePath = join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.out`);
+
+  Object.assign(stepCtx.env as any, {
     WORKFLOW_ENV: envFilePath,
     WORKFLOW_OUTPUT: outputFilePath,
   });

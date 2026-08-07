@@ -90,7 +90,7 @@ export interface WebhookServerOptions {
   workflows: WorkflowDefinition[];
 }
 
-export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelling';
+export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelling' | 'cancelled';
 
 export interface JobRecord {
   id: number;
