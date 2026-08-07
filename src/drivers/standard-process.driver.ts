@@ -15,9 +15,14 @@ export class StandardProcessDriver implements ExecutionDriver {
     let logFd: number | null = null;
     let logFilePath = '';
 
+    const logDir = path.join(ctx.workspacePath, '.logs');
+    const workingDir = path.join(ctx.workspacePath, 'wd');
+
     try {
-      const logDir = path.join(ctx.workspacePath, '.logs');
       fs.mkdirSync(logDir, { recursive: true });
+      fs.mkdirSync(workingDir, { recursive: true });
+      fs.chmodSync(workingDir, 0o777);
+      console.log(`📁 Created workspace at ${workingDir}`);
       logFilePath = path.join(logDir, `step-${ctx.stepId}.log`);
       logFd = fs.openSync(logFilePath, 'a');
     } catch (err: any) {
@@ -34,7 +39,6 @@ export class StandardProcessDriver implements ExecutionDriver {
 
     let cmd: string;
     let args: string[];
-    const workingDir = path.join(ctx.workspacePath, 'wd');
 
     if (ctx.image) {
       cmd = 'docker';
@@ -57,8 +61,9 @@ export class StandardProcessDriver implements ExecutionDriver {
       args = ['-c', ctx.command];
     }
 
-    fs.mkdirSync(workingDir, { recursive: true });
-    console.log(`📁 Created workspace at ${workingDir}`);
+    if (process.env.DEBUG) {
+      console.log('$ ' + cmd, args.join(' '));
+    }
 
     let child: ChildProcess;
     try {

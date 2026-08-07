@@ -22,9 +22,14 @@ export class SystemdDriver implements ExecutionDriver {
     let logFd: number | null = null;
     let logFilePath = '';
 
+    const logDir = path.join(ctx.workspacePath, '.logs');
+    const workingDir = path.join(ctx.workspacePath, 'wd');
+
     try {
-      const logDir = path.join(ctx.workspacePath, '.logs');
       fs.mkdirSync(logDir, { recursive: true });
+      fs.mkdirSync(workingDir, { recursive: true });
+      fs.chmodSync(workingDir, 0o777);
+      console.log(`📁 Created workspace at ${workingDir}`);
       logFilePath = path.join(logDir, `step-${ctx.stepId}.log`);
       logFd = fs.openSync(logFilePath, 'a');
     } catch (err: any) {
@@ -40,11 +45,11 @@ export class SystemdDriver implements ExecutionDriver {
     }
 
     const unitName = `workflow-${ctx.jobId}-${ctx.stepId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const workingDir = path.join(ctx.workspacePath, 'wd');
     const systemdFlags: string[] = [
       `--unit=${unitName}`,
-      '--wait', // Block until unit completes
-      '--pipe', // Stream stdio directly to file handle
+      '--wait',
+      '--pipe',
+      '--collect',
       `--working-directory=${workingDir}`,
     ];
 
@@ -81,8 +86,9 @@ export class SystemdDriver implements ExecutionDriver {
       commandArgs = [process.env.SHELL || 'sh', '-c', ctx.command];
     }
 
-    fs.mkdirSync(workingDir, { recursive: true });
-    console.log(`📁 Created workspace at ${workingDir}`);
+    if (process.env.DEBUG) {
+      console.log('$ systemd-run', [...systemdFlags, '--', ...commandArgs].join(' '));
+    }
 
     // 5. Spawn systemd-run
     let child;
