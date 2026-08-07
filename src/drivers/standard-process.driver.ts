@@ -21,7 +21,7 @@ export class StandardProcessDriver implements ExecutionDriver {
       fs.mkdirSync(logDir, { recursive: true });
       fs.mkdirSync(workingDir, { recursive: true });
       fs.chmodSync(workingDir, 0o777);
-      console.log(`📁 Created workspace at ${workingDir}`);
+
       logFd = fs.openSync(logFilePath, 'a');
     } catch (err: any) {
       return {
