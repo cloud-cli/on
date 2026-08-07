@@ -81,7 +81,7 @@ export class QueueManager {
   }
 
   async createTables() {
-    return db.run(`
+    await db.exec(`
       CREATE TABLE IF NOT EXISTS jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         workflow_id TEXT NOT NULL,
@@ -91,10 +91,22 @@ export class QueueManager {
         worker_id TEXT,
         report TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         finished_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );`);
+      );
+
+      CREATE TABLE IF NOT EXISTS step_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        step_id TEXT NOT NULL,
+        log_content TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_step_logs_job ON step_logs(job_id);
+    `);
   }
 
   /**
@@ -119,5 +131,41 @@ export class QueueManager {
    */
   async listJobs(limit = 50): Promise<any[]> {
     return db.all(`SELECT * FROM jobs ORDER BY id DESC LIMIT ?;`, [limit]);
+  }
+
+  /**
+   * Save lightweight summary report (NO heavy logs in this JSON!)
+   */
+  async saveReport(jobId: string | number, report: any): Promise<void> {
+    await this.db.run(`UPDATE jobs SET report = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [
+      JSON.stringify(report),
+      jobId,
+    ]);
+  }
+
+  /**
+   * Save terminal log output for a specific step
+   */
+  async saveStepLog(jobId: string | number, stepId: string, logContent: string): Promise<void> {
+    if (!logContent) return;
+
+    await this.db.run(`INSERT INTO step_logs (job_id, step_id, log_content) VALUES (?, ?, ?)`, [
+      jobId,
+      stepId,
+      logContent,
+    ]);
+  }
+
+  /**
+   * Retrieve all step logs for a specific job (called ON-DEMAND by /runs/:jobId)
+   */
+  async getJobLogs(jobId: string | number): Promise<Record<string, string>> {
+    const rows = await this.db.all(`SELECT step_id, log_content FROM step_logs WHERE job_id = ?`, [jobId]);
+
+    const logMap: Record<string, string> = {};
+    for (const row of rows) {
+      logMap[row.step_id] = row.log_content;
+    }
+    return logMap;
   }
 }

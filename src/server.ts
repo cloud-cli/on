@@ -1,11 +1,11 @@
 import http from 'node:http';
 import { URL } from 'node:url';
-import { QueueManager } from '../queue.js';
-import { SecretStore } from '../secrets.js';
-import { SafeExpressionEvaluator } from '../safe-eval.js';
+import { QueueManager } from './queue.js';
+import { SecretStore } from './secrets.js';
+import { SafeExpressionEvaluator } from './safe-eval.js';
 import { GitHubPreprocessor } from './preprocessors/github.js';
-import { WebhookPreprocessor, WebhookServerOptions, WorkflowDefinition } from '../types.js';
-import { HtmlReporter } from '../reporters/html.reporter.js';
+import { WebhookPreprocessor, WebhookServerOptions, WorkflowDefinition } from './types.js';
+import { HtmlReporter } from './reporters/html.reporter.js';
 
 export class WebhookServer {
   private server: http.Server;
@@ -15,7 +15,7 @@ export class WebhookServer {
   private secrets: SecretStore;
   private adminToken: string;
 
-  static withPort(options: WebhookServerOptions & { port: number }) {
+  static async withPort(options: WebhookServerOptions & { port: number }) {
     const { port, ...o } = options;
     return new WebhookServer(o).listen(port);
   }
@@ -184,7 +184,7 @@ export class WebhookServer {
    * Serves the Server Health & Jobs Dashboard
    */
   private async renderDashboard(res: http.ServerResponse) {
-    const jobs = await this.queue.listJobs(50);
+    const jobs = await this.queue.listJobs(500);
 
     const rows = jobs
       .map((j) => {
@@ -227,7 +227,7 @@ export class WebhookServer {
     <div class="flex items-center justify-between border-b border-gray-800 pb-4">
       <div>
         <h1 class="text-2xl font-bold text-white">⚙️ Runner Engine Status</h1>
-        <p class="text-xs text-gray-400">Live SQLite Job Queue & Execution Traces</p>
+        <p class="text-xs text-gray-400">Live Job Queue & Execution Traces</p>
       </div>
       <span class="text-xs font-mono bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/20">
         ● System Operational
@@ -260,17 +260,27 @@ export class WebhookServer {
   /**
    * Serves single job HTML report
    */
+  // Inside src/ingress/server.ts
+
   private async renderRunDetails(jobId: string, res: http.ServerResponse) {
     const job = await this.queue.getJob(jobId);
 
     if (!job || !job.report) {
       res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(
-        '<h1>404 - Report Not Found</h1><p>Job is still running or does not exist.</p><a href="/runs">← Back to Dashboard</a>',
-      );
+      return res.end('<h1>404 - Report Not Found</h1>');
     }
 
     const reportData = JSON.parse(job.report);
+
+    // Fetch logs on-demand
+    const logsMap = await this.queue.getJobLogs(jobId);
+
+    // Attach log content back onto step objects for rendering
+    reportData.steps = reportData.steps.map((step: any) => ({
+      ...step,
+      logContent: logsMap[step.id] || '',
+    }));
+
     const htmlReporter = new HtmlReporter({ outputDir: '' });
     const htmlContent = htmlReporter.generateHtml(reportData);
 
@@ -278,10 +288,19 @@ export class WebhookServer {
     res.end(htmlContent);
   }
 
-  listen(port: number): Promise<void> {
+  listen(port: number): Promise<WebhookServer> {
     return new Promise((resolve) => {
       this.server.listen(port, process.env.RUNNER_HOST || '0.0.0.0', () => {
         console.log(`🌐 Webhook Ingress Server running on port ${port}`);
+        resolve(this);
+      });
+    });
+  }
+
+  async stop(): Promise<void> {
+    return new Promise((resolve) => {
+      this.server.close(() => {
+        console.log('🌐 Webhook Ingress Server stopped listening.');
         resolve();
       });
     });

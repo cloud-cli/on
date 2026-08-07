@@ -2,7 +2,7 @@ let baseURL = process.env.DATABASE_URL;
 let pragmas: string[] = [];
 
 async function query(
-  method: 'get' | 'run' | 'all',
+  method: 'get' | 'run' | 'all' | 'exec',
   statement: string,
   data?: Array<string | number | null>,
   pragma = pragmas,
@@ -40,6 +40,7 @@ async function query(
 export const get = query.bind(null, 'get');
 export const run = query.bind(null, 'run');
 export const all = query.bind(null, 'all');
+export const exec = query.bind(null, 'exec');
 
 export function pragma(p) {
   if (Array.isArray(p) && p.every((s) => typeof s === 'string')) {
@@ -47,7 +48,7 @@ export function pragma(p) {
   }
 }
 
-export default { query, get, run, all, pragma };
+export default { query, get, run, all, exec, pragma };
 
 export function setUrl(u) {
   baseURL = u;
