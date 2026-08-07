@@ -103,7 +103,7 @@ function onValidate(config: RunnerConfig) {
 
 async function init() {
   const secrets = new SecretStore('./.env');
-  const queue = new QueueManager('cli-node');
+  const queue = new QueueManager(process.env.WORKER_NAME || 'cli');
   await queue.init();
 
   return { secrets, queue };

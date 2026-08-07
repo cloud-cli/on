@@ -20,7 +20,9 @@ export class SecretStore {
 
     // 2. Override/add from .env file if present
     if (this.envFilePath && existsSync(this.envFilePath)) {
+      console.log('Found .env at ' + this.envFilePath);
       const parsed = parseEnv(readFileSync(this.envFilePath, 'utf8'));
+
       for (const [key, val] of Object.entries(parsed)) {
         this.secrets.set(key, val);
       }
