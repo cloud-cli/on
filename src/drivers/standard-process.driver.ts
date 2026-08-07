@@ -34,6 +34,7 @@ export class StandardProcessDriver implements ExecutionDriver {
 
     let cmd: string;
     let args: string[];
+    const workingDir = path.join(ctx.workspacePath, 'wd');
 
     if (ctx.image) {
       cmd = 'docker';
@@ -42,7 +43,7 @@ export class StandardProcessDriver implements ExecutionDriver {
         '--rm',
         '--init',
         '-v',
-        `${ctx.workspacePath}/wd:/workspace`,
+        `${workingDir}:/workspace`,
         '-w',
         '/workspace',
         '--entrypoint',
@@ -56,12 +57,13 @@ export class StandardProcessDriver implements ExecutionDriver {
       args = ['-c', ctx.command];
     }
 
-    fs.mkdirSync(`${ctx.workspacePath}/wd`, { recursive: true });
+    fs.mkdirSync(workingDir, { recursive: true });
+    console.log(`📁 Created workspace at ${workingDir}`);
 
     let child: ChildProcess;
     try {
       child = spawn(cmd, args, {
-        cwd: ctx.workspacePath + '/wd',
+        cwd: workingDir,
         env: { ...process.env, ...ctx.env },
         detached: true, // Creates separate Process Group ID
         stdio: ['ignore', logFd, logFd],

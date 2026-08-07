@@ -40,12 +40,12 @@ export class SystemdDriver implements ExecutionDriver {
     }
 
     const unitName = `workflow-${ctx.jobId}-${ctx.stepId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-
+    const workingDir = path.join(ctx.workspacePath, 'wd');
     const systemdFlags: string[] = [
       `--unit=${unitName}`,
       '--wait', // Block until unit completes
       '--pipe', // Stream stdio directly to file handle
-      `--working-directory=${ctx.workspacePath}/wd`,
+      `--working-directory=${workingDir}`,
     ];
 
     if (ctx.env) {
@@ -69,7 +69,7 @@ export class SystemdDriver implements ExecutionDriver {
         '--init',
         `--name=${unitName}`,
         '-v',
-        `${ctx.workspacePath}/wd:/workspace`,
+        `${workingDir}:/workspace`,
         '-w',
         '/workspace',
         ctx.image,
@@ -81,7 +81,8 @@ export class SystemdDriver implements ExecutionDriver {
       commandArgs = [process.env.SHELL || 'sh', '-c', ctx.command];
     }
 
-    fs.mkdirSync(`${ctx.workspacePath}/wd`, { recursive: true });
+    fs.mkdirSync(workingDir, { recursive: true });
+    console.log(`📁 Created workspace at ${workingDir}`);
 
     // 5. Spawn systemd-run
     let child;
