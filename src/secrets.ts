@@ -49,5 +49,7 @@ export class SecretStore {
     for (const secret of ordered) {
       text = text.replaceAll(secret, '** masked **');
     }
+
+    return text;
   }
 }
