@@ -91,7 +91,7 @@ export class QueueManager {
         worker_id TEXT,
         report TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         finished_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       );
