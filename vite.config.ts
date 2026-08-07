@@ -11,7 +11,7 @@ export default defineConfig({
     target: 'esnext',
     lib: {
       entry: './src/index.ts',
-      name: 'on',
+      name: 'index',
       formats: ['es'],
     },
     rollupOptions: {
