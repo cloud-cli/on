@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { PreprocessedWebhook, WebhookPreprocessor } from '../../types.js';
+import type { PreprocessedWebhook, WebhookPreprocessor } from '../types.js';
 
 export class GitHubPreprocessor implements WebhookPreprocessor {
   name = 'github';

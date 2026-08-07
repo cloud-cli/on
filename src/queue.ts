@@ -69,8 +69,8 @@ export class QueueManager {
   /**
    * Checks if the current job has been marked for cancellation by another event
    */
-  async isCancelled(jobId: number): Promise<boolean> {
-    const job = await db.get(`SELECT status FROM jobs WHERE id = ?;`, [jobId]);
+  async isCancelled(jobId: string | number): Promise<boolean> {
+    const job = await db.get(`SELECT status FROM jobs WHERE id = ?;`, [+jobId]);
     return job?.status === 'cancelling';
   }
 
@@ -110,16 +110,6 @@ export class QueueManager {
   }
 
   /**
-   * Save complete execution report JSON to DB
-   */
-  async saveReport(jobId: string | number, report: WorkflowExecutionReport): Promise<void> {
-    await db.run(`UPDATE jobs SET report = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [
-      JSON.stringify(report),
-      jobId,
-    ]);
-  }
-
-  /**
    * Fetch job details + report by ID
    */
   async getJob(jobId: string | number): Promise<any> {
@@ -137,7 +127,7 @@ export class QueueManager {
    * Save lightweight summary report (NO heavy logs in this JSON!)
    */
   async saveReport(jobId: string | number, report: any): Promise<void> {
-    await this.db.run(`UPDATE jobs SET report = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [
+    await db.run(`UPDATE jobs SET report = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [
       JSON.stringify(report),
       jobId,
     ]);
@@ -149,11 +139,7 @@ export class QueueManager {
   async saveStepLog(jobId: string | number, stepId: string, logContent: string): Promise<void> {
     if (!logContent) return;
 
-    await this.db.run(`INSERT INTO step_logs (job_id, step_id, log_content) VALUES (?, ?, ?)`, [
-      jobId,
-      stepId,
-      logContent,
-    ]);
+    await db.run(`INSERT INTO step_logs (job_id, step_id, log_content) VALUES (?, ?, ?)`, [jobId, stepId, logContent]);
   }
 
   /**

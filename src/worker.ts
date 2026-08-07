@@ -10,6 +10,7 @@ import {
   StepReport,
   StepResult,
   WorkflowExecutionReport,
+  WorkflowStep,
 } from './types.js';
 
 export const shutdownState = {
