@@ -94,12 +94,9 @@ export class QueueManager {
     return await db.run(
       `UPDATE jobs
        SET
-        status = 'pending',
-        worker_id = NULL
+        status = 'pending', worker_id = NULL
        WHERE
-        status = 'running'
-        AND
-        started_at < datetime('now', '-1 hour');`,
+        status = 'running' AND started_at < datetime('now', '-1 hour');`,
     );
   }
 
@@ -112,7 +109,7 @@ export class QueueManager {
         status TEXT NOT NULL DEFAULT 'pending',
         concurrency_key TEXT,
         worker_id TEXT,
-        report TEXT, -- Stores WorkflowExecutionReport JSON
+        report TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
