@@ -7,7 +7,7 @@
   "license": "MIT",
   "exports": {
     ".": {
-      "types": "./dist/*",
+      "types": "./dist/index.d.ts",
       "default": "./dist/on.js"
     }
   },
@@ -26,7 +26,8 @@
     "ci": "pnpm build && pnpm lint && pnpm test",
     "build": "vite build && tsc --emitDeclarationOnly --declaration",
     "lint": "eslint .",
-    "test": "echo true"
+    "test": "echo true",
+    "release": "npx --yes semantic-release@24 -b main --no-ci"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.1",
