@@ -26,7 +26,6 @@ export class WebhookServer {
     this.adminToken = options.adminToken;
     this.workflows = options.workflows;
 
-    // Register built-in preprocessors
     this.registerPreprocessor(new GitHubPreprocessor());
 
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
@@ -87,11 +86,6 @@ export class WebhookServer {
 
       const rawBuffer = Buffer.concat(chunks);
 
-      let body: any = {};
-      try {
-        body = JSON.parse(rawBuffer.toString('utf-8'));
-      } catch {}
-
       const headers = Object.fromEntries(
         Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), Array.isArray(v) ? v[0] : v || '']),
       );
@@ -99,13 +93,17 @@ export class WebhookServer {
       const preprocessor = this.preprocessors.get(provider);
       const secret = this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`);
 
+      let inputs: Record<string, any> = {};
       let isValid = true;
-      let inputs: Record<string, any> = { ...body };
 
       if (preprocessor) {
-        const result = preprocessor.parse(headers, body, rawBuffer, secret);
+        const result = preprocessor.parse(headers, rawBuffer, secret);
         isValid = result.isValid;
         inputs = result.inputs;
+      } else {
+        try {
+          inputs = JSON.parse(rawBuffer.toString('utf-8'));
+        } catch {}
       }
 
       // Reject unauthorized requests immediately
@@ -282,7 +280,7 @@ export class WebhookServer {
 
   listen(port: number): Promise<void> {
     return new Promise((resolve) => {
-      this.server.listen(port, () => {
+      this.server.listen(port, process.env.RUNNER_HOST || '0.0.0.0', () => {
         console.log(`🌐 Webhook Ingress Server running on port ${port}`);
         resolve();
       });

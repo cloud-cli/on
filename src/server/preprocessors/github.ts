@@ -4,9 +4,9 @@ import type { PreprocessedWebhook, WebhookPreprocessor } from '../../types.js';
 export class GitHubPreprocessor implements WebhookPreprocessor {
   name = 'github';
 
-  parse(headers: Record<string, string>, body: any, rawBodyBuffer: Buffer, secret?: string): PreprocessedWebhook {
-    // 1. HMAC Signature Verification
+  parse(headers: Record<string, string>, rawBodyBuffer: Buffer, secret?: string): PreprocessedWebhook {
     let isValid = true;
+    let inputs: any = null;
     const signature = headers['x-hub-signature-256'];
 
     if (secret && signature) {
@@ -14,23 +14,25 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
       isValid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(hmac));
     }
 
-    // 2. Normalize GitHub Event & Headers
-    const event = headers['x-github-event'] || 'unknown';
-    const ref = body.ref || '';
-    const branch = ref.replace('refs/heads/', '').replace('refs/tags/', '');
-
-    return {
-      isValid,
-      event,
-      inputs: {
+    if (isValid) {
+      const body = JSON.parse(rawBodyBuffer.toString('utf-8'));
+      const event = headers['x-github-event'] || 'unknown';
+      const ref = body.ref || '';
+      const branch = ref.replace('refs/heads/', '').replace('refs/tags/', '');
+      inputs = {
         event,
         branch,
         clone_url: body.repository?.clone_url,
         commit_sha: body.after || body.head_commit?.id,
         author: body.pusher?.name || body.sender?.login,
-        action: body.action, // e.g., 'opened', 'synchronize' for PRs
-      },
-      rawBody: body,
+        action: body.action,
+        raw: body,
+      };
+    }
+
+    return {
+      isValid,
+      inputs,
     };
   }
 }

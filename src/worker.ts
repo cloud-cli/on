@@ -250,17 +250,16 @@ async function executeRunStep(params: {
     env: {
       ...executionContext.env,
       ...evaluatedStepEnv,
-      ...envFiles,
     },
     timeoutMs: step.timeoutMs,
   };
 
   const envFilePath = path.join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.env`);
   const outputFilePath = path.join(stepCtx.workspacePath, `.step-${stepCtx.stepId}.out`);
-  const envFiles = {
+  Object.assign(stepCtx.env, {
     WORKFLOW_ENV: envFilePath,
     WORKFLOW_OUTPUT: outputFilePath,
-  };
+  });
 
   let result: StepResult;
   let isCancelled = false;
@@ -288,16 +287,21 @@ async function executeRunStep(params: {
     console.error(`[${workerId}] ❌ Step [${stepId}] failed with status: ${stepStatus}`);
   }
 
-  const outputs = existsSync(outputFilePath) ? parseEnv(readFileSync(outputFilePath, 'utf-8')) : {};
-
   if (existsSync(envFilePath)) {
     const newEnv = parseEnv(readFileSync(envFilePath, 'utf-8'));
     Object.assign(executionContext.env, newEnv);
     unlinkSync(envFilePath);
   }
-  if (existsSync(outputFilePath)) unlinkSync(outputFilePath);
 
-  executionContext.steps[stepId] = { status: stepStatus, exitCode: result.exitCode };
+  let outputs = {};
+
+  if (existsSync(outputFilePath)) {
+    const newOutputs = parseEnv(readFileSync(outputFilePath, 'utf-8'));
+    Object.assign(outputs, newOutputs);
+    unlinkSync(outputFilePath);
+  }
+
+  executionContext.steps[stepId] = { status: stepStatus, exitCode: result.exitCode, outputs };
 
   return {
     failed,
@@ -309,7 +313,7 @@ async function executeRunStep(params: {
       durationMs: result.durationMs,
       exitCode: result.exitCode,
       error: result.error?.message,
-      outputs: executionContext.steps[stepId]?.outputs || {},
+      outputs: executionContext.steps[stepId].outputs,
       logFilePath: handle.logFilePath,
     },
   };

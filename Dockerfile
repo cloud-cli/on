@@ -5,7 +5,7 @@ USER 0
 RUN pnpm i && pnpm run build
 
 FROM ghcr.io/cloud-cli/node:latest
-COPY --from=builder /home/app/packages/on/dist/on.js ./on.mjs
-ENV WORKFLOW_HOST "0.0.0.0"
+COPY --from=builder /home/app/dist/index.js ./index.mjs
+
 ENTRYPOINT [ "node" ]
-CMD [ "on.mjs" ]
+CMD [ "index.mjs" ]

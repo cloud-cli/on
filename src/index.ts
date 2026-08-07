@@ -4,7 +4,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { RunnerConfig, UserRunnerConfig } from './types.js';
-import { WebhookServer } from './ingress/server.js';
+import { WebhookServer } from './server/server.js';
 import { WorkflowIncludeResolver } from './parser/include-resolver.js';
 import { expandMatrix } from './parser/matrix-expander.js';
 import { YamlLoader } from './parser/yaml-loader.js';
@@ -12,16 +12,15 @@ import { QueueManager } from './queue.js';
 import { SecretStore } from './secrets.js';
 import { startWorkers } from './worker.js';
 import { setUrl } from './db-client.js';
-import { resolveConfig } from './config.js';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
-    config: { type: 'string', short: 'c', default: process.env.RUNNER_CONFIG_PATH || './runner.config.mjs' },
-    database: { type: 'string', short: 'd', default: process.env.RUNNER_DATABASE_URL },
-    workflows: { type: 'string', short: 'w', default: process.env.RUNNER_WORKFLOWS_PATH || '.on/' },
-    port: { type: 'string', short: 'p', default: String(process.env.PORT || '11235') },
-    workers: { type: 'string', short: 'k', default: process.env.RUNNER_WORKERS || '5' },
+    config: { type: 'string', short: 'c', default: process.env.RUNNER_CONFIG_FILE || './runner.config.mjs' },
+    database: { type: 'string', short: 'd' },
+    workflows: { type: 'string', short: 'w' },
+    port: { type: 'string', short: 'p' },
+    workers: { type: 'string', short: 'k' },
     help: { type: 'boolean', short: 'h' },
   },
 });
@@ -102,6 +101,20 @@ async function init() {
   return { secrets, queue };
 }
 
+function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: UserRunnerConfig): RunnerConfig {
+  const _ = process.env;
+  return {
+    port: Number(configFromFile.port || configFromCli.port || _.PORT || 11235),
+    adminToken: configFromFile.adminToken ?? _.RUNNER_ADMIN_SECRET ?? '',
+    database: configFromFile.database ?? configFromCli.database ?? _.RUNNER_DATABASE_URL ?? '',
+    workflows: configFromFile.workflows ?? configFromCli.workflows ?? _.RUNNER_WORKFLOWS ?? '.on/',
+    workers: configFromFile.workers ?? configFromCli.workers ?? _.RUNNER_WORKERS ?? 5,
+    storagePath: configFromFile.storagePath ?? _.RUNNER_TMP ?? '/tmp/workspaces',
+    env: configFromFile.env ?? {},
+    reporters: configFromFile.reporters ?? [],
+  };
+}
+
 async function main() {
   const command = positionals[0] || 'start';
   const config = await loadConfig();
@@ -146,11 +159,11 @@ async function main() {
   }
 }
 
-const cleanupAndExit = async (signal: string) => {
+async function cleanupAndExit(signal: string) {
   console.log(`\n🛑 Received ${signal}. Gracefully shutting down workers...`);
   // Cancel active jobs / close DB connections here
   process.exit(0);
-};
+}
 
 process.on('SIGINT', () => cleanupAndExit('SIGINT'));
 process.on('SIGTERM', () => cleanupAndExit('SIGTERM'));

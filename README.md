@@ -106,23 +106,24 @@ npx @cloud-cli/on [command] [options]
 
 ### Commands
 
-| Command                 | Description                                                               |
-| ----------------------- | ------------------------------------------------------------------------- |
-| **`start`** _(default)_ | Runs both Webhook Ingress Gateway and Worker execution loops together.    |
-| **`start-server`**      | Runs Webhook Ingress Gateway only (API / Gateway mode).                   |
-| **`start-workers`**     | Runs Worker Polling loops only (Scalable Worker mode).                    |
-| **`validate`**          | Parses and validates all YAML workflows in `.on/` without executing jobs. |
+| Command                 | Description                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
+| **`start`** _(default)_ | Runs both Webhook Ingress Gateway and Worker execution loops together.                   |
+| **`start-server`**      | Runs Webhook Ingress Gateway only (API / Gateway mode).                                  |
+| **`start-workers`**     | Runs Worker Polling loops only (Scalable Worker mode).                                   |
+| **`validate`**          | Parses and validates all YAML workflows in your workflows folder without executing jobs. |
 
-### CLI Options
+### CLI and Environment Options
 
-| Flag | Option        | Default                    | Description                               |
-| ---- | ------------- | -------------------------- | ----------------------------------------- |
-| `-c` | `--config`    | `./runner.config.mjs`      | Path to JavaScript configuration file.    |
-| `-d` | `--database`  | `process.env.DATABASE_URL` | SQLite database file path or HTTP URL.    |
-| `-w` | `--workflows` | `.on/`                     | Directory where workflow YAML files live. |
-| `-p` | `--port`      | `3000`                     | Port for the Ingress HTTP server.         |
-| `-k` | `--workers`   | `5`                        | Number of worker loop threads to spawn.   |
-| `-h` | `--help`      | —                          | Prints CLI help message and exits.        |
+| Flag | Option        | Default               | Env                   | Description                               |
+| ---- | ------------- | --------------------- | --------------------- | ----------------------------------------- |
+| `-h` | `--help`      | —                     | -                     | Prints CLI help message and exits.        |
+| `-c` | `--config`    | `./runner.config.mjs` | `RUNNER_CONFIG_FILE`  | Path to JavaScript configuration file.    |
+| `-d` | `--database`  | -                     | `RUNNER_DATABASE_URL` | SQLite database file path or HTTP URL.    |
+| `-w` | `--workflows` | `.on/`                | `RUNNER_WORKFLOWS`    | Directory where workflow YAML files live. |
+| `-p` | `--port`      | `11235`               | `PORT`                | Port for the Ingress HTTP server.         |
+| `-k` | `--workers`   | `5`                   | `RUNNER_WORKERS`      | Number of worker loop threads to spawn.   |
+|      |               |                       | `RUNNER_ADMIN_SECRET` | Admin token to refresh secrets via API    |
 
 ---
 
@@ -137,7 +138,7 @@ import { HtmlReporter, SlackReporter, JsonFileReporter } from '@cloud-cli/on/rep
 export default {
   port: 3000,
   workers: 5,
-  workflows: '.on/',
+  workflows: '/home/workflows/',
   storagePath: '/tmp/workspaces',
   database: 'https://remote.db.com/',
 

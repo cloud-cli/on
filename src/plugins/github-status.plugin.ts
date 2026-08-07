@@ -21,5 +21,6 @@ export class GitHubStatusPlugin implements WorkflowPlugin {
   private async updateStatus(wf: WorkflowContext, state: string, description: string) {
     // Calls GitHub REST API using inputs.commit_sha
     console.log(`[GitHub Plugin] Setting commit status for ${wf.inputs.commit_sha} -> ${state}: ${description}`);
+    // TODO
   }
 }
