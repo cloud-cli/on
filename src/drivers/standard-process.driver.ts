@@ -56,7 +56,7 @@ export class StandardProcessDriver implements ExecutionDriver {
       ];
     } else {
       cmd = process.env.SHELL || 'sh';
-      args = ['-c', ctx.command];
+      args = ['-e', '-c', ctx.command];
     }
 
     if (process.env.DEBUG) {

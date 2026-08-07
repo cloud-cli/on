@@ -59,6 +59,8 @@ export class SystemdDriver implements ExecutionDriver {
       }
     }
 
+    systemdFlags.push(`--setenv=PATH=${ctx.env?.PATH || process.env.PATH}`);
+
     if (ctx.timeoutMs) {
       const timeoutSec = Math.ceil(ctx.timeoutMs / 1000);
       systemdFlags.push(`--property=RuntimeMaxSec=${timeoutSec}`);
@@ -83,7 +85,7 @@ export class SystemdDriver implements ExecutionDriver {
         ctx.command,
       ];
     } else {
-      commandArgs = [process.env.SHELL || 'sh', '-c', ctx.command];
+      commandArgs = [process.env.SHELL || 'sh', '-e', '-c', ctx.command];
     }
 
     if (process.env.DEBUG) {
