@@ -6,14 +6,15 @@
   "packageManager": "pnpm@10.30.3",
   "license": "MIT",
   "exports": {
-    "./*": "./dist/*"
+    "./*": {
+      "types": "./dist/*",
+      "default": "./dist/*"
+    }
   },
-  "files": [
-    "dist"
-  ],
-  "main": "dist/index.js",
+  "files": ["dist"],
+  "main": "dist/on.js",
   "bin": {
-    "on": "dist/index.js"
+    "on": "dist/on.js"
   },
   "dependencies": {
     "acorn": "^8.18.0",
@@ -22,8 +23,8 @@
     "yaml": "^2.9.0"
   },
   "scripts": {
-    "nx": "nx",
-    "build": "tsc",
+    "ci": "pnpm build && pnpm lint && pnpm test",
+    "build": "vite build && tsc --emitDeclarationOnly --declaration",
     "lint": "eslint .",
     "test": "echo true || npm wf start",
     "wf": "pnpm tsx src/index.ts -w tests -p 11235"
