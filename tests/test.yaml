@@ -15,7 +15,7 @@ steps:
   - id: init-timestamp
     name: Generate Timestamp via JS
     eval: |
-      JSON.stringify({
+      json_stringify({
         started_at: new Date().toISOString(),
         target_env: env.MATRIX_ENVIRONMENT
       })

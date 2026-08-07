@@ -1,10 +1,7 @@
 import { defineConfig } from 'vite';
-import path from 'path';
-
-const projectRoot = '.';
 
 export default defineConfig({
-  root: projectRoot,
+  root: '.',
   resolve: {
     alias: {
       '@': 'src',
@@ -13,7 +10,7 @@ export default defineConfig({
   build: {
     target: 'esnext',
     lib: {
-      entry: path.resolve(projectRoot, 'src/index.ts'),
+      entry: './src/index.ts',
       name: 'on',
       formats: ['es'],
     },
@@ -23,7 +20,7 @@ export default defineConfig({
   },
 
   test: {
-     watch: !process.env.CI,
+    watch: !process.env.CI,
     globals: true,
     environment: 'node',
     include: ['src/**/*.spec.ts'],
