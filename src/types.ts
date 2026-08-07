@@ -177,8 +177,7 @@ export interface StepReport {
   exitCode: number;
   error?: string;
   outputs: Record<string, any>;
-  logFilePath: string;
-  logContent?: string;
+  logContent: string;
 }
 
 export interface WorkflowExecutionReport {

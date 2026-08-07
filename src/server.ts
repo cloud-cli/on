@@ -253,8 +253,9 @@ export class WebhookServer {
 </body>
 </html>`;
 
+    const redacted = this.secrets.redactText(html);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(html);
+    res.end(redacted);
   }
 
   /**
@@ -283,9 +284,10 @@ export class WebhookServer {
 
     const htmlReporter = new HtmlReporter({ outputDir: '' });
     const htmlContent = htmlReporter.generateHtml(reportData);
+    const redacted = this.secrets.redactText(htmlContent);
 
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(htmlContent);
+    res.end(redacted);
   }
 
   listen(port: number): Promise<WebhookServer> {

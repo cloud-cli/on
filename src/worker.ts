@@ -224,7 +224,7 @@ async function executeEvalStep(params: {
         durationMs: Date.now() - startTime,
         exitCode: 0,
         outputs: executionContext.steps[stepId].outputs,
-        logFilePath: '',
+        logContent: '',
       },
     };
   } catch (err: any) {
@@ -249,7 +249,7 @@ async function executeEvalStep(params: {
         exitCode: 1,
         error: err.message,
         outputs: {},
-        logFilePath: '',
+        logContent: '',
       },
     };
   }
@@ -344,7 +344,6 @@ async function executeRunStep(params: {
       exitCode: result.exitCode,
       error: result.error?.message,
       outputs: {},
-      logFilePath: handle.logFilePath || '',
     },
   };
 }
@@ -363,7 +362,7 @@ function fillSkippedSteps(steps: any[], startIndex: number, stepReports: StepRep
       durationMs: 0,
       exitCode: 0,
       outputs: {},
-      logFilePath: '',
+      logContent: '',
     });
   }
 }

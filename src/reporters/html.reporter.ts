@@ -37,13 +37,7 @@ export class HtmlReporter implements Reporter {
     const stepRows = execReport.steps
       .map((step, idx) => {
         let rawLog = step.logContent;
-        if (!rawLog && step.logFilePath && fs.existsSync(step.logFilePath)) {
-          try {
-            rawLog = fs.readFileSync(step.logFilePath, 'utf-8');
-          } catch {}
-        }
-
-        const htmlLog = rawLog
+        let htmlLog = rawLog
           ? this.ansiUp.ansi_to_html(rawLog)
           : '<span class="text-gray-500">(No terminal log output recorded for this step)</span>';
 
@@ -56,10 +50,10 @@ export class HtmlReporter implements Reporter {
 
         return `
         <div class="border border-gray-800 rounded-xl overflow-hidden bg-gray-900/50 mb-4">
-          <div class="flex items-center justify-between p-4 bg-gray-800/40 border-b border-gray-800">
+          <div class="flex items-center justify-between p-2 bg-gray-800/40 border-b border-gray-800">
             <div class="flex items-center gap-3">
               <span class="text-xs font-mono text-gray-500">#${idx + 1} ${step.exitCode !== 0 ? '(' + step.exitCode + ')' : ''}</span>
-              <h3 class="font-semibold text-gray-200">${step.name}</h3>
+              <h3 class="font-semibold text-gray-200 text-sm">${step.name}</h3>
               <span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${stepBadge}">
                 ${step.status.toUpperCase()}
               </span>
@@ -83,7 +77,7 @@ export class HtmlReporter implements Reporter {
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen p-6 font-sans">
-  <div class="max-w-5xl mx-auto space-y-6">
+  <div class="max-w-5xl mx-auto space-y-4">
 
     <!-- Top Header -->
     <div class="flex items-center justify-between border-b border-gray-800 pb-6">

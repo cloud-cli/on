@@ -39,10 +39,15 @@ export class SecretStore {
     return Object.fromEntries(this.secrets);
   }
 
-  /**
-   * Returns a list of secret values to be redacted from logs
-   */
-  getSecretValuesForRedaction(): string[] {
-    return Array.from(this.secrets.values()).filter((v) => v.length > 3); // Avoid masking tiny strings
+  redactText(text: string) {
+    // Avoid masking tiny strings
+    const secrets: string[] = Array.from(this.secrets.values()).filter((v) => v.length > 3);
+
+    // Sort longest secrets first to prevent partial replacements
+    const ordered = secrets.slice().sort((a, b) => b.length - a.length);
+
+    for (const secret of ordered) {
+      text = text.replaceAll(secret, '** masked **');
+    }
   }
 }
