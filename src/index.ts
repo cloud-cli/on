@@ -13,6 +13,10 @@ import { SecretStore } from './secrets.js';
 import { startWorkers } from './worker.js';
 import { setUrl } from './db-client.js';
 
+export { HtmlReporter } from './reporters/html.reporter.js';
+export { JsonFileReporter } from './reporters/json-file.reporter.js';
+export { SlackReporter } from './reporters/slack.reporter.js';
+
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
@@ -158,14 +162,5 @@ async function main() {
       process.exit(1);
   }
 }
-
-async function cleanupAndExit(signal: string) {
-  console.log(`\n🛑 Received ${signal}. Gracefully shutting down workers...`);
-  // Cancel active jobs / close DB connections here
-  process.exit(0);
-}
-
-process.on('SIGINT', () => cleanupAndExit('SIGINT'));
-process.on('SIGTERM', () => cleanupAndExit('SIGTERM'));
 
 main().catch(console.error);

@@ -6,9 +6,9 @@
   "packageManager": "pnpm@10.30.3",
   "license": "MIT",
   "exports": {
-    "./*": {
+    ".": {
       "types": "./dist/*",
-      "default": "./dist/*"
+      "default": "./dist/on.js"
     }
   },
   "files": ["dist"],
@@ -26,8 +26,7 @@
     "ci": "pnpm build && pnpm lint && pnpm test",
     "build": "vite build && tsc --emitDeclarationOnly --declaration",
     "lint": "eslint .",
-    "test": "echo true || npm wf start",
-    "wf": "pnpm tsx src/index.ts -w tests -p 11235"
+    "test": "echo true"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.1",
