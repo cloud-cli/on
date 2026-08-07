@@ -1,4 +1,4 @@
-import { ParsedWorkflow } from '../types';
+import type { ParsedWorkflow } from '../types.js';
 
 /**
  * Expands a workflow definition containing a `strategy.matrix` into dynamic single-instance workflow jobs.
