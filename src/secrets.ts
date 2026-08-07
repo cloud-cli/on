@@ -24,7 +24,7 @@ export class SecretStore {
       const parsed = parseEnv(readFileSync(this.envFilePath, 'utf8'));
 
       for (const [key, val] of Object.entries(parsed)) {
-        this.secrets.set(key, val);
+        this.secrets.set(key, val || '');
       }
     }
   }
