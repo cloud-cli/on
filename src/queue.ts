@@ -93,7 +93,7 @@ export class QueueManager {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        finished_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        finished_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
       CREATE TABLE IF NOT EXISTS step_logs (
