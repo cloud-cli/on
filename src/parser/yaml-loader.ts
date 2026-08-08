@@ -34,12 +34,18 @@ export class YamlLoader {
       const expandedWorkflows = expandMatrix(resolved);
 
       for (const wf of expandedWorkflows) {
+        if (typeof wf.on !== 'object') {
+          console.error(`on: not defined in ${path}! Ignoring this workflow.`);
+          continue;
+        }
+
+        const provider = Object.keys(wf.on)[0] || 'generic';
         workflows.push({
           id: (wf.id || wf.name)?.toLowerCase().replace(/[^a-z0-9]/g, '-') ?? randomUUID(),
           name: wf.name,
           on: {
-            provider: Object.keys(wf.on || {})[0] || 'generic',
-            if: wf.on?.[Object.keys(wf.on || {})[0]]?.if,
+            provider,
+            if: wf.on[provider]?.if,
           },
           concurrency: wf.concurrency,
           steps: wf.steps,

@@ -69,90 +69,25 @@ export class WebhookServer {
    */
   private async handleWebhook(provider: string, req: http.IncomingMessage, res: http.ServerResponse) {
     try {
-      // 5MB
-      const MAX_PAYLOAD_SIZE = 5 * 1024 * 1024;
-      const chunks: Buffer[] = [];
-      let receivedBytes = 0;
+      const { rawBuffer, headers } = await this.readRequest(req, res);
 
-      for await (const chunk of req) {
-        receivedBytes += chunk.length;
-        if (receivedBytes > MAX_PAYLOAD_SIZE) {
-          res.writeHead(413, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Payload size exceeds limit' }));
-        }
+      if (res.headersSent || !rawBuffer) return;
 
-        chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-      }
+      const { isValid, inputs } = this.preprocess(provider, headers, rawBuffer);
 
-      const rawBuffer = Buffer.concat(chunks);
-
-      const headers = Object.fromEntries(
-        Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), Array.isArray(v) ? v[0] : v || '']),
-      );
-
-      const preprocessor = this.preprocessors.get(provider);
-      const secret = this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`);
-
-      let inputs: Record<string, any> = {};
-      let isValid = true;
-
-      if (preprocessor) {
-        const result = preprocessor.parse(headers, rawBuffer, secret);
-        isValid = result.isValid;
-        inputs = result.inputs;
-      } else {
-        try {
-          inputs = JSON.parse(rawBuffer.toString('utf-8'));
-        } catch {}
-      }
-
-      // Reject unauthorized requests immediately
       if (!isValid) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'Invalid HMAC signature or authentication failed' }));
+        res.end(JSON.stringify({ error: 'Invalid HMAC signature or authentication failed' }));
+        return;
       }
 
-      // 3. Match Incoming Webhook to Registered Workflows
-      const triggeredJobs: string[] = [];
+      const triggeredWorkflows = this.matchWorkflows(provider, inputs);
 
-      for (const workflow of this.workflows) {
-        // Match provider (e.g. 'github')
-        if (workflow.on.provider !== provider) continue;
-
-        // Evaluate workflow trigger condition if defined (e.g. `if: inputs.event == 'push'`)
-        if (workflow.on.if) {
-          try {
-            const shouldRun = SafeExpressionEvaluator.evaluateCondition(workflow.on.if, { inputs });
-            if (!shouldRun) continue;
-          } catch (evalErr: any) {
-            console.error(`⚠️ Condition evaluation error in workflow [${workflow.id}]:`, evalErr.message);
-            continue; // Skip this workflow without crashing server
-          }
-        }
-
-        // 4. Resolve Concurrency Key (if specified)
-        let concurrencyKey: string | undefined;
-        if (workflow.concurrency?.group) {
-          concurrencyKey = await SafeExpressionEvaluator.evaluateValue(workflow.concurrency.group, { inputs });
-        }
-
-        // 5. Enqueue Job to SQLite
-        const jobPayload = {
-          workflowId: workflow.id,
-          steps: workflow.steps,
-          inputs,
-        };
-
-        await this.queue.enqueue(workflow.id, jobPayload, concurrencyKey);
-        triggeredJobs.push(workflow.id);
-      }
-
-      // 6. Respond Fast (202 Accepted)
       res.writeHead(202, { 'Content-Type': 'application/json' });
       res.end(
         JSON.stringify({
           message: 'Webhook processed',
-          triggeredWorkflows: triggeredJobs,
+          triggeredWorkflows,
         }),
       );
     } catch (err: any) {
@@ -160,6 +95,84 @@ export class WebhookServer {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Internal Ingress Error', details: err.message }));
     }
+  }
+
+  private async readRequest(req: http.IncomingMessage, res: http.ServerResponse) {
+    const MAX_PAYLOAD_SIZE = 5 * 1024 * 1024; // 5MB
+    const chunks: Buffer[] = [];
+    let receivedBytes = 0;
+
+    for await (const chunk of req) {
+      receivedBytes += chunk.length;
+      if (receivedBytes > MAX_PAYLOAD_SIZE) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload size exceeds limit' }));
+        return { rawBuffer: null, headers: {} };
+      }
+
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    }
+
+    const rawBuffer = Buffer.concat(chunks);
+    const headers = Object.fromEntries(
+      Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), Array.isArray(v) ? v[0] : v || '']),
+    );
+
+    return { rawBuffer, headers };
+  }
+
+  private preprocess(provider: string, headers, rawBuffer: Buffer) {
+    const secret = this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`);
+    const preprocessor = this.preprocessors.get(provider);
+    try {
+      if (preprocessor) {
+        const result = preprocessor.parse(headers, rawBuffer, secret);
+        const { inputs, isValid } = result;
+        return { inputs, isValid };
+      }
+
+      const inputs = JSON.parse(rawBuffer.toString('utf-8'));
+      return { isValid: true, inputs };
+    } catch {
+      return { isValid: false, inputs: null };
+    }
+  }
+
+  private async matchWorkflows(provider, inputs) {
+    const triggeredJobs: string[] = [];
+
+    for (const workflow of this.workflows) {
+      if (workflow.on.provider !== provider) continue;
+
+      // Evaluate workflow trigger condition if defined (e.g. `if: inputs.event == 'push'`)
+      if (workflow.on.if) {
+        try {
+          const shouldRun = SafeExpressionEvaluator.evaluateCondition(workflow.on.if, { inputs });
+          if (!shouldRun) continue;
+        } catch (evalErr: any) {
+          console.error(`⚠️ Condition evaluation error in workflow [${workflow.id}]:`, evalErr.message);
+          continue; // Skip this workflow without crashing server
+        }
+      }
+
+      // 4. Resolve Concurrency Key (if specified)
+      let concurrencyKey: string | undefined;
+      if (workflow.concurrency?.group) {
+        concurrencyKey = await SafeExpressionEvaluator.evaluateValue(workflow.concurrency.group, { inputs });
+      }
+
+      // 5. Enqueue Job to SQLite
+      const jobPayload = {
+        workflowId: workflow.id,
+        steps: workflow.steps,
+        inputs,
+      };
+
+      await this.queue.enqueue(workflow.id, jobPayload, concurrencyKey);
+      triggeredJobs.push(workflow.id);
+    }
+
+    return triggeredJobs;
   }
 
   /**

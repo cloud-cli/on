@@ -37,9 +37,20 @@ export class SafeExpressionEvaluator {
    * Strictly parses code as a JavaScript expression and coerces result to boolean.
    * Throws an explicit AST Parse Error on invalid syntax (fails fast and loud).
    */
-  static async evaluateCondition(code: string, context: Record<string, any> = {}): Promise<boolean> {
-    const result = await this.evaluateExpression(code, context);
-    return Boolean(result);
+  static async evaluateCondition(code: string | string[], context: Record<string, any> = {}): Promise<boolean> {
+    if (typeof code === 'string') {
+      code = [code];
+    }
+
+    for (const c of code) {
+      const result = await this.evaluateExpression(c, context);
+
+      if (result) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
