@@ -5,6 +5,8 @@ import { SafeExpressionEvaluator } from './safe-eval.js';
 import { SecretStore } from './secrets.js';
 import {
   ExecutionDriver,
+  JobPayload,
+  JobRecord,
   RunnerConfig,
   StepContext,
   StepReport,
@@ -75,7 +77,7 @@ export async function startWorkerLoop(
  */
 async function processJob(
   workerId: string,
-  job: any,
+  job: JobRecord,
   queue: QueueManager,
   secrets: SecretStore,
   config: RunnerConfig,
@@ -83,7 +85,7 @@ async function processJob(
 ) {
   console.log(`\n[${workerId}] 📦 Claimed Job #${job.id} (Workflow: ${job.workflow_id})`);
 
-  const payload = typeof job.payload === 'string' ? JSON.parse(job.payload) : job.payload;
+  const payload = (typeof job.payload === 'string' ? JSON.parse(job.payload) : job.payload) as JobPayload;
   const steps = payload.steps || [];
   const inputs = payload.inputs || {};
   const jobStartTime = Date.now();
@@ -95,6 +97,10 @@ async function processJob(
     secrets: secrets.getAll(),
     steps: {} as Record<string, { status: string; exitCode: number; outputs: any }>,
   };
+
+  if (payload.env) {
+    Object.assign(executionContext.env, await evaluateEnv(payload.env, executionContext));
+  }
 
   const stepReports: StepReport[] = [];
   let jobFailed = false;
@@ -261,6 +267,19 @@ async function executeEvalStep(params: {
   }
 }
 
+async function evaluateEnv(env, context) {
+  // Evaluate step environment variables
+  const evaluated: Record<string, string> = {};
+
+  if (env) {
+    for (const [key, val] of Object.entries(env)) {
+      evaluated[key] = String(await SafeExpressionEvaluator.evaluateValue(val, context));
+    }
+  }
+
+  return evaluated;
+}
+
 /**
  * Out-of-Process Shell/Container `run:` Step Execution
  */
@@ -277,14 +296,7 @@ async function executeRunStep(params: {
 }): Promise<ExecOutput> {
   const { workerId, jobId, step, stepId, stepName, executionContext, driver, queue, config } = params;
 
-  // Evaluate step environment variables
-  const evaluatedStepEnv: Record<string, string> = {};
-  if (step.env) {
-    for (const [key, val] of Object.entries(step.env)) {
-      evaluatedStepEnv[key] = String(await SafeExpressionEvaluator.evaluateValue(val, executionContext));
-    }
-  }
-
+  const evaluatedStepEnv = await evaluateEnv(step.env, executionContext);
   const stepCtx: StepContext = {
     jobId: jobId.toString(),
     stepId,

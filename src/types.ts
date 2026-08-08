@@ -81,6 +81,7 @@ export interface WorkflowDefinition {
     cancelInProgress?: boolean;
   };
   steps: WorkflowStep[];
+  env?: Record<string, string>;
 }
 
 export interface WebhookServerOptions {
@@ -108,6 +109,7 @@ export interface JobPayload {
   workflowId: string;
   steps: WorkflowStep[];
   inputs: WorkflowInputs;
+  env?: Record<string, string>;
 }
 
 export interface MatrixStrategy {

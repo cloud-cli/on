@@ -4,7 +4,13 @@ import { QueueManager } from './queue.js';
 import { SecretStore } from './secrets.js';
 import { SafeExpressionEvaluator } from './safe-eval.js';
 import { GitHubPreprocessor } from './preprocessors/github.js';
-import { WebhookPreprocessor, WebhookServerOptions, WorkflowDefinition, WorkflowExecutionReport } from './types.js';
+import type {
+  JobPayload,
+  WebhookPreprocessor,
+  WebhookServerOptions,
+  WorkflowDefinition,
+  WorkflowExecutionReport,
+} from './types.js';
 import { HtmlReporter } from './reporters/html.reporter.js';
 
 export class WebhookServer {
@@ -144,7 +150,6 @@ export class WebhookServer {
     for (const workflow of this.workflows) {
       if (workflow.on.provider !== provider) continue;
 
-      // Evaluate workflow trigger condition if defined (e.g. `if: inputs.event == 'push'`)
       if (workflow.on.if) {
         try {
           const shouldRun = SafeExpressionEvaluator.evaluateCondition(workflow.on.if, { inputs });
@@ -155,15 +160,14 @@ export class WebhookServer {
         }
       }
 
-      // 4. Resolve Concurrency Key (if specified)
       let concurrencyKey: string | undefined;
       if (workflow.concurrency?.group) {
         concurrencyKey = await SafeExpressionEvaluator.evaluateValue(workflow.concurrency.group, { inputs });
       }
 
-      // 5. Enqueue Job to SQLite
-      const jobPayload = {
+      const jobPayload: JobPayload = {
         workflowId: workflow.id,
+        env: workflow.env,
         steps: workflow.steps,
         inputs,
       };

@@ -49,6 +49,7 @@ export class YamlLoader {
           },
           concurrency: wf.concurrency,
           steps: wf.steps,
+          env: wf.env,
         });
       }
     } catch (err: any) {
