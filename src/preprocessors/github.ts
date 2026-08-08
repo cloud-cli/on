@@ -23,9 +23,13 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
       const event = headers['x-github-event'] || 'unknown';
       const ref = body.ref || '';
       const branch = ref.replace('refs/heads/', '').replace('refs/tags/', '');
+      const [owner, repo] = (body.repository?.full_name || '').split('/');
+
       inputs = {
         event,
         branch,
+        owner,
+        repo,
         clone_url: body.repository?.clone_url,
         commit_sha: body.after || body.head_commit?.id,
         author: body.pusher?.name || body.sender?.login,
