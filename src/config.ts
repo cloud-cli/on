@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { setUrl } from './db-client.js';
 import { RunnerConfig, UserRunnerConfig } from './types.js';
 
-export async function loadConfig(): Promise<RunnerConfig | null> {
+export async function loadConfig(values): Promise<RunnerConfig | null> {
   const configFromCli: UserRunnerConfig = {
     port: Number(values.port),
     database: values.database,

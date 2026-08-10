@@ -78,7 +78,7 @@ async function init() {
 
 async function main() {
   const command = positionals[0] || 'start';
-  const config = await loadConfig();
+  const config = await loadConfig(values);
 
   if (!config) {
     process.exit(1);

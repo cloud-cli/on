@@ -30,7 +30,6 @@ export class WebhookServer {
     this.queue = options.queue;
     this.secrets = options.secrets;
     this.adminToken = options.adminToken;
-    this.workflows = options.workflows;
 
     YamlLoader.from(options.config.workflows).then((loadedWorkflows) => {
       this.workflows = loadedWorkflows;

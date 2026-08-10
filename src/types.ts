@@ -89,7 +89,6 @@ export interface WebhookServerOptions {
   queue: QueueManager;
   secrets: SecretStore;
   adminToken: string;
-  workflows: WorkflowDefinition[];
 }
 
 export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelling' | 'cancelled';
