@@ -1,21 +1,15 @@
 #!/usr/bin/env node
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readdirSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { RunnerConfig, UserRunnerConfig } from './types.js';
+import { RunnerConfig } from './types.js';
 import { WebhookServer } from './server.js';
 import { WorkflowIncludeResolver } from './parser/include-resolver.js';
 import { expandMatrix } from './parser/matrix-expander.js';
-import { YamlLoader } from './parser/yaml-loader.js';
 import { QueueManager } from './queue.js';
 import { SecretStore } from './secrets.js';
 import { startWorkers } from './worker.js';
-import { setUrl } from './db-client.js';
-import { shutdownState } from './worker.js';
-
-let serverInstance: WebhookServer | null = null;
-let activeWorkerPromises: Promise<void>[] = [];
+import { loadConfig } from './config.js';
 
 export { HtmlReporter } from './reporters/html.reporter.js';
 export { JsonFileReporter } from './reporters/json-file.reporter.js';
@@ -62,33 +56,6 @@ if (values.help) {
   process.exit(0);
 }
 
-async function loadConfig(): Promise<RunnerConfig | null> {
-  const configFromCli: UserRunnerConfig = {
-    port: Number(values.port),
-    database: values.database,
-    workflows: values.workflows,
-    workers: values.workers ? Number(values.workers) : undefined,
-  };
-
-  let configFromFile = {};
-  const configPath = resolve(values.config);
-
-  if (existsSync(configPath) && statSync(configPath).isFile()) {
-    configFromFile = (await import(configPath)).default || {};
-  }
-
-  const config = resolveConfig(configFromFile, configFromCli);
-
-  if (!existsSync(config.workflows)) {
-    console.warn(`⚠️ Warning: Workflows directory '${config.workflows}' not found.`);
-    return null;
-  }
-
-  setUrl(config.database);
-
-  return config;
-}
-
 function onValidate(config: RunnerConfig) {
   console.log('🔍 Validating Workflows in:', config.workflows);
   const resolver = new WorkflowIncludeResolver(config.workflows);
@@ -109,62 +76,6 @@ async function init() {
   return { secrets, queue };
 }
 
-function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: UserRunnerConfig): RunnerConfig {
-  const _ = process.env;
-  return {
-    port: Number(configFromFile.port || configFromCli.port || _.PORT || 11235),
-    adminToken: configFromFile.adminToken ?? _.RUNNER_ADMIN_SECRET ?? '',
-    database: configFromFile.database ?? configFromCli.database ?? _.RUNNER_DATABASE_URL ?? '',
-    workflows: configFromFile.workflows ?? configFromCli.workflows ?? _.RUNNER_WORKFLOWS ?? 'on/',
-    workers: Number(configFromFile.workers ?? configFromCli.workers ?? _.RUNNER_WORKERS ?? 5),
-    storagePath: configFromFile.storagePath ?? _.RUNNER_TMP ?? '/tmp/workspaces',
-    env: configFromFile.env ?? {},
-    reporters: configFromFile.reporters ?? [],
-  };
-}
-
-// Complete Graceful Shutdown Handler
-let isShuttingDown = false;
-
-const cleanupAndExit = async (signal: string) => {
-  if (isShuttingDown) return; // Prevent duplicate execution on double Ctrl+C
-  isShuttingDown = true;
-
-  console.log(`\n🛑 Received ${signal}. Initiating graceful shutdown...`);
-
-  // 1. Force exit fallback timer (10s max) if process gets stuck on a lingering child
-  const forceExitTimeout = setTimeout(() => {
-    console.error('⚠️ Graceful shutdown timed out after 10s. Forcing exit!');
-    process.exit(1);
-  }, 10000);
-  forceExitTimeout.unref();
-
-  try {
-    // 2. Stop accepting new webhooks
-    if (serverInstance) {
-      await serverInstance.stop();
-    }
-
-    // 3. Signal workers to stop taking new jobs
-    shutdownState.isStopping = true;
-
-    // 4. Wait for running worker loops to complete their current job step
-    if (activeWorkerPromises.length > 0) {
-      console.log('⚙️ Waiting for active worker jobs to drain...');
-      await Promise.allSettled(activeWorkerPromises);
-    }
-
-    console.log('✨ Engine stopped cleanly. Goodbye!');
-    process.exit(0);
-  } catch (err: any) {
-    console.error('❌ Error during graceful shutdown:', err.message);
-    process.exit(1);
-  }
-};
-
-process.on('SIGINT', () => cleanupAndExit('SIGINT'));
-process.on('SIGTERM', () => cleanupAndExit('SIGTERM'));
-
 async function main() {
   const command = positionals[0] || 'start';
   const config = await loadConfig();
@@ -182,11 +93,11 @@ async function main() {
     case 'start-server': {
       console.log('🌐 Starting Ingress Gateway...');
       const { queue, secrets } = await init();
-      serverInstance = await WebhookServer.withPort({
+      await WebhookServer.withPort({
+        config,
         queue,
         secrets,
         adminToken: config.adminToken,
-        workflows: [],
         port: config.port,
       });
       break;
@@ -195,22 +106,8 @@ async function main() {
     case 'start-workers': {
       console.log(`⚙️ Starting ${config.workers} Worker Loop(s)...`);
       const { queue, secrets } = await init();
-      activeWorkerPromises = startWorkers(config.workers, queue, secrets, config);
-      break;
-    }
+      const workerPromises = startWorkers(config.workers, queue, secrets, config);
 
-    case 'start': {
-      console.log('🚀 Starting Full Runner Engine (Ingress + Workers)...');
-      const workflows = await YamlLoader.from(config.workflows);
-      const { queue, secrets } = await init();
-      serverInstance = await WebhookServer.withPort({
-        queue,
-        secrets,
-        adminToken: config.adminToken,
-        workflows,
-        port: config.port,
-      });
-      activeWorkerPromises = startWorkers(config.workers, queue, secrets, config);
       break;
     }
 

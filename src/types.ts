@@ -85,6 +85,7 @@ export interface WorkflowDefinition {
 }
 
 export interface WebhookServerOptions {
+  config: RunnerConfig;
   queue: QueueManager;
   secrets: SecretStore;
   adminToken: string;

@@ -14,6 +14,7 @@ import {
   WorkflowExecutionReport,
   WorkflowStep,
 } from './types.js';
+import { setupSignalHandlers } from './signals.js';
 
 export const shutdownState = {
   isStopping: false,
@@ -38,7 +39,11 @@ export async function abortActiveWorkerTask() {
  */
 export function startWorkers(count: number, queue: QueueManager, secrets: SecretStore, config: RunnerConfig) {
   shutdownState.isStopping = false;
-  return Array.from({ length: count }, (_, i) => startWorkerLoop(`worker-${i + 1}`, queue, secrets, config));
+  const workerPromises = Array.from({ length: count }, (_, i) =>
+    startWorkerLoop(`worker-${i + 1}`, queue, secrets, config),
+  );
+  setupSignalHandlers(workerPromises);
+  return workerPromises;
 }
 
 /**

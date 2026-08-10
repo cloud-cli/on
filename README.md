@@ -107,12 +107,11 @@ npx @cloud-cli/on [command] [options]
 
 ### Commands
 
-| Command                 | Description                                                                              |
-| ----------------------- | ---------------------------------------------------------------------------------------- |
-| **`start`** _(default)_ | Runs both Webhook Ingress Gateway and Worker execution loops together.                   |
-| **`start-server`**      | Runs Webhook Ingress Gateway only (API / Gateway mode).                                  |
-| **`start-workers`**     | Runs Worker Polling loops only (Scalable Worker mode).                                   |
-| **`validate`**          | Parses and validates all YAML workflows in your workflows folder without executing jobs. |
+| Command             | Description                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| **`start-server`**  | Runs Webhook Ingress Gateway (the HTTP server receiving webhooks).                       |
+| **`start-workers`** | Runs Worker Polling loops (Scalable Workers).                                            |
+| **`validate`**      | Parses and validates all YAML workflows in your workflows folder without executing jobs. |
 
 ### CLI and Environment Options
 

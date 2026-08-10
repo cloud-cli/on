@@ -12,7 +12,7 @@ import type {
   WorkflowExecutionReport,
 } from './types.js';
 import { HtmlReporter } from './reporters/html.reporter.js';
-
+import { YamlLoader } from './parser/yaml-loader.js';
 export class WebhookServer {
   private server: http.Server;
   private preprocessors = new Map<string, WebhookPreprocessor>();
@@ -32,8 +32,12 @@ export class WebhookServer {
     this.adminToken = options.adminToken;
     this.workflows = options.workflows;
 
-    this.registerPreprocessor(new GitHubPreprocessor());
+    YamlLoader.from(options.config.workflows).then((loadedWorkflows) => {
+      this.workflows = loadedWorkflows;
+      console.log(`✅ Loaded ${loadedWorkflows.length} workflow(s) from ${options.config.workflows}`);
+    });
 
+    this.registerPreprocessor(new GitHubPreprocessor());
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
   }
 
