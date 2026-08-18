@@ -335,7 +335,7 @@ async function executeRunStep(params: {
 
   if (handle.logFilePath && fs.existsSync(handle.logFilePath)) {
     try {
-      const logContent = fs.readFileSync(handle.logFilePath, 'utf-8');
+      const logContent = await driver.readLog(handle.logFilePath);
       await queue.saveStepLog(jobId, stepId, logContent);
     } catch (logErr: any) {
       console.error(`[${workerId}] ⚠️ Failed to read step log file:`, logErr.message);

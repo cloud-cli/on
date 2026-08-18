@@ -1,5 +1,6 @@
 import { spawn, exec, ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { ExecutionDriver, StepContext, StepExecutionHandle, StepResult } from '../types.js';
@@ -132,7 +133,6 @@ export class SystemdDriver implements ExecutionDriver {
 
       child.on('close', (code, signal) => {
         const exitCode = code !== null ? code : signal ? (isCancelled ? 130 : 1) : 0;
-        console.log('close [exitCode, code, signal]', exitCode, code, signal);
         safeResolve({
           exitCode,
           durationMs: Date.now() - startTime,
@@ -141,7 +141,6 @@ export class SystemdDriver implements ExecutionDriver {
       });
 
       child.on('error', (err) => {
-        console.log('error [exitCode, error]', 1, err);
         safeResolve({
           exitCode: 1,
           durationMs: Date.now() - startTime,
@@ -167,5 +166,15 @@ export class SystemdDriver implements ExecutionDriver {
     };
 
     return { done, cancel, logFilePath };
+  }
+
+  async readLog(file: string) {
+    const content = await readFile(file, 'utf-8');
+    const start = content.includes('Running as unit: ') ? content.indexOf('\n') + 1 : 0;
+    const end = content.includes('Finished with result: ')
+      ? content.lastIndexOf('Finished with result: ')
+      : content.length;
+
+    return content.slice(start, end);
   }
 }

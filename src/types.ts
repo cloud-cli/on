@@ -46,6 +46,8 @@ export interface ExecutionDriver {
    * Executes a step context
    */
   execute(ctx: StepContext): Promise<StepExecutionHandle>;
+
+  readLog(file: string): Promise<string>;
 }
 
 export interface PreprocessedWebhook {

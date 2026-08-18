@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ExecutionDriver, StepContext, StepExecutionHandle, StepResult } from '../types.js';
 
@@ -166,5 +167,9 @@ export class StandardProcessDriver implements ExecutionDriver {
         // Process group may already be dead
       }
     }
+  }
+
+  async readLog(file: string) {
+    return readFile(file, 'utf-8');
   }
 }
