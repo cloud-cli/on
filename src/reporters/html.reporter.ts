@@ -48,7 +48,7 @@ export class HtmlReporter implements Reporter {
               ? 'text-rose-400 bg-rose-500/10'
               : 'text-gray-400 bg-gray-500/10';
 
-        return `<details class="border border-b-0 border-gray-800 bg-gray-900/50 text-sm" open>
+        return `<details class="border border-b-0 border-gray-800 bg-gray-900/50 text-sm">
           <summary class="flex items-center justify-between p-2 bg-gray-800/40 border-b border-gray-800 cursor-pointer">
             <div class="flex items-center gap-3">
               <span class="font-mono text-gray-500">#${idx + 1} ${step.exitCode !== 0 ? '(' + step.exitCode + ')' : ''}</span>
@@ -96,14 +96,16 @@ export class HtmlReporter implements Reporter {
       ${stepRows}
     </div>
 
-    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-auto max-h-[400px]">
-      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Trigger Inputs</h2>
-      <pre class="font-mono text-xs text-indigo-300 bg-gray-950 p-3 rounded-lg overflow-x-auto">${JSON.stringify(execReport.inputs, null, 2)}</pre>
-    </div>
+    <details class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-auto max-h-[400px]">
+      <summary>
+        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Trigger Inputs</h2>
+      </summary>
+      <pre class="font-mono text-xs text-gray-200 bg-gray-950 p-3 rounded-lg overflow-x-auto">${JSON.stringify(execReport.inputs, null, 2)}</pre>
+    </details>
 
   </div>
   <script type="module">import "@li3/web"</script>
-  <script defer async src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
 </body>
 </html>`;
   }
