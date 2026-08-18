@@ -242,6 +242,12 @@ export class SafeExpressionEvaluator {
         return this.evalNodeAsync(node.expression, ctx);
       }
 
+      // Ternary operator
+      case 'ConditionalExpression': {
+        const test = await this.evalNodeAsync(node.test, ctx);
+        return test ? await this.evalNodeAsync(node.consequent, ctx) : await this.evalNodeAsync(node.alternate, ctx);
+      }
+
       default:
         throw new Error(`Security Guard Violation: AST Node type '${node.type}' is disallowed.`);
     }
