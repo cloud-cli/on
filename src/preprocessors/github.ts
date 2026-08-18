@@ -22,12 +22,14 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
       const body = JSON.parse(rawBodyBuffer.toString('utf-8'));
       const event = headers['x-github-event'] || 'unknown';
       const ref = body.ref || '';
-      const branch = ref.replace('refs/heads/', '').replace('refs/tags/', '');
+      const branch = !ref.includes('refs/heads') ? '' : ref.replace('refs/heads/', '');
+      const tag = !ref.includes('refs/tags') ? '' : ref.replace('refs/tags/', '');
       const [owner, repo] = (body.repository?.full_name || '').split('/');
 
       inputs = {
         event,
         branch,
+        tag,
         owner,
         repo,
         clone_url: body.repository?.clone_url,

@@ -93,20 +93,14 @@ async function main() {
     case 'start-server': {
       console.log('🌐 Starting Ingress Gateway...');
       const { queue, secrets } = await init();
-      await WebhookServer.withPort({
-        config,
-        queue,
-        secrets,
-        adminToken: config.adminToken,
-        port: config.port,
-      });
+      await WebhookServer.withPort({ config, queue, secrets, adminToken: config.adminToken, port: config.port });
       break;
     }
 
     case 'start-workers': {
       console.log(`⚙️ Starting ${config.workers} Worker Loop(s)...`);
       const { queue, secrets } = await init();
-      const workerPromises = startWorkers(config.workers, queue, secrets, config);
+      startWorkers(config.workers, queue, secrets, config);
 
       break;
     }

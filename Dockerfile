@@ -8,4 +8,4 @@ FROM ghcr.io/cloud-cli/node:latest
 COPY --from=builder /home/app/dist/on.js ./on.mjs
 
 ENTRYPOINT [ "node" ]
-CMD [ "on.mjs" ]
+CMD [ "on.mjs", "start-server" ]

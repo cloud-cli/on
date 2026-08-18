@@ -48,23 +48,21 @@ export class HtmlReporter implements Reporter {
               ? 'text-rose-400 bg-rose-500/10'
               : 'text-gray-400 bg-gray-500/10';
 
-        return `
-        <div class="border border-gray-800 rounded-xl overflow-hidden bg-gray-900/50 mb-4">
-          <div class="flex items-center justify-between p-2 bg-gray-800/40 border-b border-gray-800">
+        return `<details class="border border-b-0 border-gray-800 bg-gray-900/50 text-sm" open>
+          <summary class="flex items-center justify-between p-2 bg-gray-800/40 border-b border-gray-800 cursor-pointer">
             <div class="flex items-center gap-3">
-              <span class="text-xs font-mono text-gray-500">#${idx + 1} ${step.exitCode !== 0 ? '(' + step.exitCode + ')' : ''}</span>
-              <h3 class="font-semibold text-gray-200 text-sm">${step.name}</h3>
-              <span class="px-2.5 py-0.5 rounded-full text-xs font-medium ${stepBadge}">
+              <span class="font-mono text-gray-500">#${idx + 1} ${step.exitCode !== 0 ? '(' + step.exitCode + ')' : ''}</span>
+              <h3 class="font-semibold text-gray-200">${step.name}</h3>
+              <span class="px-2.5 py-0.5 rounded-full font-medium ${stepBadge}">
                 ${step.status.toUpperCase()}
               </span>
             </div>
-            <div class="text-sm font-mono text-gray-400">${step.durationMs}ms</div>
-          </div>
-          <div class="p-4 bg-gray-950 font-mono text-xs overflow-x-auto text-gray-300 leading-relaxed max-h-96">
+            <div class="font-mono text-gray-400">${step.durationMs}ms</div>
+          </summary>
+          <div class="p-4 bg-gray-950 font-mono text-gray-300 leading-relaxed overflow-auto w-full">
             <pre class="whitespace-pre-wrap">${htmlLog}</pre>
           </div>
-        </div>
-      `;
+        </details>`;
       })
       .join('');
 
@@ -74,12 +72,11 @@ export class HtmlReporter implements Reporter {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Run #${execReport.jobId} - ${execReport.workflowName}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="importmap"> {"imports": { "@li3/": "https://cdn.li3.dev/@li3/" }}</script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen p-6 font-sans">
   <div class="max-w-5xl mx-auto space-y-4">
 
-    <!-- Top Header -->
     <div class="flex items-center justify-between border-b border-gray-800 pb-6">
       <div>
         <a href="/runs" class="text-xs text-indigo-400 hover:underline mb-1 inline-block">← Back to Dashboard</a>
@@ -94,19 +91,19 @@ export class HtmlReporter implements Reporter {
       </span>
     </div>
 
-    <!-- Steps Timeline -->
-    <div>
-      <h2 class="text-lg font-semibold text-white mb-4">Execution Steps</h2>
+    <div class="rounded overflow-hidden border-b border-gray-800">
+      <h2 class="sr-only">Execution Steps</h2>
       ${stepRows}
     </div>
 
-    <!-- Inputs Overview -->
     <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-auto max-h-[400px]">
       <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Trigger Inputs</h2>
       <pre class="font-mono text-xs text-indigo-300 bg-gray-950 p-3 rounded-lg overflow-x-auto">${JSON.stringify(execReport.inputs, null, 2)}</pre>
     </div>
 
   </div>
+  <script type="module">import "@li3/web"</script>
+  <script defer async src="https://cdn.tailwindcss.com"></script>
 </body>
 </html>`;
   }
