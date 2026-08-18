@@ -101,7 +101,7 @@ export class HtmlReporter implements Reporter {
     </div>
 
     <!-- Inputs Overview -->
-    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-auto max-h-[400px]">
       <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Trigger Inputs</h2>
       <pre class="font-mono text-xs text-indigo-300 bg-gray-950 p-3 rounded-lg overflow-x-auto">${JSON.stringify(execReport.inputs, null, 2)}</pre>
     </div>
