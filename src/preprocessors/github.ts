@@ -37,6 +37,7 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
         author: body.pusher?.name || body.sender?.login,
         action: body.action,
         raw: body,
+        changes: !body.head_commit ?  [] : [...body.head_commit.added, ...body.head_commit.removed, ...body.head_commit.modified]
       };
     }
 

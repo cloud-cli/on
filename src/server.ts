@@ -90,15 +90,10 @@ export class WebhookServer {
         return;
       }
 
-      const triggeredWorkflows = this.matchWorkflows(provider, inputs);
+      this.matchWorkflows(provider, inputs);
 
       res.writeHead(202, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          message: 'Webhook processed',
-          triggeredWorkflows,
-        }),
-      );
+      res.end(JSON.stringify({ message: 'OK' }));
     } catch (err: any) {
       console.error('❌ Webhook Ingress Error:', err);
       res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -147,15 +142,13 @@ export class WebhookServer {
     }
   }
 
-  private async matchWorkflows(provider, inputs) {
-    const triggeredJobs: string[] = [];
-
+  private async matchWorkflows(provider: string, inputs: any) {
     for (const workflow of this.workflows) {
       if (workflow.on.provider !== provider) continue;
 
       if (workflow.on.if) {
         try {
-          const shouldRun = SafeExpressionEvaluator.evaluateCondition(workflow.on.if, { inputs });
+          const shouldRun = SafeExpressionEvaluator.evaluateConditions(workflow.on.if, { inputs });
 
           if (!shouldRun) {
             console.log(`⏩ Skipped ${workflow.id} based on condition: ${workflow.on.if}`, { inputs });
@@ -167,7 +160,8 @@ export class WebhookServer {
         }
       }
 
-      let concurrencyKey: string | undefined;
+      let concurrencyKey = '';
+
       if (workflow.concurrency?.group) {
         concurrencyKey = await SafeExpressionEvaluator.evaluateValue(workflow.concurrency.group, { inputs });
       }
@@ -180,10 +174,7 @@ export class WebhookServer {
       };
 
       await this.queue.enqueue(workflow.id, jobPayload, concurrencyKey);
-      triggeredJobs.push(workflow.id);
     }
-
-    return triggeredJobs;
   }
 
   /**

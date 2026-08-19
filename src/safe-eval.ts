@@ -1,4 +1,7 @@
 import * as acorn from 'acorn';
+import FS from 'node:fs';
+import OS from 'node:os';
+import Path from 'node:path';
 
 export const BUILTIN_HELPERS: Record<string, any> = {
   String: (val: any) => String(val ?? ''),
@@ -8,6 +11,12 @@ export const BUILTIN_HELPERS: Record<string, any> = {
     parse: (str: string) => JSON.parse(str),
     stringify: (obj: any) => JSON.stringify(obj, null, 2),
   },
+  FS: {
+    readFile: (f) => FS.readFileSync(f, 'utf8'),
+    exists: (f) => FS.existsSync(f),
+    join: (...args) => Path.join(...args),
+  },
+  OS,
 };
 
 export class SafeExpressionEvaluator {
@@ -37,12 +46,16 @@ export class SafeExpressionEvaluator {
    * Strictly parses code as a JavaScript expression and coerces result to boolean.
    * Throws an explicit AST Parse Error on invalid syntax (fails fast and loud).
    */
-  static async evaluateCondition(code: string | string[], context: Record<string, any> = {}): Promise<boolean> {
-    if (typeof code === 'string') {
-      code = [code];
+  static async evaluateConditions(conditions: string | string[], context: Record<string, any> = {}): Promise<boolean> {
+    if (typeof conditions === 'string') {
+      conditions = [conditions];
     }
 
-    for (const c of code) {
+    if (process.env.DEBUG) {
+      console.log(conditions, context);
+    }
+
+    for (const c of conditions) {
       const result = await this.evaluateExpression(c, context);
 
       if (result) {
@@ -74,13 +87,6 @@ export class SafeExpressionEvaluator {
     }
 
     return this.evalNodeAsync(ast, context);
-  }
-
-  /**
-   * Alias wrapper for backward compatibility with step runners
-   */
-  static async evaluateAsync(code: string, context: Record<string, any> = {}): Promise<any> {
-    return this.evaluateExpression(code, context);
   }
 
   /**

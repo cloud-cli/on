@@ -76,7 +76,7 @@ export interface WorkflowDefinition {
   name: string;
   on: {
     provider: string; // 'github', 'generic', etc.
-    if?: string; // Expression: "inputs.event == 'push' && inputs.branch == 'main'"
+    if?: string | string[]; // Expression: "inputs.event == 'push' && inputs.branch == 'main'"
   };
   concurrency?: {
     group: string;
