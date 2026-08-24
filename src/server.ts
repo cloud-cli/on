@@ -200,24 +200,23 @@ export class WebhookServer {
    */
   private async renderDashboard(res: http.ServerResponse) {
     const jobs = await this.queue.listJobs(500);
+    const badgeMap = {
+      success: 'bg-emerald-500/10 text-emerald-400',
+      failed: 'bg-rose-500/10 text-rose-400',
+      running: 'bg-indigo-500/10 text-indigo-400 animate-pulse',
+      _: 'bg-gray-500/10 text-gray-400',
+    };
 
     const rows = jobs
       .map((j) => {
-        const badge =
-          j.status === 'success'
-            ? 'bg-emerald-500/10 text-emerald-400'
-            : j.status === 'failed'
-              ? 'bg-rose-500/10 text-rose-400'
-              : j.status === 'running'
-                ? 'bg-indigo-500/10 text-indigo-400 animate-pulse'
-                : 'bg-gray-500/10 text-gray-400';
+        const badge = badgeMap[j.status] || badgeMap._;
 
         return `
       <tr class="border-b border-gray-800 hover:bg-gray-900/50 transition">
         <td class="py-3 px-4 font-mono text-indigo-400"><a href="/runs/${j.id}" class="hover:underline">#${j.id}</a></td>
         <td class="py-3 px-4 font-medium text-white">${j.workflow_id}</td>
         <td class="py-3 px-4">
-          <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge}">${j.status.toUpperCase()}</span>
+          <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge}">${j.status?.toUpperCase() ?? '?'}</span>
         </td>
         <td class="py-3 px-4 text-xs font-mono text-gray-400">${j.worker_id || '-'}</td>
         <td class="py-3 px-4 text-xs text-gray-400">${j.created_at}</td>

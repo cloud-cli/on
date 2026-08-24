@@ -34,7 +34,7 @@ export class HtmlReporter implements Reporter {
           ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
           : 'bg-amber-500/10 text-amber-400 border-amber-500/20';
 
-    const stepRows = execReport.steps
+    const stepRows = (execReport.steps ?? [])
       .map((step, idx) => {
         let rawLog = step.logContent;
         let htmlLog = rawLog
