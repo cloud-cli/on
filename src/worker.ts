@@ -9,6 +9,7 @@ import {
   JobRecord,
   RunnerConfig,
   StepContext,
+  StepExecutionHandle,
   StepReport,
   StepResult,
   WorkflowExecutionReport,
@@ -67,7 +68,7 @@ export async function startWorkerLoop(
         continue;
       }
 
-      await processJob(workerId, job, queue, secrets, config, driver);
+      await processJob({ workerId, job, queue, secrets, config, driver });
     } catch (error) {
       console.error(`[${workerId}] ⚠️ Worker execution loop error:`, error);
       await new Promise((r) => setTimeout(r, 5000));
@@ -77,17 +78,27 @@ export async function startWorkerLoop(
   console.log(`[${workerId}] 🛑 Worker loop stopped cleanly.`);
 }
 
+interface Processable {
+  workerId: string;
+  job: JobRecord;
+  queue: QueueManager;
+  secrets: SecretStore;
+  config: RunnerConfig;
+  driver: ExecutionDriver;
+}
+
+interface StepExecutionContext {
+  inputs: any;
+  env: Record<string, string>;
+  secrets: Record<string, string>;
+  steps: Record<string, { status: string; exitCode: number; outputs: any }>;
+}
+
 /**
  * Processes a single job sequentially
  */
-async function processJob(
-  workerId: string,
-  job: JobRecord,
-  queue: QueueManager,
-  secrets: SecretStore,
-  config: RunnerConfig,
-  driver: ExecutionDriver,
-) {
+async function processJob(p: Processable) {
+  const { workerId, job, config, secrets, queue, driver } = p;
   console.log(`\n[${workerId}] 📦 Claimed Job #${job.id} (Workflow: ${job.workflow_id})`);
 
   const payload = (typeof job.payload === 'string' ? JSON.parse(job.payload) : job.payload) as JobPayload;
@@ -96,54 +107,14 @@ async function processJob(
   const jobStartTime = Date.now();
 
   // Step Execution Context available in expressions: ${steps.step1.outputs.id}
-  const executionContext = {
+  const executionContext: StepExecutionContext = {
     inputs,
     env: { ...config.env },
     secrets: secrets.getAll(),
-    steps: {} as Record<string, { status: string; exitCode: number; outputs: any }>,
+    steps: {},
   };
 
-  if (payload.env) {
-    Object.assign(executionContext.env, await evaluateEnv(payload.env, executionContext));
-  }
-
-  const stepReports: StepReport[] = [];
-  let jobFailed = false;
-  let isCancelled = false;
-
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-    const stepResult = await executeSingleStep({
-      workerId,
-      jobId: job.id,
-      step,
-      stepIndex: i,
-      totalSteps: steps.length,
-      executionContext,
-      driver,
-      queue,
-      config,
-    });
-
-    stepReports.push(stepResult.report);
-
-    if (stepResult.isCancelled) {
-      isCancelled = true;
-      jobFailed = true;
-      break;
-    }
-
-    if (stepResult.failed) {
-      jobFailed = true;
-      break;
-    }
-  }
-
-  // Mark unexecuted steps as skipped
-  if (jobFailed && stepReports.length < steps.length) {
-    fillSkippedSteps(steps, stepReports.length, stepReports);
-  }
-
+  const { isCancelled, jobFailed, stepReports } = await processSteps(payload, steps, executionContext, p);
   const finalStatus = isCancelled ? 'cancelled' : jobFailed ? 'failed' : 'success';
 
   // 1. Update status in DB
@@ -166,6 +137,63 @@ async function processJob(
 
   // 4. Dispatch to external reporters (Slack, JSON Files, etc.)
   await dispatchReporters(workerId, config.reporters, executionReport);
+}
+
+async function processSteps(
+  payload: JobPayload,
+  steps: WorkflowStep[],
+  executionContext: StepExecutionContext,
+  p: Processable,
+) {
+  const { driver, workerId, queue, config, job } = p;
+  const stepReports: StepReport[] = [];
+  let jobFailed = false;
+  let isCancelled = false;
+  let error: any = null;
+
+  try {
+    if (payload.env) {
+      Object.assign(executionContext.env, await evaluateEnv(payload.env, executionContext));
+    }
+
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const stepResult = await executeSingleStep({
+        workerId,
+        jobId: job.id,
+        step,
+        stepIndex: i,
+        totalSteps: steps.length,
+        executionContext,
+        driver,
+        queue,
+        config,
+      });
+
+      stepReports.push(stepResult.report);
+
+      if (stepResult.isCancelled) {
+        isCancelled = true;
+        jobFailed = true;
+        break;
+      }
+
+      if (stepResult.failed) {
+        jobFailed = true;
+        break;
+      }
+    }
+  } catch (e) {
+    error = e;
+    jobFailed = true;
+  }
+
+  // Mark unexecuted steps as skipped
+  if (jobFailed && stepReports.length < steps.length) {
+    fillSkippedSteps(steps, stepReports.length, stepReports);
+  }
+
+  return { jobFailed, isCancelled, error, stepReports };
 }
 
 /**
@@ -300,24 +328,37 @@ async function executeRunStep(params: {
   config: RunnerConfig;
 }): Promise<ExecOutput> {
   const { workerId, jobId, step, stepId, stepName, executionContext, driver, queue, config } = params;
+  let stepCtx: StepContext;
+  let handle: StepExecutionHandle;
 
-  const evaluatedStepEnv = await evaluateEnv(step.env, executionContext);
-  const stepCtx: StepContext = {
-    jobId: jobId.toString(),
-    stepId,
-    workspacePath: `${config.storagePath}/job-${jobId}`,
-    command: step.run!,
-    image: step.image,
-    env: {
-      ...executionContext.env,
-      ...evaluatedStepEnv,
-    },
-    timeoutMs: step.timeoutMs,
-  };
+  try {
+    const evaluatedStepEnv = await evaluateEnv(step.env, executionContext);
+    stepCtx = {
+      jobId: jobId.toString(),
+      stepId,
+      workspacePath: `${config.storagePath}/job-${jobId}`,
+      command: step.run!,
+      image: step.image,
+      env: {
+        ...executionContext.env,
+        ...evaluatedStepEnv,
+      },
+      timeoutMs: step.timeoutMs,
+    };
+    handle = driver.execute(stepCtx);
+  } catch (e) {
+    handle = {
+      done: Promise.resolve({
+        exitCode: 1,
+        durationMs: 0,
+        error: new Error(String(e)),
+      }),
+      cancel: async () => {},
+      logFilePath: '',
+    };
+  }
 
-  const handle = await driver.execute(stepCtx);
   activeStepHandle = handle; // Bind global handle for signal cancellation
-
   let isCancelled = false;
 
   const cancelCheckInterval = setInterval(async () => {

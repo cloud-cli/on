@@ -18,7 +18,7 @@ export class SystemdDriver implements ExecutionDriver {
     }
   }
 
-  async execute(ctx: StepContext): Promise<StepExecutionHandle> {
+  execute(ctx: StepContext): StepExecutionHandle {
     let logFd: number | null = null;
     const startTime = Date.now();
     const logDir = path.join(ctx.workspacePath, '.logs');

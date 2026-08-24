@@ -45,7 +45,7 @@ export interface ExecutionDriver {
   /**
    * Executes a step context
    */
-  execute(ctx: StepContext): Promise<StepExecutionHandle>;
+  execute(ctx: StepContext): StepExecutionHandle;
 
   readLog(file: string): Promise<string>;
 }
