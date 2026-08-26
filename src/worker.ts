@@ -150,7 +150,7 @@ interface ExecOutput {
   failed: boolean;
   skipped: boolean;
   cancelled: boolean;
-  report: StepReport;
+  report: StepReport | null;
 }
 
 interface ProcessStepsOutput {
@@ -164,7 +164,6 @@ async function processSteps(p: ContextualizedProcessable): Promise<ProcessStepsO
   const stepReports: StepReport[] = [];
   let failed = false;
   let cancelled = false;
-  let error: any = null;
 
   try {
     if (payload.env) {
@@ -184,7 +183,9 @@ async function processSteps(p: ContextualizedProcessable): Promise<ProcessStepsO
         config,
       });
 
-      stepReports.push(stepResult.report);
+      if (stepResult.report) {
+        stepReports.push(stepResult.report);
+      }
 
       if (stepResult.skipped) {
         break;
@@ -202,7 +203,6 @@ async function processSteps(p: ContextualizedProcessable): Promise<ProcessStepsO
       }
     }
   } catch (e) {
-    error = e;
     failed = true;
   }
 
@@ -211,7 +211,7 @@ async function processSteps(p: ContextualizedProcessable): Promise<ProcessStepsO
     fillSkippedSteps(steps, stepReports.length, stepReports);
   }
 
-  return { failed, cancelled, error, stepReports };
+  return { failed, cancelled, stepReports };
 }
 
 /**
@@ -238,7 +238,7 @@ async function executeSingleStep(params: {
         failed: false,
         cancelled: false,
         skipped: true,
-        report: {},
+        report: null,
       };
     }
   }
