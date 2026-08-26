@@ -87,6 +87,12 @@ interface Processable {
   driver: ExecutionDriver;
 }
 
+interface ContextualizedProcessable extends Processable {
+  payload: JobPayload;
+  steps: WorkflowStep[];
+  executionContext: StepExecutionContext;
+}
+
 interface StepExecutionContext {
   inputs: any;
   env: Record<string, string>;
@@ -98,7 +104,7 @@ interface StepExecutionContext {
  * Processes a single job sequentially
  */
 async function processJob(p: Processable) {
-  const { workerId, job, config, secrets, queue, driver } = p;
+  const { workerId, job, config, secrets, queue } = p;
   console.log(`\n[${workerId}] 📦 Claimed Job #${job.id} (Workflow: ${job.workflow_id})`);
 
   const payload = (typeof job.payload === 'string' ? JSON.parse(job.payload) : job.payload) as JobPayload;
@@ -114,8 +120,9 @@ async function processJob(p: Processable) {
     steps: {},
   };
 
-  const { isCancelled, jobFailed, stepReports } = await processSteps(payload, steps, executionContext, p);
-  const finalStatus = isCancelled ? 'cancelled' : jobFailed ? 'failed' : 'success';
+  const context = { payload, steps, executionContext, ...p };
+  const { cancelled, failed, stepReports } = await processSteps(context);
+  const finalStatus = cancelled ? 'cancelled' : failed ? 'failed' : 'success';
 
   // 1. Update status in DB
   await queue.finishJob(job.id, finalStatus);
@@ -139,16 +146,24 @@ async function processJob(p: Processable) {
   await dispatchReporters(workerId, config.reporters, executionReport);
 }
 
-async function processSteps(
-  payload: JobPayload,
-  steps: WorkflowStep[],
-  executionContext: StepExecutionContext,
-  p: Processable,
-) {
-  const { driver, workerId, queue, config, job } = p;
+interface ExecOutput {
+  failed: boolean;
+  skipped: boolean;
+  cancelled: boolean;
+  report: StepReport;
+}
+
+interface ProcessStepsOutput {
+  failed: boolean;
+  cancelled: boolean;
+  stepReports: StepReport[];
+}
+
+async function processSteps(p: ContextualizedProcessable): Promise<ProcessStepsOutput> {
+  const { driver, workerId, queue, config, job, payload, steps, executionContext } = p;
   const stepReports: StepReport[] = [];
-  let jobFailed = false;
-  let isCancelled = false;
+  let failed = false;
+  let cancelled = false;
   let error: any = null;
 
   try {
@@ -163,7 +178,6 @@ async function processSteps(
         jobId: job.id,
         step,
         stepIndex: i,
-        totalSteps: steps.length,
         executionContext,
         driver,
         queue,
@@ -172,28 +186,32 @@ async function processSteps(
 
       stepReports.push(stepResult.report);
 
-      if (stepResult.isCancelled) {
-        isCancelled = true;
-        jobFailed = true;
+      if (stepResult.skipped) {
+        break;
+      }
+
+      if (stepResult.cancelled) {
+        cancelled = true;
+        failed = true;
         break;
       }
 
       if (stepResult.failed) {
-        jobFailed = true;
+        failed = true;
         break;
       }
     }
   } catch (e) {
     error = e;
-    jobFailed = true;
+    failed = true;
   }
 
   // Mark unexecuted steps as skipped
-  if (jobFailed && stepReports.length < steps.length) {
+  if (stepReports.length < steps.length) {
     fillSkippedSteps(steps, stepReports.length, stepReports);
   }
 
-  return { jobFailed, isCancelled, error, stepReports };
+  return { failed, cancelled, error, stepReports };
 }
 
 /**
@@ -204,29 +222,32 @@ async function executeSingleStep(params: {
   jobId: string | number;
   step: WorkflowStep;
   stepIndex: number;
-  totalSteps: number;
   executionContext: Record<string, any>;
   driver: ExecutionDriver;
   queue: QueueManager;
   config: RunnerConfig;
-}) {
-  const { workerId, step, stepIndex, totalSteps } = params;
+}): Promise<ExecOutput> {
+  const { step, stepIndex } = params;
   const stepId = step.id || `step-${stepIndex}`;
   const stepName = step.name || stepId;
 
-  console.log(`[${workerId}] ▶️ Running step ${stepIndex + 1}/${totalSteps}: ${stepName}`);
+  if (step.if) {
+    const shouldRun = await SafeExpressionEvaluator.evaluateConditions(step.if, params.executionContext);
+    if (!shouldRun) {
+      return {
+        failed: false,
+        cancelled: false,
+        skipped: true,
+        report: {},
+      };
+    }
+  }
 
   if (step.eval) {
     return executeEvalStep({ ...params, stepId, stepName, evalExpr: step.eval });
   } else {
     return executeRunStep({ ...params, stepId, stepName });
   }
-}
-
-interface ExecOutput {
-  failed: boolean;
-  isCancelled: boolean;
-  report: StepReport;
 }
 
 /**
@@ -261,7 +282,8 @@ async function executeEvalStep(params: {
 
     return {
       failed: false,
-      isCancelled: false,
+      cancelled: false,
+      skipped: false,
       report: {
         id: stepId,
         name: stepName,
@@ -285,7 +307,8 @@ async function executeEvalStep(params: {
 
     return {
       failed: true,
-      isCancelled: false,
+      cancelled: false,
+      skipped: false,
       report: {
         id: stepId,
         name: stepName,
@@ -359,12 +382,12 @@ async function executeRunStep(params: {
   }
 
   activeStepHandle = handle; // Bind global handle for signal cancellation
-  let isCancelled = false;
+  let cancelled = false;
 
   const cancelCheckInterval = setInterval(async () => {
     if (await queue.isCancelled(jobId)) {
       console.log(`[${workerId}] 🛑 Job #${jobId} was cancelled! Halting execution.`);
-      isCancelled = true;
+      cancelled = true;
       clearInterval(cancelCheckInterval);
       await handle.cancel();
     }
@@ -383,8 +406,8 @@ async function executeRunStep(params: {
     }
   }
 
-  const failed = result.exitCode !== 0 || isCancelled;
-  const stepStatus = result.exitCode === 0 ? 'success' : isCancelled ? 'cancelled' : 'failed';
+  const failed = result.exitCode !== 0 || cancelled;
+  const stepStatus = result.exitCode === 0 ? 'success' : cancelled ? 'cancelled' : 'failed';
 
   // Store status & exit code in context for downstream step conditions
   executionContext.steps[stepId] = {
@@ -399,7 +422,8 @@ async function executeRunStep(params: {
 
   return {
     failed,
-    isCancelled,
+    cancelled,
+    skipped: false,
     report: {
       id: stepId,
       name: stepName,

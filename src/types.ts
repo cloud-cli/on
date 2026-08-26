@@ -62,6 +62,7 @@ export interface WebhookPreprocessor {
 
 export interface WorkflowStep {
   id?: string;
+  if?: string;
   name?: string;
   run?: string;
   eval?: string;
