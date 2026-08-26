@@ -51,13 +51,13 @@ export class SafeExpressionEvaluator {
       conditions = [conditions];
     }
 
-    if (process.env.DEBUG) {
-      console.log(conditions, context);
-    }
-
     for (const c of conditions) {
       const result = await this.evaluateExpression(c, context);
-
+      
+      if (process.env.DEBUG) {
+        console.log('condition', result, c, context);
+      }
+      
       if (result) {
         return true;
       }
