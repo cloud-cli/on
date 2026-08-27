@@ -59,7 +59,7 @@ export class SystemdDriver implements ExecutionDriver {
       PATH: ctx.env?.PATH || process.env.PATH,
     };
 
-    for (const [key, val] of Object.entries(ctx.env)) {
+    for (const [key, val] of Object.entries(env)) {
       systemdFlags.push(`--setenv=${key}=${val}`);
     }
 
