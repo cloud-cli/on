@@ -47,7 +47,7 @@ export class SecretStore {
     const ordered = secrets.slice().sort((a, b) => b.length - a.length);
 
     for (const secret of ordered) {
-      text = text.replaceAll(secret, '** masked **');
+      text = text.replaceAll(secret, '****');
     }
 
     return text;
