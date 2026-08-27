@@ -148,11 +148,7 @@ export class WebhookServer {
 
       if (workflow.on.if) {
         try {
-          const shouldRun = SafeExpressionEvaluator.evaluateConditions(workflow.on.if, { inputs });
-
-          if (process.env.DEBUG) {
-            console.log('shouldRun', typeof shouldRun, shouldRun);
-          }
+          const shouldRun = await SafeExpressionEvaluator.evaluateConditions(workflow.on.if, { inputs });
 
           if (!shouldRun) {
             console.log(`⏩ Skipped ${workflow.id} based on conditions: ${workflow.on.if}`, { inputs });

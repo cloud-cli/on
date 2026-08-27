@@ -236,9 +236,10 @@ async function executeSingleStep(params: {
 
   if (step.if) {
     const shouldRun = await SafeExpressionEvaluator.evaluateConditions(step.if, params.executionContext);
+
     if (!shouldRun) {
       if (DEBUG) {
-        console.log('Skipped step due to condition', typeof shouldRun, shouldRun);
+        console.log(`⏩ Skipped step ${step.id} based on condition: ${step.if}`, params.executionContext);
       }
       return {
         failed: false,
