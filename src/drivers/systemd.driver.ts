@@ -54,13 +54,14 @@ export class SystemdDriver implements ExecutionDriver {
       `--working-directory=${workingDir}`,
     ];
 
-    if (ctx.env) {
-      for (const [key, val] of Object.entries(ctx.env)) {
-        systemdFlags.push(`--setenv=${key}=${val}`);
-      }
-    }
+    const env = {
+      ...(ctx.env || {}),
+      PATH: ctx.env?.PATH || process.env.PATH,
+    };
 
-    systemdFlags.push(`--setenv=PATH=${ctx.env?.PATH || process.env.PATH}`);
+    for (const [key, val] of Object.entries(ctx.env)) {
+      systemdFlags.push(`--setenv=${key}=${val}`);
+    }
 
     if (ctx.timeoutMs) {
       const timeoutSec = Math.ceil(ctx.timeoutMs / 1000);
@@ -70,6 +71,7 @@ export class SystemdDriver implements ExecutionDriver {
     let commandArgs: string[];
 
     if (ctx.image) {
+      systemdFlags.push(`--setenv=WORKING_DIR=/workspace`);
       commandArgs = [
         'docker',
         'run',
@@ -80,12 +82,16 @@ export class SystemdDriver implements ExecutionDriver {
         `${workingDir}:/workspace`,
         '-w',
         '/workspace',
+        ...Object.keys(env).flatMap((k) => ['-e', k]),
+        '-e',
+        'WORKING_DIR',
         ctx.image,
         'sh',
         '-c',
         ctx.command,
       ];
     } else {
+      systemdFlags.push(`--setenv=WORKING_DIR=${workingDir}`);
       commandArgs = [process.env.SHELL || 'sh', '-e', '-c', ctx.command];
     }
 

@@ -39,7 +39,12 @@ export class StandardProcessDriver implements ExecutionDriver {
     let cmd: string;
     let args: string[];
 
+    const env = {
+      ...ctx.env,
+    };
+
     if (ctx.image) {
+      env.WORKING_DIR = '/workspace';
       cmd = 'docker';
       args = [
         'run',
@@ -51,11 +56,13 @@ export class StandardProcessDriver implements ExecutionDriver {
         '/workspace',
         '--entrypoint',
         'sh',
+        ...Object.keys(env).flatMap((k) => ['-e', k]),
         ctx.image,
         '-c',
         ctx.command,
       ];
     } else {
+      env.WORKING_DIR = workingDir;
       cmd = process.env.SHELL || 'sh';
       args = ['-e', '-c', ctx.command];
     }
@@ -68,7 +75,7 @@ export class StandardProcessDriver implements ExecutionDriver {
     try {
       child = spawn(cmd, args, {
         cwd: workingDir,
-        env: { ...process.env, ...ctx.env },
+        env,
         detached: true,
         stdio: ['ignore', logFd, logFd],
       });

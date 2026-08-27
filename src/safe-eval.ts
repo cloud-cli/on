@@ -2,6 +2,8 @@ import * as acorn from 'acorn';
 import FS from 'node:fs';
 import Path from 'node:path';
 
+const CWD = process.cwd();
+
 export const BUILTIN_HELPERS: Record<string, any> = {
   String: (val: any) => String(val ?? ''),
   Number: (val: any) => Number(val),
@@ -12,8 +14,11 @@ export const BUILTIN_HELPERS: Record<string, any> = {
   },
   FS: {
     readFile: (f) => FS.readFileSync(f, 'utf8'),
-    exists: (f) => FS.existsSync(f),
-    join: (...args) => Path.join(...args),
+    exists: (f) => {
+      console.log('FS.exists [%s] %s', process.cwd(), f);
+      return FS.existsSync(f);
+    },
+    join: (...args) => Path.join(...args.map((p) => (p === 'CWD' ? CWD : p))),
   },
 };
 
