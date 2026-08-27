@@ -37,9 +37,12 @@ export class HtmlReporter implements Reporter {
     const stepRows = (execReport.steps ?? [])
       .map((step, idx) => {
         let rawLog = step.logContent;
-        let htmlLog = rawLog
-          ? this.ansiUp.ansi_to_html(rawLog)
-          : '<span class="text-gray-500">(No terminal log output recorded for this step)</span>';
+        let htmlLog =
+          step.status === 'skipped'
+            ? ''
+            : rawLog
+              ? this.ansiUp.ansi_to_html(rawLog)
+              : '<span class="text-gray-500">(No terminal log output recorded for this step)</span>';
 
         const stepBadge =
           step.status === 'success'
