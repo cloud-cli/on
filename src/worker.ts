@@ -17,6 +17,8 @@ import {
 } from './types.js';
 import { setupSignalHandlers } from './signals.js';
 
+const DEBUG = !!process.env.DEBUG;
+
 export const shutdownState = {
   isStopping: false,
 };
@@ -203,6 +205,7 @@ async function processSteps(p: ContextualizedProcessable): Promise<ProcessStepsO
       }
     }
   } catch (e) {
+    console.log('🛑 Step failed', e);
     failed = true;
   }
 
@@ -234,6 +237,9 @@ async function executeSingleStep(params: {
   if (step.if) {
     const shouldRun = await SafeExpressionEvaluator.evaluateConditions(step.if, params.executionContext);
     if (!shouldRun) {
+      if (DEBUG) {
+        console.log('Skipped step due to condition', typeof shouldRun, shouldRun);
+      }
       return {
         failed: false,
         cancelled: false,
@@ -295,7 +301,7 @@ async function executeEvalStep(params: {
       },
     };
   } catch (err: any) {
-    console.error(`[${stepId}] ❌ JS Eval step failed:`, err.message);
+    console.error(`[${stepId}] ❌ JS Eval step failed:`, err);
 
     executionContext.steps[stepId] = {
       status: 'failed',

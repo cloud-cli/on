@@ -1,6 +1,5 @@
 import * as acorn from 'acorn';
 import FS from 'node:fs';
-import OS from 'node:os';
 import Path from 'node:path';
 
 export const BUILTIN_HELPERS: Record<string, any> = {
@@ -16,7 +15,6 @@ export const BUILTIN_HELPERS: Record<string, any> = {
     exists: (f) => FS.existsSync(f),
     join: (...args) => Path.join(...args),
   },
-  OS,
 };
 
 export class SafeExpressionEvaluator {
@@ -53,11 +51,11 @@ export class SafeExpressionEvaluator {
 
     for (const c of conditions) {
       const result = await this.evaluateExpression(c, context);
-      
+
       if (process.env.DEBUG) {
         console.log('condition', result, c, context);
       }
-      
+
       if (result) {
         return true;
       }
