@@ -207,10 +207,38 @@ export class WebhookServer {
       _: 'bg-gray-500/10 text-gray-400',
     };
 
-    const rows = jobs
-      .map((j) => {
-        const badge = badgeMap[j.status] || badgeMap._;
+    const dotColor = (status: string | undefined) => {
+      switch (status) {
+        case 'success': return 'bg-emerald-400';
+        case 'failed': return 'bg-rose-400';
+        case 'running': return 'bg-indigo-400 animate-pulse';
+        default: return 'bg-gray-500';
+      }
+    };
 
+    const mobileCards = jobs
+      .map((j) => {
+        const dot = dotColor(j.status);
+        return `
+      <div class="py-3 px-4 block md:hidden bg-gray-900/60">
+        <div class="flex items-center justify-between gap-2 mb-1">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="w-2.5 h-2.5 rounded-full ${dot} flex-shrink-0"></span>
+            <span class="font-medium text-white truncate">${j.workflow_id}</span>
+          </div>
+          <a href="/runs/${j.id}" class="shrink-0 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-2.5 py-1 rounded border border-gray-700 whitespace-nowrap">Trace</a>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-gray-400 pl-[18px]">
+          #${j.id}
+        </div>
+      </div>
+    `;
+      })
+      .join('');
+
+    const desktopRows = jobs
+      .map((j) => {
+        const badge = badgeMap[j.status] || badgeMap['_'];
         return `
       <tr class="border-b border-gray-800 hover:bg-gray-900/50 transition">
         <td class="py-3 px-4 font-mono text-indigo-400"><a href="/runs/${j.id}" class="hover:underline">#${j.id}</a></td>
@@ -218,9 +246,9 @@ export class WebhookServer {
         <td class="py-3 px-4">
           <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge}">${j.status?.toUpperCase() ?? '?'}</span>
         </td>
-        <td class="py-3 px-4 text-xs font-mono text-gray-400">${j.worker_id || '-'}</td>
-        <td class="py-3 px-4 text-xs text-gray-400">${j.created_at}</td>
-        <td class="py-3 px-4 text-right">
+        <td class="py-3 px-4 hidden xl:table-cell text-xs font-mono text-gray-400">${j.worker_id || '-'}</td>
+        <td class="py-3 px-4 hidden lg:table-cell text-xs text-gray-400">${j.created_at}</td>
+        <td class="py-3 px-4 text-right whitespace-nowrap hidden md:table-cell">
           <a href="/runs/${j.id}" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 px-3 py-1 rounded border border-gray-700">View Trace →</a>
         </td>
       </tr>
@@ -248,21 +276,23 @@ export class WebhookServer {
       </span>
     </div>
 
-    <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+    <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hidden md:block">
       <table class="w-full text-left text-sm">
         <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase font-mono border-b border-gray-800">
           <tr>
             <th class="py-3 px-4">Job ID</th>
             <th class="py-3 px-4">Workflow</th>
             <th class="py-3 px-4">Status</th>
-            <th class="py-3 px-4">Worker</th>
-            <th class="py-3 px-4">Created At</th>
-            <th class="py-3 px-4 text-right">Action</th>
+            <th class="py-3 px-4 hidden xl:table-cell">Worker</th>
+            <th class="py-3 px-4 hidden lg:table-cell">Created At</th>
+            <th class="py-3 px-4 text-right hidden md:table-cell">Action</th>
           </tr>
         </thead>
-        <tbody>${rows.length ? rows : '<tr><td colspan="6" class="p-6 text-center text-gray-500">No jobs recorded yet.</td></tr>'}</tbody>
+        <tbody>${desktopRows}</tbody>
       </table>
     </div>
+
+    <div class="md:hidden divide-y divide-gray-800">${mobileCards || '<div class="p-6 text-center text-gray-500">No jobs recorded yet.</div>'}</div>
   </div>
 </body>
 </html>`;
