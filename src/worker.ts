@@ -1,4 +1,5 @@
-import fs from 'node:fs';
+import FS from 'node:fs';
+import Path from 'node:path';
 import { resolveDriver } from './drivers/index.js';
 import { QueueManager } from './queue.js';
 import { SafeExpressionEvaluator } from './safe-eval.js';
@@ -6,7 +7,6 @@ import { SecretStore } from './secrets.js';
 import {
   ExecutionDriver,
   JobPayload,
-  JobRecord,
   RunnerConfig,
   StepContext,
   StepExecutionHandle,
@@ -14,6 +14,9 @@ import {
   StepResult,
   WorkflowExecutionReport,
   WorkflowStep,
+  Processable,
+  ContextualizedProcessable,
+  JobExecutionContext,
 } from './types.js';
 import { setupSignalHandlers } from './signals.js';
 
@@ -80,28 +83,6 @@ export async function startWorkerLoop(
   console.log(`[${workerId}] 🛑 Worker loop stopped cleanly.`);
 }
 
-interface Processable {
-  workerId: string;
-  job: JobRecord;
-  queue: QueueManager;
-  secrets: SecretStore;
-  config: RunnerConfig;
-  driver: ExecutionDriver;
-}
-
-interface ContextualizedProcessable extends Processable {
-  payload: JobPayload;
-  steps: WorkflowStep[];
-  executionContext: StepExecutionContext;
-}
-
-interface StepExecutionContext {
-  inputs: any;
-  env: Record<string, string>;
-  secrets: Record<string, string>;
-  steps: Record<string, { status: string; exitCode: number; outputs: any }>;
-}
-
 /**
  * Processes a single job sequentially
  */
@@ -113,13 +94,18 @@ async function processJob(p: Processable) {
   const steps = payload.steps || [];
   const inputs = payload.inputs || {};
   const jobStartTime = Date.now();
+  const storagePath = Path.join(config.storagePath, `job-${job.id}`);
+  const logsDir = Path.join(storagePath, 'logs');
+  const workingDir = Path.join(storagePath, 'wd');
 
   // Step Execution Context available in expressions: ${steps.step1.outputs.id}
-  const executionContext: StepExecutionContext = {
+  const executionContext: JobExecutionContext = {
     inputs,
     env: { ...config.env },
     secrets: secrets.getAll(),
     steps: {},
+    logsDir,
+    workingDir,
   };
 
   const context = { payload, steps, executionContext, ...p };
@@ -225,21 +211,21 @@ async function executeSingleStep(params: {
   jobId: string | number;
   step: WorkflowStep;
   stepIndex: number;
-  executionContext: Record<string, any>;
+  executionContext: JobExecutionContext;
   driver: ExecutionDriver;
   queue: QueueManager;
   config: RunnerConfig;
 }): Promise<ExecOutput> {
-  const { step, stepIndex } = params;
-  const stepId = step.id || `step-${stepIndex}`;
-  const stepName = step.name || stepId;
+  const { step, stepIndex, executionContext } = params;
+  step.id ||= `step-${stepIndex}`;
+  step.name ||= step.id;
 
   if (step.if) {
-    const shouldRun = await SafeExpressionEvaluator.evaluateConditions(step.if, params.executionContext);
+    const shouldRun = await SafeExpressionEvaluator.evaluateConditions(step.if, executionContext);
 
     if (!shouldRun) {
       if (DEBUG) {
-        console.log(`⏩ Skipped step ${step.id} based on condition: ${step.if}`, params.executionContext);
+        console.log(`⏩ Skipped step ${step.id} based on condition: ${step.if}`, executionContext);
       }
       return {
         failed: false,
@@ -250,10 +236,30 @@ async function executeSingleStep(params: {
     }
   }
 
-  if (step.eval) {
-    return executeEvalStep({ ...params, stepId, stepName, evalExpr: step.eval });
-  } else {
-    return executeRunStep({ ...params, stepId, stepName });
+  try {
+    const evaluatedStepEnv = await evaluateEnv(step.env, executionContext);
+    const stepContext: StepContext = {
+      jobId: String(jobId),
+      step,
+      command: step.run!,
+      timeoutMs: step.timeoutMs,
+      image: step.image,
+      env: {
+        ...executionContext.env,
+        ...evaluatedStepEnv,
+        WORKING_DIR: executionContext.workingDir,
+      },
+    };
+
+    if (step.eval) {
+      return executeEvalStep({ ...params, stepContext });
+    } else {
+      return executeRunStep({ ...params, stepContext });
+    }
+  } catch (e) {
+    if (DEBUG) {
+      console.error(`⏩ Failed to run step ${step.id} based on condition: ${step.if}`, executionContext);
+    }
   }
 }
 
@@ -262,13 +268,11 @@ async function executeSingleStep(params: {
  */
 async function executeEvalStep(params: {
   queue: QueueManager;
-  jobId: string | number;
-  stepId: string;
-  stepName: string;
-  evalExpr: string;
-  executionContext: Record<string, any>;
+  stepContext: StepContext;
+  executionContext: JobExecutionContext;
 }): Promise<ExecOutput> {
-  const { queue, jobId, stepId, stepName, evalExpr, executionContext } = params;
+  const { queue, stepContext, executionContext } = params;
+  const { jobId, stepId, stepName, evalExpr } = stepContext;
   const startTime = Date.now();
 
   try {
@@ -349,33 +353,19 @@ async function evaluateEnv(env, context) {
 async function executeRunStep(params: {
   workerId: string;
   jobId: string | number;
-  step: WorkflowStep;
+  stepContext: StepContext;
   stepId: string;
   stepName: string;
-  executionContext: Record<string, any>;
+  executionContext: JobExecutionContext;
   driver: ExecutionDriver;
   queue: QueueManager;
   config: RunnerConfig;
 }): Promise<ExecOutput> {
-  const { workerId, jobId, step, stepId, stepName, executionContext, driver, queue, config } = params;
-  let stepCtx: StepContext;
+  const { workerId, jobId, stepContext, stepId, stepName, executionContext, driver, queue } = params;
   let handle: StepExecutionHandle;
 
   try {
-    const evaluatedStepEnv = await evaluateEnv(step.env, executionContext);
-    stepCtx = {
-      jobId: jobId.toString(),
-      stepId,
-      workspacePath: `${config.storagePath}/job-${jobId}`,
-      command: step.run!,
-      image: step.image,
-      env: {
-        ...executionContext.env,
-        ...evaluatedStepEnv,
-      },
-      timeoutMs: step.timeoutMs,
-    };
-    handle = driver.execute(stepCtx);
+    handle = driver.execute(stepContext);
   } catch (e) {
     handle = {
       done: Promise.resolve({
@@ -404,7 +394,7 @@ async function executeRunStep(params: {
   clearInterval(cancelCheckInterval);
   activeStepHandle = null; // Unbind handle when step finishes
 
-  if (handle.logFilePath && fs.existsSync(handle.logFilePath)) {
+  if (handle.logFilePath && FS.existsSync(handle.logFilePath)) {
     try {
       const logContent = await driver.readLog(handle.logFilePath);
       await queue.saveStepLog(jobId, stepId, logContent);

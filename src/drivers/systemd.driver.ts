@@ -21,14 +21,12 @@ export class SystemdDriver implements ExecutionDriver {
   execute(ctx: StepContext): StepExecutionHandle {
     let logFd: number | null = null;
     const startTime = Date.now();
-    const logDir = path.join(ctx.workspacePath, '.logs');
-    const logFilePath = path.join(logDir, `step-${ctx.stepId}.log`);
-    const workingDir = path.join(ctx.workspacePath, 'wd');
+    const logFilePath = path.join(ctx.logsDir, `step-${ctx.stepId}.log`);
 
     try {
-      fs.mkdirSync(logDir, { recursive: true });
-      fs.mkdirSync(workingDir, { recursive: true });
-      fs.chmodSync(workingDir, 0o777);
+      fs.mkdirSync(ctx.logsDir, { recursive: true });
+      fs.mkdirSync(ctx.workingDir, { recursive: true });
+      fs.chmodSync(ctx.workingDir, 0o777);
 
       logFd = fs.openSync(logFilePath, 'a');
     } catch (err: any) {
@@ -51,7 +49,7 @@ export class SystemdDriver implements ExecutionDriver {
       '--collect',
       '-p',
       'RemainAfterExit=no',
-      `--working-directory=${workingDir}`,
+      `--working-directory=${ctx.workingDir}`,
     ];
 
     const env = {
@@ -79,7 +77,7 @@ export class SystemdDriver implements ExecutionDriver {
         '--init',
         `--name=${unitName}`,
         '-v',
-        `${workingDir}:/workspace`,
+        `${ctx.workingDir}:/workspace`,
         '-w',
         '/workspace',
         ...Object.keys(env).flatMap((k) => ['-e', k]),
@@ -91,7 +89,7 @@ export class SystemdDriver implements ExecutionDriver {
         ctx.command,
       ];
     } else {
-      systemdFlags.push(`--setenv=WORKING_DIR=${workingDir}`);
+      systemdFlags.push(`--setenv=WORKING_DIR=${ctx.workingDir}`);
       commandArgs = [process.env.SHELL || 'sh', '-e', '-c', ctx.command];
     }
 

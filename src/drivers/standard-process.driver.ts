@@ -14,14 +14,12 @@ export class StandardProcessDriver implements ExecutionDriver {
   execute(ctx: StepContext): StepExecutionHandle {
     let logFd: number | null = null;
     const startTime = Date.now();
-    const logDir = path.join(ctx.workspacePath, '.logs');
-    const logFilePath = path.join(logDir, `step-${ctx.stepId}.log`);
-    const workingDir = path.join(ctx.workspacePath, 'wd');
+    const logFilePath = path.join(ctx.logsDir, `step-${ctx.stepId}.log`);
 
     try {
-      fs.mkdirSync(logDir, { recursive: true });
-      fs.mkdirSync(workingDir, { recursive: true });
-      fs.chmodSync(workingDir, 0o777);
+      fs.mkdirSync(ctx.logsDir, { recursive: true });
+      fs.mkdirSync(ctx.workingDir, { recursive: true });
+      fs.chmodSync(ctx.workingDir, 0o777);
 
       logFd = fs.openSync(logFilePath, 'a');
     } catch (err: any) {
@@ -62,7 +60,7 @@ export class StandardProcessDriver implements ExecutionDriver {
         ctx.command,
       ];
     } else {
-      env.WORKING_DIR = workingDir;
+      env.WORKING_DIR = ctx.workingDir;
       cmd = process.env.SHELL || 'sh';
       args = ['-e', '-c', ctx.command];
     }
@@ -74,7 +72,7 @@ export class StandardProcessDriver implements ExecutionDriver {
     let child: ChildProcess;
     try {
       child = spawn(cmd, args, {
-        cwd: workingDir,
+        cwd: ctx.workingDir,
         env,
         detached: true,
         stdio: ['ignore', logFd, logFd],

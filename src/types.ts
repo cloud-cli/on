@@ -1,10 +1,45 @@
 import { QueueManager } from './queue.js';
 import { SecretStore } from './secrets.js';
 
+// types can be grouped in 4 different layers
+// 1. configuration and initialization: the settings to initialize the webserver and the runners, and bridge the host with the runnables
+// 2. workflow definitions: the templates that will generate actionable jobs, and need the layer 1 to be properly configured
+// 3. workflow queue and pending jobs: a combination of templates and inputs that generate multiple steps to execute, which depend upon layer 2
+// 4. a single unit of work: an executable step, belonging to a job, which is atomic and depends upon information in the other 3 layers
+
+export interface Reporter {
+  name: string;
+  report(execReport: WorkflowExecutionReport): Promise<void>;
+}
+
+export interface RunnerConfig {
+  /** Ingress HTTP Gateway Port */
+  port: number;
+  /** Admin Secret for API / webhook operations */
+  adminToken: string;
+  /** SQLite Database connection URL / path */
+  database: string;
+  /** Directory where workflow YAML files live */
+  workflows: string;
+  /** Number of concurrent worker loops to spawn */
+  workers: number;
+  /** Storage path for job workspaces and step logs */
+  storagePath: string;
+  /** Global environment variables injected into all step runs */
+  env: Record<string, string>;
+  /** Registered reporter plugins (JSON, Slack, HTML, etc.) */
+  reporters: Reporter[];
+}
+
+export type UserRunnerConfig = Partial<RunnerConfig>;
+
+//
+
 export interface StepContext {
   jobId: string;
-  stepId: string;
-  workspacePath: string;
+  step: WorkflowStep;
+  logsDir: string;
+  workingDir: string;
   command: string;
   env?: Record<string, string>;
   image?: string; // Optional: Docker container image
@@ -199,28 +234,26 @@ export interface WorkflowExecutionReport {
   rerunToken: string; // Opaque token/state snapshot to re-run
 }
 
-export interface Reporter {
-  name: string;
-  report(execReport: WorkflowExecutionReport): Promise<void>;
+export interface Processable {
+  workerId: string;
+  job: JobRecord;
+  queue: QueueManager;
+  secrets: SecretStore;
+  config: RunnerConfig;
+  driver: ExecutionDriver;
 }
 
-export interface RunnerConfig {
-  /** Ingress HTTP Gateway Port */
-  port: number;
-  /** Admin Secret for API / webhook operations */
-  adminToken: string;
-  /** SQLite Database connection URL / path */
-  database: string;
-  /** Directory where workflow YAML files live */
-  workflows: string;
-  /** Number of concurrent worker loops to spawn */
-  workers: number;
-  /** Storage path for job workspaces and step logs */
-  storagePath: string;
-  /** Global environment variables injected into all step runs */
+export interface ContextualizedProcessable extends Processable {
+  payload: JobPayload;
+  steps: WorkflowStep[];
+  executionContext: JobExecutionContext;
+}
+
+export interface JobExecutionContext {
+  inputs: any;
   env: Record<string, string>;
-  /** Registered reporter plugins (JSON, Slack, HTML, etc.) */
-  reporters: Reporter[];
+  secrets: Record<string, string>;
+  steps: Record<string, { status: string; exitCode: number; outputs: any }>;
+  workingDir: string;
+  logsDir: string;
 }
-
-export type UserRunnerConfig = Partial<RunnerConfig>;
