@@ -76,11 +76,19 @@ export class HtmlReporter implements Reporter {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Run #${execReport.jobId} - ${execReport.workflowName}</title>
   <script type="importmap"> {"imports": { "@li3/": "https://cdn.li3.dev/@li3/" }}</script>
+  <script>
+  async function restartJob(jobId) {
+    const r = await fetch('/restart/' + jobId, { method:'POST' });
+    if (r.ok) {
+      location.reload();
+    }
+  }
+  </script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen p-6 font-sans">
   <div class="max-w-5xl mx-auto space-y-4">
 
-    <div class="flex items-center justify-between border-b border-gray-800 pb-6">
+    <div class="flex items-center justify-between border-b border-gray-800 pb-6 gap-2">
       <div>
         <a href="/runs" class="text-xs text-indigo-400 hover:underline mb-1 inline-block">← Back to Dashboard</a>
         <h1 class="text-2xl font-bold text-white flex items-center gap-3">
@@ -89,9 +97,12 @@ export class HtmlReporter implements Reporter {
         </h1>
         <p class="text-xs text-gray-400 mt-1">Started ${execReport.startedAt} • Finished in ${execReport.durationMs}ms</p>
       </div>
-      <span class="px-4 py-1.5 rounded-full text-sm font-semibold border ${statusColor}">
-        ${execReport.status.toUpperCase()}
-      </span>
+      <div>
+        <span class="px-4 py-1.5 rounded-full text-sm font-semibold border ${statusColor}">
+          ${execReport.status.toUpperCase()}
+        </span>
+        <button class="text-xs text-white p-1 border border-gray-400 mt-2" onclick="restartJob('${execReport.jobId}')">restart</button>
+      >/div>
     </div>
 
     <div class="rounded overflow-hidden border-b border-gray-800">

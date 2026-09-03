@@ -59,6 +59,11 @@ export class WebhookServer {
       return this.renderRunDetails(jobId, res);
     }
 
+    if (req.method === 'POST' && url.pathname.startsWith('/restart/')) {
+      const jobId = url.pathname.replace('/restart/', '');
+      return this.handleRestartJob(jobId, res);
+    }
+
     if (req.method === 'POST' && url.pathname === '/admin/reload-secrets') {
       return this.handleSecretReload(req, res);
     }
@@ -209,10 +214,14 @@ export class WebhookServer {
 
     const dotColor = (status: string | undefined) => {
       switch (status) {
-        case 'success': return 'bg-emerald-400';
-        case 'failed': return 'bg-rose-400';
-        case 'running': return 'bg-indigo-400 animate-pulse';
-        default: return 'bg-gray-500';
+        case 'success':
+          return 'bg-emerald-400';
+        case 'failed':
+          return 'bg-rose-400';
+        case 'running':
+          return 'bg-indigo-400 animate-pulse';
+        default:
+          return 'bg-gray-500';
       }
     };
 
@@ -307,8 +316,6 @@ export class WebhookServer {
   /**
    * Serves single job HTML report
    */
-  // Inside src/ingress/server.ts
-
   private async renderRunDetails(jobId: string, res: http.ServerResponse) {
     const job = await this.queue.getJob(jobId);
 
@@ -323,7 +330,7 @@ export class WebhookServer {
     const logsMap = await this.queue.getJobLogs(jobId);
 
     // Attach log content back onto step objects for rendering
-    reportData.steps = reportData.steps.map((step: any) => ({
+    reportData.steps = (reportData.steps || []).map((step: any) => ({
       ...step,
       logContent: logsMap[step.id] || '',
     }));
@@ -334,6 +341,23 @@ export class WebhookServer {
 
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(redacted);
+  }
+
+  private async handleRestartJob(jobId: string, res: http.ServerResponse) {
+    const job = await this.queue.getJob(jobId);
+
+    if (!job) {
+      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end('<h1>404 - Job Not Found</h1>');
+    }
+
+    if (['cancelled', 'failed', 'success'].includes(job.status) === false) {
+      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end('<h1>404 - Cannot restart a job already in progress</h1>');
+    }
+
+    await this.queue.restartJob(jobId);
+    return res.end('OK');
   }
 
   listen(port: number): Promise<WebhookServer> {

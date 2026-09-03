@@ -66,6 +66,23 @@ export class QueueManager {
     await db.run(`UPDATE jobs SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?;`, [status, jobId]);
   }
 
+  async restartJob(jobId: string | number) {
+    await db.run(
+      `UPDATE jobs SET status = 'pending', worker_id = NULL, report = ?, finished_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`,
+      [
+        JSON.stringify({
+          status: 'pending',
+          steps: [],
+          jobId,
+          startedAt: Date.now(),
+          durationMs: 0,
+          inputs: {},
+        }),
+        jobId,
+      ],
+    );
+  }
+
   /**
    * Checks if the current job has been marked for cancellation by another event
    */
