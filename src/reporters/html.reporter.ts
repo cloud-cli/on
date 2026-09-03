@@ -97,11 +97,11 @@ export class HtmlReporter implements Reporter {
         </h1>
         <p class="text-xs text-gray-400 mt-1">Started ${execReport.startedAt} • Finished in ${execReport.durationMs}ms</p>
       </div>
-      <div>
+      <div class="flex items-center gap-2">
         <span class="px-4 py-1.5 rounded-full text-sm font-semibold border ${statusColor}">
           ${execReport.status.toUpperCase()}
         </span>
-        <button class="text-xs text-white p-1 border border-gray-400 mt-2" onclick="restartJob('${execReport.jobId}')">restart</button>
+        <button class="text-sm text-white px-4 py-1.5 border border-gray-400 rounded-full" onclick="restartJob('${execReport.jobId}')">restart</button>
       </div>
     </div>
 
