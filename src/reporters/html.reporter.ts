@@ -94,8 +94,9 @@ export class HtmlReporter implements Reporter {
         <a href="/runs" class="text-xs text-indigo-400 hover:underline mb-1 inline-block">← Back to Dashboard</a>
         <h1 class="text-2xl font-bold text-white flex items-center gap-3">
           ${execReport.workflowName}
-          <span class="text-sm font-mono text-gray-500">#${execReport.jobId}</span>
-          ${ execReport.parentId ? ` -> <a href="/runs/${execReport.parentId}" class="text-sm font-mono text-gray-500">#${execReport.parentId}</a>` : '' }
+          <span class="text-sm font-mono text-gray-500">#${execReport.jobId}
+          ${ execReport.parentId ? ` -> <a href="/runs/${execReport.parentId}">#${execReport.parentId}</a>` : '' }
+          </span>
         </h1>
         <p class="text-xs text-gray-400 mt-1">Started ${execReport.startedAt} • Finished in ${execReport.durationMs}ms</p>
       </div>
