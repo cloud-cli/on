@@ -33,8 +33,6 @@ export interface RunnerConfig {
 
 export type UserRunnerConfig = Partial<RunnerConfig>;
 
-//
-
 export interface StepContext {
   jobId: string;
   step: WorkflowStep;

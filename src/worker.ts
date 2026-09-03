@@ -244,6 +244,8 @@ async function executeSingleStep(params: {
       command: step.run!,
       timeoutMs: step.timeoutMs,
       image: step.image,
+      workingDir: executionContext.workingDir,
+      logsDir: executionContext.logsDir,
       env: {
         ...executionContext.env,
         ...evaluatedStepEnv,
@@ -272,11 +274,13 @@ async function executeEvalStep(params: {
   executionContext: JobExecutionContext;
 }): Promise<ExecOutput> {
   const { queue, stepContext, executionContext } = params;
-  const { jobId, stepId, stepName, evalExpr } = stepContext;
+  const { jobId, step } = stepContext;
   const startTime = Date.now();
+  const stepId = step.id!;
+  const stepName = step.name!;
 
   try {
-    const evalResult = await SafeExpressionEvaluator.evaluateExpression(evalExpr, executionContext);
+    const evalResult = await SafeExpressionEvaluator.evaluateExpression(step.eval!, executionContext);
 
     // Store outputs in execution context for downstream steps
     executionContext.steps[stepId] = {
@@ -354,14 +358,16 @@ async function executeRunStep(params: {
   workerId: string;
   jobId: string | number;
   stepContext: StepContext;
-  stepId: string;
-  stepName: string;
   executionContext: JobExecutionContext;
   driver: ExecutionDriver;
   queue: QueueManager;
   config: RunnerConfig;
 }): Promise<ExecOutput> {
-  const { workerId, jobId, stepContext, stepId, stepName, executionContext, driver, queue } = params;
+  const { workerId, jobId, stepContext, executionContext, driver, queue } = params;
+  const { step } = stepContext;
+  const stepId = step.id!;
+  const stepName = step.name!
+
   let handle: StepExecutionHandle;
 
   try {
