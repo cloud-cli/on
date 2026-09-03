@@ -69,7 +69,7 @@ Options:
   `);
 }
 
-export async function loadFromArgs(): Promise<{ config: RunnerConfig; command: string }> {
+export async function loadFromArgs(): Promise<{ config: RunnerConfig | null; command: string }> {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
