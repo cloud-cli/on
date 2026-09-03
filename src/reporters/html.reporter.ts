@@ -102,7 +102,7 @@ export class HtmlReporter implements Reporter {
           ${execReport.status.toUpperCase()}
         </span>
         <button class="text-xs text-white p-1 border border-gray-400 mt-2" onclick="restartJob('${execReport.jobId}')">restart</button>
-      >/div>
+      </div>
     </div>
 
     <div class="rounded overflow-hidden border-b border-gray-800">
