@@ -14,7 +14,7 @@ export class StandardProcessDriver implements ExecutionDriver {
   execute(ctx: StepContext): StepExecutionHandle {
     let logFd: number | null = null;
     const startTime = Date.now();
-    const logFilePath = path.join(ctx.logsDir, `step-${ctx.stepId}.log`);
+    const logFilePath = path.join(ctx.logsDir, `step-${ctx.step.id}.log`);
 
     try {
       fs.mkdirSync(ctx.logsDir, { recursive: true });
@@ -49,7 +49,7 @@ export class StandardProcessDriver implements ExecutionDriver {
         '--rm',
         '--init',
         '-v',
-        `${workingDir}:/workspace`,
+        `${ctx.workingDir}:/workspace`,
         '-w',
         '/workspace',
         '--entrypoint',

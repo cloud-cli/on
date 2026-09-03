@@ -21,7 +21,7 @@ export class SystemdDriver implements ExecutionDriver {
   execute(ctx: StepContext): StepExecutionHandle {
     let logFd: number | null = null;
     const startTime = Date.now();
-    const logFilePath = path.join(ctx.logsDir, `step-${ctx.stepId}.log`);
+    const logFilePath = path.join(ctx.logsDir, `step-${ctx.step.id}.log`);
 
     try {
       fs.mkdirSync(ctx.logsDir, { recursive: true });
@@ -41,7 +41,7 @@ export class SystemdDriver implements ExecutionDriver {
       };
     }
 
-    const unitName = `workflow-${ctx.jobId}-${ctx.stepId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const unitName = `workflow-${ctx.jobId}-${ctx.step.id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
     const systemdFlags: string[] = [
       `--unit=${unitName}`,
       '--wait',
