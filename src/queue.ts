@@ -76,7 +76,7 @@ export class QueueManager {
     }
 
     const newJob = await db.get(
-      `INSERT INTO jobs (parentId, workflow_id, concurrency_key, payload) (SELECT id, workflow_id, concurrency_key, payload FROM jobs WHERE id = ?) RETURNING *`,
+      `INSERT INTO jobs (parentId, workflow_id, concurrency_key, payload) SELECT id, workflow_id, concurrency_key, payload FROM jobs WHERE id = ? RETURNING *`,
       [jobId],
     );
 
