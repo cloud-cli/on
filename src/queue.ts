@@ -17,7 +17,7 @@ export class QueueManager {
     // If a concurrency key is provided, cancel existing pending/running jobs in that group
     if (concurrencyKey) {
       await db.run(
-        `UPDATE jobs SET status = 'cancelling' WHERE concurrency_key = ? AND status IN ('pending', 'running');`,
+        `UPDATE jobs SET status = 'cancelled' WHERE concurrency_key = ? AND status IN ('pending', 'running');`,
         [concurrencyKey],
       );
     }
@@ -67,19 +67,10 @@ export class QueueManager {
   }
 
   async restartJob(jobId: string | number) {
+    await db.run(`UPDATE jobs SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP WHERE id = ?;`, [jobId]);
     await db.run(
-      `UPDATE jobs SET status = 'pending', worker_id = NULL, report = ?, finished_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`,
-      [
-        JSON.stringify({
-          status: 'pending',
-          steps: [],
-          jobId,
-          startedAt: Date.now(),
-          durationMs: 0,
-          inputs: {},
-        }),
-        jobId,
-      ],
+      `INSERT INTO jobs (workflow_id, concurrency_key, payload) VALUES (SELECT workflow_id, concurrency_key, payload FROM jobs WHERE id = ?)`,
+      [jobId],
     );
   }
 
@@ -87,8 +78,8 @@ export class QueueManager {
    * Checks if the current job has been marked for cancellation by another event
    */
   async isCancelled(jobId: string | number): Promise<boolean> {
-    const job = await db.get(`SELECT status FROM jobs WHERE id = ?;`, [+jobId]);
-    return job?.status === 'cancelling';
+    const job = (await db.get(`SELECT status FROM jobs WHERE id = ?;`, [+jobId])) as { status: JobStatus } | null;
+    return job?.status === 'cancelled';
   }
 
   async clearStaleJobs() {

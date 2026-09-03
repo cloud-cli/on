@@ -127,7 +127,7 @@ export interface WebhookServerOptions {
   adminToken: string;
 }
 
-export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelling' | 'cancelled';
+export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
 
 export interface JobRecord {
   id: number;
