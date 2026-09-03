@@ -227,6 +227,7 @@ async function executeSingleStep(params: {
       if (DEBUG) {
         console.log(`⏩ Skipped step ${step.id} based on condition: ${step.if}`, executionContext);
       }
+
       return {
         failed: false,
         cancelled: false,
@@ -239,7 +240,7 @@ async function executeSingleStep(params: {
   try {
     const evaluatedStepEnv = await evaluateEnv(step.env, executionContext);
     const stepContext: StepContext = {
-      jobId: String(jobId),
+      jobId: String(params.jobId),
       step,
       command: step.run!,
       timeoutMs: step.timeoutMs,
@@ -260,8 +261,15 @@ async function executeSingleStep(params: {
     }
   } catch (e) {
     if (DEBUG) {
-      console.error(`⏩ Failed to run step ${step.id} based on condition: ${step.if}`, executionContext);
+      console.error(`⏩ Failed to run step ${step.id}`, executionContext, e);
     }
+
+    return {
+      failed: true,
+      cancelled: false,
+      skipped: false,
+      report: null,
+    };
   }
 }
 
@@ -366,7 +374,7 @@ async function executeRunStep(params: {
   const { workerId, jobId, stepContext, executionContext, driver, queue } = params;
   const { step } = stepContext;
   const stepId = step.id!;
-  const stepName = step.name!
+  const stepName = step.name!;
 
   let handle: StepExecutionHandle;
 
