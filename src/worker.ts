@@ -17,6 +17,7 @@ import {
   Processable,
   ContextualizedProcessable,
   JobExecutionContext,
+  JobRecord,
 } from './types.js';
 import { setupSignalHandlers } from './signals.js';
 
@@ -471,7 +472,7 @@ function fillSkippedSteps(steps: any[], startIndex: number, stepReports: StepRep
  * Constructs lightweight summary execution report
  */
 function buildExecutionReport(
-  job: any,
+  job: JobRecord,
   status: string,
   startTime: number,
   inputs: Record<string, any>,
@@ -480,7 +481,8 @@ function buildExecutionReport(
   payload: any,
 ): WorkflowExecutionReport {
   return {
-    jobId: job.id.toString(),
+    jobId: String(job.id),
+    parentId: String(job.parentId || ''),
     workflowName: job.workflow_id,
     status: status as any,
     durationMs: Date.now() - startTime,

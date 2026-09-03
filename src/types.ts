@@ -131,6 +131,7 @@ export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelle
 
 export interface JobRecord {
   id: number;
+  parentId?: number;
   workflow_id: string;
   concurrency_key: string | null;
   status: JobStatus;
@@ -220,6 +221,7 @@ export interface StepReport {
 
 export interface WorkflowExecutionReport {
   jobId: string;
+  parentId: string;
   workflowName: string;
   status: 'success' | 'failed' | 'cancelled';
   durationMs: number;

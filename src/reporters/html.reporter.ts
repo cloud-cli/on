@@ -80,7 +80,8 @@ export class HtmlReporter implements Reporter {
   async function restartJob(jobId) {
     const r = await fetch('/restart/' + jobId, { method:'POST' });
     if (r.ok) {
-      location.reload();
+      const { id } = await r.json();
+      location.href = '/runs/' + id
     }
   }
   </script>
@@ -94,6 +95,7 @@ export class HtmlReporter implements Reporter {
         <h1 class="text-2xl font-bold text-white flex items-center gap-3">
           ${execReport.workflowName}
           <span class="text-sm font-mono text-gray-500">#${execReport.jobId}</span>
+          ${ execReport.parentId ? ` -> <a href="/runs/${execReport.parentId}" class="text-sm font-mono text-gray-500">#${execReport.parentId}</a>` : '' }
         </h1>
         <p class="text-xs text-gray-400 mt-1">Started ${execReport.startedAt} • Finished in ${execReport.durationMs}ms</p>
       </div>
