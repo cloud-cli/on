@@ -344,20 +344,16 @@ export class WebhookServer {
   }
 
   private async handleRestartJob(jobId: string, res: http.ServerResponse) {
-    const job = await this.queue.getJob(jobId);
+    const id = await this.queue.restartJob(jobId);
 
-    if (!job) {
-      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end('<h1>404 - Job Not Found</h1>');
+    if (id) {
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ id }));
+      return;
     }
 
-    if (['cancelled', 'failed', 'success'].includes(job.status) === false) {
-      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end('<h1>404 - Cannot restart a job already in progress</h1>');
-    }
-
-    await this.queue.restartJob(jobId);
-    return res.end('OK');
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Job not found' }));
   }
 
   listen(port: number): Promise<WebhookServer> {

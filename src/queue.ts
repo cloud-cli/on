@@ -38,7 +38,7 @@ export class QueueManager {
   async claimNextJob(): Promise<JobRecord | null> {
     // This query is completely immune to HTTP/Network race conditions.
     // It locks the row, updates it, and returns the data in one transaction.
-    const result = await db.get(
+    let result = await db.get(
       `
       UPDATE jobs
       SET
@@ -67,11 +67,20 @@ export class QueueManager {
   }
 
   async restartJob(jobId: string | number) {
-    await db.run(`UPDATE jobs SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP WHERE id = ?;`, [jobId]);
-    await db.run(
-      `INSERT INTO jobs (workflow_id, concurrency_key, payload) VALUES (SELECT workflow_id, concurrency_key, payload FROM jobs WHERE id = ?)`,
+    const job = await this.getJob(jobId);
+
+    if (!job) return;
+
+    if (job.status === 'running') {
+      await db.run(`UPDATE jobs SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP WHERE id = ?;`, [jobId]);
+    }
+
+    const newJob = await db.get(
+      `INSERT INTO jobs (parentId, workflow_id, concurrency_key, payload) (SELECT id, workflow_id, concurrency_key, payload FROM jobs WHERE id = ?) RETURNING *`,
       [jobId],
     );
+
+    return newJob.id;
   }
 
   /**
@@ -92,6 +101,7 @@ export class QueueManager {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        parentId INTEGER,
         workflow_id TEXT NOT NULL,
         payload TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
