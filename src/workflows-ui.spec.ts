@@ -3,7 +3,7 @@ import { generateWorkflowManagementHtml } from './workflows-ui.js';
 
 describe('workflow management UI', () => {
   it('provides authenticated workflow and write-only secret controls', () => {
-    const html = generateWorkflowManagementHtml();
+    const html = generateWorkflowManagementHtml('editor', 'example');
 
     expect(html).toContain('id="source-yaml"');
     expect(html).toContain('/api/workflows/validate');
@@ -11,5 +11,7 @@ describe('workflow management UI', () => {
     expect(html).toContain('Publish');
     expect(html).toContain('/api/secrets/');
     expect(html).toContain('type="password"');
+    expect(html).toContain('data-page="editor"');
+    expect(html).toContain('const initialId = "example"');
   });
 });

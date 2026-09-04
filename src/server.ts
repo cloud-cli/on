@@ -66,7 +66,15 @@ export class WebhookServer {
     if (req.method === 'GET' && url.pathname === '/workflows') {
       if (!this.requireAdmin(req, res)) return;
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      return res.end(generateWorkflowManagementHtml());
+      return res.end(generateWorkflowManagementHtml('list'));
+    }
+
+    const workflowEditorMatch = url.pathname.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
+    if (req.method === 'GET' && workflowEditorMatch) {
+      if (!this.requireAdmin(req, res)) return;
+      const workflowId = workflowEditorMatch[1] === 'new' ? '' : workflowEditorMatch[1];
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(generateWorkflowManagementHtml('editor', workflowId));
     }
 
     if (req.method === 'GET' && url.pathname === '/api/jobs') {
