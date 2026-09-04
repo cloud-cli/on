@@ -315,6 +315,23 @@ Workers now resolve the immutable revision when they claim a job. A workflow can
 
 This MVP intentionally supports one trusted operator. Before sharing the UI or exposing it beyond a private deployment, add individual accounts and roles, secure browser sessions and CSRF protection, audit logs, worker enrollment credentials, secret key rotation, encrypted systemd credentials, rate limiting, and database high availability.
 
+## Planned Runner Rollouts
+
+Package-managed workers currently update on a staggered daily timer. Before enabling automatic promotion of newly released runner versions, implement a controlled canary rollout:
+
+1. Publish a new immutable npm version and resolve the exact version behind the candidate tag.
+2. Install that exact version on one designated canary worker, never a moving tag during the rollout.
+3. Stage releases in versioned directories and atomically switch a `current` symlink only after installation and a local smoke check succeed.
+4. Drain the canary with `SIGUSR1`, restart it, and retain prior release directories for rollback.
+5. Require the canary to report a heartbeat containing its worker ID, running version, health state, and last-seen time.
+6. Run a dedicated `runner-health` workflow with `tags: [canary]` to verify queue claiming, revision lookup, job-scoped secret retrieval, and the execution driver.
+7. Record rollout state durably: candidate version, canary worker, status, promotion time, and failure reason.
+8. Promote only a healthy candidate with `npm dist-tag add @cloud-cli/on@<version> stable`.
+9. Configure normal daily worker updates to install `@cloud-cli/on@stable`, with a rollout concurrency limit of one worker.
+10. On failed installation, restart, heartbeat, or health check, mark the candidate rejected, leave `stable` unchanged, and roll the canary back to its prior version.
+
+SSE should notify workers that an update is available, but the control-plane database must remain the authoritative rollout state so disconnected workers converge safely after reconnecting.
+
 ## Development
 
 ```bash
