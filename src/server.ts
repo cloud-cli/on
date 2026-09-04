@@ -109,6 +109,7 @@ export class WebhookServer {
       const [, workflowId, publish] = workflowMatch;
       if (req.method === 'GET' && !publish) return this.handleWorkflowGet(req, res, workflowId);
       if (req.method === 'PUT' && !publish) return this.handleWorkflowSave(req, res, workflowId);
+      if (req.method === 'DELETE' && !publish) return this.handleWorkflowDelete(req, res, workflowId);
       if (req.method === 'POST' && publish) return this.handleWorkflowPublish(req, res, workflowId);
     }
 
@@ -355,6 +356,15 @@ export class WebhookServer {
       res.writeHead(422, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ error: error.message }));
     }
+  }
+
+  private async handleWorkflowDelete(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
+    if (!this.requireAdmin(req, res)) return;
+    if (!await this.workflows.delete(id)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Workflow not found' }));
+    }
+    res.writeHead(204).end();
   }
 
   private async handleWorkflowPublish(req: http.IncomingMessage, res: http.ServerResponse, id: string) {

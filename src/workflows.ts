@@ -108,6 +108,15 @@ export class WorkflowRepository {
     return row ? { id: row.id, name: row.name, sourceYaml: row.source_yaml, revision: Number(row.revision), status: row.status } : null;
   }
 
+  async delete(id: string): Promise<boolean> {
+    const workflow = await this.get(id);
+    if (!workflow) return false;
+    await db.run('DELETE FROM scheduled_runs WHERE workflow_id = ?', [id]);
+    await db.run('DELETE FROM workflow_revisions WHERE workflow_id = ?', [id]);
+    await db.run('DELETE FROM workflows WHERE id = ?', [id]);
+    return true;
+  }
+
   async published(): Promise<WorkflowRevision[]> {
     const rows = await db.all(`SELECT w.id AS workflow_id, r.revision, r.normalized_json FROM workflows w JOIN workflow_revisions r
       ON r.workflow_id = w.id AND r.revision = w.active_revision WHERE w.status = 'published'`);
