@@ -99,6 +99,8 @@ export class WebhookServer {
     if (secretMatch && req.method === 'PUT') return this.handleSecretSave(req, res, secretMatch[1]);
     const jobSecretsMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/secrets$/);
     if (jobSecretsMatch && req.method === 'GET') return this.handleJobSecrets(req, res, jobSecretsMatch[1]);
+    const cancelJobMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/cancel$/);
+    if (cancelJobMatch && req.method === 'POST') return this.handleCancelJob(req, res, cancelJobMatch[1]);
 
     if (url.pathname === '/api/workflows' && req.method === 'GET') {
       return this.handleWorkflowList(req, res);
@@ -515,6 +517,24 @@ export class WebhookServer {
 
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Job not found' }));
+  }
+
+  private async handleCancelJob(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
+    if (!this.requireAdmin(req, res)) return;
+
+    const result = await this.queue.cancelJob(jobId);
+    if (result === 'not_found') {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Job not found' }));
+    }
+    if (result === 'not_active') {
+      res.writeHead(409, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Job is no longer running' }));
+    }
+
+    this.events.publish('jobs.changed', { jobId: Number(jobId) });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ id: Number(jobId), status: 'cancelled' }));
   }
 
   private async currentSecrets(): Promise<Record<string, string>> {

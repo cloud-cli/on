@@ -83,10 +83,24 @@ export class QueueManager {
   async completeJob(jobId: string | number, status: JobStatus, report: WorkflowExecutionReport): Promise<void> {
     await db.run(
       `UPDATE jobs
-       SET status = ?, report = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP
+       SET status = CASE WHEN status = 'cancelled' THEN 'cancelled' ELSE ? END,
+           report = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP
        WHERE id = ?;`,
       [status, JSON.stringify(report), jobId],
     );
+  }
+
+  async cancelJob(jobId: string | number): Promise<'cancelled' | 'not_found' | 'not_active'> {
+    const job = await this.getJob(jobId);
+    if (!job) return 'not_found';
+    if (job.status !== 'pending' && job.status !== 'running') return 'not_active';
+
+    await db.run(
+      `UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND status IN ('pending', 'running');`,
+      [jobId],
+    );
+    return (await this.getJob(jobId))?.status === 'cancelled' ? 'cancelled' : 'not_active';
   }
 
   async restartJob(jobId: string | number) {
