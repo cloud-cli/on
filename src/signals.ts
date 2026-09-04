@@ -9,13 +9,6 @@ export async function setupSignalHandlers(activeWorkerPromises) {
 
     console.log(`\n🛑 Received ${signal}. Initiating graceful shutdown...`);
 
-    const forceExitTimeout = setTimeout(() => {
-      console.error('⚠️ Graceful shutdown timed out after 10s. Forcing exit!');
-      process.exit(1);
-    }, 10000);
-
-    forceExitTimeout.unref();
-
     try {
       requestWorkerShutdown();
 
@@ -34,4 +27,6 @@ export async function setupSignalHandlers(activeWorkerPromises) {
 
   process.on('SIGINT', () => cleanupAndExit('SIGINT'));
   process.on('SIGTERM', () => cleanupAndExit('SIGTERM'));
+  // Unlike SIGTERM from systemctl stop, this exits cleanly under Restart=always.
+  process.on('SIGUSR1', () => cleanupAndExit('SIGUSR1'));
 }

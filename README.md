@@ -307,6 +307,8 @@ Place the server master key in `/etc/on/credentials/on-master-key` with root-onl
 
 For package-managed remote workers, enable `runner-worker-update.timer`. It runs daily at 04:00 with up to 45 minutes of per-machine jitter, installs `@cloud-cli/on@latest` into `/opt/on`, then restarts the worker only when installation succeeds. `runner-worker.service` allows up to one hour for running jobs to drain during that restart. Do not enable this timer on a source-managed development worker; deploy that worker from its checked-out build instead.
 
+To drain a worker manually without leaving it stopped, send `SIGUSR1` only to its main process: `systemctl kill --kill-who=main --signal=SIGUSR1 runner-worker.service`. The worker stops claiming new jobs, waits for running jobs to complete, exits with status 0, and `Restart=always` starts a replacement. Use `systemctl restart runner-worker.service` for an intentional version change; systemd waits for the same drain behavior up to `TimeoutStopSec=1h`.
+
 Workers now resolve the immutable revision when they claim a job. A workflow can safely use a checkout step followed by `if: files.exists('Dockerfile')`; `files` is constrained to the job's `workingDir`, so it cannot inspect files outside that workspace.
 
 ## Future Security Work
