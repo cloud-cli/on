@@ -100,7 +100,9 @@ export async function startWorkerScheduler(
         let task: Promise<void>;
         task = (async () => {
           void notifyJobChange(config, job.id);
-          await processJob({ workerId, job, queue, secrets, config, driver });
+          const jobSecrets = new SecretStore();
+          jobSecrets.replace(await fetchJobSecrets(config, workerId, job.id));
+          await processJob({ workerId, job, queue, secrets: jobSecrets, config, driver });
         })()
           .catch((error) => console.error(`[${workerId}] ⚠️ Worker execution error:`, error))
           .finally(() => {
@@ -203,6 +205,21 @@ async function notifyJobChange(config: RunnerConfig, jobId: string | number): Pr
     if (!response.ok && DEBUG) console.error(`Failed to publish job status event: HTTP ${response.status}`);
   } catch (error) {
     if (DEBUG) console.error('Failed to publish job status event:', error);
+  }
+}
+
+async function fetchJobSecrets(config: RunnerConfig, workerId: string, jobId: string | number): Promise<Record<string, string>> {
+  if (!config.adminToken) return {};
+  try {
+    const response = await fetch(new URL(`/api/jobs/${jobId}/secrets`, config.serverUrl), {
+      headers: { Authorization: `Bearer ${config.adminToken}`, 'X-Runner-Worker-Id': workerId },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return (await response.json()).secrets || {};
+  } catch (error) {
+    console.error(`Unable to retrieve secrets for job ${jobId}:`, error);
+    throw error;
   }
 }
 

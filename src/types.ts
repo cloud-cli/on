@@ -14,8 +14,6 @@ export interface RunnerConfig {
   adminToken: string;
   /** SQLite Database connection URL / path */
   database: string;
-  /** Directory where workflow YAML files live */
-  workflows: string;
   /** Maximum number of jobs executed concurrently on this node */
   workers: number;
   /** Webhook server URL used for worker event notifications */
@@ -105,6 +103,16 @@ export interface WorkflowTrigger {
   paths?: string[];
 }
 
+export interface ScheduleTrigger {
+  id?: string;
+  cron?: string;
+  event?: 'sunrise' | 'sunset';
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+  offset?: string;
+}
+
 export interface WorkflowStep {
   id?: string;
   if?: string;
@@ -129,6 +137,9 @@ export interface WorkflowDefinition {
   env?: Record<string, string>;
   /** Worker capabilities required to execute this workflow */
   tags?: string[];
+  /** Time triggers stored alongside webhook triggers in DB-authored workflows. */
+  schedule?: ScheduleTrigger[];
+  solar?: ScheduleTrigger[];
 }
 
 export interface WebhookServerOptions {

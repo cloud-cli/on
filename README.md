@@ -15,7 +15,9 @@ Designed with a strict **security-first boundary**, native **JavaScript AST eval
 - **Deterministic Field Evaluation:** No silent fallbacks or ambiguous type conversions. Plain strings remain literal strings; conditions in `if:` fields run as strict JS boolean expressions.
 - **Built-in Dark Mode Web UI (`/runs`):** Monitor job statuses live, inspect workspace inputs, and view ANSI-colored terminal log streams rendered in real-time.
 - **System & Container Execution Drivers:** Run steps directly as detached host process groups or inside isolated Docker/Systemd transient units.
-- **Automatic Secret Redaction:** Secrets loaded from `.env` are automatically masked (`***`) across all terminal log outputs and report snapshots.
+- **DB-authored workflows:** Draft, validate, and publish portable YAML workflows through the authenticated API.
+- **Scheduled execution:** Published workflows can run from cron expressions or local sunrise/sunset events.
+- **Encrypted secret storage:** Secret ciphertext is stored in the database; the master key remains on the HTTP server.
 
 ---
 
@@ -23,10 +25,6 @@ Designed with a strict **security-first boundary**, native **JavaScript AST eval
 
 ```text
 my-project/
-├── on/                     # Workflow definitions directory
-│   ├── release.yml
-│   └── test.yml
-├── .env                     # Local secrets (git-ignored)
 ├── runner.config.mjs        # (Optional) Engine configuration
 └── package.json
 
@@ -41,24 +39,14 @@ my-project/
 Run the engine directly via `npx` or `pnpm dlx`:
 
 ```bash
-# Start full engine (Ingress HTTP Gateway + 5 Worker Loops)
-npx @cloud-cli/on start
+# Start each role (normally managed by the supplied systemd units)
+npx @cloud-cli/on start-server
+npx @cloud-cli/on start-scheduler
+npx @cloud-cli/on start-workers
 
 ```
 
-### 2. Configure Secrets (`.env`)
-
-Secrets are automatically loaded from `.env` at the root of your project. Prefix secrets with `SECRET_`:
-
-```env
-SECRET_NPM_TOKEN="npm_1234567890abcdef"
-SECRET_GITHUB_TOKEN="ghp_1234567890abcdef"
-SECRET_GITHUB_WEBHOOK_SECRET="my-webhook-secret"
-```
-
-`SECRET_GITHUB_WEBHOOK_SECRET` is required to validate incoming webhooks from GitHub
-
-### 3. Define a Workflow (`on/release.yml`)
+### 2. Define a Workflow
 
 ```yaml
 name: Build and Publish Release
@@ -110,6 +98,32 @@ steps:
       npx --yes semantic-release@24 -b main --no-ci
 ```
 
+Store the YAML as a draft and publish it through the authenticated API. Only published revisions can receive webhooks or scheduled runs:
+
+```bash
+curl -u admin:"$RUNNER_ADMIN_SECRET" -X POST http://localhost:11235/api/workflows/validate \
+  -H 'Content-Type: application/json' --data '{"sourceYaml":"..."}'
+curl -u admin:"$RUNNER_ADMIN_SECRET" -X PUT http://localhost:11235/api/workflows/build-and-publish-release \
+  -H 'Content-Type: application/json' --data '{"sourceYaml":"..."}'
+curl -u admin:"$RUNNER_ADMIN_SECRET" -X POST http://localhost:11235/api/workflows/build-and-publish-release/publish
+```
+
+Time triggers are defined beside a webhook trigger:
+
+```yaml
+on:
+  schedule:
+    - id: nightly
+      cron: "0 2 * * *"
+      timezone: Europe/Berlin
+  solar:
+    - id: morning
+      event: sunrise
+      latitude: 52.52
+      longitude: 13.405
+      offset: +15m
+```
+
 GitHub triggers support these preprocessor filters:
 
 | Field | Match behavior |
@@ -150,8 +164,8 @@ npx @cloud-cli/on [command] [options]
 | Command             | Description                                                                              |
 | ------------------- | ---------------------------------------------------------------------------------------- |
 | **`start-server`**  | Runs Webhook Ingress Gateway (the HTTP server receiving webhooks).                       |
+| **`start-scheduler`** | Dispatches published cron and solar workflow triggers. |
 | **`start-workers`** | Runs the event-driven worker scheduler (Scalable Workers).                              |
-| **`validate`**      | Parses and validates all YAML workflows in your workflows folder without executing jobs. |
 
 ### CLI and Environment Options
 
@@ -160,16 +174,17 @@ npx @cloud-cli/on [command] [options]
 | `-h` | `--help`      | —                     | -                     | Prints CLI help message and exits.        |
 | `-c` | `--config`    | `./runner.config.mjs` | `RUNNER_CONFIG_FILE`  | Path to JavaScript configuration file.    |
 | `-d` | `--database`  | -                     | `RUNNER_DATABASE_URL` | SQLite database file path or HTTP URL.    |
-| `-w` | `--workflows` | `on/`                 | `RUNNER_WORKFLOWS`    | Directory where workflow YAML files live. |
 | `-p` | `--port`      | `11235`               | `PORT`                | Port for the Ingress HTTP server.         |
 | `-k` | `--workers`   | `5`                   | `RUNNER_WORKERS`      | Maximum concurrent jobs on this node.     |
 |      |               |                       | `RUNNER_ADMIN_SECRET` | Admin token to refresh secrets via API    |
 |      |               |                       | `RUNNER_SERVER_URL`   | Webhook server URL used by workers.       |
 |      |               |                       | `RUNNER_TAGS`         | Comma-separated worker capability tags.  |
 
-Set the same non-empty `RUNNER_ADMIN_SECRET` on the server and workers to publish live job-status refresh events. Job availability and the 60-second recovery refresh continue to work without it.
+Set the same non-empty `RUNNER_ADMIN_SECRET` on the server and workers to publish live job-status refresh events and let workers retrieve job-scoped secrets. The dashboard workflow APIs accept either Bearer authentication or HTTP Basic authentication with username `admin` and this secret.
 
 ### Secrets
+
+Secrets are written through `PUT /api/secrets/:NAME` and are AES-256-GCM encrypted in the database. Set `RUNNER_MASTER_KEY` only on the HTTP server, or provide an `on-master-key` systemd credential. Workers receive decrypted values only after claiming a running job; values are not written to job payloads or reports.
 
 ---
 
@@ -186,7 +201,6 @@ export default {
   workers: 5,
   serverUrl: 'https://runner.example.com/',
   tags: ['linux', 'docker'],
-  workflows: '/home/workflows/',
   storagePath: '/tmp/workspaces',
   database: 'https://remote.db.com/',
 
@@ -244,7 +258,7 @@ Within `${...}`, `if:`, and `eval:` contexts, the following object scopes are ex
 
 - **`inputs`**: Payload key-values received from incoming webhooks.
 - **`env`**: Merged environment variables from global config and workflow definitions.
-- **`secrets`**: Unmasked secret values loaded from `.env` or environment variables (`SECRET_` prefix stripped).
+- **`secrets`**: Unmasked job-scoped values from encrypted central secret storage.
 - **`steps`**: Execution statuses and outputs from previous steps in the workflow (`steps.<id>.status`, `steps.<id>.outputs`).
 - **`BUILTIN_HELPERS`**: JS utilities including `String`, `Number`, `Boolean`, and `JSON.parse` / `JSON.stringify`.
 
@@ -279,8 +293,18 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
    AST evaluation explicitly blocks access to dangerous JS properties (`constructor`, `__proto__`, `prototype`).
 3. **Payload Size Guard:**
    The Ingress server enforces a strict 5MB payload limit to prevent Out-Of-Memory (OOM) denial-of-service attacks.
-4. **Signal Traps & Resource Cleanup:**
-   Graceful process traps (`SIGINT`, `SIGTERM`) ensure active job handles are safely terminated, file descriptors are closed, and temp `.env`/`.out` files are removed via `try ... finally` blocks.
+4. **Single-operator API authentication:**
+   Workflow validation, publishing, secret management, and job details require `RUNNER_ADMIN_SECRET` over HTTPS.
+
+## systemd Deployment
+
+Install the unit files from `systemd/`, create a non-login `on` user, and create a root-owned `/etc/on/runner.env` with `RUNNER_DATABASE_URL`, `RUNNER_SERVER_URL`, `RUNNER_ADMIN_SECRET`, `RUNNER_TAGS`, and `RUNNER_TMP`. Use `systemctl edit` for per-machine overrides.
+
+Place the server master key in `/etc/on/credentials/on-master-key` with permissions readable only by the `on` user. `runner-server.service` exposes it privately through systemd's credentials directory. Start the primary control plane with `systemctl enable --now runner.target`; enable `runner-worker.service` separately on worker machines. Use `systemctl edit runner-worker.service` for machine-specific labels and paths.
+
+## Future Security Work
+
+This MVP intentionally supports one trusted operator. Before sharing the UI or exposing it beyond a private deployment, add individual accounts and roles, secure browser sessions and CSRF protection, audit logs, worker enrollment credentials, secret key rotation, encrypted systemd credentials, rate limiting, and database high availability.
 
 ## Development
 

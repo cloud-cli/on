@@ -1,4 +1,5 @@
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { URL } from 'node:url';
 import { QueueManager } from './queue.js';
 import { SecretStore } from './secrets.js';
@@ -10,17 +11,19 @@ import type {
   WebhookServerOptions,
   WorkflowDefinition,
 } from './types.js';
-import { YamlLoader } from './parser/yaml-loader.js';
 import { generateDashboardHtml, toDashboardJobs } from './dashboard.js';
 import { EventBroker } from './events.js';
 import { buildRunView, renderRunHtml } from './run-view.js';
+import { WorkflowRepository } from './workflows.js';
+import { SecretRepository } from './secret-repository.js';
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
 export class WebhookServer {
   private server: http.Server;
   private preprocessors = new Map<string, WebhookPreprocessor>();
-  private workflows: WorkflowDefinition[] = [];
+  private workflows = new WorkflowRepository();
+  private secretRepository = new SecretRepository();
   private queue: QueueManager;
   private secrets: SecretStore;
   private adminToken: string;
@@ -37,10 +40,7 @@ export class WebhookServer {
     this.secrets = options.secrets;
     this.adminToken = options.adminToken;
 
-    this.workflowsLoaded = YamlLoader.from(options.config.workflows).then((loadedWorkflows) => {
-      this.workflows = loadedWorkflows;
-      console.log(`✅ Loaded ${loadedWorkflows.length} workflow(s) from ${options.config.workflows}`);
-    });
+    this.workflowsLoaded = Promise.all([this.workflows.init(), this.secretRepository.init()]).then(() => undefined);
 
     this.registerPreprocessor(new GitHubPreprocessor());
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
@@ -88,23 +88,47 @@ export class WebhookServer {
       return this.events.subscribe(req, res);
     }
 
+    if (url.pathname === '/api/workflows/validate' && req.method === 'POST') {
+      return this.handleWorkflowValidation(req, res);
+    }
+
+    if (url.pathname === '/api/secrets' && req.method === 'GET') return this.handleSecretList(req, res);
+    const secretMatch = url.pathname.match(/^\/api\/secrets\/([A-Z][A-Z0-9_]*)$/);
+    if (secretMatch && req.method === 'PUT') return this.handleSecretSave(req, res, secretMatch[1]);
+    const jobSecretsMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/secrets$/);
+    if (jobSecretsMatch && req.method === 'GET') return this.handleJobSecrets(req, res, jobSecretsMatch[1]);
+
+    if (url.pathname === '/api/workflows' && req.method === 'GET') {
+      return this.handleWorkflowList(req, res);
+    }
+
+    const workflowMatch = url.pathname.match(/^\/api\/workflows\/([a-z0-9-]+)(\/publish)?$/);
+    if (workflowMatch) {
+      const [, workflowId, publish] = workflowMatch;
+      if (req.method === 'GET' && !publish) return this.handleWorkflowGet(req, res, workflowId);
+      if (req.method === 'PUT' && !publish) return this.handleWorkflowSave(req, res, workflowId);
+      if (req.method === 'POST' && publish) return this.handleWorkflowPublish(req, res, workflowId);
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/events') {
       return this.handleWorkerEvent(req, res);
     }
 
     if (req.method === 'GET' && url.pathname.startsWith('/runs/')) {
+      if (!this.requireAdmin(req, res)) return;
       const jobId = url.pathname.replace('/runs/', '');
       return this.renderRunDetails(jobId, res, 'html');
     }
 
     if (req.method === 'GET' && url.pathname.startsWith('/api/runs/')) {
+      if (!this.requireAdmin(req, res)) return;
       const jobId = url.pathname.replace('/api/runs/', '');
       return this.renderRunDetails(jobId, res, 'json');
     }
 
     if (req.method === 'POST' && url.pathname.startsWith('/restart/')) {
       const jobId = url.pathname.replace('/restart/', '');
-      return this.handleRestartJob(jobId, res);
+      return this.handleRestartJob(req, jobId, res);
     }
 
     if (req.method === 'POST' && url.pathname === '/admin/reload-secrets') {
@@ -130,7 +154,7 @@ export class WebhookServer {
 
       if (res.headersSent || !rawBuffer) return;
 
-      const { isValid, inputs } = this.preprocess(provider, headers, rawBuffer);
+      const { isValid, inputs } = await this.preprocess(provider, headers, rawBuffer);
 
       if (!isValid) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -139,7 +163,7 @@ export class WebhookServer {
       }
 
       await this.workflowsLoaded;
-      await this.matchWorkflows(provider, inputs);
+      await this.matchWorkflows(provider, inputs, await this.workflows.published());
 
       res.writeHead(202, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ message: 'OK' }));
@@ -174,8 +198,14 @@ export class WebhookServer {
     return { rawBuffer, headers };
   }
 
-  private preprocess(provider: string, headers, rawBuffer: Buffer) {
-    const secret = this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`);
+  private async preprocess(provider: string, headers, rawBuffer: Buffer) {
+    let dbSecrets: Record<string, string> = {};
+    try {
+      dbSecrets = await this.secretRepository.getAll();
+    } catch (error) {
+      if (process.env.RUNNER_MASTER_KEY || process.env.CREDENTIALS_DIRECTORY) throw error;
+    }
+    const secret = dbSecrets[`${provider.toUpperCase()}_WEBHOOK_SECRET`] || this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`);
     const preprocessor = this.preprocessors.get(provider);
     try {
       if (preprocessor) {
@@ -191,8 +221,8 @@ export class WebhookServer {
     }
   }
 
-  private async matchWorkflows(provider: string, inputs: any) {
-    for (const workflow of this.workflows) {
+  private async matchWorkflows(provider: string, inputs: any, workflows: WorkflowDefinition[]) {
+    for (const workflow of workflows) {
       if (workflow.on.provider !== provider) continue;
 
       const preprocessor = this.preprocessors.get(provider);
@@ -232,6 +262,140 @@ export class WebhookServer {
       await this.queue.enqueue(workflow.id, jobPayload, concurrencyKey);
       this.events.publish('jobs.available', { tags: workflow.tags || [] });
     }
+  }
+
+  private isAdmin(req: http.IncomingMessage): boolean {
+    if (!this.adminToken) return false;
+    const auth = req.headers.authorization || '';
+    const matches = (value: string) => {
+      const expected = Buffer.from(this.adminToken);
+      const received = Buffer.from(value);
+      return expected.length === received.length && crypto.timingSafeEqual(expected, received);
+    };
+    if (auth.startsWith('Bearer ') && matches(auth.slice(7))) return true;
+    if (!auth.startsWith('Basic ')) return false;
+    try {
+      const decoded = Buffer.from(auth.slice(6), 'base64').toString('utf8');
+      const separator = decoded.indexOf(':');
+      return separator > 0 && decoded.slice(0, separator) === 'admin' && matches(decoded.slice(separator + 1));
+    } catch {
+      return false;
+    }
+  }
+
+  private requireAdmin(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+    if (this.isAdmin(req)) return true;
+    res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8', 'WWW-Authenticate': 'Basic realm="Runner"' });
+    res.end(JSON.stringify({ error: 'Unauthorized' }));
+    return false;
+  }
+
+  private async readJson(req: http.IncomingMessage, res: http.ServerResponse): Promise<any | null> {
+    const { rawBuffer } = await this.readRequest(req, res);
+    if (!rawBuffer || res.headersSent) return null;
+    try {
+      return JSON.parse(rawBuffer.toString('utf8'));
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+      return null;
+    }
+  }
+
+  private async handleWorkflowValidation(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (!this.requireAdmin(req, res)) return;
+    const body = await this.readJson(req, res);
+    if (!body) return;
+    try {
+      const workflows = this.workflows.validate(body.sourceYaml);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ valid: true, workflows }));
+    } catch (error: any) {
+      res.writeHead(422, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ valid: false, error: error.message }));
+    }
+  }
+
+  private async handleWorkflowList(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (!this.requireAdmin(req, res)) return;
+    await this.workflowsLoaded;
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ workflows: await this.workflows.list() }));
+  }
+
+  private async handleWorkflowGet(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
+    if (!this.requireAdmin(req, res)) return;
+    const workflow = await this.workflows.get(id);
+    if (!workflow) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Workflow not found' }));
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify(workflow));
+  }
+
+  private async handleWorkflowSave(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
+    if (!this.requireAdmin(req, res)) return;
+    const body = await this.readJson(req, res);
+    if (!body || typeof body.sourceYaml !== 'string') {
+      if (!res.headersSent) res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'sourceYaml is required' }));
+      return;
+    }
+    try {
+      const workflow = await this.workflows.saveDraft(id, body.sourceYaml);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(workflow));
+    } catch (error: any) {
+      res.writeHead(422, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: error.message }));
+    }
+  }
+
+  private async handleWorkflowPublish(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
+    if (!this.requireAdmin(req, res)) return;
+    const workflow = await this.workflows.publish(id);
+    if (!workflow) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Workflow not found' }));
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify(workflow));
+  }
+
+  private async handleSecretList(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (!this.requireAdmin(req, res)) return;
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ secrets: await this.secretRepository.names() }));
+  }
+
+  private async handleSecretSave(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
+    if (!this.requireAdmin(req, res)) return;
+    const body = await this.readJson(req, res);
+    if (!body || typeof body.value !== 'string') {
+      if (!res.headersSent) res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'value is required' }));
+      return;
+    }
+    try {
+      await this.secretRepository.set(name, body.value);
+      res.writeHead(204).end();
+    } catch (error: any) {
+      res.writeHead(422, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message }));
+    }
+  }
+
+  private async handleJobSecrets(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
+    if (!this.isAdmin(req)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Unauthorized' }));
+    }
+    const job = await this.queue.getJob(jobId);
+    if (!job || job.status !== 'running' || job.worker_id !== req.headers['x-runner-worker-id']) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Job is not assigned to this worker' }));
+    }
+    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ secrets: await this.secretRepository.getAll() }));
   }
 
   /**
@@ -281,7 +445,7 @@ export class WebhookServer {
   private async renderDashboard(res: http.ServerResponse) {
     const rows = await this.queue.listJobs(DASHBOARD_PAGE_SIZE + 1);
     const jobs = toDashboardJobs(rows.slice(0, DASHBOARD_PAGE_SIZE));
-    const redacted = this.secrets.redactText(generateDashboardHtml(jobs, rows.length > DASHBOARD_PAGE_SIZE));
+    const redacted = await this.redactText(generateDashboardHtml(jobs, rows.length > DASHBOARD_PAGE_SIZE));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(redacted);
   }
@@ -289,7 +453,7 @@ export class WebhookServer {
   private async renderDashboardJobs(res: http.ServerResponse, limit: number, afterId?: number, beforeId?: number) {
     const rows = await this.queue.listJobs(limit + 1, afterId, beforeId);
     const jobs = toDashboardJobs(rows.slice(0, limit));
-    const body = this.secrets.redactText(JSON.stringify({ jobs, hasMore: rows.length > limit }));
+    const body = await this.redactText(JSON.stringify({ jobs, hasMore: rows.length > limit }));
     res.writeHead(200, {
       'Cache-Control': 'no-store',
       'Content-Type': 'application/json; charset=utf-8',
@@ -310,7 +474,8 @@ export class WebhookServer {
     }
 
     const logsMap = await this.queue.getJobLogs(jobId);
-    const report = buildRunView(job, logsMap, (value) => this.secrets.redactText(value));
+    const secretValues = await this.currentSecrets();
+    const report = buildRunView(job, logsMap, (value) => this.redact(value, secretValues));
 
     if (format === 'json') {
       res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
@@ -321,7 +486,8 @@ export class WebhookServer {
     res.end(renderRunHtml(report));
   }
 
-  private async handleRestartJob(jobId: string, res: http.ServerResponse) {
+  private async handleRestartJob(req: http.IncomingMessage, jobId: string, res: http.ServerResponse) {
+    if (!this.requireAdmin(req, res)) return;
     const id = await this.queue.restartJob(jobId);
 
     if (id) {
@@ -333,6 +499,25 @@ export class WebhookServer {
 
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Job not found' }));
+  }
+
+  private async currentSecrets(): Promise<Record<string, string>> {
+    try {
+      return await this.secretRepository.getAll();
+    } catch (error) {
+      if (process.env.RUNNER_MASTER_KEY || process.env.CREDENTIALS_DIRECTORY) throw error;
+      return this.secrets.getAll();
+    }
+  }
+
+  private redact(value: string, secrets: Record<string, string>): string {
+    const redactor = new SecretStore();
+    redactor.replace(secrets);
+    return redactor.redactText(value);
+  }
+
+  private async redactText(value: string): Promise<string> {
+    return this.redact(value, await this.currentSecrets());
   }
 
   listen(port: number): Promise<WebhookServer> {

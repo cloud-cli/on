@@ -1,0 +1,17 @@
+[Unit]
+Description=On CI workflow worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=on
+Group=on
+WorkingDirectory=/opt/on
+EnvironmentFile=-/etc/on/runner.env
+ExecStart=/usr/bin/on start-workers
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

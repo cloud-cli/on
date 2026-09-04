@@ -1,28 +1,14 @@
 #!/usr/bin/env node
 
-import { readdirSync } from 'node:fs';
 import { loadFromArgs, printHelp } from './config.js';
-import { WorkflowIncludeResolver } from './parser/include-resolver.js';
-import { expandMatrix } from './parser/matrix-expander.js';
 import { QueueManager } from './queue.js';
 import { SecretStore } from './secrets.js';
 import { WebhookServer } from './server.js';
-import { RunnerConfig } from './types.js';
 import { startWorkers } from './worker.js';
+import { WorkflowRepository } from './workflows.js';
+import { WorkflowScheduler } from './scheduler.js';
 
 export { GitHubStatusPlugin } from './plugins/github-status.plugin.js';
-
-function onValidate(config: RunnerConfig) {
-  console.log('🔍 Validating Workflows in:', config.workflows);
-  const resolver = new WorkflowIncludeResolver(config.workflows);
-  const files = readdirSync(config.workflows).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
-
-  for (const file of files) {
-    const resolved = resolver.resolve(file);
-    const expanded = expandMatrix(resolved);
-    console.log(`  ✅ ${file} -> Valid! (${expanded.length} job matrix variant(s) generated)`);
-  }
-}
 
 async function main() {
   const { config, command } = await loadFromArgs();
@@ -31,11 +17,7 @@ async function main() {
     process.exit(1);
   }
 
-  if (command === 'validate') {
-    return onValidate(config);
-  }
-
-  const secrets = new SecretStore('./.env');
+  const secrets = new SecretStore();
   const queue = new QueueManager(process.env.WORKER_NAME || 'cli');
 
   switch (command) {
@@ -50,6 +32,19 @@ async function main() {
       console.log(`⚙️ Starting worker scheduler with ${config.workers} concurrent slot(s)...`);
       await queue.init();
       startWorkers(config.workers, queue, secrets, config);
+      break;
+    }
+
+    case 'start-scheduler': {
+      console.log('Starting workflow scheduler...');
+      await queue.init();
+      const workflows = new WorkflowRepository();
+      await workflows.init();
+      const scheduler = new WorkflowScheduler(queue, workflows, config);
+      scheduler.start();
+      const stop = () => { scheduler.stop(); process.exit(0); };
+      process.once('SIGINT', stop);
+      process.once('SIGTERM', stop);
       break;
     }
 

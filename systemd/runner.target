@@ -1,0 +1,6 @@
+[Unit]
+Description=On CI control plane
+Wants=runner-server.service runner-scheduler.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=On CI workflow scheduler
+After=network-online.target runner-server.service
+Wants=network-online.target
+PartOf=runner.target
+
+[Service]
+Type=simple
+User=on
+Group=on
+WorkingDirectory=/opt/on
+EnvironmentFile=-/etc/on/runner.env
+ExecStart=/usr/bin/on start-scheduler
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
