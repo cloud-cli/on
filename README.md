@@ -65,7 +65,18 @@ name: Build and Publish Release
 
 on:
   github:
-    if: inputs.event === 'push' && inputs.branch === 'main'
+    events:
+      - push
+    owner: octocat
+    repo:
+      - example
+      - another-example
+    branches:
+      - main
+      - releases/*
+    paths:
+      - package*.json
+    if: inputs.action !== 'deleted'
 
 concurrency:
   group: release-${inputs.repo}
@@ -94,6 +105,32 @@ steps:
     run: |
       echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
       npx --yes semantic-release@24 -b main --no-ci
+```
+
+GitHub triggers support these preprocessor filters:
+
+| Field | Match behavior |
+| ----- | -------------- |
+| `events` | Exact webhook event names |
+| `owner`, `repo` | One exact name or a list of accepted names |
+| `branches` | Branch glob patterns such as `main` or `releases/*` |
+| `tag` | `true` requires a tag push; `false` requires a non-tag event |
+| `tags` | Regular expressions matched against the pushed tag |
+| `paths` | Changed-file glob patterns across added, modified, and removed files |
+
+Configured fields are combined with AND. Values within one list are combined with OR. `tags` also requires a tag value to match, while `branches` requires a branch value to match. The generic `if` expression is evaluated separately after all preprocessor filters pass.
+
+For example, a tag workflow can use `tag: true` with one or more regular expressions:
+
+```yaml
+on:
+  github:
+    events: [push]
+    owner: octocat
+    repo: example
+    tag: true
+    tags:
+      - ^v1\..*
 ```
 
 ---
@@ -211,7 +248,7 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
 
 | Method     | Endpoint           | Description                                                                            |
 | ---------- | ------------------ | -------------------------------------------------------------------------------------- |
-| **`POST`** | `/webhooks/github` | Webhook endpoint for GitHub events. Evaluates `on.github.if` triggers.                 |
+| **`POST`** | `/webhooks/github` | Webhook endpoint for GitHub events. Applies GitHub filters and evaluates `on.github.if`. |
 | **`GET`**  | `/runs`            | **Dashboard:** Live dark-mode monitoring page listing recent jobs and worker health.   |
 | **`GET`**  | `/runs/:jobId`     | **Job Report:** Interactive HTML trace view with step timings and terminal log output. |
 

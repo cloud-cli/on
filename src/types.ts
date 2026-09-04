@@ -91,6 +91,19 @@ export interface PreprocessedWebhook {
 export interface WebhookPreprocessor {
   name: string;
   parse(headers: Record<string, string>, rawBodyBuffer: Buffer, secret?: string): PreprocessedWebhook;
+  filter?(inputs: Record<string, any>, trigger: WorkflowTrigger): PreprocessedWebhook;
+}
+
+export interface WorkflowTrigger {
+  provider: string; // 'github', 'generic', etc.
+  if?: string | string[];
+  events?: string[];
+  owner?: string | string[];
+  repo?: string | string[];
+  branches?: string[];
+  tag?: boolean;
+  tags?: string[];
+  paths?: string[];
 }
 
 export interface WorkflowStep {
@@ -108,10 +121,7 @@ export interface WorkflowStep {
 export interface WorkflowDefinition {
   id: string;
   name: string;
-  on: {
-    provider: string; // 'github', 'generic', etc.
-    if?: string | string[]; // Expression: "inputs.event == 'push' && inputs.branch == 'main'"
-  };
+  on: WorkflowTrigger;
   concurrency?: {
     group: string;
     cancelInProgress?: boolean;

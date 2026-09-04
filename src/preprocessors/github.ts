@@ -1,21 +1,31 @@
 import crypto from 'node:crypto';
-import type { PreprocessedWebhook, WebhookPreprocessor } from '../types.js';
+import type { PreprocessedWebhook, WebhookPreprocessor, WorkflowTrigger } from '../types.js';
+
+function matchesGlob(value: string, pattern: string): boolean {
+  const expression = pattern
+    .replace(/[|\\{}()[\]^$+?.]/g, '\\$&')
+    .replace(/\*/g, '.*');
+  return new RegExp(`^${expression}$`).test(value);
+}
+
+function matchesValue(value: string, expected: string | string[]): boolean {
+  const values = Array.isArray(expected) ? expected : [expected];
+  return values.includes(value);
+}
 
 export class GitHubPreprocessor implements WebhookPreprocessor {
   name = 'github';
 
   parse(headers: Record<string, string>, rawBodyBuffer: Buffer, secret?: string): PreprocessedWebhook {
-    let isValid = true;
+    let isValid = false;
     let inputs: any = null;
     const signature = headers['x-hub-signature-256'];
 
-    if (!secret) {
-      isValid = false;
-    }
-
     if (secret && signature) {
       const hmac = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBodyBuffer).digest('hex');
-      isValid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(hmac));
+      const signatureBuffer = Buffer.from(signature);
+      const hmacBuffer = Buffer.from(hmac);
+      isValid = signatureBuffer.length === hmacBuffer.length && crypto.timingSafeEqual(signatureBuffer, hmacBuffer);
     }
 
     if (isValid) {
@@ -37,7 +47,17 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
         author: body.pusher?.name || body.sender?.login,
         action: body.action,
         raw: body,
-        changes: !body.commits ?  [] : Array.from(new Set(body.commits.flatMap(p => [...p.added, ...p.removed, ...p.modified])))
+        changes: !body.commits
+          ? []
+          : Array.from(
+              new Set(
+                body.commits.flatMap((commit) => [
+                  ...(commit.added || []),
+                  ...(commit.removed || []),
+                  ...(commit.modified || []),
+                ]),
+              ),
+            ),
       };
     }
 
@@ -45,5 +65,30 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
       isValid,
       inputs,
     };
+  }
+
+  filter(inputs: Record<string, any>, trigger: WorkflowTrigger): PreprocessedWebhook {
+    let isValid = true;
+
+    if (trigger.events && !trigger.events.includes(inputs.event)) isValid = false;
+    if (trigger.owner && !matchesValue(inputs.owner, trigger.owner)) isValid = false;
+    if (trigger.repo && !matchesValue(inputs.repo, trigger.repo)) isValid = false;
+    if (trigger.branches && !trigger.branches.some((pattern) => matchesGlob(inputs.branch, pattern))) isValid = false;
+    if (trigger.tag !== undefined && Boolean(inputs.tag) !== trigger.tag) isValid = false;
+
+    if (trigger.tags) {
+      try {
+        if (!trigger.tags.some((pattern) => new RegExp(pattern).test(inputs.tag))) isValid = false;
+      } catch {
+        isValid = false;
+      }
+    }
+
+    if (trigger.paths) {
+      const changes = Array.isArray(inputs.changes) ? inputs.changes : [];
+      if (!changes.some((path) => trigger.paths?.some((pattern) => matchesGlob(path, pattern)))) isValid = false;
+    }
+
+    return { isValid, inputs };
   }
 }

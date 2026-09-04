@@ -151,6 +151,12 @@ export class WebhookServer {
     for (const workflow of this.workflows) {
       if (workflow.on.provider !== provider) continue;
 
+      const preprocessor = this.preprocessors.get(provider);
+      if (preprocessor?.filter && !preprocessor.filter(inputs, workflow.on).isValid) {
+        console.log(`⏩ Skipped ${workflow.id} based on ${provider} webhook filters`, { inputs });
+        continue;
+      }
+
       if (workflow.on.if) {
         try {
           const shouldRun = await SafeExpressionEvaluator.evaluateConditions(workflow.on.if, { inputs });

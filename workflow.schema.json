@@ -25,9 +25,30 @@
       "additionalProperties": {
         "type": "object",
         "properties": {
-          "if": { "type": "string", "description": "AST boolean condition expression" },
+          "if": {
+            "description": "AST boolean condition expression",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } }
+            ]
+          },
           "events": { "type": "array", "items": { "type": "string" } },
-          "branches": { "type": "array", "items": { "type": "string" } }
+          "owner": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } }
+            ]
+          },
+          "repo": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } }
+            ]
+          },
+          "branches": { "type": "array", "items": { "type": "string" } },
+          "tag": { "type": "boolean" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "paths": { "type": "array", "items": { "type": "string" } }
         }
       }
     },

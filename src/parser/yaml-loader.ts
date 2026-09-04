@@ -40,12 +40,13 @@ export class YamlLoader {
         }
 
         const provider = Object.keys(wf.on)[0] || 'generic';
+        const trigger = wf.on[provider] || {};
         workflows.push({
           id: (wf.id || wf.name)?.toLowerCase().replace(/[^a-z0-9]/g, '-') ?? randomUUID(),
           name: wf.name,
           on: {
+            ...trigger,
             provider,
-            if: wf.on[provider]?.if,
           },
           concurrency: wf.concurrency,
           steps: wf.steps,
