@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runner Workflow Management</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gray-950 p-4 font-sans text-gray-100 md:p-6">
+  <main class="mx-auto max-w-7xl space-y-5">
+    <header class="flex flex-col justify-between gap-3 border-b border-gray-800 pb-4 sm:flex-row sm:items-end">
+      <div>
+        <a href="/runs" class="text-xs text-indigo-400 hover:underline">Back to dashboard</a>
+        <h1 class="mt-1 text-2xl font-bold text-white">Workflow control room</h1>
+        <p class="text-sm text-gray-400">Draft, validate, and publish revisioned YAML definitions.</p>
+      </div>
+      <button id="new-workflow" class="rounded-lg border border-indigo-500/50 bg-indigo-500/10 px-4 py-2 text-sm font-medium text-indigo-200 hover:bg-indigo-500/20">New workflow</button>
+    </header>
+
+    <p id="notice" role="status" class="hidden rounded-lg border px-3 py-2 text-sm"></p>
+
+    <section class="grid gap-5 lg:grid-cols-[17rem_1fr]">
+      <aside class="rounded-xl border border-gray-800 bg-gray-900 p-3">
+        <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-gray-400">Workflows</h2>
+        <div id="workflow-list" class="space-y-1"></div>
+      </aside>
+
+      <section class="rounded-xl border border-gray-800 bg-gray-900 p-4">
+        <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <label class="block flex-1 text-xs font-semibold uppercase tracking-wider text-gray-400">Workflow ID
+            <input id="workflow-id" class="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 font-mono text-sm text-white outline-none focus:border-indigo-500" placeholder="derived-from-workflow-name">
+          </label>
+          <div class="flex flex-wrap gap-2">
+            <button id="validate" class="rounded border border-gray-700 px-3 py-2 text-sm hover:border-gray-500">Validate</button>
+            <button id="save" class="rounded border border-indigo-500 bg-indigo-500 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-400">Save draft</button>
+            <button id="publish" class="rounded border border-emerald-500/60 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/10">Publish</button>
+            <button id="delete" class="rounded border border-rose-500/60 px-3 py-2 text-sm text-rose-300 hover:bg-rose-500/10">Delete</button>
+          </div>
+        </div>
+        <textarea id="source-yaml" spellcheck="false" class="h-[34rem] w-full rounded-lg border border-gray-700 bg-gray-950 p-4 font-mono text-sm leading-6 text-gray-100 outline-none focus:border-indigo-500" placeholder="name: Example&#10;on:&#10;  github:&#10;    events: [push]&#10;steps:&#10;  - run: echo hello"></textarea>
+      </section>
+    </section>
+
+    <section class="rounded-xl border border-gray-800 bg-gray-900 p-4">
+      <div class="mb-3">
+        <h2 class="text-base font-semibold text-white">Secrets</h2>
+        <p class="text-sm text-gray-400">Values are write-only and encrypted. Re-saving a name replaces its value.</p>
+      </div>
+      <div class="grid gap-3 md:grid-cols-[14rem_1fr_auto_auto]">
+        <input id="secret-name" class="rounded border border-gray-700 bg-gray-950 px-3 py-2 font-mono text-sm uppercase outline-none focus:border-indigo-500" placeholder="NPM_TOKEN">
+        <input id="secret-value" type="password" class="rounded border border-gray-700 bg-gray-950 px-3 py-2 font-mono text-sm outline-none focus:border-indigo-500" placeholder="New secret value">
+        <button id="save-secret" class="rounded border border-indigo-500 px-3 py-2 text-sm text-indigo-200 hover:bg-indigo-500/10">Save value</button>
+        <button id="delete-secret" class="rounded border border-rose-500/60 px-3 py-2 text-sm text-rose-300 hover:bg-rose-500/10">Delete</button>
+      </div>
+      <div id="secret-list" class="mt-4 flex flex-wrap gap-2"></div>
+    </section>
+  </main>
+
+  <script>
+    const notice = document.querySelector('#notice');
+    const workflowList = document.querySelector('#workflow-list');
+    const source = document.querySelector('#source-yaml');
+    const workflowId = document.querySelector('#workflow-id');
+    const secretList = document.querySelector('#secret-list');
+    const secretName = document.querySelector('#secret-name');
+    const secretValue = document.querySelector('#secret-value');
+    let workflows = [];
+    let selectedId = '';
+
+    const showNotice = (message, error = false) => {
+      notice.textContent = message;
+      notice.className = `rounded-lg border px-3 py-2 text-sm ${error ? 'border-rose-500/40 bg-rose-500/10 text-rose-200' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'}`;
+    };
+    const api = async (url, options = {}) => {
+      const response = await fetch(url, { headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}) }, ...options });
+      const body = response.status === 204 ? null : await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || `Request failed: ${response.status}`);
+      return body;
+    };
+    const derivedId = () => source.value.match(/^\s*(?:id:\s*([^\n]+)|name:\s*([^\n]+))/m)?.slice(1).find(Boolean)?.trim().toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/(^-|-$)/g, '') || '';
+    const renderWorkflows = () => {
+      workflowList.replaceChildren();
+      for (const workflow of workflows) {
+        const button = document.createElement('button');
+        button.className = `block w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-800 ${workflow.id === selectedId ? 'bg-indigo-500/15 text-indigo-200' : 'text-gray-300'}`;
+        button.textContent = `${workflow.name} · ${workflow.status}`;
+        button.onclick = () => openWorkflow(workflow.id);
+        workflowList.append(button);
+      }
+    };
+    const loadWorkflows = async () => {
+      workflows = (await api('/api/workflows')).workflows;
+      renderWorkflows();
+    };
+    const openWorkflow = async (id) => {
+      const workflow = await api(`/api/workflows/${id}`);
+      selectedId = workflow.id;
+      workflowId.value = workflow.id;
+      source.value = workflow.sourceYaml;
+      renderWorkflows();
+    };
+    const loadSecrets = async () => {
+      const secrets = (await api('/api/secrets')).secrets;
+      secretList.replaceChildren();
+      for (const name of secrets) {
+        const button = document.createElement('button');
+        button.className = 'rounded border border-gray-700 px-2 py-1 font-mono text-xs text-gray-300 hover:border-indigo-500';
+        button.textContent = name;
+        button.onclick = () => { secretName.value = name; secretValue.focus(); };
+        secretList.append(button);
+      }
+    };
+    document.querySelector('#new-workflow').onclick = () => {
+      selectedId = '';
+      workflowId.value = '';
+      source.value = '';
+      renderWorkflows();
+      source.focus();
+    };
+    document.querySelector('#validate').onclick = async () => {
+      try { const result = await api('/api/workflows/validate', { method: 'POST', body: JSON.stringify({ sourceYaml: source.value }) }); showNotice(`Valid: ${result.workflows.length} workflow definition(s).`); } catch (error) { showNotice(error.message, true); }
+    };
+    document.querySelector('#save').onclick = async () => {
+      const id = workflowId.value.trim() || derivedId();
+      if (!id) return showNotice('Set an ID or add a workflow name first.', true);
+      try { const workflow = await api(`/api/workflows/${id}`, { method: 'PUT', body: JSON.stringify({ sourceYaml: source.value }) }); selectedId = workflow.id; workflowId.value = workflow.id; await loadWorkflows(); showNotice(`Saved ${workflow.id} as draft revision ${workflow.revision}.`); } catch (error) { showNotice(error.message, true); }
+    };
+    document.querySelector('#publish').onclick = async () => {
+      const id = workflowId.value.trim() || selectedId;
+      if (!id) return showNotice('Save a workflow before publishing it.', true);
+      try { const workflow = await api(`/api/workflows/${id}/publish`, { method: 'POST' }); selectedId = workflow.id; await loadWorkflows(); showNotice(`Published ${workflow.id} revision ${workflow.revision}.`); } catch (error) { showNotice(error.message, true); }
+    };
+    document.querySelector('#delete').onclick = async () => {
+      const id = workflowId.value.trim() || selectedId;
+      if (!id || !confirm(`Delete ${id} and all of its revisions?`)) return;
+      try { await api(`/api/workflows/${id}`, { method: 'DELETE' }); selectedId = ''; workflowId.value = ''; source.value = ''; await loadWorkflows(); showNotice(`Deleted ${id}.`); } catch (error) { showNotice(error.message, true); }
+    };
+    document.querySelector('#save-secret').onclick = async () => {
+      try { await api(`/api/secrets/${secretName.value.trim()}`, { method: 'PUT', body: JSON.stringify({ value: secretValue.value }) }); secretValue.value = ''; await loadSecrets(); showNotice(`Saved ${secretName.value.trim()}.`); } catch (error) { showNotice(error.message, true); }
+    };
+    document.querySelector('#delete-secret').onclick = async () => {
+      const name = secretName.value.trim();
+      if (!name || !confirm(`Delete ${name}?`)) return;
+      try { await api(`/api/secrets/${name}`, { method: 'DELETE' }); secretName.value = ''; secretValue.value = ''; await loadSecrets(); showNotice(`Deleted ${name}.`); } catch (error) { showNotice(error.message, true); }
+    };
+    Promise.all([loadWorkflows(), loadSecrets()]).catch((error) => showNotice(error.message, true));
+  </script>
+</body>
+</html>

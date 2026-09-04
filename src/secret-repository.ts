@@ -43,6 +43,11 @@ export class SecretRepository {
     return rows.map((row: any) => row.name);
   }
 
+  async delete(name: string): Promise<boolean> {
+    const result = await db.run('DELETE FROM secrets WHERE name = ?', [name]);
+    return Number(result?.changes || 0) > 0;
+  }
+
   private decrypt(ciphertext: string): string {
     const value = Buffer.from(ciphertext, 'base64');
     const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey(), value.subarray(0, 12));

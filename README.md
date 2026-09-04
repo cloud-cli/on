@@ -223,6 +223,8 @@ The GitHub status plugin publishes commit states when a workflow starts and fini
 
 Run details are available as HTML at `/runs/:id` and as sanitized JSON at `/api/runs/:id`. The HTML view refreshes reactively through job-specific SSE events while a run is active. Both representations omit raw webhook bodies, sensitive input fields, execution environment values, and internal rerun state.
 
+Open `/workflows` to manage workflows and secret values in the browser. The page is protected by the administrator HTTP Basic credential; secret values are write-only.
+
 ---
 
 ## 📐 Deterministic Evaluation Rules

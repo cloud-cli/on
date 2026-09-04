@@ -16,6 +16,7 @@ import { EventBroker } from './events.js';
 import { buildRunView, renderRunHtml } from './run-view.js';
 import { WorkflowRepository } from './workflows.js';
 import { SecretRepository } from './secret-repository.js';
+import { generateWorkflowManagementHtml } from './workflows-ui.js';
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -62,6 +63,12 @@ export class WebhookServer {
       return this.renderDashboard(res);
     }
 
+    if (req.method === 'GET' && url.pathname === '/workflows') {
+      if (!this.requireAdmin(req, res)) return;
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(generateWorkflowManagementHtml());
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/jobs') {
       const afterIdParam = url.searchParams.get('afterId');
       const beforeIdParam = url.searchParams.get('beforeId');
@@ -97,6 +104,7 @@ export class WebhookServer {
     if (url.pathname === '/api/secrets' && req.method === 'GET') return this.handleSecretList(req, res);
     const secretMatch = url.pathname.match(/^\/api\/secrets\/([A-Z][A-Z0-9_]*)$/);
     if (secretMatch && req.method === 'PUT') return this.handleSecretSave(req, res, secretMatch[1]);
+    if (secretMatch && req.method === 'DELETE') return this.handleSecretDelete(req, res, secretMatch[1]);
     const jobSecretsMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/secrets$/);
     if (jobSecretsMatch && req.method === 'GET') return this.handleJobSecrets(req, res, jobSecretsMatch[1]);
     const cancelJobMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/cancel$/);
@@ -400,6 +408,15 @@ export class WebhookServer {
       res.writeHead(422, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error.message }));
     }
+  }
+
+  private async handleSecretDelete(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
+    if (!this.requireAdmin(req, res)) return;
+    if (!await this.secretRepository.delete(name)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Secret not found' }));
+    }
+    res.writeHead(204).end();
   }
 
   private async handleJobSecrets(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
