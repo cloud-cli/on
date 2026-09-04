@@ -25,7 +25,7 @@ Designed with a strict **security-first boundary**, native **JavaScript AST eval
 
 ```text
 my-project/
-├── runner.config.mjs        # (Optional) Engine configuration
+├── runner.config.mjs        # Optional plugin/advanced configuration
 └── package.json
 
 ```
@@ -263,6 +263,7 @@ Within `${...}`, `if:`, and `eval:` contexts, the following object scopes are ex
 - **`env`**: Merged environment variables from global config and workflow definitions.
 - **`secrets`**: Unmasked job-scoped values from encrypted central secret storage.
 - **`steps`**: Execution statuses and outputs from previous steps in the workflow (`steps.<id>.status`, `steps.<id>.outputs`).
+- **`files`**: Workspace-bound file helpers for `if:` and `eval:` expressions: `files.exists('Dockerfile')`, `files.readFile('package.json')`, and `files.join('dist', 'artifact')`. Paths outside the job `workingDir` are rejected.
 - **`BUILTIN_HELPERS`**: JS utilities including `String`, `Number`, `Boolean`, and `JSON.parse` / `JSON.stringify`.
 
 ---
@@ -276,15 +277,22 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
 | Method     | Endpoint           | Description                                                                            |
 | ---------- | ------------------ | -------------------------------------------------------------------------------------- |
 | **`POST`** | `/webhooks/github` | Webhook endpoint for GitHub events. Applies GitHub filters and evaluates `on.github.if`. |
-| **`GET`**  | `/runs`            | **Dashboard:** Live dark-mode monitoring page listing recent jobs and worker health.   |
+| **`GET`**  | `/runs`            | **Dashboard:** Public live dark-mode monitoring page listing recent jobs.   |
 | **`GET`**  | `/api/jobs?afterId=<id>&beforeId=<id>&limit=<n>` | Dashboard jobs with exclusive lower and upper ID cursors and a limit from 1 to 500 (default 50). |
-| **`GET`**  | `/runs/:jobId`     | **Job Report:** Interactive HTML trace view with step timings and terminal log output. |
+| **`GET`**  | `/runs/:jobId`     | **Job Report:** Authenticated interactive trace with step timings and terminal log output. |
+| **`GET`**  | `/workflows`       | Authenticated workflow list and encrypted secret management UI. |
+| **`GET`**  | `/workflows/new`, `/workflows/:id` | Authenticated YAML workflow editor. |
+| **`POST`** | `/api/workflows/validate` | Authenticated YAML validation without persistence. |
+| **`GET`, `PUT`, `DELETE`** | `/api/workflows/:id` | Authenticated revisioned workflow read, draft save, and deletion. |
+| **`POST`** | `/api/workflows/:id/publish` | Authenticated publication of the latest draft revision. |
+| **`GET`, `PUT`, `DELETE`** | `/api/secrets`, `/api/secrets/:name` | Authenticated encrypted secret-name and write-only value management. |
 
 ### Dashboard Features
 
 - **Real-time Auto-Refresh:** `/runs` automatically refreshes job queue statuses (`PENDING`, `RUNNING`, `SUCCESS`, `FAILED`, `CANCELLED`).
 - **ANSI Terminal Rendering:** Uses `ansi_up` to render bash colors, bold highlights, and console outputs accurately in step log boxes.
 - **Payload Inspection:** View JSON inputs received from webhooks for easy debugging.
+- **Workflow Management:** Use the authenticated `/workflows` pages to create, validate, publish, edit, and delete DB-authored workflow revisions.
 
 ---
 
@@ -297,7 +305,7 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
 3. **Payload Size Guard:**
    The Ingress server enforces a strict 5MB payload limit to prevent Out-Of-Memory (OOM) denial-of-service attacks.
 4. **Single-operator API authentication:**
-   Workflow validation, publishing, secret management, and job details require `RUNNER_ADMIN_SECRET` over HTTPS.
+   Workflow validation, publishing, secret management, and job details require `RUNNER_ADMIN_SECRET` over HTTPS. Workers use the separate `RUNNER_WORKER_SECRET` only for lifecycle events and secrets of jobs they have claimed.
 
 ## systemd Deployment
 
