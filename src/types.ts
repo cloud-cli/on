@@ -12,6 +12,8 @@ export interface RunnerConfig {
   port: number;
   /** Admin Secret for API / webhook operations */
   adminToken: string;
+  /** Shared worker credential for job lifecycle and secret retrieval APIs */
+  workerToken: string;
   /** SQLite Database connection URL / path */
   database: string;
   /** Maximum number of jobs executed concurrently on this node */

@@ -27,6 +27,7 @@ export class WebhookServer {
   private queue: QueueManager;
   private secrets: SecretStore;
   private adminToken: string;
+  private workerToken: string;
   private events = new EventBroker();
   private workflowsLoaded: Promise<void>;
 
@@ -39,6 +40,7 @@ export class WebhookServer {
     this.queue = options.queue;
     this.secrets = options.secrets;
     this.adminToken = options.adminToken;
+    this.workerToken = options.config.workerToken;
 
     this.workflowsLoaded = Promise.all([this.workflows.init(), this.secretRepository.init()]).then(() => undefined);
 
@@ -261,15 +263,23 @@ export class WebhookServer {
   }
 
   private isAdmin(req: http.IncomingMessage): boolean {
-    if (!this.adminToken) return false;
+    return this.matchesToken(req, this.adminToken, true);
+  }
+
+  private isWorker(req: http.IncomingMessage): boolean {
+    return this.matchesToken(req, this.workerToken, false);
+  }
+
+  private matchesToken(req: http.IncomingMessage, token: string, allowBasic: boolean): boolean {
+    if (!token) return false;
     const auth = req.headers.authorization || '';
     const matches = (value: string) => {
-      const expected = Buffer.from(this.adminToken);
+      const expected = Buffer.from(token);
       const received = Buffer.from(value);
       return expected.length === received.length && crypto.timingSafeEqual(expected, received);
     };
     if (auth.startsWith('Bearer ') && matches(auth.slice(7))) return true;
-    if (!auth.startsWith('Basic ')) return false;
+    if (!allowBasic || !auth.startsWith('Basic ')) return false;
     try {
       const decoded = Buffer.from(auth.slice(6), 'base64').toString('utf8');
       const separator = decoded.indexOf(':');
@@ -381,7 +391,7 @@ export class WebhookServer {
   }
 
   private async handleJobSecrets(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
-    if (!this.isAdmin(req)) {
+    if (!this.isWorker(req)) {
       res.writeHead(403, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Unauthorized' }));
     }
@@ -398,8 +408,7 @@ export class WebhookServer {
    * Handles Zero-Downtime Secret Reload
    */
   private async handleSecretReload(req: http.IncomingMessage, res: http.ServerResponse) {
-    const authHeader = req.headers['authorization'];
-    if (authHeader !== `Bearer ${this.adminToken}`) {
+    if (!this.isAdmin(req)) {
       res.writeHead(403, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Unauthorized' }));
     }
@@ -413,7 +422,7 @@ export class WebhookServer {
   }
 
   private async handleWorkerEvent(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.adminToken || req.headers.authorization !== `Bearer ${this.adminToken}`) {
+    if (!this.isWorker(req)) {
       res.writeHead(403, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Unauthorized' }));
     }

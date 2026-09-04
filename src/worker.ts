@@ -199,13 +199,13 @@ function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 async function notifyJobChange(config: RunnerConfig, jobId: string | number): Promise<void> {
-  if (!config.adminToken) return;
+  if (!config.workerToken) return;
 
   try {
     const response = await fetch(new URL('/api/events', config.serverUrl), {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${config.adminToken}`,
+        Authorization: `Bearer ${config.workerToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ jobId }),
@@ -218,10 +218,10 @@ async function notifyJobChange(config: RunnerConfig, jobId: string | number): Pr
 }
 
 async function fetchJobSecrets(config: RunnerConfig, workerId: string, jobId: string | number): Promise<Record<string, string>> {
-  if (!config.adminToken) return {};
+  if (!config.workerToken) return {};
   try {
     const response = await fetch(new URL(`/api/jobs/${jobId}/secrets`, config.serverUrl), {
-      headers: { Authorization: `Bearer ${config.adminToken}`, 'X-Runner-Worker-Id': workerId },
+      headers: { Authorization: `Bearer ${config.workerToken}`, 'X-Runner-Worker-Id': workerId },
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);

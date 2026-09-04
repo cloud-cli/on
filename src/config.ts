@@ -32,6 +32,7 @@ export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: U
   return {
     port,
     adminToken: configFromFile.adminToken ?? _.RUNNER_ADMIN_SECRET ?? '',
+    workerToken: configFromFile.workerToken ?? _.RUNNER_WORKER_SECRET ?? '',
     database: configFromFile.database ?? configFromCli.database ?? _.RUNNER_DATABASE_URL ?? '',
     workers: Number(configFromFile.workers ?? configFromCli.workers ?? _.RUNNER_WORKERS ?? 5),
     serverUrl: configFromFile.serverUrl ?? _.RUNNER_SERVER_URL ?? `http://127.0.0.1:${port}`,
