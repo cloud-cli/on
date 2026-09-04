@@ -2,7 +2,7 @@ import FS from 'node:fs';
 import Path from 'node:path';
 import { resolveDriver } from './drivers/index.js';
 import { QueueManager } from './queue.js';
-import { SafeExpressionEvaluator } from './safe-eval.js';
+import { SafeExpressionEvaluator, workspaceFiles } from './safe-eval.js';
 import { SecretStore } from './secrets.js';
 import {
   ExecutionDriver,
@@ -22,6 +22,7 @@ import {
 import { setupSignalHandlers } from './signals.js';
 import { consumeRunnerEvents } from './events.js';
 import { PluginManager } from './plugins/manager.js';
+import { WorkflowRepository } from './workflows.js';
 
 const DEBUG = !!process.env.DEBUG;
 
@@ -69,6 +70,7 @@ export async function startWorkerScheduler(
   config: RunnerConfig,
 ) {
   const driver = await resolveDriver();
+  const workflows = new WorkflowRepository();
   const activeJobs = new Set<Promise<void>>();
   let wakeVersion = 0;
   let pendingWake: (() => void) | null = null;
@@ -100,9 +102,14 @@ export async function startWorkerScheduler(
         let task: Promise<void>;
         task = (async () => {
           void notifyJobChange(config, job.id);
+          const workflow = await workflows.getRevision(job.workflow_id, job.workflow_revision);
+          if (!workflow) {
+            await queue.finishJob(job.id, 'failed');
+            throw new Error(`Workflow ${job.workflow_id} revision ${job.workflow_revision} was not found`);
+          }
           const jobSecrets = new SecretStore();
           jobSecrets.replace(await fetchJobSecrets(config, workerId, job.id));
-          await processJob({ workerId, job, queue, secrets: jobSecrets, config, driver });
+          await processJob({ workerId, job, queue, secrets: jobSecrets, config, driver, workflow });
         })()
           .catch((error) => console.error(`[${workerId}] ⚠️ Worker execution error:`, error))
           .finally(() => {
@@ -231,7 +238,8 @@ export async function processJob(p: Processable) {
   console.log(`\n[${workerId}] 📦 Claimed Job #${job.id} (Workflow: ${job.workflow_id})`);
 
   const payload = (typeof job.payload === 'string' ? JSON.parse(job.payload) : job.payload) as JobPayload;
-  const steps = payload.steps || [];
+  if (!p.workflow) throw new Error(`Workflow ${job.workflow_id} revision ${job.workflow_revision} was not resolved`);
+  const steps = p.workflow.steps;
   const inputs = payload.inputs || {};
   const jobStartTime = Date.now();
   const storagePath = Path.join(config.storagePath, `job-${job.id}`);
@@ -246,6 +254,7 @@ export async function processJob(p: Processable) {
     steps: {},
     logsDir,
     workingDir,
+    files: workspaceFiles(workingDir),
   };
 
   const stepReports = steps.map((step, index): StepReport => {
@@ -320,8 +329,8 @@ async function processSteps(
   let processedSteps = 0;
 
   try {
-    if (payload.env) {
-      Object.assign(executionContext.env, await evaluateEnv(payload.env, executionContext));
+    if (p.workflow?.env) {
+      Object.assign(executionContext.env, await evaluateEnv(p.workflow.env, executionContext));
     }
 
     for (let i = 0; i < steps.length; i++) {

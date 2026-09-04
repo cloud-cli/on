@@ -19,8 +19,12 @@ describe('incremental workflow reports', () => {
       isCancelled: vi.fn(async () => false),
     };
     const payload = {
-      workflowId: 'incremental',
       inputs: {},
+    };
+    const workflow = {
+      id: 'incremental',
+      name: 'Incremental',
+      on: { provider: 'generic' },
       steps: [
         { id: 'first', eval: '({ value: 1 })' },
         { id: 'second', eval: '({ value: 2 })' },
@@ -32,6 +36,8 @@ describe('incremental workflow reports', () => {
       job: {
         id: 1,
         workflow_id: 'incremental',
+        workflow_revision: 1,
+        required_tags: '[]',
         concurrency_key: null,
         status: 'running',
         worker_id: 'test-worker',
@@ -42,6 +48,7 @@ describe('incremental workflow reports', () => {
       secrets: { getAll: () => ({}) },
       config: { storagePath: '/tmp', serverUrl: 'http://runner.test', env: {}, plugins: [] },
       driver: {},
+      workflow,
     } as Processable);
 
     expect(reports.map((report) => report.steps.map((step) => step.status))).toEqual([

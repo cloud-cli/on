@@ -302,6 +302,12 @@ Install the unit files from `systemd/`, create a non-login `on` user, and create
 
 Place the server master key in `/etc/on/credentials/on-master-key` with permissions readable only by the `on` user. `runner-server.service` exposes it privately through systemd's credentials directory. Start the primary control plane with `systemctl enable --now runner.target`; enable `runner-worker.service` separately on worker machines. Use `systemctl edit runner-worker.service` for machine-specific labels and paths.
 
+## Database Migration
+
+Before deploying the revision-reference queue code to an existing database, run `migrations/20260904_job_workflow_revisions.sql` once through the SQLite HTTPS query service. It adds `jobs.workflow_revision` and `jobs.required_tags`, backfills routing tags, links jobs to the currently published workflow revision, and cancels only pending/running legacy jobs that cannot be linked. New installations receive both columns from `QueueManager.createTables()`.
+
+Workers now resolve the immutable revision when they claim a job. A workflow can safely use a checkout step followed by `if: files.exists('Dockerfile')`; `files` is constrained to the job's `workingDir`, so it cannot inspect files outside that workspace.
+
 ## Future Security Work
 
 This MVP intentionally supports one trusted operator. Before sharing the UI or exposing it beyond a private deployment, add individual accounts and roles, secure browser sessions and CSRF protection, audit logs, worker enrollment credentials, secret key rotation, encrypted systemd credentials, rate limiting, and database high availability.

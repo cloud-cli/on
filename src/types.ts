@@ -142,6 +142,12 @@ export interface WorkflowDefinition {
   solar?: ScheduleTrigger[];
 }
 
+export interface WorkflowRevision {
+  workflowId: string;
+  revision: number;
+  definition: WorkflowDefinition;
+}
+
 export interface WebhookServerOptions {
   config: RunnerConfig;
   queue: QueueManager;
@@ -155,21 +161,19 @@ export interface JobRecord {
   id: number;
   parentId?: number;
   workflow_id: string;
+  workflow_revision: number;
+  required_tags: string;
   concurrency_key: string | null;
   status: JobStatus;
   worker_id: string | null;
-  payload: string; // JSON string of the Job Context/Steps
+  payload: string; // JSON string of dynamic trigger inputs only
   created_at: string;
 }
 
 export type WorkflowInputs = Record<string, any>;
 
 export interface JobPayload {
-  workflowId: string;
-  steps: WorkflowStep[];
   inputs: WorkflowInputs;
-  env?: Record<string, string>;
-  tags?: string[];
 }
 
 export interface MatrixStrategy {
@@ -236,6 +240,7 @@ export interface Processable {
   secrets: SecretStore;
   config: RunnerConfig;
   driver: ExecutionDriver;
+  workflow?: WorkflowDefinition;
 }
 
 export interface ContextualizedProcessable extends Processable {
@@ -251,4 +256,9 @@ export interface JobExecutionContext {
   steps: Record<string, { status: string; exitCode: number; outputs: any }>;
   workingDir: string;
   logsDir: string;
+  files: {
+    exists(path: string): boolean;
+    readFile(path: string): string;
+    join(...paths: string[]): string;
+  };
 }

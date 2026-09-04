@@ -1,5 +1,5 @@
 import { QueueManager } from './queue.js';
-import type { JobPayload, RunnerConfig, ScheduleTrigger, WorkflowDefinition } from './types.js';
+import type { JobPayload, RunnerConfig, ScheduleTrigger, WorkflowDefinition, WorkflowRevision } from './types.js';
 import { WorkflowRepository } from './workflows.js';
 
 function cronFieldMatches(field: string, value: number, min: number, max: number): boolean {
@@ -79,28 +79,24 @@ export class WorkflowScheduler {
 
   async tick(now = new Date()): Promise<void> {
     const minute = new Date(Math.floor(now.getTime() / 60_000) * 60_000);
-    for (const workflow of await this.workflows.published()) {
+    for (const { definition: workflow, revision } of await this.workflows.published()) {
       for (const [index, trigger] of (workflow.schedule || []).entries()) {
-        if (cronMatches(trigger.cron!, minute, trigger.timezone || 'UTC')) await this.enqueue(workflow, trigger, `cron-${index}`, minute);
+        if (cronMatches(trigger.cron!, minute, trigger.timezone || 'UTC')) await this.enqueue(workflow, revision, trigger, `cron-${index}`, minute);
       }
       for (const [index, trigger] of (workflow.solar || []).entries()) {
         const event = solarEvent(minute, trigger);
-        if (event && Math.floor(event.getTime() / 60_000) === minute.getTime() / 60_000) await this.enqueue(workflow, trigger, `solar-${index}`, minute);
+        if (event && Math.floor(event.getTime() / 60_000) === minute.getTime() / 60_000) await this.enqueue(workflow, revision, trigger, `solar-${index}`, minute);
       }
     }
   }
 
-  private async enqueue(workflow: WorkflowDefinition, trigger: ScheduleTrigger, defaultId: string, scheduledFor: Date): Promise<void> {
+  private async enqueue(workflow: WorkflowDefinition, revision: number, trigger: ScheduleTrigger, defaultId: string, scheduledFor: Date): Promise<void> {
     const triggerId = trigger.id || defaultId;
     if (!await this.workflows.claimScheduledRun(workflow.id, triggerId, scheduledFor.toISOString())) return;
     const payload: JobPayload = {
-      workflowId: workflow.id,
-      steps: workflow.steps,
-      env: workflow.env,
-      tags: workflow.tags,
       inputs: { trigger: { type: trigger.cron ? 'schedule' : 'solar', id: triggerId, scheduledFor: scheduledFor.toISOString(), ...trigger } },
     };
-    await this.queue.enqueue(workflow.id, payload);
+    await this.queue.enqueue(workflow.id, revision, payload, workflow.tags);
     console.log(`Scheduled ${workflow.id} via ${triggerId}`);
   }
 }

@@ -13,7 +13,7 @@ export class QueueManager {
    * Enqueues a new job into the database.
    * Includes simple GitHub-style concurrency cancellation.
    */
-  async enqueue(workflowId: string, payload: JobPayload, concurrencyKey?: string) {
+  async enqueue(workflowId: string, workflowRevision: number, payload: JobPayload, requiredTags: string[] = [], concurrencyKey?: string) {
     // If a concurrency key is provided, cancel existing pending/running jobs in that group
     if (concurrencyKey) {
       await db.run(
@@ -22,8 +22,10 @@ export class QueueManager {
       );
     }
 
-    const res = await db.run(`INSERT INTO jobs (workflow_id, concurrency_key, payload) VALUES (?, ?, ?);`, [
+    const res = await db.run(`INSERT INTO jobs (workflow_id, workflow_revision, required_tags, concurrency_key, payload) VALUES (?, ?, ?, ?, ?);`, [
       workflowId,
+      workflowRevision,
+      JSON.stringify(requiredTags),
       concurrencyKey || '',
       JSON.stringify(payload),
     ]);
@@ -50,7 +52,7 @@ export class QueueManager {
         WHERE status = 'pending'
           AND NOT EXISTS (
             SELECT 1
-            FROM json_each(COALESCE(json_extract(jobs.payload, '$.tags'), '[]')) AS required_tag
+            FROM json_each(COALESCE(jobs.required_tags, '[]')) AS required_tag
             WHERE required_tag.value NOT IN (SELECT value FROM json_each(?))
           )
         ORDER BY created_at ASC
@@ -97,7 +99,7 @@ export class QueueManager {
     }
 
     const newJob = await db.get(
-      `INSERT INTO jobs (parentId, workflow_id, concurrency_key, payload) SELECT id, workflow_id, concurrency_key, payload FROM jobs WHERE id = ? RETURNING *`,
+      `INSERT INTO jobs (parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload) SELECT id, workflow_id, workflow_revision, required_tags, concurrency_key, payload FROM jobs WHERE id = ? RETURNING *`,
       [jobId],
     );
 
@@ -124,6 +126,8 @@ export class QueueManager {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         parentId INTEGER,
         workflow_id TEXT NOT NULL,
+        workflow_revision INTEGER NOT NULL,
+        required_tags TEXT NOT NULL DEFAULT '[]',
         payload TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
         concurrency_key TEXT,

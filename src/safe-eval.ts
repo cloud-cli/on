@@ -2,8 +2,6 @@ import * as acorn from 'acorn';
 import FS from 'node:fs';
 import Path from 'node:path';
 
-const CWD = process.cwd();
-
 export const BUILTIN_HELPERS: Record<string, any> = {
   String: (val: any) => String(val ?? ''),
   Number: (val: any) => Number(val),
@@ -12,15 +10,22 @@ export const BUILTIN_HELPERS: Record<string, any> = {
     parse: (str: string) => JSON.parse(str),
     stringify: (obj: any) => JSON.stringify(obj, null, 2),
   },
-  FS: {
-    readFile: (f) => FS.readFileSync(f, 'utf8'),
-    exists: (f) => {
-      console.log('FS.exists [%s] %s', process.cwd(), f);
-      return FS.existsSync(f);
-    },
-    join: (...args) => Path.join(...args.map((p) => (p === 'CWD' ? CWD : p))),
-  },
 };
+
+/** Filesystem helpers constrained to a claimed job's workspace. */
+export function workspaceFiles(workingDir: string) {
+  const root = Path.resolve(workingDir);
+  const resolve = (...parts: string[]) => {
+    const target = Path.resolve(root, ...parts);
+    if (target !== root && !target.startsWith(`${root}${Path.sep}`)) throw new Error('Workspace file path escapes working directory');
+    return target;
+  };
+  return {
+    exists: (path: string) => FS.existsSync(resolve(path)),
+    readFile: (path: string) => FS.readFileSync(resolve(path), 'utf8'),
+    join: (...paths: string[]) => resolve(...paths),
+  };
+}
 
 export class SafeExpressionEvaluator {
   /**

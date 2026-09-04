@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import YAML from 'yaml';
 import db from './db-client.js';
 import { expandMatrix } from './parser/matrix-expander.js';
-import type { WorkflowDefinition } from './types.js';
+import type { WorkflowDefinition, WorkflowRevision } from './types.js';
 
 export interface StoredWorkflow {
   id: string;
@@ -108,10 +108,15 @@ export class WorkflowRepository {
     return row ? { id: row.id, name: row.name, sourceYaml: row.source_yaml, revision: Number(row.revision), status: row.status } : null;
   }
 
-  async published(): Promise<WorkflowDefinition[]> {
-    const rows = await db.all(`SELECT r.normalized_json FROM workflows w JOIN workflow_revisions r
+  async published(): Promise<WorkflowRevision[]> {
+    const rows = await db.all(`SELECT w.id AS workflow_id, r.revision, r.normalized_json FROM workflows w JOIN workflow_revisions r
       ON r.workflow_id = w.id AND r.revision = w.active_revision WHERE w.status = 'published'`);
-    return rows.map((row: any) => JSON.parse(row.normalized_json));
+    return rows.map((row: any) => ({ workflowId: row.workflow_id, revision: Number(row.revision), definition: JSON.parse(row.normalized_json) }));
+  }
+
+  async getRevision(workflowId: string, revision: number): Promise<WorkflowDefinition | null> {
+    const row = await db.get('SELECT normalized_json FROM workflow_revisions WHERE workflow_id = ? AND revision = ?', [workflowId, revision]);
+    return row ? JSON.parse(row.normalized_json) : null;
   }
 
   async claimScheduledRun(workflowId: string, triggerId: string, scheduledFor: string): Promise<boolean> {

@@ -1,6 +1,6 @@
 import runTemplate from './run.html?raw';
 import { serializeHtmlState } from './html-state.js';
-import type { JobPayload, JobRecord, StepReport, WorkflowExecutionReport } from './types.js';
+import type { JobPayload, JobRecord, StepReport, WorkflowExecutionReport, WorkflowStep } from './types.js';
 
 const SENSITIVE_KEY =
   /(?:^|[_-])auth(?:entication)?(?:$|[_-])|access[_-]?key|api[_-]?key|authorization|cookie|credential|passphrase|password|private[_-]?key|secret|session(?:id)?|signing[_-]?key|token/i;
@@ -22,9 +22,10 @@ export function buildRunView(
   job: JobRecord & Record<string, any>,
   logs: Record<string, string>,
   redact: (value: string) => string,
+  steps: WorkflowStep[] = [],
 ): RunView {
   const payload = JSON.parse(job.payload) as JobPayload;
-  const report = job.report ? (JSON.parse(job.report) as WorkflowExecutionReport) : buildPendingReport(job, payload);
+  const report = job.report ? (JSON.parse(job.report) as WorkflowExecutionReport) : buildPendingReport(job, payload, steps);
   const status = job.status;
 
   return {
@@ -60,7 +61,7 @@ export function renderRunHtml(report: RunView): string {
   return runTemplate.replace('__REPORT_STATE__', () => serializeHtmlState({ report }));
 }
 
-function buildPendingReport(job: JobRecord & Record<string, any>, payload: JobPayload): WorkflowExecutionReport {
+function buildPendingReport(job: JobRecord & Record<string, any>, payload: JobPayload, steps: WorkflowStep[]): WorkflowExecutionReport {
   const startedAt = job.started_at || job.created_at;
 
   return {
@@ -72,7 +73,7 @@ function buildPendingReport(job: JobRecord & Record<string, any>, payload: JobPa
     startedAt,
     inputs: payload.inputs || {},
     environment: {},
-    steps: (payload.steps || []).map((step, index) => ({
+    steps: steps.map((step, index) => ({
       id: step.id || `step-${index}`,
       name: step.name || step.id || `step-${index}`,
       status: 'pending',

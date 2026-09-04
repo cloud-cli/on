@@ -221,8 +221,8 @@ export class WebhookServer {
     }
   }
 
-  private async matchWorkflows(provider: string, inputs: any, workflows: WorkflowDefinition[]) {
-    for (const workflow of workflows) {
+  private async matchWorkflows(provider: string, inputs: any, workflows: import('./types.js').WorkflowRevision[]) {
+    for (const { definition: workflow, revision } of workflows) {
       if (workflow.on.provider !== provider) continue;
 
       const preprocessor = this.preprocessors.get(provider);
@@ -252,14 +252,10 @@ export class WebhookServer {
       }
 
       const jobPayload: JobPayload = {
-        workflowId: workflow.id,
-        env: workflow.env,
-        steps: workflow.steps,
         inputs,
-        tags: workflow.tags,
       };
 
-      await this.queue.enqueue(workflow.id, jobPayload, concurrencyKey);
+      await this.queue.enqueue(workflow.id, revision, jobPayload, workflow.tags, concurrencyKey);
       this.events.publish('jobs.available', { tags: workflow.tags || [] });
     }
   }
@@ -475,7 +471,8 @@ export class WebhookServer {
 
     const logsMap = await this.queue.getJobLogs(jobId);
     const secretValues = await this.currentSecrets();
-    const report = buildRunView(job, logsMap, (value) => this.redact(value, secretValues));
+    const definition = await this.workflows.getRevision(job.workflow_id, job.workflow_revision);
+    const report = buildRunView(job, logsMap, (value) => this.redact(value, secretValues), definition?.steps);
 
     if (format === 'json') {
       res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
