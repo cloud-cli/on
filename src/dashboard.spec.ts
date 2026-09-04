@@ -41,6 +41,8 @@ describe('dashboard', () => {
     expect(html).toContain('on-click="loadMore()"');
     expect(html).toContain("new EventSource('/api/events')");
     expect(html).toContain('href="/workflows"');
+    expect(html).toContain("if=\"refreshError\"");
+    expect(html).not.toContain('System operational');
     expect(html).toContain("addEventListener('jobs.available', refreshJobs)");
     expect(html).toContain("addEventListener('jobs.changed', refreshJobs)");
     expect(html).toContain('setInterval(refreshJobs, 60000)');
