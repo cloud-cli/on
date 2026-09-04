@@ -66,6 +66,15 @@ export class QueueManager {
     await db.run(`UPDATE jobs SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?;`, [status, jobId]);
   }
 
+  async completeJob(jobId: string | number, status: JobStatus, report: WorkflowExecutionReport): Promise<void> {
+    await db.run(
+      `UPDATE jobs
+       SET status = ?, report = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP
+       WHERE id = ?;`,
+      [status, JSON.stringify(report), jobId],
+    );
+  }
+
   async restartJob(jobId: string | number) {
     const job = await this.getJob(jobId);
 
@@ -124,6 +133,12 @@ export class QueueManager {
       );
 
       CREATE INDEX IF NOT EXISTS idx_step_logs_job ON step_logs(job_id);
+
+      DELETE FROM step_logs
+      WHERE id NOT IN (
+        SELECT MAX(id) FROM step_logs GROUP BY job_id, step_id
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_step_logs_job_step ON step_logs(job_id, step_id);
     `);
   }
 
@@ -151,13 +166,15 @@ export class QueueManager {
     ]);
   }
 
-  /**
-   * Save terminal log output for a specific step
-   */
+  /** Save or replace the durable log snapshot for a step. */
   async saveStepLog(jobId: string | number, stepId: string, logContent: string): Promise<void> {
-    if (!logContent) return;
-
-    await db.run(`INSERT INTO step_logs (job_id, step_id, log_content) VALUES (?, ?, ?)`, [jobId, stepId, logContent]);
+    await db.run(
+      `INSERT INTO step_logs (job_id, step_id, log_content) VALUES (?, ?, ?)
+       ON CONFLICT(job_id, step_id) DO UPDATE SET
+         log_content = excluded.log_content,
+         created_at = CURRENT_TIMESTAMP`,
+      [jobId, stepId, logContent],
+    );
   }
 
   /**

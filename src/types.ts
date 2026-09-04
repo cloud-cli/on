@@ -221,9 +221,11 @@ export interface WorkflowPlugin {
 export interface StepReport {
   id: string;
   name: string;
-  status: 'success' | 'failed' | 'skipped' | 'cancelled';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'cancelled';
   durationMs: number;
-  exitCode: number;
+  exitCode?: number;
+  startedAt?: string;
+  finishedAt?: string;
   error?: string;
   outputs: Record<string, any>;
   logContent: string;
@@ -233,10 +235,10 @@ export interface WorkflowExecutionReport {
   jobId: string;
   parentId: string;
   workflowName: string;
-  status: 'success' | 'failed' | 'cancelled';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
   durationMs: number;
   startedAt: string;
-  finishedAt: string;
+  finishedAt?: string;
   inputs: Record<string, any>; // Sanitized trigger inputs
   environment: Record<string, string>; // Exported workflow environment
   steps: StepReport[];

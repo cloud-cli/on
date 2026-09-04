@@ -87,7 +87,7 @@ export async function startWorkerLoop(
 /**
  * Processes a single job sequentially
  */
-async function processJob(p: Processable) {
+export async function processJob(p: Processable) {
   const { workerId, job, config, secrets, queue } = p;
   console.log(`\n[${workerId}] 📦 Claimed Job #${job.id} (Workflow: ${job.workflow_id})`);
 
@@ -109,18 +109,22 @@ async function processJob(p: Processable) {
     workingDir,
   };
 
-  const context = { payload, steps, executionContext, ...p };
-  const { cancelled, failed, stepReports } = await processSteps(context);
-  const finalStatus = cancelled ? 'cancelled' : failed ? 'failed' : 'success';
+  const stepReports = steps.map((step, index): StepReport => {
+    step.id ||= `step-${index}`;
+    step.name ||= step.id;
 
-  // 1. Update status in DB
-  await queue.finishJob(job.id, finalStatus);
-  console.log(`[${workerId}] ✅ Job #${job.id} completed as: ${finalStatus}`);
-
-  // 2. Build lightweight summary report (NO heavy log blobs in this JSON)
+    return {
+      id: step.id,
+      name: step.name,
+      status: 'pending',
+      durationMs: 0,
+      outputs: {},
+      logContent: '',
+    };
+  });
   const executionReport = buildExecutionReport(
     job,
-    finalStatus,
+    'running',
     jobStartTime,
     inputs,
     executionContext.env,
@@ -128,10 +132,19 @@ async function processJob(p: Processable) {
     payload,
   );
 
-  // 3. Save summary report to `jobs` table
+  // Make the trace available before the first step starts.
   await queue.saveReport(job.id, executionReport);
 
-  // 4. Dispatch to external reporters (Slack, JSON Files, etc.)
+  const context = { payload, steps, executionContext, ...p };
+  const { cancelled, failed } = await processSteps(context, executionReport);
+  const finalStatus = cancelled ? 'cancelled' : failed ? 'failed' : 'success';
+
+  executionReport.status = finalStatus;
+  executionReport.durationMs = Date.now() - jobStartTime;
+  executionReport.finishedAt = new Date().toISOString();
+  await queue.completeJob(job.id, finalStatus, executionReport);
+  console.log(`[${workerId}] ✅ Job #${job.id} completed as: ${finalStatus}`);
+
   await dispatchReporters(workerId, config.reporters, executionReport);
 }
 
@@ -148,11 +161,15 @@ interface ProcessStepsOutput {
   stepReports: StepReport[];
 }
 
-async function processSteps(p: ContextualizedProcessable): Promise<ProcessStepsOutput> {
+async function processSteps(
+  p: ContextualizedProcessable,
+  executionReport: WorkflowExecutionReport,
+): Promise<ProcessStepsOutput> {
   const { driver, workerId, queue, config, job, payload, steps, executionContext } = p;
-  const stepReports: StepReport[] = [];
+  const stepReports = executionReport.steps;
   let failed = false;
   let cancelled = false;
+  let processedSteps = 0;
 
   try {
     if (payload.env) {
@@ -161,6 +178,21 @@ async function processSteps(p: ContextualizedProcessable): Promise<ProcessStepsO
 
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
+      const stepStartedAt = new Date().toISOString();
+      stepReports[i] = {
+        ...stepReports[i],
+        status: 'running',
+        durationMs: 0,
+        exitCode: undefined,
+        error: undefined,
+        outputs: {},
+        logContent: '',
+        startedAt: stepStartedAt,
+        finishedAt: undefined,
+      };
+      executionReport.durationMs = Date.now() - Date.parse(executionReport.startedAt);
+      await queue.saveReport(job.id, executionReport);
+
       const stepResult = await executeSingleStep({
         workerId,
         jobId: job.id,
@@ -173,8 +205,32 @@ async function processSteps(p: ContextualizedProcessable): Promise<ProcessStepsO
       });
 
       if (stepResult.report) {
-        stepReports.push(stepResult.report);
+        stepReports[i] = {
+          ...stepResult.report,
+          startedAt: stepStartedAt,
+          finishedAt: new Date().toISOString(),
+        };
+      } else if (stepResult.skipped) {
+        stepReports[i] = {
+          ...stepReports[i],
+          status: 'skipped',
+          durationMs: 0,
+          exitCode: 0,
+          finishedAt: new Date().toISOString(),
+        };
+      } else {
+        stepReports[i] = {
+          ...stepReports[i],
+          status: 'failed',
+          durationMs: 0,
+          exitCode: 1,
+          error: 'Step failed before execution started',
+          finishedAt: new Date().toISOString(),
+        };
       }
+      processedSteps = i + 1;
+      executionReport.durationMs = Date.now() - Date.parse(executionReport.startedAt);
+      await queue.saveReport(job.id, executionReport);
 
       if (stepResult.skipped) {
         break;
@@ -197,8 +253,10 @@ async function processSteps(p: ContextualizedProcessable): Promise<ProcessStepsO
   }
 
   // Mark unexecuted steps as skipped
-  if (stepReports.length < steps.length) {
-    fillSkippedSteps(steps, stepReports.length, stepReports);
+  if (processedSteps < steps.length) {
+    fillSkippedSteps(steps, processedSteps, stepReports);
+    executionReport.durationMs = Date.now() - Date.parse(executionReport.startedAt);
+    await queue.saveReport(job.id, executionReport);
   }
 
   return { failed, cancelled, stepReports };
@@ -419,7 +477,7 @@ async function executeRunStep(params: {
   }
 
   const failed = result.exitCode !== 0 || cancelled;
-  const stepStatus = result.exitCode === 0 ? 'success' : cancelled ? 'cancelled' : 'failed';
+  const stepStatus = cancelled ? 'cancelled' : result.exitCode === 0 ? 'success' : 'failed';
 
   // Store status & exit code in context for downstream step conditions
   executionContext.steps[stepId] = {
@@ -456,7 +514,7 @@ function fillSkippedSteps(steps: any[], startIndex: number, stepReports: StepRep
   for (let j = startIndex; j < steps.length; j++) {
     const skippedStep = steps[j];
     const stepId = skippedStep.id || `step-${j}`;
-    stepReports.push({
+    stepReports[j] = {
       id: stepId,
       name: skippedStep.name || stepId,
       status: 'skipped',
@@ -464,7 +522,7 @@ function fillSkippedSteps(steps: any[], startIndex: number, stepReports: StepRep
       exitCode: 0,
       outputs: {},
       logContent: '',
-    });
+    };
   }
 }
 
@@ -473,7 +531,7 @@ function fillSkippedSteps(steps: any[], startIndex: number, stepReports: StepRep
  */
 function buildExecutionReport(
   job: JobRecord,
-  status: string,
+  status: WorkflowExecutionReport['status'],
   startTime: number,
   inputs: Record<string, any>,
   environment: Record<string, string>,
@@ -484,10 +542,10 @@ function buildExecutionReport(
     jobId: String(job.id),
     parentId: String(job.parentId || ''),
     workflowName: job.workflow_id,
-    status: status as any,
+    status,
     durationMs: Date.now() - startTime,
     startedAt: new Date(startTime).toISOString(),
-    finishedAt: new Date().toISOString(),
+    finishedAt: status === 'running' ? undefined : new Date().toISOString(),
     inputs,
     environment,
     steps: stepReports,

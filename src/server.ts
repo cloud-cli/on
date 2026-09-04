@@ -325,12 +325,19 @@ export class WebhookServer {
   private async renderRunDetails(jobId: string, res: http.ServerResponse) {
     const job = await this.queue.getJob(jobId);
 
-    if (!job || !job.report) {
+    if (!job) {
       res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end('<h1>404 - Report Not Found</h1>');
     }
 
-    const reportData = JSON.parse(job.report) as WorkflowExecutionReport;
+    const reportData = job.report
+      ? (JSON.parse(job.report) as WorkflowExecutionReport)
+      : this.buildPendingReport(job);
+
+    reportData.status = job.status;
+    if (reportData.status === 'running') {
+      reportData.durationMs = Math.max(0, Date.now() - Date.parse(reportData.startedAt));
+    }
 
     // Fetch logs on-demand
     const logsMap = await this.queue.getJobLogs(jobId);
@@ -338,7 +345,7 @@ export class WebhookServer {
     // Attach log content back onto step objects for rendering
     reportData.steps = (reportData.steps || []).map((step: any) => ({
       ...step,
-      logContent: logsMap[step.id] || '',
+      logContent: step.status === 'running' || step.status === 'pending' ? '' : logsMap[step.id] || '',
     }));
 
     const htmlReporter = new HtmlReporter({ outputDir: '' });
@@ -347,6 +354,32 @@ export class WebhookServer {
 
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(redacted);
+  }
+
+  private buildPendingReport(job: any): WorkflowExecutionReport {
+    const payload = JSON.parse(job.payload) as JobPayload;
+    const startedAt = job.started_at || job.created_at;
+
+    return {
+      jobId: String(job.id),
+      parentId: String(job.parentId || ''),
+      workflowName: job.workflow_id,
+      status: job.status,
+      durationMs: job.status === 'running' ? Math.max(0, Date.now() - Date.parse(startedAt)) : 0,
+      startedAt,
+      inputs: payload.inputs || {},
+      environment: payload.env || {},
+      steps: (payload.steps || []).map((step, index) => ({
+        id: step.id || `step-${index}`,
+        name: step.name || step.id || `step-${index}`,
+        status: 'pending',
+        durationMs: 0,
+        outputs: {},
+        logContent: '',
+      })),
+      artifacts: [],
+      rerunToken: JSON.stringify({ jobId: job.id, payload }),
+    };
   }
 
   private async handleRestartJob(jobId: string, res: http.ServerResponse) {

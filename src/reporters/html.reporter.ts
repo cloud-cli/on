@@ -32,29 +32,37 @@ export class HtmlReporter implements Reporter {
         ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
         : execReport.status === 'failed'
           ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-          : 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+          : execReport.status === 'running'
+            ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+            : 'bg-amber-500/10 text-amber-400 border-amber-500/20';
 
     const stepRows = (execReport.steps ?? [])
       .map((step, idx) => {
-        let rawLog = step.logContent;
-        let htmlLog =
+        const rawLog = step.logContent;
+        const htmlLog =
           step.status === 'skipped'
             ? ''
-            : rawLog
-              ? this.ansiUp.ansi_to_html(rawLog)
-              : '<span class="text-gray-500">(No terminal log output recorded for this step)</span>';
+            : step.status === 'running'
+              ? '<span class="text-indigo-400">Step is running. Logs will appear after it finishes.</span>'
+              : step.status === 'pending'
+                ? '<span class="text-gray-500">Waiting to run.</span>'
+                : rawLog
+                  ? this.ansiUp.ansi_to_html(rawLog)
+                  : '<span class="text-gray-500">(No terminal log output recorded for this step)</span>';
 
         const stepBadge =
           step.status === 'success'
             ? 'text-emerald-400 bg-emerald-500/10'
             : step.status === 'failed'
               ? 'text-rose-400 bg-rose-500/10'
-              : 'text-gray-400 bg-gray-500/10';
+              : step.status === 'running'
+                ? 'text-indigo-400 bg-indigo-500/10'
+                : 'text-gray-400 bg-gray-500/10';
 
         return `<details class="border border-b-0 border-gray-800 bg-gray-900/50 text-sm">
           <summary class="flex items-center justify-between p-2 bg-gray-800/40 border-b border-gray-800 cursor-pointer">
             <div class="flex items-center gap-3">
-              <span class="font-mono text-gray-500">#${idx + 1} ${step.exitCode !== 0 ? '(' + step.exitCode + ')' : ''}</span>
+              <span class="font-mono text-gray-500">#${idx + 1} ${step.exitCode !== undefined && step.exitCode !== 0 ? '(' + step.exitCode + ')' : ''}</span>
               <h3 class="font-semibold text-gray-200">${step.name}</h3>
               <span class="px-2.5 py-0.5 rounded-full font-medium ${stepBadge}">
                 ${step.status.toUpperCase()}
@@ -74,6 +82,7 @@ export class HtmlReporter implements Reporter {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${execReport.status === 'running' || execReport.status === 'pending' ? '<meta http-equiv="refresh" content="3">' : ''}
   <title>Run #${execReport.jobId} - ${execReport.workflowName}</title>
   <script type="importmap"> {"imports": { "@li3/": "https://cdn.li3.dev/@li3/" }}</script>
   <script>
@@ -98,7 +107,7 @@ export class HtmlReporter implements Reporter {
           ${ execReport.parentId ? ` -> <a href="/runs/${execReport.parentId}">#${execReport.parentId}</a>` : '' }
           </span>
         </h1>
-        <p class="text-xs text-gray-400 mt-1">Started ${execReport.startedAt} • Finished in ${execReport.durationMs}ms</p>
+        <p class="text-xs text-gray-400 mt-1">Started ${execReport.startedAt} • ${execReport.status === 'running' ? `Running for ${execReport.durationMs}ms` : execReport.status === 'pending' ? 'Waiting for a worker' : `Finished in ${execReport.durationMs}ms`}</p>
       </div>
       <div class="flex items-center gap-2">
         <span class="px-4 py-1.5 rounded-full text-sm font-semibold border ${statusColor}">
