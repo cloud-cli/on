@@ -20,6 +20,7 @@ import {
   JobRecord,
 } from './types.js';
 import { setupSignalHandlers } from './signals.js';
+import { consumeRunnerEvents } from './events.js';
 
 const DEBUG = !!process.env.DEBUG;
 
@@ -27,18 +28,24 @@ export const shutdownState = {
   isStopping: false,
 };
 
-// Global handle to active step for active process cancellation on SIGTERM
-let activeStepHandle: { cancel: () => Promise<void> } | null = null;
+const activeStepHandles = new Set<{ cancel: () => Promise<void> }>();
+let eventStreamController: AbortController | null = null;
+let wakeScheduler: (() => void) | null = null;
 
 /**
  * Called by signal handlers in index.ts during graceful shutdown
  */
 export async function abortActiveWorkerTask() {
-  if (activeStepHandle) {
-    console.log('⚡ Cancelling active step execution handle due to worker shutdown...');
-    await activeStepHandle.cancel();
-    activeStepHandle = null;
-  }
+  if (!activeStepHandles.size) return;
+  console.log('⚡ Cancelling active step execution handles due to worker shutdown...');
+  await Promise.allSettled(Array.from(activeStepHandles, (handle) => handle.cancel()));
+  activeStepHandles.clear();
+}
+
+export function requestWorkerShutdown() {
+  shutdownState.isStopping = true;
+  eventStreamController?.abort();
+  wakeScheduler?.();
 }
 
 /**
@@ -46,42 +53,152 @@ export async function abortActiveWorkerTask() {
  */
 export function startWorkers(count: number, queue: QueueManager, secrets: SecretStore, config: RunnerConfig) {
   shutdownState.isStopping = false;
-  const workerPromises = Array.from({ length: count }, (_, i) =>
-    startWorkerLoop(`worker-${i + 1}`, queue, secrets, config),
-  );
+  const workerPromises = [startWorkerScheduler(count, queue, secrets, config)];
   setupSignalHandlers(workerPromises);
   return workerPromises;
 }
 
 /**
- * Main worker polling loop
+ * Event-driven worker scheduler with bounded local concurrency.
  */
-export async function startWorkerLoop(
-  workerId: string,
+export async function startWorkerScheduler(
+  concurrency: number,
   queue: QueueManager,
   secrets: SecretStore,
   config: RunnerConfig,
 ) {
   const driver = await resolveDriver();
-  console.log(`[${workerId}] 🚀 Worker started. Driver: ${driver.name}`);
+  const activeJobs = new Set<Promise<void>>();
+  let wakeVersion = 0;
+  let pendingWake: (() => void) | null = null;
+  const wake = () => {
+    wakeVersion++;
+    pendingWake?.();
+  };
+
+  wakeScheduler = wake;
+  eventStreamController = new AbortController();
+  const eventStream = maintainEventStream(config, eventStreamController.signal, wake);
+  console.log(
+    `🚀 Worker scheduler started. Driver: ${driver.name}. Concurrency: ${concurrency}. Tags: ${config.tags.join(', ') || '(none)'}`,
+  );
 
   while (!shutdownState.isStopping) {
+    const observedWake = wakeVersion;
+
     try {
-      const job = await queue.claimNextJob();
+      while (activeJobs.size < concurrency && !shutdownState.isStopping) {
+        const job = await queue.claimNextJob(config.tags);
+        if (!job) break;
+        if (shutdownState.isStopping) {
+          await queue.releaseJob(job.id);
+          break;
+        }
 
-      if (!job) {
-        await new Promise((r) => setTimeout(r, 2000));
-        continue;
+        const workerId = `worker-${job.id}`;
+        let task: Promise<void>;
+        task = (async () => {
+          void notifyJobChange(config);
+          await processJob({ workerId, job, queue, secrets, config, driver });
+        })()
+          .catch((error) => console.error(`[${workerId}] ⚠️ Worker execution error:`, error))
+          .finally(() => {
+            activeJobs.delete(task);
+            void notifyJobChange(config);
+            wake();
+          });
+        activeJobs.add(task);
       }
-
-      await processJob({ workerId, job, queue, secrets, config, driver });
     } catch (error) {
-      console.error(`[${workerId}] ⚠️ Worker execution loop error:`, error);
-      await new Promise((r) => setTimeout(r, 5000));
+      console.error('⚠️ Worker scheduler claim error:', error);
+      setTimeout(wake, 5000).unref();
+    }
+
+    if (!shutdownState.isStopping && wakeVersion === observedWake) {
+      await waitForWake(observedWake, () => wakeVersion, (resolve) => (pendingWake = resolve));
+      pendingWake = null;
     }
   }
 
-  console.log(`[${workerId}] 🛑 Worker loop stopped cleanly.`);
+  eventStreamController.abort();
+  await Promise.allSettled(activeJobs);
+  await eventStream;
+  wakeScheduler = null;
+  console.log('🛑 Worker scheduler stopped cleanly.');
+}
+
+async function maintainEventStream(config: RunnerConfig, signal: AbortSignal, wake: () => void): Promise<void> {
+  let retryMs = 1000;
+
+  while (!signal.aborted) {
+    try {
+      await consumeRunnerEvents(
+        config.serverUrl,
+        signal,
+        (event, data) => {
+          if (event !== 'jobs.available') return;
+          const requiredTags = Array.isArray(data.tags)
+            ? data.tags.filter((tag): tag is string => typeof tag === 'string')
+            : [];
+          if (requiredTags.every((tag) => config.tags.includes(tag))) wake();
+        },
+        wake,
+      );
+      retryMs = 1000;
+    } catch (error: any) {
+      if (signal.aborted || error?.name === 'AbortError') break;
+      console.error(`⚠️ Worker event stream disconnected: ${error.message}`);
+    }
+
+    await abortableDelay(retryMs, signal);
+    retryMs = Math.min(retryMs * 2, 30_000);
+  }
+}
+
+function waitForWake(
+  observedWake: number,
+  getWakeVersion: () => number,
+  setWake: (resolve: () => void) => void,
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (getWakeVersion() !== observedWake) return resolve();
+
+    const timer = setTimeout(resolve, 60_000);
+    setWake(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+async function notifyJobChange(config: RunnerConfig): Promise<void> {
+  if (!config.adminToken) return;
+
+  try {
+    const response = await fetch(new URL('/api/events', config.serverUrl), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${config.adminToken}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok && DEBUG) console.error(`Failed to publish job status event: HTTP ${response.status}`);
+  } catch (error) {
+    if (DEBUG) console.error('Failed to publish job status event:', error);
+  }
 }
 
 /**
@@ -451,7 +568,7 @@ async function executeRunStep(params: {
     };
   }
 
-  activeStepHandle = handle; // Bind global handle for signal cancellation
+  activeStepHandles.add(handle);
   let cancelled = false;
 
   const cancelCheckInterval = setInterval(async () => {
@@ -465,7 +582,7 @@ async function executeRunStep(params: {
 
   const result: StepResult = await handle.done;
   clearInterval(cancelCheckInterval);
-  activeStepHandle = null; // Unbind handle when step finishes
+  activeStepHandles.delete(handle);
 
   if (handle.logFilePath && FS.existsSync(handle.logFilePath)) {
     try {

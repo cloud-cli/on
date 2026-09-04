@@ -51,6 +51,9 @@ export class YamlLoader {
           concurrency: wf.concurrency,
           steps: wf.steps,
           env: wf.env,
+          tags: Array.isArray(wf.tags)
+            ? [...new Set(wf.tags.filter((tag) => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean))]
+            : undefined,
         });
       }
     } catch (err: any) {

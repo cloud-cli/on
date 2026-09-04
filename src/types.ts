@@ -23,6 +23,10 @@ export interface RunnerConfig {
   workflows: string;
   /** Number of concurrent worker loops to spawn */
   workers: number;
+  /** Webhook server URL used for worker event notifications */
+  serverUrl: string;
+  /** Capabilities advertised by this worker node */
+  tags: string[];
   /** Storage path for job workspaces and step logs */
   storagePath: string;
   /** Global environment variables injected into all step runs */
@@ -128,6 +132,8 @@ export interface WorkflowDefinition {
   };
   steps: WorkflowStep[];
   env?: Record<string, string>;
+  /** Worker capabilities required to execute this workflow */
+  tags?: string[];
 }
 
 export interface WebhookServerOptions {
@@ -157,6 +163,7 @@ export interface JobPayload {
   steps: WorkflowStep[];
   inputs: WorkflowInputs;
   env?: Record<string, string>;
+  tags?: string[];
 }
 
 export interface MatrixStrategy {

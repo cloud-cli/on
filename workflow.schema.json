@@ -11,6 +11,13 @@
       "description": "Human-readable name for the workflow."
     },
 
+    "tags": {
+      "type": "array",
+      "description": "Worker capability tags required to execute this workflow.",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+
     "includes": {
       "type": "array",
       "description": "List of partial YAML files to merge into this workflow before execution.",

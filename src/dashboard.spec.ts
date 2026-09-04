@@ -26,7 +26,7 @@ describe('dashboard', () => {
     ]);
   });
 
-  it('hydrates a li3 app and polls the jobs API every five seconds', () => {
+  it('hydrates a li3 app and refreshes from server events', () => {
     const jobs = toDashboardJobs([row]);
     const html = generateDashboardHtml(jobs, true);
     const stateSource = html.match(/<script state>(.*?)<\/script>/s)?.[1];
@@ -39,7 +39,10 @@ describe('dashboard', () => {
     expect(html).toContain('Array.from(merged.values()).sort');
     expect(html).toContain('`/api/jobs?beforeId=${beforeId}`');
     expect(html).toContain('on-click="loadMore()"');
-    expect(html).toContain('setInterval(refreshJobs, 5000)');
+    expect(html).toContain("new EventSource('/api/events')");
+    expect(html).toContain("addEventListener('jobs.available', refreshJobs)");
+    expect(html).toContain("addEventListener('jobs.changed', refreshJobs)");
+    expect(html).toContain('setInterval(refreshJobs, 60000)');
     expect(html).not.toContain('http-equiv="refresh"');
   });
 });

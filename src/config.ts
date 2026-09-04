@@ -33,12 +33,16 @@ export async function loadConfig(values): Promise<RunnerConfig | null> {
 
 export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: UserRunnerConfig): RunnerConfig {
   const _ = process.env;
+  const port = Number(configFromFile.port || configFromCli.port || _.PORT || 11235);
+  const configuredTags = configFromFile.tags ?? (_.RUNNER_TAGS ? _.RUNNER_TAGS.split(',') : []);
   return {
-    port: Number(configFromFile.port || configFromCli.port || _.PORT || 11235),
+    port,
     adminToken: configFromFile.adminToken ?? _.RUNNER_ADMIN_SECRET ?? '',
     database: configFromFile.database ?? configFromCli.database ?? _.RUNNER_DATABASE_URL ?? '',
     workflows: configFromFile.workflows ?? configFromCli.workflows ?? _.RUNNER_WORKFLOWS ?? 'on/',
     workers: Number(configFromFile.workers ?? configFromCli.workers ?? _.RUNNER_WORKERS ?? 5),
+    serverUrl: configFromFile.serverUrl ?? _.RUNNER_SERVER_URL ?? `http://127.0.0.1:${port}`,
+    tags: configuredTags.map((tag) => tag.trim()).filter(Boolean),
     storagePath: configFromFile.storagePath ?? _.RUNNER_TMP ?? '/tmp/workspaces',
     env: configFromFile.env ?? {},
     reporters: configFromFile.reporters ?? [],
@@ -56,7 +60,7 @@ Usage:
 Commands:
   start           Runs both Webhook Ingress Server and Workers (Default)
   start-server    Runs Webhook Ingress Server only (API Gateway mode)
-  start-workers   Runs Worker Polling loops only (Scalable Worker mode)
+  start-workers   Runs event-driven workers (Scalable Worker mode)
   validate        Parses and validates workflow YAML files without running
 
 Options:
@@ -64,7 +68,9 @@ Options:
   -d, --database   SQLite Database URL (env: RUNNER_DATABASE_URL)
   -w, --workflows  Path to where your workflows are defined (default: on/, env: RUNNER_WORKFLOWS_PATH)
   -p, --port       Port for Webhook Ingress Server (default: 11235, env: PORT)
-  -k, --workers    Number of worker thread loops to spawn (default: 5, env: RUNNER_WORKERS)
+  -k, --workers    Maximum concurrent jobs (default: 5, env: RUNNER_WORKERS)
+                  Worker tags (comma-separated env: RUNNER_TAGS)
+                  Webhook server URL (env: RUNNER_SERVER_URL)
   -h, --help       Show this help message
   `);
 }

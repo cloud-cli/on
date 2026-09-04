@@ -12,6 +12,8 @@ RestartSec=5
 # Environment=RUNNER_WORKFLOWS_PATH=
 # Environment=PORT=
 # Environment=RUNNER_WORKERS=
+# Environment=RUNNER_SERVER_URL=http://runner-server:11235
+# Environment=RUNNER_TAGS=linux,docker
 
 [Install]
 WantedBy=multi-user.target

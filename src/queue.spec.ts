@@ -23,3 +23,24 @@ describe('QueueManager.listJobs', () => {
     });
   });
 });
+
+describe('QueueManager.claimNextJob', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('atomically claims only jobs whose required tags are all supported', async () => {
+    setUrl('http://database.test');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => null,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new QueueManager('build-node').claimNextJob(['linux', 'docker']);
+
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(request.m).toBe('get');
+    expect(request.s).toContain("json_extract(jobs.payload, '$.tags')");
+    expect(request.s).toContain('required_tag.value NOT IN (SELECT value FROM json_each(?))');
+    expect(request.d).toEqual(['build-node', '["linux","docker"]']);
+  });
+});

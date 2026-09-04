@@ -1,4 +1,4 @@
-import { shutdownState } from './worker.js';
+import { requestWorkerShutdown } from './worker.js';
 
 export async function setupSignalHandlers(activeWorkerPromises) {
   let isShuttingDown = false;
@@ -17,7 +17,7 @@ export async function setupSignalHandlers(activeWorkerPromises) {
     forceExitTimeout.unref();
 
     try {
-      shutdownState.isStopping = true;
+      requestWorkerShutdown();
 
       if (activeWorkerPromises.length > 0) {
         console.log('⚙️ Waiting for active worker jobs to drain...');

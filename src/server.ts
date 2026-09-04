@@ -14,6 +14,7 @@ import type {
 import { HtmlReporter } from './reporters/html.reporter.js';
 import { YamlLoader } from './parser/yaml-loader.js';
 import { generateDashboardHtml, toDashboardJobs } from './dashboard.js';
+import { EventBroker } from './events.js';
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -24,6 +25,8 @@ export class WebhookServer {
   private queue: QueueManager;
   private secrets: SecretStore;
   private adminToken: string;
+  private events = new EventBroker();
+  private workflowsLoaded: Promise<void>;
 
   static async withPort(options: WebhookServerOptions & { port: number }) {
     const { port, ...o } = options;
@@ -35,7 +38,7 @@ export class WebhookServer {
     this.secrets = options.secrets;
     this.adminToken = options.adminToken;
 
-    YamlLoader.from(options.config.workflows).then((loadedWorkflows) => {
+    this.workflowsLoaded = YamlLoader.from(options.config.workflows).then((loadedWorkflows) => {
       this.workflows = loadedWorkflows;
       console.log(`✅ Loaded ${loadedWorkflows.length} workflow(s) from ${options.config.workflows}`);
     });
@@ -82,6 +85,14 @@ export class WebhookServer {
       return this.renderDashboardJobs(res, limit, afterId, beforeId);
     }
 
+    if (req.method === 'GET' && url.pathname === '/api/events') {
+      return this.events.subscribe(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/events') {
+      return this.handleWorkerEvent(req, res);
+    }
+
     if (req.method === 'GET' && url.pathname.startsWith('/runs/')) {
       const jobId = url.pathname.replace('/runs/', '');
       return this.renderRunDetails(jobId, res);
@@ -123,7 +134,8 @@ export class WebhookServer {
         return;
       }
 
-      this.matchWorkflows(provider, inputs);
+      await this.workflowsLoaded;
+      await this.matchWorkflows(provider, inputs);
 
       res.writeHead(202, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ message: 'OK' }));
@@ -210,9 +222,11 @@ export class WebhookServer {
         env: workflow.env,
         steps: workflow.steps,
         inputs,
+        tags: workflow.tags,
       };
 
       await this.queue.enqueue(workflow.id, jobPayload, concurrencyKey);
+      this.events.publish('jobs.available', { tags: workflow.tags || [] });
     }
   }
 
@@ -232,6 +246,16 @@ export class WebhookServer {
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ message: 'Secrets reloaded successfully' }));
+  }
+
+  private async handleWorkerEvent(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (!this.adminToken || req.headers.authorization !== `Bearer ${this.adminToken}`) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Unauthorized' }));
+    }
+
+    this.events.publish('jobs.changed');
+    res.writeHead(202).end();
   }
 
   /**
@@ -323,6 +347,7 @@ export class WebhookServer {
     const id = await this.queue.restartJob(jobId);
 
     if (id) {
+      this.events.publish('jobs.available');
       res.writeHead(201, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ id }));
       return;
@@ -342,6 +367,7 @@ export class WebhookServer {
   }
 
   async stop(): Promise<void> {
+    this.events.close();
     return new Promise((resolve) => {
       this.server.close(() => {
         console.log('🌐 Webhook Ingress Server stopped listening.');

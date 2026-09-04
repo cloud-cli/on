@@ -49,7 +49,7 @@ async function main() {
     }
 
     case 'start-workers': {
-      console.log(`⚙️ Starting ${config.workers} Worker Loop(s)...`);
+      console.log(`⚙️ Starting worker scheduler with ${config.workers} concurrent slot(s)...`);
       await queue.init();
       startWorkers(config.workers, queue, secrets, config);
       break;

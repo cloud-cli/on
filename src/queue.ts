@@ -32,10 +32,10 @@ export class QueueManager {
   }
 
   /**
-   * ATOMICALY claims the oldest pending job.
+   * Atomically claims the oldest pending job compatible with this worker.
    * Requires SQLite >= 3.35 for the RETURNING clause.
    */
-  async claimNextJob(): Promise<JobRecord | null> {
+  async claimNextJob(workerTags: string[] = []): Promise<JobRecord | null> {
     // This query is completely immune to HTTP/Network race conditions.
     // It locks the row, updates it, and returns the data in one transaction.
     let result = await db.get(
@@ -48,15 +48,27 @@ export class QueueManager {
       WHERE id = (
         SELECT id FROM jobs
         WHERE status = 'pending'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM json_each(COALESCE(json_extract(jobs.payload, '$.tags'), '[]')) AS required_tag
+            WHERE required_tag.value NOT IN (SELECT value FROM json_each(?))
+          )
         ORDER BY created_at ASC
         LIMIT 1
       )
       RETURNING *;
     `,
-      [this.workerId],
+      [this.workerId, JSON.stringify(workerTags)],
     );
 
     return result ? (result as JobRecord) : null;
+  }
+
+  async releaseJob(jobId: string | number): Promise<void> {
+    await db.run(
+      `UPDATE jobs SET status = 'pending', worker_id = NULL, started_at = NULL WHERE id = ? AND status = 'running';`,
+      [jobId],
+    );
   }
 
   /**

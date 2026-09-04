@@ -126,12 +126,17 @@
         const hasMore = ref(false);
         const loadingMore = ref(false);
         let refreshTimer;
+        let eventSource;
         let refreshing = false;
+        let refreshPending = false;
 
         const upper = (value) => String(value || '').toUpperCase();
         const terminalStatuses = new Set(['success', 'failed', 'cancelled']);
         const refreshJobs = async () => {
-          if (refreshing) return;
+          if (refreshing) {
+            refreshPending = true;
+            return;
+          }
           refreshing = true;
 
           try {
@@ -159,6 +164,10 @@
             refreshError.value = true;
           } finally {
             refreshing = false;
+            if (refreshPending) {
+              refreshPending = false;
+              void refreshJobs();
+            }
           }
         };
 
@@ -187,9 +196,18 @@
         };
 
         onInit(() => {
-          refreshTimer = setInterval(refreshJobs, 5000);
+          eventSource = new EventSource('/api/events');
+          eventSource.addEventListener('jobs.available', refreshJobs);
+          eventSource.addEventListener('jobs.changed', refreshJobs);
+          eventSource.onerror = () => {
+            refreshError.value = true;
+          };
+          refreshTimer = setInterval(refreshJobs, 60000);
         });
-        onDestroy(() => clearInterval(refreshTimer));
+        onDestroy(() => {
+          eventSource?.close();
+          clearInterval(refreshTimer);
+        });
 
         return { jobs, lastUpdated, refreshError, hasMore, loadingMore, loadMore, upper };
       }

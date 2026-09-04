@@ -82,6 +82,9 @@ concurrency:
   group: release-${inputs.repo}
   cancel-in-progress: true
 
+# Every tag must be advertised by the worker that claims this workflow.
+tags: [linux, docker]
+
 steps:
   - id: checkout
     name: Checkout Code Repository
@@ -147,7 +150,7 @@ npx @cloud-cli/on [command] [options]
 | Command             | Description                                                                              |
 | ------------------- | ---------------------------------------------------------------------------------------- |
 | **`start-server`**  | Runs Webhook Ingress Gateway (the HTTP server receiving webhooks).                       |
-| **`start-workers`** | Runs Worker Polling loops (Scalable Workers).                                            |
+| **`start-workers`** | Runs the event-driven worker scheduler (Scalable Workers).                              |
 | **`validate`**      | Parses and validates all YAML workflows in your workflows folder without executing jobs. |
 
 ### CLI and Environment Options
@@ -159,8 +162,12 @@ npx @cloud-cli/on [command] [options]
 | `-d` | `--database`  | -                     | `RUNNER_DATABASE_URL` | SQLite database file path or HTTP URL.    |
 | `-w` | `--workflows` | `on/`                 | `RUNNER_WORKFLOWS`    | Directory where workflow YAML files live. |
 | `-p` | `--port`      | `11235`               | `PORT`                | Port for the Ingress HTTP server.         |
-| `-k` | `--workers`   | `5`                   | `RUNNER_WORKERS`      | Number of worker loop threads to spawn.   |
+| `-k` | `--workers`   | `5`                   | `RUNNER_WORKERS`      | Maximum concurrent jobs on this node.     |
 |      |               |                       | `RUNNER_ADMIN_SECRET` | Admin token to refresh secrets via API    |
+|      |               |                       | `RUNNER_SERVER_URL`   | Webhook server URL used by workers.       |
+|      |               |                       | `RUNNER_TAGS`         | Comma-separated worker capability tags.  |
+
+Set the same non-empty `RUNNER_ADMIN_SECRET` on the server and workers to publish live job-status refresh events. Job availability and the 60-second recovery refresh continue to work without it.
 
 ### Secrets
 
@@ -177,6 +184,8 @@ import { HtmlReporter, SlackReporter, JsonFileReporter } from '@cloud-cli/on/rep
 export default {
   port: 3000,
   workers: 5,
+  serverUrl: 'https://runner.example.com/',
+  tags: ['linux', 'docker'],
   workflows: '/home/workflows/',
   storagePath: '/tmp/workspaces',
   database: 'https://remote.db.com/',
