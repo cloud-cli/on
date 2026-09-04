@@ -10,9 +10,7 @@ import { WebhookServer } from './server.js';
 import { RunnerConfig } from './types.js';
 import { startWorkers } from './worker.js';
 
-export { HtmlReporter } from './reporters/html.reporter.js';
-export { JsonFileReporter } from './reporters/json-file.reporter.js';
-export { SlackReporter } from './reporters/slack.reporter.js';
+export { GitHubStatusPlugin } from './plugins/github-status.plugin.js';
 
 function onValidate(config: RunnerConfig) {
   console.log('🔍 Validating Workflows in:', config.workflows);

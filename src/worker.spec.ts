@@ -40,7 +40,7 @@ describe('incremental workflow reports', () => {
       },
       queue,
       secrets: { getAll: () => ({}) },
-      config: { storagePath: '/tmp', env: {}, reporters: [] },
+      config: { storagePath: '/tmp', serverUrl: 'http://runner.test', env: {}, plugins: [] },
       driver: {},
     } as Processable);
 

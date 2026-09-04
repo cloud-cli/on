@@ -21,6 +21,7 @@ import {
 } from './types.js';
 import { setupSignalHandlers } from './signals.js';
 import { consumeRunnerEvents } from './events.js';
+import { PluginManager } from './plugins/manager.js';
 
 const DEBUG = !!process.env.DEBUG;
 
@@ -98,13 +99,13 @@ export async function startWorkerScheduler(
         const workerId = `worker-${job.id}`;
         let task: Promise<void>;
         task = (async () => {
-          void notifyJobChange(config);
+          void notifyJobChange(config, job.id);
           await processJob({ workerId, job, queue, secrets, config, driver });
         })()
           .catch((error) => console.error(`[${workerId}] ⚠️ Worker execution error:`, error))
           .finally(() => {
             activeJobs.delete(task);
-            void notifyJobChange(config);
+            void notifyJobChange(config, job.id);
             wake();
           });
         activeJobs.add(task);
@@ -186,13 +187,17 @@ function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-async function notifyJobChange(config: RunnerConfig): Promise<void> {
+async function notifyJobChange(config: RunnerConfig, jobId: string | number): Promise<void> {
   if (!config.adminToken) return;
 
   try {
     const response = await fetch(new URL('/api/events', config.serverUrl), {
       method: 'POST',
-      headers: { Authorization: `Bearer ${config.adminToken}` },
+      headers: {
+        Authorization: `Bearer ${config.adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ jobId }),
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok && DEBUG) console.error(`Failed to publish job status event: HTTP ${response.status}`);
@@ -251,6 +256,15 @@ export async function processJob(p: Processable) {
 
   // Make the trace available before the first step starts.
   await queue.saveReport(job.id, executionReport);
+  void notifyJobChange(config, job.id);
+  const pluginManager = new PluginManager(config.plugins);
+  const workflowContext = {
+    jobId: String(job.id),
+    workflowName: job.workflow_id,
+    inputs,
+    runUrl: new URL(`/runs/${job.id}`, config.serverUrl).toString(),
+  };
+  await pluginManager.triggerWorkflowStart(workflowContext);
 
   const context = { payload, steps, executionContext, ...p };
   const { cancelled, failed } = await processSteps(context, executionReport);
@@ -260,9 +274,9 @@ export async function processJob(p: Processable) {
   executionReport.durationMs = Date.now() - jobStartTime;
   executionReport.finishedAt = new Date().toISOString();
   await queue.completeJob(job.id, finalStatus, executionReport);
+  void notifyJobChange(config, job.id);
   console.log(`[${workerId}] ✅ Job #${job.id} completed as: ${finalStatus}`);
-
-  await dispatchReporters(workerId, config.reporters, executionReport);
+  await pluginManager.triggerWorkflowFinish(workflowContext, finalStatus);
 }
 
 interface ExecOutput {
@@ -309,6 +323,7 @@ async function processSteps(
       };
       executionReport.durationMs = Date.now() - Date.parse(executionReport.startedAt);
       await queue.saveReport(job.id, executionReport);
+      void notifyJobChange(config, job.id);
 
       const stepResult = await executeSingleStep({
         workerId,
@@ -348,6 +363,7 @@ async function processSteps(
       processedSteps = i + 1;
       executionReport.durationMs = Date.now() - Date.parse(executionReport.startedAt);
       await queue.saveReport(job.id, executionReport);
+      void notifyJobChange(config, job.id);
 
       if (stepResult.skipped) {
         break;
@@ -374,6 +390,7 @@ async function processSteps(
     fillSkippedSteps(steps, processedSteps, stepReports);
     executionReport.durationMs = Date.now() - Date.parse(executionReport.startedAt);
     await queue.saveReport(job.id, executionReport);
+    void notifyJobChange(config, job.id);
   }
 
   return { failed, cancelled, stepReports };
@@ -669,23 +686,4 @@ function buildExecutionReport(
     artifacts: [],
     rerunToken: JSON.stringify({ jobId: job.id, payload }),
   };
-}
-
-/**
- * Dispatches report to registered plugins
- */
-async function dispatchReporters(workerId: string, reporters: any[] = [], report: WorkflowExecutionReport) {
-  if (!Array.isArray(reporters) || reporters.length === 0) return;
-
-  console.log(`[${workerId}] 📢 Dispatching execution report to ${reporters.length} reporter(s)...`);
-
-  await Promise.allSettled(
-    reporters.map(async (reporter) => {
-      try {
-        await reporter.report(report);
-      } catch (err: any) {
-        console.error(`[${workerId}] ⚠️ Reporter '${reporter.name || 'unknown'}' failed:`, err.message);
-      }
-    }),
-  );
 }

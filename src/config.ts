@@ -45,7 +45,7 @@ export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: U
     tags: configuredTags.map((tag) => tag.trim()).filter(Boolean),
     storagePath: configFromFile.storagePath ?? _.RUNNER_TMP ?? '/tmp/workspaces',
     env: configFromFile.env ?? {},
-    reporters: configFromFile.reporters ?? [],
+    plugins: configFromFile.plugins ?? [],
   };
 }
 

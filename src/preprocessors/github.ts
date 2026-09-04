@@ -43,7 +43,7 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
         owner,
         repo,
         clone_url: body.repository?.clone_url,
-        commit_sha: body.after || body.head_commit?.id,
+        commit_sha: body.after || body.head_commit?.id || body.pull_request?.head?.sha,
         author: body.pusher?.name || body.sender?.login,
         action: body.action,
         raw: body,

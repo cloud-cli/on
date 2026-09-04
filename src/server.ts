@@ -9,12 +9,11 @@ import type {
   WebhookPreprocessor,
   WebhookServerOptions,
   WorkflowDefinition,
-  WorkflowExecutionReport,
 } from './types.js';
-import { HtmlReporter } from './reporters/html.reporter.js';
 import { YamlLoader } from './parser/yaml-loader.js';
 import { generateDashboardHtml, toDashboardJobs } from './dashboard.js';
 import { EventBroker } from './events.js';
+import { buildRunView, renderRunHtml } from './run-view.js';
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -95,7 +94,12 @@ export class WebhookServer {
 
     if (req.method === 'GET' && url.pathname.startsWith('/runs/')) {
       const jobId = url.pathname.replace('/runs/', '');
-      return this.renderRunDetails(jobId, res);
+      return this.renderRunDetails(jobId, res, 'html');
+    }
+
+    if (req.method === 'GET' && url.pathname.startsWith('/api/runs/')) {
+      const jobId = url.pathname.replace('/api/runs/', '');
+      return this.renderRunDetails(jobId, res, 'json');
     }
 
     if (req.method === 'POST' && url.pathname.startsWith('/restart/')) {
@@ -254,7 +258,20 @@ export class WebhookServer {
       return res.end(JSON.stringify({ error: 'Unauthorized' }));
     }
 
-    this.events.publish('jobs.changed');
+    const { rawBuffer } = await this.readRequest(req, res);
+    if (!rawBuffer || res.headersSent) return;
+
+    let jobId: number | undefined;
+    try {
+      const payload = rawBuffer.length ? JSON.parse(rawBuffer.toString('utf8')) : {};
+      const parsedJobId = Number(payload.jobId);
+      if (Number.isSafeInteger(parsedJobId) && parsedJobId > 0) jobId = parsedJobId;
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Invalid event payload' }));
+    }
+
+    this.events.publish('jobs.changed', jobId ? { jobId } : {});
     res.writeHead(202).end();
   }
 
@@ -283,64 +300,25 @@ export class WebhookServer {
   /**
    * Serves single job HTML report
    */
-  private async renderRunDetails(jobId: string, res: http.ServerResponse) {
+  private async renderRunDetails(jobId: string, res: http.ServerResponse, format: 'html' | 'json') {
     const job = await this.queue.getJob(jobId);
 
     if (!job) {
-      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end('<h1>404 - Report Not Found</h1>');
+      const contentType = format === 'json' ? 'application/json; charset=utf-8' : 'text/html; charset=utf-8';
+      res.writeHead(404, { 'Content-Type': contentType });
+      return res.end(format === 'json' ? JSON.stringify({ error: 'Run not found' }) : '<h1>404 - Run Not Found</h1>');
     }
 
-    const reportData = job.report
-      ? (JSON.parse(job.report) as WorkflowExecutionReport)
-      : this.buildPendingReport(job);
-
-    reportData.status = job.status;
-    if (reportData.status === 'running') {
-      reportData.durationMs = Math.max(0, Date.now() - Date.parse(reportData.startedAt));
-    }
-
-    // Fetch logs on-demand
     const logsMap = await this.queue.getJobLogs(jobId);
+    const report = buildRunView(job, logsMap, (value) => this.secrets.redactText(value));
 
-    // Attach log content back onto step objects for rendering
-    reportData.steps = (reportData.steps || []).map((step: any) => ({
-      ...step,
-      logContent: step.status === 'running' || step.status === 'pending' ? '' : logsMap[step.id] || '',
-    }));
-
-    const htmlReporter = new HtmlReporter({ outputDir: '' });
-    const htmlContent = htmlReporter.generateHtml(reportData);
-    const redacted = this.secrets.redactText(htmlContent);
+    if (format === 'json') {
+      res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify(report));
+    }
 
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(redacted);
-  }
-
-  private buildPendingReport(job: any): WorkflowExecutionReport {
-    const payload = JSON.parse(job.payload) as JobPayload;
-    const startedAt = job.started_at || job.created_at;
-
-    return {
-      jobId: String(job.id),
-      parentId: String(job.parentId || ''),
-      workflowName: job.workflow_id,
-      status: job.status,
-      durationMs: job.status === 'running' ? Math.max(0, Date.now() - Date.parse(startedAt)) : 0,
-      startedAt,
-      inputs: payload.inputs || {},
-      environment: payload.env || {},
-      steps: (payload.steps || []).map((step, index) => ({
-        id: step.id || `step-${index}`,
-        name: step.name || step.id || `step-${index}`,
-        status: 'pending',
-        durationMs: 0,
-        outputs: {},
-        logContent: '',
-      })),
-      artifacts: [],
-      rerunToken: JSON.stringify({ jobId: job.id, payload }),
-    };
+    res.end(renderRunHtml(report));
   }
 
   private async handleRestartJob(jobId: string, res: http.ServerResponse) {

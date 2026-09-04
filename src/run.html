@@ -91,19 +91,27 @@
     </div>
 
     <script setup>
-      import { computed, onInit, ref } from '@li3/web';
+      import { computed, onDestroy, onInit, ref } from '@li3/web';
       import { AnsiUp } from 'ansi_up';
 
       export default function setup() {
         const report = ref({});
+        const now = ref(Date.now());
         const ansiUp = new AnsiUp();
         ansiUp.use_classes = false;
+        let eventSource;
+        let refreshTimer;
+        let clockTimer;
+        let refreshing = false;
+        let refreshPending = false;
 
         const active = computed(() => ['pending', 'running'].includes(report.value.status));
         const inputsJson = computed(() => JSON.stringify(report.value.inputs || {}, null, 2));
         const timing = computed(() => {
           if (report.value.status === 'pending') return 'Waiting for a worker';
-          if (report.value.status === 'running') return `Running for ${report.value.durationMs}ms`;
+          if (report.value.status === 'running') {
+            return `Running for ${Math.max(0, now.value - Date.parse(report.value.startedAt))}ms`;
+          }
           return `Finished in ${report.value.durationMs}ms`;
         });
 
@@ -122,10 +130,49 @@
             location.href = `/runs/${id}`;
           }
         };
+        const refreshRun = async () => {
+          if (refreshing) {
+            refreshPending = true;
+            return;
+          }
+          refreshing = true;
+
+          try {
+            const response = await fetch(`/api/runs/${report.value.jobId}`, {
+              headers: { accept: 'application/json' },
+            });
+            if (!response.ok) throw new Error(`Run refresh failed: ${response.status}`);
+            report.value = await response.json();
+          } catch (error) {
+            console.error(error);
+          } finally {
+            refreshing = false;
+            if (refreshPending) {
+              refreshPending = false;
+              void refreshRun();
+            }
+          }
+        };
+        const handleJobChange = (event) => {
+          const data = JSON.parse(event.data || '{}');
+          if (!data.jobId || String(data.jobId) === String(report.value.jobId)) void refreshRun();
+        };
 
         onInit(() => {
           document.title = `Run #${report.value.jobId} - ${report.value.workflowName}`;
-          if (active.value) setTimeout(() => location.reload(), 3000);
+          eventSource = new EventSource('/api/events');
+          eventSource.addEventListener('jobs.changed', handleJobChange);
+          refreshTimer = setInterval(() => {
+            if (active.value) void refreshRun();
+          }, 60000);
+          clockTimer = setInterval(() => {
+            now.value = Date.now();
+          }, 1000);
+        });
+        onDestroy(() => {
+          eventSource?.close();
+          clearInterval(refreshTimer);
+          clearInterval(clockTimer);
         });
 
         return { report, inputsJson, timing, upper, stepLog, restartJob };

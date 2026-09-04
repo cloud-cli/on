@@ -179,7 +179,7 @@ You can customize engine behavior using `runner.config.mjs` in your project root
 
 ```javascript
 // runner.config.mjs
-import { HtmlReporter, SlackReporter, JsonFileReporter } from '@cloud-cli/on/reporters';
+import { GitHubStatusPlugin } from '@cloud-cli/on';
 
 export default {
   port: 3000,
@@ -195,17 +195,18 @@ export default {
     NODE_ENV: 'production',
   },
 
-  // Custom execution reporters
-  reporters: [
-    new JsonFileReporter({ outputDir: './reports/json' }),
-    new HtmlReporter({ outputDir: './reports/html' }),
-    new SlackReporter({
-      webhookUrl: process.env.SLACK_WEBHOOK_URL,
-      channel: '#ci-deployments',
+  plugins: [
+    new GitHubStatusPlugin({
+      token: process.env.SECRET_GITHUB_TOKEN,
+      context: 'on',
     }),
   ],
 };
 ```
+
+The GitHub status plugin publishes commit states when a workflow starts and finishes. Its token needs permission to write commit statuses for the target repository.
+
+Run details are available as HTML at `/runs/:id` and as sanitized JSON at `/api/runs/:id`. The HTML view refreshes reactively through job-specific SSE events while a run is active. Both representations omit raw webhook bodies, sensitive input fields, execution environment values, and internal rerun state.
 
 ---
 

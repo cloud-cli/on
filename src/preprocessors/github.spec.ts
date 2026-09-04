@@ -85,6 +85,24 @@ describe('GitHubPreprocessor parsing', () => {
   it('rejects requests without a signature', () => {
     expect(preprocessor.parse({}, Buffer.from('{}'), 'secret').isValid).toBe(false);
   });
+
+  it('uses the head commit from pull request payloads', () => {
+    const secret = 'secret';
+    const body = Buffer.from(
+      JSON.stringify({
+        repository: { full_name: 'octocat/example' },
+        pull_request: { head: { sha: 'pull-request-sha' } },
+      }),
+    );
+    const signature = 'sha256=' + crypto.createHmac('sha256', secret).update(body).digest('hex');
+    const result = preprocessor.parse(
+      { 'x-github-event': 'pull_request', 'x-hub-signature-256': signature },
+      body,
+      secret,
+    );
+
+    expect(result.inputs.commit_sha).toBe('pull-request-sha');
+  });
 });
 
 describe('YamlLoader trigger filters', () => {

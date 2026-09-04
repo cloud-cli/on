@@ -7,11 +7,6 @@ import { SecretStore } from './secrets.js';
 // 3. workflow queue and pending jobs: a combination of templates and inputs that generate multiple steps to execute, which depend upon layer 2
 // 4. a single unit of work: an executable step, belonging to a job, which is atomic and depends upon information in the other 3 layers
 
-export interface Reporter {
-  name: string;
-  report(execReport: WorkflowExecutionReport): Promise<void>;
-}
-
 export interface RunnerConfig {
   /** Ingress HTTP Gateway Port */
   port: number;
@@ -21,7 +16,7 @@ export interface RunnerConfig {
   database: string;
   /** Directory where workflow YAML files live */
   workflows: string;
-  /** Number of concurrent worker loops to spawn */
+  /** Maximum number of jobs executed concurrently on this node */
   workers: number;
   /** Webhook server URL used for worker event notifications */
   serverUrl: string;
@@ -31,8 +26,8 @@ export interface RunnerConfig {
   storagePath: string;
   /** Global environment variables injected into all step runs */
   env: Record<string, string>;
-  /** Registered reporter plugins (JSON, Slack, HTML, etc.) */
-  reporters: Reporter[];
+  /** External integrations notified about workflow lifecycle changes */
+  plugins: WorkflowPlugin[];
 }
 
 export type UserRunnerConfig = Partial<RunnerConfig>;
@@ -180,50 +175,20 @@ export interface ParsedWorkflow {
   [key: string]: any;
 }
 
-export interface IngressContext {
-  provider: string;
-  headers: Record<string, string>;
-  body: any;
-  rawBuffer: Buffer;
-}
-
 export interface WorkflowContext {
   jobId: string;
   workflowName: string;
   inputs: WorkflowInputs;
-  env: Record<string, string>;
+  runUrl: string;
 }
 
 export interface WorkflowPlugin {
   name: string;
-
-  // -------------------------------------------------------------
-  // INGRESS HOOKS (HTTP Server Side)
-  // -------------------------------------------------------------
-  /** Verify HMAC or signatures */
-  onAuthenticate?: (ctx: IngressContext) => Promise<boolean> | boolean;
-
-  /** Convert raw body/headers into normalized inputs */
-  onTransform?: (ctx: IngressContext) => Promise<Record<string, any>> | Record<string, any>;
-
-  /** Final gatekeeper check (return false to drop job before enqueueing) */
-  onFilter?: (inputs: Record<string, any>, ctx: IngressContext) => Promise<boolean> | boolean;
-
-  // -------------------------------------------------------------
-  // EXECUTION HOOKS (Worker / Runner Side)
-  // -------------------------------------------------------------
-  /** Runs before any steps execute (e.g. notify Slack, update GitHub status to "Pending") */
   onWorkflowStart?: (wf: WorkflowContext) => Promise<void>;
-
-  /** Runs right before a step executes (e.g. inject dynamic secrets, prepare workspace) */
-  onStepBefore?: (step: StepContext, wf: WorkflowContext) => Promise<void>;
-
-  /** Runs after a step finishes (e.g. parse outputs, stream step metrics) */
-  onStepAfter?: (step: StepContext, result: StepResult, wf: WorkflowContext) => Promise<void>;
-
-  /** Runs when workflow succeeds or fails (e.g. update GitHub status to "Success/Failure", wipe layers) */
-  onWorkflowFinish?: (wf: WorkflowContext, status: 'success' | 'failed', error?: Error) => Promise<void>;
+  onWorkflowFinish?: (wf: WorkflowContext, status: FinalJobStatus) => Promise<void>;
 }
+
+export type FinalJobStatus = Exclude<JobStatus, 'pending' | 'running'>;
 
 export interface StepReport {
   id: string;
