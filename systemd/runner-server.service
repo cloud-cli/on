@@ -6,8 +6,8 @@ PartOf=runner.target
 
 [Service]
 Type=simple
-User=on
-Group=on
+User=root
+Group=root
 WorkingDirectory=/opt/on
 EnvironmentFile=-/etc/on/runner.env
 LoadCredential=on-master-key:/etc/on/credentials/on-master-key

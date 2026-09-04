@@ -98,7 +98,9 @@ export async function startWorkerScheduler(
           break;
         }
 
-        const workerId = `worker-${job.id}`;
+        // Match the ID written by QueueManager.claimNextJob so the server can
+        // authorize this machine's request for the claimed job's secrets.
+        const workerId = process.env.WORKER_NAME || 'cli';
         let task: Promise<void>;
         task = (async () => {
           void notifyJobChange(config, job.id);

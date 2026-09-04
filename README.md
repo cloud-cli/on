@@ -298,7 +298,7 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
 
 ## systemd Deployment
 
-Install the unit files from `systemd/`, create a non-login `on` user, and create a root-owned `/etc/on/runner.env` with `RUNNER_DATABASE_URL`, `RUNNER_SERVER_URL`, `RUNNER_ADMIN_SECRET`, `RUNNER_TAGS`, and `RUNNER_TMP`. Use `systemctl edit` for per-machine overrides.
+Install the unit files from `systemd/` and create a root-owned `/etc/on/runner.env` with `RUNNER_DATABASE_URL`, `RUNNER_SERVER_URL`, `RUNNER_ADMIN_SECRET`, `RUNNER_TAGS`, and `RUNNER_TMP`. The supplied units run as root because the systemd execution driver creates transient system services. Use `systemctl edit` for per-machine overrides.
 
 Place the server master key in `/etc/on/credentials/on-master-key` with permissions readable only by the `on` user. `runner-server.service` exposes it privately through systemd's credentials directory. Start the primary control plane with `systemctl enable --now runner.target`; enable `runner-worker.service` separately on worker machines. Use `systemctl edit runner-worker.service` for machine-specific labels and paths.
 
