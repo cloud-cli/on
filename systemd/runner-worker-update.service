@@ -1,0 +1,13 @@
+[Unit]
+Description=Update On CI worker package
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/opt/on/package.json
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/on
+ExecStart=/usr/bin/env npm install --no-save @cloud-cli/on@latest --prefix /opt/on
+ExecStartPost=/usr/bin/systemctl try-restart runner-worker.service

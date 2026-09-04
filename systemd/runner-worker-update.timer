@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily On CI worker update
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=45m
+Unit=runner-worker-update.service
+
+[Install]
+WantedBy=timers.target

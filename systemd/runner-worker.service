@@ -12,6 +12,7 @@ EnvironmentFile=-/etc/on/worker.env
 ExecStart=/usr/bin/on start-workers
 Restart=always
 RestartSec=5
+TimeoutStopSec=1h
 
 [Install]
 WantedBy=multi-user.target
