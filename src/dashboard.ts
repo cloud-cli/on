@@ -21,6 +21,6 @@ export function toDashboardJobs(rows: any[]): DashboardJob[] {
   }));
 }
 
-export function generateDashboardHtml(jobs: DashboardJob[]): string {
-  return dashboardTemplate.replace('__DASHBOARD_STATE__', () => serializeHtmlState({ jobs }));
+export function generateDashboardHtml(jobs: DashboardJob[], hasMore = false): string {
+  return dashboardTemplate.replace('__DASHBOARD_STATE__', () => serializeHtmlState({ jobs, hasMore }));
 }

@@ -250,6 +250,7 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
 | ---------- | ------------------ | -------------------------------------------------------------------------------------- |
 | **`POST`** | `/webhooks/github` | Webhook endpoint for GitHub events. Applies GitHub filters and evaluates `on.github.if`. |
 | **`GET`**  | `/runs`            | **Dashboard:** Live dark-mode monitoring page listing recent jobs and worker health.   |
+| **`GET`**  | `/api/jobs?afterId=<id>&beforeId=<id>&limit=<n>` | Dashboard jobs with exclusive lower and upper ID cursors and a limit from 1 to 500 (default 50). |
 | **`GET`**  | `/runs/:jobId`     | **Job Report:** Interactive HTML trace view with step timings and terminal log output. |
 
 ### Dashboard Features

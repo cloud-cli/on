@@ -103,6 +103,17 @@
           <div class="p-8 text-center text-gray-500">No jobs recorded yet.</div>
         </template>
       </section>
+
+      <template if="hasMore">
+        <div class="flex justify-center">
+          <button
+            class="px-4 py-2 text-sm text-gray-200 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg"
+            on-click="loadMore()"
+          >
+            {{ loadingMore ? 'Loading...' : 'Load more' }}
+          </button>
+        </div>
+      </template>
     </main>
 
     <script setup>
@@ -112,20 +123,35 @@
         const jobs = ref([]);
         const lastUpdated = ref('now');
         const refreshError = ref(false);
+        const hasMore = ref(false);
+        const loadingMore = ref(false);
         let refreshTimer;
         let refreshing = false;
 
         const upper = (value) => String(value || '').toUpperCase();
+        const terminalStatuses = new Set(['success', 'failed', 'cancelled']);
         const refreshJobs = async () => {
           if (refreshing) return;
           refreshing = true;
 
           try {
-            const response = await fetch('/api/jobs', { headers: { accept: 'application/json' } });
+            const activeIds = jobs.value
+              .filter((job) => !terminalStatuses.has(job.status))
+              .map((job) => Number(job.id));
+            const knownIds = jobs.value.map((job) => Number(job.id));
+            const afterId = activeIds.length
+              ? Math.max(0, Math.min(...activeIds) - 1)
+              : knownIds.length
+                ? Math.max(...knownIds)
+                : null;
+            const url = afterId === null ? '/api/jobs?limit=500' : `/api/jobs?afterId=${afterId}&limit=500`;
+            const response = await fetch(url, { headers: { accept: 'application/json' } });
             if (!response.ok) throw new Error(`Dashboard refresh failed: ${response.status}`);
 
             const data = await response.json();
-            jobs.value = data.jobs;
+            const merged = new Map(jobs.value.map((job) => [job.id, job]));
+            for (const job of data.jobs) merged.set(job.id, job);
+            jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
             lastUpdated.value = new Date().toLocaleTimeString();
             refreshError.value = false;
           } catch (error) {
@@ -136,12 +162,36 @@
           }
         };
 
+        const loadMore = async () => {
+          if (loadingMore.value || !hasMore.value || !jobs.value.length) return;
+          loadingMore.value = true;
+
+          try {
+            const beforeId = Math.min(...jobs.value.map((job) => Number(job.id)));
+            const response = await fetch(`/api/jobs?beforeId=${beforeId}`, {
+              headers: { accept: 'application/json' },
+            });
+            if (!response.ok) throw new Error(`Loading older jobs failed: ${response.status}`);
+
+            const data = await response.json();
+            const merged = new Map(jobs.value.map((job) => [job.id, job]));
+            for (const job of data.jobs) merged.set(job.id, job);
+            jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
+            hasMore.value = data.hasMore;
+          } catch (error) {
+            console.error(error);
+            refreshError.value = true;
+          } finally {
+            loadingMore.value = false;
+          }
+        };
+
         onInit(() => {
           refreshTimer = setInterval(refreshJobs, 5000);
         });
         onDestroy(() => clearInterval(refreshTimer));
 
-        return { jobs, lastUpdated, refreshError, upper };
+        return { jobs, lastUpdated, refreshError, hasMore, loadingMore, loadMore, upper };
       }
     </script>
     <script state>__DASHBOARD_STATE__</script>

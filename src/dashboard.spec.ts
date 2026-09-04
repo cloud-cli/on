@@ -28,11 +28,17 @@ describe('dashboard', () => {
 
   it('hydrates a li3 app and polls the jobs API every five seconds', () => {
     const jobs = toDashboardJobs([row]);
-    const html = generateDashboardHtml(jobs);
+    const html = generateDashboardHtml(jobs, true);
     const stateSource = html.match(/<script state>(.*?)<\/script>/s)?.[1];
 
-    expect(JSON.parse(stateSource!)).toEqual({ jobs });
-    expect(html).toContain("fetch('/api/jobs'");
+    expect(JSON.parse(stateSource!)).toEqual({ jobs, hasMore: true });
+    expect(html).toContain('`/api/jobs?afterId=${afterId}&limit=500`');
+    expect(html).toContain("new Set(['success', 'failed', 'cancelled'])");
+    expect(html).toContain('Math.max(0, Math.min(...activeIds) - 1)');
+    expect(html).toContain('new Map(jobs.value.map((job) => [job.id, job]))');
+    expect(html).toContain('Array.from(merged.values()).sort');
+    expect(html).toContain('`/api/jobs?beforeId=${beforeId}`');
+    expect(html).toContain('on-click="loadMore()"');
     expect(html).toContain('setInterval(refreshJobs, 5000)');
     expect(html).not.toContain('http-equiv="refresh"');
   });

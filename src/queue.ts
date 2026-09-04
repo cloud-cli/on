@@ -152,8 +152,21 @@ export class QueueManager {
   /**
    * List recent jobs for dashboard status monitoring
    */
-  async listJobs(limit = 50): Promise<any[]> {
-    return db.all(`SELECT * FROM jobs ORDER BY id DESC LIMIT ?;`, [limit]);
+  async listJobs(limit = 50, afterId?: number, beforeId?: number): Promise<any[]> {
+    const conditions: string[] = [];
+    const values: number[] = [];
+
+    if (afterId !== undefined) {
+      conditions.push('id > ?');
+      values.push(afterId);
+    }
+    if (beforeId !== undefined) {
+      conditions.push('id < ?');
+      values.push(beforeId);
+    }
+
+    const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
+    return db.all(`SELECT * FROM jobs${where} ORDER BY id DESC LIMIT ?;`, [...values, limit]);
   }
 
   /**

@@ -14,6 +14,9 @@ import type {
 import { HtmlReporter } from './reporters/html.reporter.js';
 import { YamlLoader } from './parser/yaml-loader.js';
 import { generateDashboardHtml, toDashboardJobs } from './dashboard.js';
+
+const DASHBOARD_PAGE_SIZE = 50;
+const MAX_DASHBOARD_PAGE_SIZE = 500;
 export class WebhookServer {
   private server: http.Server;
   private preprocessors = new Map<string, WebhookPreprocessor>();
@@ -56,7 +59,27 @@ export class WebhookServer {
     }
 
     if (req.method === 'GET' && url.pathname === '/api/jobs') {
-      return this.renderDashboardJobs(res);
+      const afterIdParam = url.searchParams.get('afterId');
+      const beforeIdParam = url.searchParams.get('beforeId');
+      const limitParam = url.searchParams.get('limit');
+      const afterId = afterIdParam === null ? undefined : Number(afterIdParam);
+      const beforeId = beforeIdParam === null ? undefined : Number(beforeIdParam);
+      const limit = limitParam === null ? DASHBOARD_PAGE_SIZE : Number(limitParam);
+
+      if (afterId !== undefined && (!Number.isSafeInteger(afterId) || afterId < 0)) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ error: 'afterId must be a non-negative integer' }));
+      }
+      if (beforeId !== undefined && (!Number.isSafeInteger(beforeId) || beforeId < 1)) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ error: 'beforeId must be a positive integer' }));
+      }
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_DASHBOARD_PAGE_SIZE) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ error: `limit must be an integer from 1 to ${MAX_DASHBOARD_PAGE_SIZE}` }));
+      }
+
+      return this.renderDashboardJobs(res, limit, afterId, beforeId);
     }
 
     if (req.method === 'GET' && url.pathname.startsWith('/runs/')) {
@@ -215,15 +238,17 @@ export class WebhookServer {
    * Serves the Server Health & Jobs Dashboard
    */
   private async renderDashboard(res: http.ServerResponse) {
-    const jobs = toDashboardJobs(await this.queue.listJobs(500));
-    const redacted = this.secrets.redactText(generateDashboardHtml(jobs));
+    const rows = await this.queue.listJobs(DASHBOARD_PAGE_SIZE + 1);
+    const jobs = toDashboardJobs(rows.slice(0, DASHBOARD_PAGE_SIZE));
+    const redacted = this.secrets.redactText(generateDashboardHtml(jobs, rows.length > DASHBOARD_PAGE_SIZE));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(redacted);
   }
 
-  private async renderDashboardJobs(res: http.ServerResponse) {
-    const jobs = toDashboardJobs(await this.queue.listJobs(500));
-    const body = this.secrets.redactText(JSON.stringify({ jobs }));
+  private async renderDashboardJobs(res: http.ServerResponse, limit: number, afterId?: number, beforeId?: number) {
+    const rows = await this.queue.listJobs(limit + 1, afterId, beforeId);
+    const jobs = toDashboardJobs(rows.slice(0, limit));
+    const body = this.secrets.redactText(JSON.stringify({ jobs, hasMore: rows.length > limit }));
     res.writeHead(200, {
       'Cache-Control': 'no-store',
       'Content-Type': 'application/json; charset=utf-8',
