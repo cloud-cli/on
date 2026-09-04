@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflow Engine Dashboard</title>
+  <script type="importmap">
+    { "imports": { "@li3/": "https://cdn.li3.dev/@li3/" } }
+  </script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen p-4 md:p-6 font-sans">
+  <template app>
+    <main class="max-w-6xl mx-auto space-y-6">
+      <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-4">
+        <div>
+          <h1 class="text-2xl font-bold text-white">Runner Engine Status</h1>
+          <p class="text-xs text-gray-400">Live Job Queue &amp; Execution Traces</p>
+        </div>
+        <div class="flex items-center gap-3 text-xs font-mono">
+          <span class="text-gray-500">Updated {{ lastUpdated }}</span>
+          <span
+            class="px-3 py-1 rounded-full border"
+            bind-class="{
+              'bg-emerald-500/10.text-emerald-400.border-emerald-500/20': !refreshError,
+              'bg-rose-500/10.text-rose-400.border-rose-500/20': refreshError
+            }"
+          >
+            {{ refreshError ? 'Refresh failed' : 'System operational' }}
+          </span>
+        </div>
+      </header>
+
+      <section class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hidden md:block">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase font-mono border-b border-gray-800">
+            <tr>
+              <th class="py-3 px-4">Job ID</th>
+              <th class="py-3 px-4">Workflow</th>
+              <th class="py-3 px-4">Status</th>
+              <th class="py-3 px-4 hidden xl:table-cell">Worker</th>
+              <th class="py-3 px-4 hidden lg:table-cell">Created At</th>
+              <th class="py-3 px-4 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template for="job of jobs">
+              <tr class="border-b border-gray-800 hover:bg-gray-800/40 transition">
+                <td class="py-3 px-4 font-mono text-indigo-400">
+                  <a attr-href="'/runs/' + job.id" class="hover:underline">#{{ job.id }}</a>
+                </td>
+                <td class="py-3 px-4 font-medium text-white">{{ job.workflowId }}</td>
+                <td class="py-3 px-4">
+                  <span
+                    class="px-2.5 py-0.5 rounded-full text-xs font-semibold"
+                    bind-class="{
+                      'bg-emerald-500/10.text-emerald-400': job.status === 'success',
+                      'bg-rose-500/10.text-rose-400': job.status === 'failed',
+                      'bg-indigo-500/10.text-indigo-400.animate-pulse': job.status === 'running',
+                      'bg-gray-500/10.text-gray-400': !['success', 'failed', 'running'].includes(job.status)
+                    }"
+                  >
+                    {{ upper(job.status) }}
+                  </span>
+                </td>
+                <td class="py-3 px-4 hidden xl:table-cell text-xs font-mono text-gray-400">{{ job.workerId || '-' }}</td>
+                <td class="py-3 px-4 hidden lg:table-cell text-xs text-gray-400">{{ job.createdAt }}</td>
+                <td class="py-3 px-4 text-right whitespace-nowrap">
+                  <a attr-href="'/runs/' + job.id" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 px-3 py-1 rounded border border-gray-700">View Trace</a>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <template if="!jobs.length">
+          <div class="p-8 text-center text-gray-500">No jobs recorded yet.</div>
+        </template>
+      </section>
+
+      <section class="md:hidden bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800 overflow-hidden">
+        <template for="job of jobs">
+          <article class="p-4 bg-gray-900/60">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span
+                    class="w-2.5 h-2.5 rounded-full shrink-0"
+                    bind-class="{
+                      'bg-emerald-400': job.status === 'success',
+                      'bg-rose-400': job.status === 'failed',
+                      'bg-indigo-400.animate-pulse': job.status === 'running',
+                      'bg-gray-500': !['success', 'failed', 'running'].includes(job.status)
+                    }"
+                  ></span>
+                  <h2 class="font-medium text-white truncate">{{ job.workflowId }}</h2>
+                </div>
+                <p class="mt-1 pl-[18px] text-xs font-mono text-gray-400">#{{ job.id }} · {{ upper(job.status) }}</p>
+              </div>
+              <a attr-href="'/runs/' + job.id" class="shrink-0 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-2.5 py-1 rounded border border-gray-700">Trace</a>
+            </div>
+          </article>
+        </template>
+        <template if="!jobs.length">
+          <div class="p-8 text-center text-gray-500">No jobs recorded yet.</div>
+        </template>
+      </section>
+    </main>
+
+    <script setup>
+      import { onDestroy, onInit, ref } from '@li3/web';
+
+      export default function setup() {
+        const jobs = ref([]);
+        const lastUpdated = ref('now');
+        const refreshError = ref(false);
+        let refreshTimer;
+        let refreshing = false;
+
+        const upper = (value) => String(value || '').toUpperCase();
+        const refreshJobs = async () => {
+          if (refreshing) return;
+          refreshing = true;
+
+          try {
+            const response = await fetch('/api/jobs', { headers: { accept: 'application/json' } });
+            if (!response.ok) throw new Error(`Dashboard refresh failed: ${response.status}`);
+
+            const data = await response.json();
+            jobs.value = data.jobs;
+            lastUpdated.value = new Date().toLocaleTimeString();
+            refreshError.value = false;
+          } catch (error) {
+            console.error(error);
+            refreshError.value = true;
+          } finally {
+            refreshing = false;
+          }
+        };
+
+        onInit(() => {
+          refreshTimer = setInterval(refreshJobs, 5000);
+        });
+        onDestroy(() => clearInterval(refreshTimer));
+
+        return { jobs, lastUpdated, refreshError, upper };
+      }
+    </script>
+    <script state>__DASHBOARD_STATE__</script>
+  </template>
+
+  <script type="module">import '@li3/web';</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</body>
+</html>

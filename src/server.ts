@@ -13,6 +13,7 @@ import type {
 } from './types.js';
 import { HtmlReporter } from './reporters/html.reporter.js';
 import { YamlLoader } from './parser/yaml-loader.js';
+import { generateDashboardHtml, toDashboardJobs } from './dashboard.js';
 export class WebhookServer {
   private server: http.Server;
   private preprocessors = new Map<string, WebhookPreprocessor>();
@@ -52,6 +53,10 @@ export class WebhookServer {
 
     if (req.method === 'GET' && (url.pathname === '/runs' || url.pathname === '/')) {
       return this.renderDashboard(res);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/jobs') {
+      return this.renderDashboardJobs(res);
     }
 
     if (req.method === 'GET' && url.pathname.startsWith('/runs/')) {
@@ -210,113 +215,20 @@ export class WebhookServer {
    * Serves the Server Health & Jobs Dashboard
    */
   private async renderDashboard(res: http.ServerResponse) {
-    const jobs = await this.queue.listJobs(500);
-    const badgeMap = {
-      success: 'bg-emerald-500/10 text-emerald-400',
-      failed: 'bg-rose-500/10 text-rose-400',
-      running: 'bg-indigo-500/10 text-indigo-400 animate-pulse',
-      _: 'bg-gray-500/10 text-gray-400',
-    };
-
-    const dotColor = (status: string | undefined) => {
-      switch (status) {
-        case 'success':
-          return 'bg-emerald-400';
-        case 'failed':
-          return 'bg-rose-400';
-        case 'running':
-          return 'bg-indigo-400 animate-pulse';
-        default:
-          return 'bg-gray-500';
-      }
-    };
-
-    const mobileCards = jobs
-      .map((j) => {
-        const dot = dotColor(j.status);
-        return `
-      <div class="py-3 px-4 block md:hidden bg-gray-900/60">
-        <div class="flex items-center justify-between gap-2 mb-1">
-          <div class="flex items-center gap-2 min-w-0">
-            <span class="w-2.5 h-2.5 rounded-full ${dot} flex-shrink-0"></span>
-            <span class="font-medium text-white truncate">${j.workflow_id}</span>
-          </div>
-          <a href="/runs/${j.id}" class="shrink-0 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-2.5 py-1 rounded border border-gray-700 whitespace-nowrap">Trace</a>
-        </div>
-        <div class="flex items-center gap-2 text-xs text-gray-400 pl-[18px]">
-          #${j.id}
-        </div>
-      </div>
-    `;
-      })
-      .join('');
-
-    const desktopRows = jobs
-      .map((j) => {
-        const badge = badgeMap[j.status] || badgeMap['_'];
-        return `
-      <tr class="border-b border-gray-800 hover:bg-gray-900/50 transition">
-        <td class="py-3 px-4 font-mono text-indigo-400"><a href="/runs/${j.id}" class="hover:underline">#${j.id}</a></td>
-        <td class="py-3 px-4 font-medium text-white">${j.workflow_id}</td>
-        <td class="py-3 px-4">
-          <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge}">${j.status?.toUpperCase() ?? '?'}</span>
-        </td>
-        <td class="py-3 px-4 hidden xl:table-cell text-xs font-mono text-gray-400">${j.worker_id || '-'}</td>
-        <td class="py-3 px-4 hidden lg:table-cell text-xs text-gray-400">${j.created_at}</td>
-        <td class="py-3 px-4 text-right whitespace-nowrap hidden md:table-cell">
-          <a href="/runs/${j.id}" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 px-3 py-1 rounded border border-gray-700">View Trace →</a>
-        </td>
-      </tr>
-    `;
-      })
-      .join('');
-
-    const html = `<!doctype html>
-<html lang="en" class="dark">
-  <head>
-  <meta charset="utf-8" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <meta http-equiv="refresh" content="10"> <!-- Auto-refreshes every 10s -->
-  <title>Workflow Engine Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-950 text-gray-100 min-h-screen p-6 font-sans">
-  <div class="max-w-6xl mx-auto space-y-6">
-    <div class="flex items-center justify-between border-b border-gray-800 pb-4">
-      <div>
-        <h1 class="text-2xl font-bold text-white">⚙️ Runner Engine Status</h1>
-        <p class="text-xs text-gray-400">Live Job Queue & Execution Traces</p>
-      </div>
-      <span class="text-xs font-mono bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/20">
-        ● System Operational
-      </span>
-    </div>
-
-    <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hidden md:block">
-      <table class="w-full text-left text-sm">
-        <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase font-mono border-b border-gray-800">
-          <tr>
-            <th class="py-3 px-4">Job ID</th>
-            <th class="py-3 px-4">Workflow</th>
-            <th class="py-3 px-4">Status</th>
-            <th class="py-3 px-4 hidden xl:table-cell">Worker</th>
-            <th class="py-3 px-4 hidden lg:table-cell">Created At</th>
-            <th class="py-3 px-4 text-right hidden md:table-cell">Action</th>
-          </tr>
-        </thead>
-        <tbody>${desktopRows}</tbody>
-      </table>
-    </div>
-
-    <div class="md:hidden divide-y divide-gray-800">${mobileCards || '<div class="p-6 text-center text-gray-500">No jobs recorded yet.</div>'}</div>
-  </div>
-</body>
-</html>`;
-
-    const redacted = this.secrets.redactText(html);
+    const jobs = toDashboardJobs(await this.queue.listJobs(500));
+    const redacted = this.secrets.redactText(generateDashboardHtml(jobs));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(redacted);
+  }
+
+  private async renderDashboardJobs(res: http.ServerResponse) {
+    const jobs = toDashboardJobs(await this.queue.listJobs(500));
+    const body = this.secrets.redactText(JSON.stringify({ jobs }));
+    res.writeHead(200, {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'application/json; charset=utf-8',
+    });
+    res.end(body);
   }
 
   /**

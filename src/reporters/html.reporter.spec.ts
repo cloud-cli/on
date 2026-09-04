@@ -47,17 +47,31 @@ function report(status: WorkflowExecutionReport['status']): WorkflowExecutionRep
 }
 
 describe('HtmlReporter partial reports', () => {
-  it('renders completed logs while withholding active step logs', () => {
+  it('injects the report into li3 state', () => {
     const html = reporter.generateHtml(report('running'));
+    const stateSource = html.match(/<script state>(.*?)<\/script>/s)?.[1];
 
-    expect(html).toContain('build complete');
-    expect(html).toContain('Step is running. Logs will appear after it finishes.');
-    expect(html).toContain('Waiting to run.');
+    expect(html).toContain('<template app>');
+    expect(html).toContain('<script setup>');
+    expect(JSON.parse(stateSource!)).toEqual({ report: report('running') });
   });
 
-  it('refreshes active reports', () => {
-    expect(reporter.generateHtml(report('running'))).toContain('<meta http-equiv="refresh" content="3">');
-    expect(reporter.generateHtml(report('pending'))).toContain('<meta http-equiv="refresh" content="3">');
-    expect(reporter.generateHtml(report('success'))).not.toContain('<meta http-equiv="refresh" content="3">');
+  it('keeps rendering and active refresh behavior in the li3 app', () => {
+    const html = reporter.generateHtml(report('running'));
+
+    expect(html).toContain('template for="[step, index] of report.steps"');
+    expect(html).toContain('Step is running. Logs will appear after it finishes.');
+    expect(html).toContain('Waiting to run.');
+    expect(html).toContain('setTimeout(() => location.reload(), 3000)');
+  });
+
+  it('escapes state that could terminate its script element', () => {
+    const unsafe = report('success');
+    unsafe.steps[0].logContent = '</script><script>alert(1)</script>';
+
+    const html = reporter.generateHtml(unsafe);
+
+    expect(html).not.toContain('</script><script>alert(1)</script>');
+    expect(html).toContain('\\u003c/script\\u003e');
   });
 });
