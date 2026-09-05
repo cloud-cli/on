@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { ExecutionDriver, StepContext, StepExecutionHandle, StepResult } from '../types.js';
+import { debug } from '../debug.js';
 
 const execAsync = promisify(exec);
 
@@ -93,9 +94,7 @@ export class SystemdDriver implements ExecutionDriver {
       commandArgs = [process.env.SHELL || 'sh', '-e', '-c', ctx.command];
     }
 
-    if (process.env.DEBUG) {
-      console.log('$ systemd-run', [...systemdFlags, '--', ...commandArgs].join(' '));
-    }
+    debug('$ systemd-run', [...systemdFlags, '--', ...commandArgs].join(' '));
 
     let child: ChildProcess;
 

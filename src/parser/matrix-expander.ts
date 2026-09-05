@@ -1,15 +1,15 @@
 import type { ParsedWorkflow } from '../types.js';
 
 /**
- * Expands a workflow definition containing a `strategy.matrix` into dynamic single-instance workflow jobs.
+ * Expands a workflow definition containing a `matrix` into dynamic single-instance workflow jobs.
  */
 export function expandMatrix(workflow: ParsedWorkflow): ParsedWorkflow[] {
-  // If no matrix strategy is defined, return workflow as a single-element array
-  if (!workflow.strategy?.matrix || Object.keys(workflow.strategy.matrix).length === 0) {
+  // If no matrix is defined, return workflow as a single-element array
+  if (!workflow.matrix || Object.keys(workflow.matrix).length === 0) {
     return [workflow];
   }
 
-  const matrix = workflow.strategy.matrix;
+  const matrix = workflow.matrix;
   const keys = Object.keys(matrix);
 
   // Calculate Cartesian Product across all matrix keys
@@ -29,7 +29,7 @@ export function expandMatrix(workflow: ParsedWorkflow): ParsedWorkflow[] {
   // Clone workflow instance for each Cartesian matrix combination
   return combinations.map((combination, index) => {
     const clone: ParsedWorkflow = JSON.parse(JSON.stringify(workflow));
-    delete clone.strategy;
+    delete clone.matrix;
     // Create matrix identity label: "node=20, os=ubuntu"
     const matrixLabel = Object.entries(combination)
       .map(([k, v]) => `${k}=${v}`)

@@ -4,11 +4,10 @@ on:
   github:
     if: inputs.event == 'push' && inputs.branch == 'main'
 
-strategy:
-  matrix:
-    environment:
-      - 'staging'
-      - 'production'
+matrix:
+  environment:
+    - 'staging'
+    - 'production'
 
 steps:
   # Step 1: In-Process JS Step (eval:)

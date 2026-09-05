@@ -1,6 +1,7 @@
 import * as acorn from 'acorn';
 import FS from 'node:fs';
 import Path from 'node:path';
+import { debug } from './debug.js';
 
 export const BUILTIN_HELPERS: Record<string, any> = {
   String: (val: any) => String(val ?? ''),
@@ -17,7 +18,8 @@ export function workspaceFiles(workingDir: string) {
   const root = Path.resolve(workingDir);
   const resolve = (...parts: string[]) => {
     const target = Path.resolve(root, ...parts);
-    if (target !== root && !target.startsWith(`${root}${Path.sep}`)) throw new Error('Workspace file path escapes working directory');
+    if (target !== root && !target.startsWith(`${root}${Path.sep}`))
+      throw new Error('Workspace file path escapes working directory');
     return target;
   };
   return {
@@ -62,9 +64,7 @@ export class SafeExpressionEvaluator {
     for (const c of conditions) {
       const result = await this.evaluateExpression(c, context);
 
-      if (process.env.DEBUG) {
-        console.log('condition', result, c, context);
-      }
+      debug('condition', result, c, context);
 
       if (result) {
         return true;

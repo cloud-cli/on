@@ -30,7 +30,7 @@ export class YamlLoader {
       // Resolve includes & partials
       const resolved = resolver.resolve(path);
 
-      // Expand matrix strategy into concrete job specs
+      // Expand matrix into concrete job specs
       const expandedWorkflows = expandMatrix(resolved);
 
       for (const wf of expandedWorkflows) {

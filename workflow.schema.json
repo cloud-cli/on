@@ -34,23 +34,14 @@
         "properties": {
           "if": {
             "description": "AST boolean condition expression",
-            "oneOf": [
-              { "type": "string" },
-              { "type": "array", "items": { "type": "string" } }
-            ]
+            "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }]
           },
           "events": { "type": "array", "items": { "type": "string" } },
           "owner": {
-            "oneOf": [
-              { "type": "string" },
-              { "type": "array", "items": { "type": "string" } }
-            ]
+            "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }]
           },
           "repo": {
-            "oneOf": [
-              { "type": "string" },
-              { "type": "array", "items": { "type": "string" } }
-            ]
+            "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }]
           },
           "branches": { "type": "array", "items": { "type": "string" } },
           "tag": { "type": "boolean" },
@@ -75,19 +66,12 @@
       "additionalProperties": { "type": "string" }
     },
 
-    "strategy": {
+    "matrix": {
       "type": "object",
-      "description": "Templating / Matrix build generation.",
-      "properties": {
-        "matrix": {
-          "type": "object",
-          "description": "Generates multiple workflow variants across dimension arrays.",
-          "additionalProperties": {
-            "type": "array",
-            "items": { "type": ["string", "number", "boolean"] }
-          }
-        },
-        "max-parallel": { "type": "integer", "minimum": 1, "default": 5 }
+      "description": "Generates multiple workflow variants across dimension arrays.",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": ["string", "number", "boolean"] }
       }
     },
 

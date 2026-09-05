@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ExecutionDriver, StepContext, StepExecutionHandle, StepResult } from '../types.js';
+import { debug } from '../debug.js';
 
 export class StandardProcessDriver implements ExecutionDriver {
   name = 'standard-process';
@@ -65,9 +66,7 @@ export class StandardProcessDriver implements ExecutionDriver {
       args = ['-e', '-c', ctx.command];
     }
 
-    if (process.env.DEBUG) {
-      console.log('$ ' + cmd, args.join(' '));
-    }
+    debug('$ ' + cmd, args.join(' '));
 
     let child: ChildProcess;
     try {

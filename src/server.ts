@@ -1,22 +1,18 @@
-import http from 'node:http';
 import crypto from 'node:crypto';
+import http from 'node:http';
 import { URL } from 'node:url';
-import { QueueManager } from './queue.js';
-import { SecretStore } from './secrets.js';
-import { SafeExpressionEvaluator } from './safe-eval.js';
-import { GitHubPreprocessor } from './preprocessors/github.js';
-import type {
-  JobPayload,
-  WebhookPreprocessor,
-  WebhookServerOptions,
-  WorkflowDefinition,
-} from './types.js';
 import { generateDashboardHtml, toDashboardJobs } from './dashboard.js';
 import { EventBroker } from './events.js';
+import { GitHubPreprocessor } from './preprocessors/github.js';
+import { QueueManager } from './queue.js';
 import { buildRunView, renderRunHtml } from './run-view.js';
-import { WorkflowRepository } from './workflows.js';
+import { SafeExpressionEvaluator } from './safe-eval.js';
 import { SecretRepository } from './secret-repository.js';
+import { SecretStore } from './secrets.js';
+import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from './types.js';
 import { generateWorkflowManagementHtml } from './workflows-ui.js';
+import { WorkflowRepository } from './workflows.js';
+import { debug } from './debug.js';
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -226,7 +222,9 @@ export class WebhookServer {
     } catch (error) {
       if (process.env.RUNNER_MASTER_KEY || process.env.CREDENTIALS_DIRECTORY) throw error;
     }
-    const secret = dbSecrets[`${provider.toUpperCase()}_WEBHOOK_SECRET`] || this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`);
+    const secret =
+      dbSecrets[`${provider.toUpperCase()}_WEBHOOK_SECRET`] ||
+      this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`);
     const preprocessor = this.preprocessors.get(provider);
     try {
       if (preprocessor) {
@@ -248,7 +246,7 @@ export class WebhookServer {
 
       const preprocessor = this.preprocessors.get(provider);
       if (preprocessor?.filter && !preprocessor.filter(inputs, workflow.on).isValid) {
-        console.log(`⏩ Skipped ${workflow.id} based on ${provider} webhook filters`, { inputs });
+        debug(`⏩ Skipped ${workflow.id} based on ${provider} webhook filters`, { inputs });
         continue;
       }
 
@@ -257,7 +255,7 @@ export class WebhookServer {
           const shouldRun = await SafeExpressionEvaluator.evaluateConditions(workflow.on.if, { inputs });
 
           if (!shouldRun) {
-            console.log(`⏩ Skipped ${workflow.id} based on conditions: ${workflow.on.if}`, { inputs });
+            debug(`⏩ Skipped ${workflow.id} based on conditions: ${workflow.on.if}`, { inputs });
             continue;
           }
         } catch (evalErr: any) {
@@ -310,7 +308,10 @@ export class WebhookServer {
 
   private requireAdmin(req: http.IncomingMessage, res: http.ServerResponse): boolean {
     if (this.isAdmin(req)) return true;
-    res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8', 'WWW-Authenticate': 'Basic realm="Runner"' });
+    res.writeHead(401, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'WWW-Authenticate': 'Basic realm="Runner"',
+    });
     res.end(JSON.stringify({ error: 'Unauthorized' }));
     return false;
   }
@@ -363,7 +364,10 @@ export class WebhookServer {
     if (!this.requireAdmin(req, res)) return;
     const body = await this.readJson(req, res);
     if (!body || typeof body.sourceYaml !== 'string') {
-      if (!res.headersSent) res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'sourceYaml is required' }));
+      if (!res.headersSent)
+        res
+          .writeHead(400, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'sourceYaml is required' }));
       return;
     }
     try {
@@ -378,7 +382,7 @@ export class WebhookServer {
 
   private async handleWorkflowDelete(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
     if (!this.requireAdmin(req, res)) return;
-    if (!await this.workflows.delete(id)) {
+    if (!(await this.workflows.delete(id))) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Workflow not found' }));
     }
@@ -406,7 +410,8 @@ export class WebhookServer {
     if (!this.requireAdmin(req, res)) return;
     const body = await this.readJson(req, res);
     if (!body || typeof body.value !== 'string') {
-      if (!res.headersSent) res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'value is required' }));
+      if (!res.headersSent)
+        res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'value is required' }));
       return;
     }
     try {
@@ -420,7 +425,7 @@ export class WebhookServer {
 
   private async handleSecretDelete(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
     if (!this.requireAdmin(req, res)) return;
-    if (!await this.secretRepository.delete(name)) {
+    if (!(await this.secretRepository.delete(name))) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Secret not found' }));
     }

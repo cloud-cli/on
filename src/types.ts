@@ -178,15 +178,12 @@ export interface JobPayload {
   inputs: WorkflowInputs;
 }
 
-export interface MatrixStrategy {
-  matrix?: Record<string, (string | number | boolean)[]>;
-  'max-parallel'?: number;
-}
+export type MatrixStrategy = Record<string, (string | number | boolean)[]>;
 
 export interface ParsedWorkflow {
   id?: string;
   name: string;
-  strategy?: MatrixStrategy;
+  matrix?: MatrixStrategy;
   env?: Record<string, string>;
   steps: WorkflowStep[];
   [key: string]: any;

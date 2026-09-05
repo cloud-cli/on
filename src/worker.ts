@@ -23,8 +23,7 @@ import { setupSignalHandlers } from './signals.js';
 import { consumeRunnerEvents } from './events.js';
 import { PluginManager } from './plugins/manager.js';
 import { WorkflowRepository } from './workflows.js';
-
-const DEBUG = !!process.env.DEBUG;
+import { debug } from './debug.js';
 
 export const shutdownState = {
   isStopping: false,
@@ -127,7 +126,11 @@ export async function startWorkerScheduler(
     }
 
     if (!shutdownState.isStopping && wakeVersion === observedWake) {
-      await waitForWake(observedWake, () => wakeVersion, (resolve) => (pendingWake = resolve));
+      await waitForWake(
+        observedWake,
+        () => wakeVersion,
+        (resolve) => (pendingWake = resolve),
+      );
       pendingWake = null;
     }
   }
@@ -211,13 +214,17 @@ async function notifyJobChange(config: RunnerConfig, jobId: string | number): Pr
       body: JSON.stringify({ jobId }),
       signal: AbortSignal.timeout(5000),
     });
-    if (!response.ok && DEBUG) console.error(`Failed to publish job status event: HTTP ${response.status}`);
+    if (!response.ok) debug(`Failed to publish job status event: HTTP ${response.status}`);
   } catch (error) {
-    if (DEBUG) console.error('Failed to publish job status event:', error);
+    debug('Failed to publish job status event:', error);
   }
 }
 
-async function fetchJobSecrets(config: RunnerConfig, workerId: string, jobId: string | number): Promise<Record<string, string>> {
+async function fetchJobSecrets(
+  config: RunnerConfig,
+  workerId: string,
+  jobId: string | number,
+): Promise<Record<string, string>> {
   if (!config.workerToken) return {};
   try {
     const response = await fetch(new URL(`/api/jobs/${jobId}/secrets`, config.serverUrl), {
@@ -445,9 +452,7 @@ async function executeSingleStep(params: {
     const shouldRun = await SafeExpressionEvaluator.evaluateConditions(step.if, executionContext);
 
     if (!shouldRun) {
-      if (DEBUG) {
-        console.log(`⏩ Skipped step ${step.id} based on condition: ${step.if}`, executionContext);
-      }
+      debug(`⏩ Skipped step ${step.id} based on condition: ${step.if}`, executionContext);
 
       return {
         failed: false,
@@ -481,9 +486,7 @@ async function executeSingleStep(params: {
       return executeRunStep({ ...params, stepContext });
     }
   } catch (e) {
-    if (DEBUG) {
-      console.error(`⏩ Failed to run step ${step.id}`, executionContext, e);
-    }
+    debug(`⏩ Failed to run step ${step.id}`, executionContext, e);
 
     return {
       failed: true,
