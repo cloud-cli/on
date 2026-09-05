@@ -2,15 +2,30 @@ import crypto from 'node:crypto';
 import type { PreprocessedWebhook, WebhookPreprocessor, WorkflowTrigger } from '../types.js';
 
 function matchesGlob(value: string, pattern: string): boolean {
-  const expression = pattern
-    .replace(/[|\\{}()[\]^$+?.]/g, '\\$&')
-    .replace(/\*/g, '.*');
+  const expression = pattern.replace(/[|\\{}()[\]^$+?.]/g, '\\$&').replace(/\*/g, '.*');
   return new RegExp(`^${expression}$`).test(value);
 }
 
 function matchesValue(value: string, expected: string | string[]): boolean {
   const values = Array.isArray(expected) ? expected : [expected];
-  return values.includes(value);
+
+  return values.some((v) => {
+    if (v.at(0) === '!') {
+      return v.slice(1) !== value;
+    }
+
+    return v === value;
+  });
+}
+
+interface GithubWorkflowTrigger extends WorkflowTrigger {
+  events?: string[];
+  owner?: string | string[];
+  repo?: string | string[];
+  branches?: string[];
+  tag?: boolean;
+  tags?: string[];
+  paths?: string[];
 }
 
 export class GitHubPreprocessor implements WebhookPreprocessor {
@@ -36,6 +51,8 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
       const tag = !ref.includes('refs/tags') ? '' : ref.replace('refs/tags/', '');
       const [owner, repo] = (body.repository?.full_name || '').split('/');
 
+      const commits = body.commits || (body.head_commit ? [body.head_commit] : []);
+
       inputs = {
         event,
         branch,
@@ -47,17 +64,15 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
         author: body.pusher?.name || body.sender?.login,
         action: body.action,
         raw: body,
-        changes: !body.commits
-          ? []
-          : Array.from(
-              new Set(
-                body.commits.flatMap((commit) => [
-                  ...(commit.added || []),
-                  ...(commit.removed || []),
-                  ...(commit.modified || []),
-                ]),
-              ),
-            ),
+        changes: Array.from(
+          new Set(
+            commits.flatMap((commit) => [
+              ...(commit.added || []),
+              ...(commit.removed || []),
+              ...(commit.modified || []),
+            ]),
+          ),
+        ),
       };
     }
 
@@ -67,7 +82,7 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
     };
   }
 
-  filter(inputs: Record<string, any>, trigger: WorkflowTrigger): PreprocessedWebhook {
+  filter(inputs: Record<string, any>, trigger: GithubWorkflowTrigger): PreprocessedWebhook {
     let isValid = true;
 
     if (trigger.events && !trigger.events.includes(inputs.event)) isValid = false;

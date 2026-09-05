@@ -96,13 +96,6 @@ export interface WebhookPreprocessor {
 export interface WorkflowTrigger {
   provider: string; // 'github', 'generic', etc.
   if?: string | string[];
-  events?: string[];
-  owner?: string | string[];
-  repo?: string | string[];
-  branches?: string[];
-  tag?: boolean;
-  tags?: string[];
-  paths?: string[];
 }
 
 export interface ScheduleTrigger {
