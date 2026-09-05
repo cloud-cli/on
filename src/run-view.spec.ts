@@ -47,6 +47,7 @@ function view(status: RunView['status']): RunView {
     inputs: { branch: 'main' },
     steps: report(status).steps,
     artifacts: [],
+    canViewLogs: true,
   };
 }
 
@@ -94,6 +95,28 @@ describe('run view', () => {
       (value) => value,
     );
 
+    expect(runView.steps[0].logContent).toBe('');
+  });
+
+  it('omits logs from unauthenticated views', () => {
+    const storedReport = report('success');
+    storedReport.steps[0].logContent = 'private report log';
+    const runView = buildRunView(
+      {
+        id: 42,
+        workflow_id: 'deploy',
+        status: 'success',
+        payload: JSON.stringify({ workflowId: 'deploy', inputs: {}, steps: [] }),
+        report: JSON.stringify(storedReport),
+      } as any,
+      { build: 'private step log' },
+      (value) => value,
+      [],
+      false,
+    );
+
+    expect(runView.canViewLogs).toBe(false);
+    expect(runView.steps[0].name).toBe('Build');
     expect(runView.steps[0].logContent).toBe('');
   });
 

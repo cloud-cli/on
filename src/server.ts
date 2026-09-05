@@ -148,15 +148,13 @@ export class WebhookServer {
     }
 
     if (req.method === 'GET' && url.pathname.startsWith('/runs/')) {
-      if (!this.requireAdmin(req, res)) return;
       const jobId = url.pathname.replace('/runs/', '');
-      return this.renderRunDetails(jobId, res, 'html');
+      return this.renderRunDetails(jobId, res, 'html', this.isAdmin(req));
     }
 
     if (req.method === 'GET' && url.pathname.startsWith('/api/runs/')) {
-      if (!this.requireAdmin(req, res)) return;
       const jobId = url.pathname.replace('/api/runs/', '');
-      return this.renderRunDetails(jobId, res, 'json');
+      return this.renderRunDetails(jobId, res, 'json', this.isAdmin(req));
     }
 
     if (req.method === 'POST' && url.pathname.startsWith('/restart/')) {
@@ -527,7 +525,7 @@ export class WebhookServer {
   /**
    * Serves single job HTML report
    */
-  private async renderRunDetails(jobId: string, res: http.ServerResponse, format: 'html' | 'json') {
+  private async renderRunDetails(jobId: string, res: http.ServerResponse, format: 'html' | 'json', canViewLogs: boolean) {
     const job = await this.queue.getJob(jobId);
 
     if (!job) {
@@ -536,10 +534,10 @@ export class WebhookServer {
       return res.end(format === 'json' ? JSON.stringify({ error: 'Run not found' }) : '<h1>404 - Run Not Found</h1>');
     }
 
-    const logsMap = await this.queue.getJobLogs(jobId);
+    const logsMap = canViewLogs ? await this.queue.getJobLogs(jobId) : {};
     const secretValues = await this.currentSecrets();
     const definition = await this.workflows.getRevision(job.workflow_id, job.workflow_revision);
-    const report = buildRunView(job, logsMap, (value) => this.redact(value, secretValues), definition?.steps);
+    const report = buildRunView(job, logsMap, (value) => this.redact(value, secretValues), definition?.steps, canViewLogs);
 
     if (format === 'json') {
       res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });

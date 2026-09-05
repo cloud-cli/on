@@ -94,9 +94,14 @@
                 </div>
                 <div class="font-mono text-gray-400 shrink-0">{{ step.durationMs }}ms</div>
               </summary>
-              <div class="p-4 bg-gray-950 font-mono text-gray-300 leading-relaxed overflow-auto w-full">
-                <pre class="whitespace-pre-wrap" bind-innerhtml="stepLog(step)"></pre>
-              </div>
+              <template if="report.canViewLogs">
+                <div class="p-4 bg-gray-950 font-mono text-gray-300 leading-relaxed overflow-auto w-full">
+                  <pre class="whitespace-pre-wrap" bind-innerhtml="stepLog(step)"></pre>
+                </div>
+              </template>
+              <template if="!report.canViewLogs">
+                <div class="p-4 bg-gray-950 text-sm text-gray-500">Logs are available to authenticated users.</div>
+              </template>
             </details>
           </template>
         </section>

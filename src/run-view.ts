@@ -16,6 +16,7 @@ export interface RunView {
   inputs: Record<string, unknown>;
   steps: StepReport[];
   artifacts: string[];
+  canViewLogs: boolean;
 }
 
 export function buildRunView(
@@ -23,6 +24,7 @@ export function buildRunView(
   logs: Record<string, string>,
   redact: (value: string) => string,
   steps: WorkflowStep[] = [],
+  canViewLogs = true,
 ): RunView {
   const payload = JSON.parse(job.payload) as JobPayload;
   const report = job.report ? (JSON.parse(job.report) as WorkflowExecutionReport) : buildPendingReport(job, payload, steps);
@@ -50,10 +52,13 @@ export function buildRunView(
         error: step.error ? redact(step.error) : undefined,
         outputs: sanitizeValue(step.outputs || {}, redact) as Record<string, any>,
         logContent:
-          step.status === 'running' || step.status === 'pending' ? '' : redact(savedLog || step.logContent || ''),
+          !canViewLogs || step.status === 'running' || step.status === 'pending'
+            ? ''
+            : redact(savedLog || step.logContent || ''),
       };
     }),
     artifacts: (report.artifacts || []).map(redact),
+    canViewLogs,
   };
 }
 
