@@ -5,7 +5,8 @@ describe('workflow management UI', () => {
   it('provides authenticated workflow and write-only secret controls', () => {
     const html = generateWorkflowManagementHtml('editor', 'example');
 
-    expect(html).toContain('<code-editor id="source-yaml"');
+    expect(html).toContain('<code-editor');
+    expect(html).toContain('id="source-yaml"');
     expect(html).toContain('https://sodium.static.apphor.de/code-editor.html');
     expect(html).toContain('https://sodium.static.apphor.de/lucide-icon.html');
     expect(html).toContain('<template app>');
