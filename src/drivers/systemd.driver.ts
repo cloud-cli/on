@@ -5,6 +5,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { ExecutionDriver, StepContext, StepExecutionHandle, StepResult } from '../types.js';
 import { debug } from '../debug.js';
+import { TimestampedLogWriter } from '../timestamped-log.js';
 
 const execAsync = promisify(exec);
 
@@ -21,6 +22,7 @@ export class SystemdDriver implements ExecutionDriver {
 
   execute(ctx: StepContext): StepExecutionHandle {
     let logFd: number | null = null;
+    let logWriter: TimestampedLogWriter | null = null;
     const startTime = Date.now();
     const logFilePath = path.join(ctx.logsDir, `step-${ctx.step.id}.log`);
 
@@ -30,6 +32,7 @@ export class SystemdDriver implements ExecutionDriver {
       fs.chmodSync(ctx.workingDir, 0o777);
 
       logFd = fs.openSync(logFilePath, 'a');
+      logWriter = new TimestampedLogWriter(logFd);
     } catch (err: any) {
       return {
         done: Promise.resolve({
@@ -100,8 +103,10 @@ export class SystemdDriver implements ExecutionDriver {
 
     try {
       child = spawn('systemd-run', [...systemdFlags, '--', ...commandArgs], {
-        stdio: ['ignore', logFd, logFd],
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
+      child.stdout?.on('data', (chunk) => logWriter?.write(chunk));
+      child.stderr?.on('data', (chunk) => logWriter?.write(chunk));
     } catch (spawnErr: any) {
       try {
         fs.closeSync(logFd);
@@ -127,11 +132,12 @@ export class SystemdDriver implements ExecutionDriver {
         if (isResolved) return; // Prevent double-resolution
         isResolved = true;
 
-        try {
-          fs.closeSync(logFd);
-        } catch {}
-
-        resolve(result);
+        logWriter?.end(() => {
+          try {
+            fs.closeSync(logFd);
+          } catch {}
+          resolve(result);
+        });
       };
 
       child.on('close', (code, signal) => {

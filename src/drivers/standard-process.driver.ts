@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ExecutionDriver, StepContext, StepExecutionHandle, StepResult } from '../types.js';
 import { debug } from '../debug.js';
+import { TimestampedLogWriter } from '../timestamped-log.js';
 
 export class StandardProcessDriver implements ExecutionDriver {
   name = 'standard-process';
@@ -14,6 +15,7 @@ export class StandardProcessDriver implements ExecutionDriver {
 
   execute(ctx: StepContext): StepExecutionHandle {
     let logFd: number | null = null;
+    let logWriter: TimestampedLogWriter | null = null;
     const startTime = Date.now();
     const logFilePath = path.join(ctx.logsDir, `step-${ctx.step.id}.log`);
 
@@ -23,6 +25,7 @@ export class StandardProcessDriver implements ExecutionDriver {
       fs.chmodSync(ctx.workingDir, 0o777);
 
       logFd = fs.openSync(logFilePath, 'a');
+      logWriter = new TimestampedLogWriter(logFd);
     } catch (err: any) {
       return {
         done: Promise.resolve({
@@ -74,8 +77,10 @@ export class StandardProcessDriver implements ExecutionDriver {
         cwd: ctx.workingDir,
         env,
         detached: true,
-        stdio: ['ignore', logFd, logFd],
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
+      child.stdout?.on('data', (chunk) => logWriter?.write(chunk));
+      child.stderr?.on('data', (chunk) => logWriter?.write(chunk));
     } catch (spawnErr: any) {
       try {
         fs.closeSync(logFd);
@@ -104,11 +109,12 @@ export class StandardProcessDriver implements ExecutionDriver {
 
         if (timeoutTimer) clearTimeout(timeoutTimer);
 
-        try {
-          fs.closeSync(logFd);
-        } catch {}
-
-        resolve(result);
+        logWriter?.end(() => {
+          try {
+            fs.closeSync(logFd);
+          } catch {}
+          resolve(result);
+        });
       };
 
       // Optional step timeout
