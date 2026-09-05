@@ -10,14 +10,12 @@ const toArray = (v: any) => (Array.isArray(v) ? v : [v]);
 
 function matchesValue(value: string, expected: string | string[]): boolean {
   const values = toArray(expected);
+  const included = values.filter((pattern) => !pattern.startsWith('!'));
 
-  return values.some((v) => {
-    if (v.at(0) === '!') {
-      return v.slice(1) !== value;
-    }
-
-    return v === value;
-  });
+  return (
+    !values.some((pattern) => pattern.startsWith('!') && pattern.slice(1) === value) &&
+    (included.length === 0 || included.includes(value))
+  );
 }
 
 interface GithubWorkflowTrigger extends WorkflowTrigger {

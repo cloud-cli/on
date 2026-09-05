@@ -14,6 +14,8 @@ const inputs = {
   repo: 'example',
   branch: 'releases/1.0',
   tag: '',
+  ref: 'releases/1.0',
+  full_name: 'octocat/example',
   changes: ['src/index.ts', 'package-lock.json'],
 };
 
@@ -42,15 +44,22 @@ describe('GitHubPreprocessor filters', () => {
     expect(preprocessor.filter(inputs, { provider: 'github', ...trigger }).isValid).toBe(false);
   });
 
-  it('filters tag pushes by presence and regular expression', () => {
-    const tagInputs = { ...inputs, branch: '', tag: 'v1.4.0' };
+  it('matches branches and refs against both branch and tag names', () => {
+    const tagInputs = { ...inputs, branch: '', tag: 'v1.4.0', ref: 'v1.4.0' };
 
-    expect(
-      preprocessor.filter(tagInputs, { provider: 'github', tag: true, tags: ['^v1\\..*'] }).isValid,
-    ).toBe(true);
-    expect(preprocessor.filter(tagInputs, { provider: 'github', tags: ['^v2\\..*'] }).isValid).toBe(false);
-    expect(preprocessor.filter(tagInputs, { provider: 'github', tags: ['['] }).isValid).toBe(false);
+    expect(preprocessor.filter(inputs, { provider: 'github', branches: 'releases/*' }).isValid).toBe(true);
+    expect(preprocessor.filter(tagInputs, { provider: 'github', branches: 'v1.*' }).isValid).toBe(true);
+    expect(preprocessor.filter(tagInputs, { provider: 'github', refs: 'v1.*' }).isValid).toBe(true);
+    expect(preprocessor.filter(tagInputs, { provider: 'github', refs: 'main' }).isValid).toBe(false);
     expect(preprocessor.filter(inputs, { provider: 'github', tag: true }).isValid).toBe(false);
+  });
+
+  it('matches full repository names and excludes negated values', () => {
+    expect(preprocessor.filter(inputs, { provider: 'github', name: 'octocat/example' }).isValid).toBe(true);
+    expect(preprocessor.filter(inputs, { provider: 'github', name: '!octocat/example' }).isValid).toBe(false);
+    expect(preprocessor.filter(inputs, { provider: 'github', name: '!octocat/other' }).isValid).toBe(true);
+    expect(preprocessor.filter(inputs, { provider: 'github', owner: ['octocat', '!octocat'] }).isValid).toBe(false);
+    expect(preprocessor.filter(inputs, { provider: 'github', repo: ['!other', '!another-example'] }).isValid).toBe(true);
   });
 });
 
@@ -78,6 +87,8 @@ describe('GitHubPreprocessor parsing', () => {
       repo: 'example',
       branch: 'main',
       tag: '',
+      ref: 'main',
+      full_name: 'octocat/example',
       changes: ['new.ts', 'changed.ts', 'old.ts'],
     });
   });
@@ -118,7 +129,7 @@ describe('YamlLoader trigger filters', () => {
     const file = join(directory, 'workflow.yml');
     writeFileSync(
       file,
-      `name: Filtered\non:\n  github:\n    events: [push]\n    owner: octocat\n    repo: [example]\n    paths: [package*.json]\n    if: inputs.action === 'published'\nsteps:\n  - run: 'true'\n`,
+      `name: Filtered\non:\n  github:\n    events: [push]\n    owner: octocat\n    name: [octocat/example, '!octocat/ignored']\n    branches: releases/*\n    refs: [releases/*]\n    paths: [package*.json]\n    if: inputs.action === 'published'\nsteps:\n  - run: 'true'\n`,
     );
 
     const [workflow] = YamlLoader.loadFile(file, new WorkflowIncludeResolver(directory));
@@ -127,7 +138,9 @@ describe('YamlLoader trigger filters', () => {
       provider: 'github',
       events: ['push'],
       owner: 'octocat',
-      repo: ['example'],
+      name: ['octocat/example', '!octocat/ignored'],
+      branches: 'releases/*',
+      refs: ['releases/*'],
       paths: ['package*.json'],
       if: "inputs.action === 'published'",
     });
