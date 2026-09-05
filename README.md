@@ -114,7 +114,7 @@ Time triggers are defined beside a webhook trigger:
 on:
   schedule:
     - id: nightly
-      cron: "0 2 * * *"
+      cron: '0 2 * * *'
       timezone: Europe/Berlin
   solar:
     - id: morning
@@ -126,14 +126,15 @@ on:
 
 GitHub triggers support these preprocessor filters:
 
-| Field | Match behavior |
-| ----- | -------------- |
-| `events` | Exact webhook event names |
-| `owner`, `repo` | One exact name or a list of accepted names |
-| `branches` | Branch glob patterns such as `main` or `releases/*` |
-| `tag` | `true` requires a tag push; `false` requires a non-tag event |
-| `tags` | Regular expressions matched against the pushed tag |
-| `paths` | Changed-file glob patterns across added, modified, and removed files |
+| Field           | Match behavior                                                               |
+| --------------- | ---------------------------------------------------------------------------- |
+| `events`        | Exact webhook event names                                                    |
+| `owner`, `repo` | One or many exact acceptable names                                           |
+| `name`          | One or many exact acceptable names, with org/repo combined                   |
+| `branches`      | Branch/ref glob patterns such as `main` or `v1.*`, matches branches and tags |
+| `refs`          | Alias for `branches`                                                         |
+| `tag`           | `true` requires a tag push; `false` requires a non-tag event                 |
+| `paths`         | Changed-file glob patterns across added, modified, and removed files         |
 
 Configured fields are combined with AND. Values within one list are combined with OR. `tags` also requires a tag value to match, while `branches` requires a branch value to match. The generic `if` expression is evaluated separately after all preprocessor filters pass.
 
@@ -161,25 +162,25 @@ npx @cloud-cli/on [command] [options]
 
 ### Commands
 
-| Command             | Description                                                                              |
-| ------------------- | ---------------------------------------------------------------------------------------- |
-| **`start-server`**  | Runs Webhook Ingress Gateway (the HTTP server receiving webhooks).                       |
-| **`start-scheduler`** | Dispatches published cron and solar workflow triggers. |
-| **`start-workers`** | Runs the event-driven worker scheduler (Scalable Workers).                              |
+| Command               | Description                                                        |
+| --------------------- | ------------------------------------------------------------------ |
+| **`start-server`**    | Runs Webhook Ingress Gateway (the HTTP server receiving webhooks). |
+| **`start-scheduler`** | Dispatches published cron and solar workflow triggers.             |
+| **`start-workers`**   | Runs the event-driven worker scheduler (Scalable Workers).         |
 
 ### CLI and Environment Options
 
-| Flag | Option        | Default               | Env                   | Description                               |
-| ---- | ------------- | --------------------- | --------------------- | ----------------------------------------- |
-| `-h` | `--help`      | —                     | -                     | Prints CLI help message and exits.        |
-| `-c` | `--config`    | `./runner.config.mjs` | `RUNNER_CONFIG_FILE`  | Path to JavaScript configuration file.    |
-| `-d` | `--database`  | -                     | `RUNNER_DATABASE_URL` | SQLite database file path or HTTP URL.    |
-| `-p` | `--port`      | `11235`               | `PORT`                | Port for the Ingress HTTP server.         |
-| `-k` | `--workers`   | `5`                   | `RUNNER_WORKERS`      | Maximum concurrent jobs on this node.     |
-|      |               |                       | `RUNNER_ADMIN_SECRET` | Admin token to refresh secrets via API    |
-|      |               |                       | `RUNNER_WORKER_SECRET` | Worker token for job events and secret retrieval |
-|      |               |                       | `RUNNER_SERVER_URL`   | Webhook server URL used by workers.       |
-|      |               |                       | `RUNNER_TAGS`         | Comma-separated worker capability tags.  |
+| Flag | Option       | Default               | Env                    | Description                                      |
+| ---- | ------------ | --------------------- | ---------------------- | ------------------------------------------------ |
+| `-h` | `--help`     | —                     | -                      | Prints CLI help message and exits.               |
+| `-c` | `--config`   | `./runner.config.mjs` | `RUNNER_CONFIG_FILE`   | Path to JavaScript configuration file.           |
+| `-d` | `--database` | -                     | `RUNNER_DATABASE_URL`  | SQLite database file path or HTTP URL.           |
+| `-p` | `--port`     | `11235`               | `PORT`                 | Port for the Ingress HTTP server.                |
+| `-k` | `--workers`  | `5`                   | `RUNNER_WORKERS`       | Maximum concurrent jobs on this node.            |
+|      |              |                       | `RUNNER_ADMIN_SECRET`  | Admin token to refresh secrets via API           |
+|      |              |                       | `RUNNER_WORKER_SECRET` | Worker token for job events and secret retrieval |
+|      |              |                       | `RUNNER_SERVER_URL`    | Webhook server URL used by workers.              |
+|      |              |                       | `RUNNER_TAGS`          | Comma-separated worker capability tags.          |
 
 Set `RUNNER_ADMIN_SECRET` only on the HTTP server for dashboard and management APIs. Set the same non-empty `RUNNER_WORKER_SECRET` on the server and every worker to publish job-status refresh events and retrieve job-scoped secrets. The dashboard workflow APIs accept either Bearer authentication or HTTP Basic authentication with username `admin` and the admin secret.
 
@@ -274,18 +275,18 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
 
 ### Endpoint Matrix
 
-| Method     | Endpoint           | Description                                                                            |
-| ---------- | ------------------ | -------------------------------------------------------------------------------------- |
-| **`POST`** | `/webhooks/github` | Webhook endpoint for GitHub events. Applies GitHub filters and evaluates `on.github.if`. |
-| **`GET`**  | `/runs`            | **Dashboard:** Public live dark-mode monitoring page listing recent jobs.   |
-| **`GET`**  | `/api/jobs?afterId=<id>&beforeId=<id>&limit=<n>` | Dashboard jobs with exclusive lower and upper ID cursors and a limit from 1 to 500 (default 50). |
-| **`GET`**  | `/runs/:jobId`     | **Job Report:** Authenticated interactive trace with step timings and terminal log output. |
-| **`GET`**  | `/workflows`       | Authenticated workflow list and encrypted secret management UI. |
-| **`GET`**  | `/workflows/new`, `/workflows/:id` | Authenticated YAML workflow editor. |
-| **`POST`** | `/api/workflows/validate` | Authenticated YAML validation without persistence. |
-| **`GET`, `PUT`, `DELETE`** | `/api/workflows/:id` | Authenticated revisioned workflow read, draft save, and deletion. |
-| **`POST`** | `/api/workflows/:id/publish` | Authenticated publication of the latest draft revision. |
-| **`GET`, `PUT`, `DELETE`** | `/api/secrets`, `/api/secrets/:name` | Authenticated encrypted secret-name and write-only value management. |
+| Method                     | Endpoint                                         | Description                                                                                      |
+| -------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| **`POST`**                 | `/webhooks/github`                               | Webhook endpoint for GitHub events. Applies GitHub filters and evaluates `on.github.if`.         |
+| **`GET`**                  | `/runs`                                          | **Dashboard:** Public live dark-mode monitoring page listing recent jobs.                        |
+| **`GET`**                  | `/api/jobs?afterId=<id>&beforeId=<id>&limit=<n>` | Dashboard jobs with exclusive lower and upper ID cursors and a limit from 1 to 500 (default 50). |
+| **`GET`**                  | `/runs/:jobId`                                   | **Job Report:** Authenticated interactive trace with step timings and terminal log output.       |
+| **`GET`**                  | `/workflows`                                     | Authenticated workflow list and encrypted secret management UI.                                  |
+| **`GET`**                  | `/workflows/new`, `/workflows/:id`               | Authenticated YAML workflow editor.                                                              |
+| **`POST`**                 | `/api/workflows/validate`                        | Authenticated YAML validation without persistence.                                               |
+| **`GET`, `PUT`, `DELETE`** | `/api/workflows/:id`                             | Authenticated revisioned workflow read, draft save, and deletion.                                |
+| **`POST`**                 | `/api/workflows/:id/publish`                     | Authenticated publication of the latest draft revision.                                          |
+| **`GET`, `PUT`, `DELETE`** | `/api/secrets`, `/api/secrets/:name`             | Authenticated encrypted secret-name and write-only value management.                             |
 
 ### Dashboard Features
 

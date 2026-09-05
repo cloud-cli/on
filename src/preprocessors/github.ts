@@ -6,8 +6,10 @@ function matchesGlob(value: string, pattern: string): boolean {
   return new RegExp(`^${expression}$`).test(value);
 }
 
+const toArray = (v: any) => (Array.isArray(v) ? v : [v]);
+
 function matchesValue(value: string, expected: string | string[]): boolean {
-  const values = Array.isArray(expected) ? expected : [expected];
+  const values = toArray(expected);
 
   return values.some((v) => {
     if (v.at(0) === '!') {
@@ -22,9 +24,10 @@ interface GithubWorkflowTrigger extends WorkflowTrigger {
   events?: string[];
   owner?: string | string[];
   repo?: string | string[];
-  branches?: string[];
+  name?: string | string[];
+  branches?: string | string[];
+  refs?: string | string[];
   tag?: boolean;
-  tags?: string[];
   paths?: string[];
 }
 
@@ -50,7 +53,6 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
       const branch = !ref.includes('refs/heads') ? '' : ref.replace('refs/heads/', '');
       const tag = !ref.includes('refs/tags') ? '' : ref.replace('refs/tags/', '');
       const [owner, repo] = (body.repository?.full_name || '').split('/');
-
       const commits = body.commits || (body.head_commit ? [body.head_commit] : []);
 
       inputs = {
@@ -59,6 +61,8 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
         tag,
         owner,
         repo,
+        ref: branch || tag,
+        full_name: body.repository?.full_name,
         clone_url: body.repository?.clone_url,
         commit_sha: body.after || body.head_commit?.id || body.pull_request?.head?.sha,
         author: body.pusher?.name || body.sender?.login,
@@ -88,16 +92,23 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
     if (trigger.events && !trigger.events.includes(inputs.event)) isValid = false;
     if (trigger.owner && !matchesValue(inputs.owner, trigger.owner)) isValid = false;
     if (trigger.repo && !matchesValue(inputs.repo, trigger.repo)) isValid = false;
-    if (trigger.branches && !trigger.branches.some((pattern) => matchesGlob(inputs.branch, pattern))) isValid = false;
-    if (trigger.tag !== undefined && Boolean(inputs.tag) !== trigger.tag) isValid = false;
+    if (trigger.name && !matchesValue(inputs.full_name, trigger.name)) isValid = false;
 
-    if (trigger.tags) {
-      try {
-        if (!trigger.tags.some((pattern) => new RegExp(pattern).test(inputs.tag))) isValid = false;
-      } catch {
-        isValid = false;
-      }
-    }
+    if (
+      trigger.branches &&
+      inputs.ref &&
+      !toArray(trigger.branches).some((pattern) => matchesGlob(inputs.ref, String(pattern)))
+    )
+      isValid = false;
+
+    if (
+      trigger.refs &&
+      inputs.ref &&
+      !toArray(trigger.refs).some((pattern) => matchesGlob(inputs.ref, String(pattern)))
+    )
+      isValid = false;
+
+    if (trigger.tag !== undefined && Boolean(inputs.tag) !== trigger.tag) isValid = false;
 
     if (trigger.paths) {
       const changes = Array.isArray(inputs.changes) ? inputs.changes : [];
