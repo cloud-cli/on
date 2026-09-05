@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#030712">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/app-icon.svg" type="image/svg+xml">
   <title>Workflow Run</title>
   <script type="importmap">
     {
@@ -167,7 +171,30 @@
               headers: { accept: 'application/json' },
             });
             if (!response.ok) throw new Error(`Run refresh failed: ${response.status}`);
-            report.value = await response.json();
+            const previousStatus = report.value.status;
+            const nextReport = await response.json();
+            report.value = nextReport;
+            if (
+              ['pending', 'running'].includes(previousStatus)
+              && ['success', 'failed'].includes(nextReport.status)
+              && 'Notification' in window
+              && 'serviceWorker' in navigator
+              && Notification.permission === 'granted'
+              && localStorage.getItem('runner-notifications') === 'enabled'
+            ) {
+              const registration = await navigator.serviceWorker.ready;
+              await registration.showNotification(
+                nextReport.status === 'success' ? `Job #${nextReport.jobId} succeeded` : `Job #${nextReport.jobId} failed`,
+                {
+                  body: `${nextReport.workflowName} finished with status ${nextReport.status}.`,
+                  icon: '/app-icon.svg',
+                  badge: '/app-icon.svg',
+                  tag: `runner-job-${nextReport.jobId}`,
+                  renotify: true,
+                  data: { url: `/runs/${nextReport.jobId}` },
+                },
+              );
+            }
           } catch (error) {
             console.error(error);
           } finally {
@@ -185,6 +212,11 @@
 
         onInit(() => {
           document.title = `Run #${report.value.jobId} - ${report.value.workflowName}`;
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/service-worker.js').catch((error) => {
+              console.error('Service worker registration failed', error);
+            });
+          }
           eventSource = new EventSource('/api/events');
           eventSource.addEventListener('jobs.changed', handleJobChange);
           refreshTimer = setInterval(() => {

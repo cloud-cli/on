@@ -4,6 +4,7 @@ import { URL } from 'node:url';
 import { generateDashboardHtml, toDashboardJobs } from './dashboard.js';
 import { EventBroker } from './events.js';
 import { GitHubPreprocessor } from './preprocessors/github.js';
+import { appIcon, serviceWorker, webManifest } from './pwa.js';
 import { QueueManager } from './queue.js';
 import { buildRunView, renderRunHtml } from './run-view.js';
 import { SafeExpressionEvaluator } from './safe-eval.js';
@@ -54,6 +55,21 @@ export class WebhookServer {
       req.url || '/',
       `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers['x-forwarded-host'] || req.headers.host}`,
     );
+
+    if (req.method === 'GET' && url.pathname === '/manifest.webmanifest') {
+      res.writeHead(200, { 'Cache-Control': 'public, max-age=3600', 'Content-Type': 'application/manifest+json' });
+      return res.end(webManifest);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/app-icon.svg') {
+      res.writeHead(200, { 'Cache-Control': 'public, max-age=86400', 'Content-Type': 'image/svg+xml' });
+      return res.end(appIcon);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/service-worker.js') {
+      res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
+      return res.end(serviceWorker);
+    }
 
     if (req.method === 'GET' && (url.pathname === '/runs' || url.pathname === '/')) {
       return this.renderDashboard(res);

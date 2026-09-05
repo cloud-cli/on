@@ -46,6 +46,11 @@ describe('dashboard', () => {
     expect(html).toContain("addEventListener('jobs.available', refreshJobs)");
     expect(html).toContain("addEventListener('jobs.changed', refreshJobs)");
     expect(html).toContain('setInterval(refreshJobs, 60000)');
+    expect(html).toContain('href="/manifest.webmanifest"');
+    expect(html).toContain("navigator.serviceWorker.register('/service-worker.js')");
+    expect(html).toContain('Notification.requestPermission()');
+    expect(html).toContain('registration.showNotification(');
+    expect(html).toContain("!terminalStatuses.has(previousStatus) && terminalStatuses.has(job.status)");
     expect(html).not.toContain('http-equiv="refresh"');
   });
 });

@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#030712">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/app-icon.svg" type="image/svg+xml">
   <title>Workflow Engine Dashboard</title>
   <script type="importmap">
     { "imports": { "@li3/": "https://cdn.li3.dev/@li3/" } }
@@ -16,14 +20,32 @@
           <h1 class="text-2xl font-bold text-white">Runner Engine Status</h1>
           <p class="text-xs text-gray-400">Live Job Queue &amp; Execution Traces</p>
         </div>
-        <div class="flex items-center gap-3 text-xs font-mono">
+        <div class="flex flex-wrap items-center gap-3 text-xs font-mono">
           <a href="/workflows" class="text-indigo-400 hover:text-indigo-300 hover:underline">Manage workflows</a>
+          <template if="notificationsSupported">
+            <button
+              class="rounded border px-3 py-1"
+              bind-class="notificationsEnabled ? 'border-emerald-500/30.bg-emerald-500/10.text-emerald-300' : 'border-indigo-500/40.bg-indigo-500/10.text-indigo-300'"
+              on-click="toggleNotifications()"
+            >
+              {{ notificationsEnabled ? 'Notifications on' : 'Enable notifications' }}
+            </button>
+          </template>
           <span class="text-gray-500">Updated {{ lastUpdated }}</span>
           <template if="refreshError">
             <span class="rounded border border-rose-500/20 bg-rose-500/10 px-3 py-1 text-rose-400">Refresh failed</span>
           </template>
         </div>
       </header>
+
+      <template if="notificationNotice">
+        <button
+          class="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-3 text-left text-sm text-gray-300"
+          on-click="notificationNotice = ''"
+        >
+          {{ notificationNotice }}
+        </button>
+      </template>
 
       <section class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hidden md:block">
         <table class="w-full text-left text-sm">
@@ -120,6 +142,11 @@
         const refreshError = ref(false);
         const hasMore = ref(false);
         const loadingMore = ref(false);
+        const notificationsSupported = ref('Notification' in window && 'serviceWorker' in navigator);
+        const notificationsEnabled = ref(
+          notificationsSupported.value && Notification.permission === 'granted' && localStorage.getItem('runner-notifications') === 'enabled',
+        );
+        const notificationNotice = ref('');
         let refreshTimer;
         let eventSource;
         let refreshing = false;
@@ -127,6 +154,45 @@
 
         const upper = (value) => String(value || '').toUpperCase();
         const terminalStatuses = new Set(['success', 'failed', 'cancelled']);
+        const notifyCompletedJob = async (job) => {
+          if (!notificationsEnabled.value || !['success', 'failed'].includes(job.status)) return;
+          try {
+            const registration = await navigator.serviceWorker.ready;
+            await registration.showNotification(
+              job.status === 'success' ? `Job #${job.id} succeeded` : `Job #${job.id} failed`,
+              {
+                body: `${job.workflowId} finished with status ${job.status}.`,
+                icon: '/app-icon.svg',
+                badge: '/app-icon.svg',
+                tag: `runner-job-${job.id}`,
+                renotify: true,
+                data: { url: `/runs/${job.id}` },
+              },
+            );
+          } catch (error) {
+            console.error('Unable to show job notification', error);
+          }
+        };
+        const toggleNotifications = async () => {
+          if (notificationsEnabled.value) {
+            notificationsEnabled.value = false;
+            localStorage.removeItem('runner-notifications');
+            notificationNotice.value = 'Job notifications are paused on this device.';
+            return;
+          }
+          if (Notification.permission === 'denied') {
+            notificationNotice.value = 'Notifications are blocked. Allow them in this site’s Android browser settings.';
+            return;
+          }
+          const permission = await Notification.requestPermission();
+          notificationsEnabled.value = permission === 'granted';
+          if (notificationsEnabled.value) {
+            localStorage.setItem('runner-notifications', 'enabled');
+            notificationNotice.value = 'Notifications enabled. Keep the dashboard or installed app active to receive job results.';
+          } else {
+            notificationNotice.value = 'Notification permission was not granted.';
+          }
+        };
         const refreshJobs = async () => {
           if (refreshing) {
             refreshPending = true;
@@ -149,8 +215,15 @@
             if (!response.ok) throw new Error(`Dashboard refresh failed: ${response.status}`);
 
             const data = await response.json();
+            const previousStatuses = new Map(jobs.value.map((job) => [job.id, job.status]));
             const merged = new Map(jobs.value.map((job) => [job.id, job]));
-            for (const job of data.jobs) merged.set(job.id, job);
+            for (const job of data.jobs) {
+              const previousStatus = previousStatuses.get(job.id);
+              merged.set(job.id, job);
+              if (previousStatus && !terminalStatuses.has(previousStatus) && terminalStatuses.has(job.status)) {
+                void notifyCompletedJob(job);
+              }
+            }
             jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
             lastUpdated.value = new Date().toLocaleTimeString();
             refreshError.value = false;
@@ -191,6 +264,11 @@
         };
 
         onInit(() => {
+          if (notificationsSupported.value) {
+            navigator.serviceWorker.register('/service-worker.js').catch((error) => {
+              console.error('Service worker registration failed', error);
+            });
+          }
           eventSource = new EventSource('/api/events');
           eventSource.addEventListener('jobs.available', refreshJobs);
           eventSource.addEventListener('jobs.changed', refreshJobs);
@@ -204,7 +282,10 @@
           clearInterval(refreshTimer);
         });
 
-        return { jobs, lastUpdated, refreshError, hasMore, loadingMore, loadMore, upper };
+        return {
+          jobs, lastUpdated, refreshError, hasMore, loadingMore, loadMore, upper,
+          notificationsSupported, notificationsEnabled, notificationNotice, toggleNotifications,
+        };
       }
     </script>
     <script state>__DASHBOARD_STATE__</script>

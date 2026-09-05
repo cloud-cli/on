@@ -109,6 +109,9 @@ describe('run view', () => {
     expect(html).toContain("addEventListener('jobs.changed', handleJobChange)");
     expect(html).toContain('fetch(`/api/runs/${report.value.jobId}`');
     expect(html).toContain('now.value = Date.now()');
+    expect(html).toContain('href="/manifest.webmanifest"');
+    expect(html).toContain("navigator.serviceWorker.register('/service-worker.js')");
+    expect(html).toContain('registration.showNotification(');
     expect(html).not.toContain('location.reload()');
     expect(html).not.toContain('</script><script>alert(1)</script>');
     expect(html).toContain('\\u003c/script\\u003e');
