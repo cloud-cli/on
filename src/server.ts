@@ -10,6 +10,7 @@ import { buildRunView, renderRunHtml } from './run-view.js';
 import { SafeExpressionEvaluator } from './safe-eval.js';
 import { SecretRepository } from './secret-repository.js';
 import { SecretStore } from './secrets.js';
+import { PushRepository } from './push.js';
 import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from './types.js';
 import { generateWorkflowManagementHtml } from './workflows-ui.js';
 import { WorkflowRepository } from './workflows.js';
@@ -24,6 +25,7 @@ export class WebhookServer {
   private secretRepository = new SecretRepository();
   private queue: QueueManager;
   private secrets: SecretStore;
+  private push: PushRepository;
   private adminToken: string;
   private workerToken: string;
   private events = new EventBroker();
@@ -37,6 +39,7 @@ export class WebhookServer {
   constructor(options: WebhookServerOptions) {
     this.queue = options.queue;
     this.secrets = options.secrets;
+    this.push = new PushRepository(options.config);
     this.adminToken = options.adminToken;
     this.workerToken = options.config.workerToken;
 
@@ -116,6 +119,10 @@ export class WebhookServer {
     if (req.method === 'GET' && url.pathname === '/api/events') {
       return this.events.subscribe(req, res);
     }
+
+    if (req.method === 'GET' && url.pathname === '/api/push/public-key') return this.handlePushPublicKey(res);
+    if (req.method === 'POST' && url.pathname === '/api/push/subscriptions') return this.handlePushSubscribe(req, res);
+    if (req.method === 'DELETE' && url.pathname === '/api/push/subscriptions') return this.handlePushUnsubscribe(req, res);
 
     if (url.pathname === '/api/workflows/validate' && req.method === 'POST') {
       return this.handleWorkflowValidation(req, res);
@@ -497,7 +504,42 @@ export class WebhookServer {
     }
 
     this.events.publish('jobs.changed', jobId ? { jobId } : {});
+    if (jobId) {
+      const job = await this.queue.getJob(jobId);
+      if (job) void this.push.notify(job);
+    }
     res.writeHead(202).end();
+  }
+
+  private handlePushPublicKey(res: http.ServerResponse) {
+    if (!this.push.publicKey) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Push notifications are not configured' }));
+    }
+    res.writeHead(200, { 'Cache-Control': 'public, max-age=3600', 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ publicKey: this.push.publicKey }));
+  }
+
+  private async handlePushSubscribe(req: http.IncomingMessage, res: http.ServerResponse) {
+    const body = await this.readJson(req, res);
+    if (!body) return;
+    if (!this.push.publicKey || typeof body.endpoint !== 'string' || !body.keys || typeof body.keys.p256dh !== 'string' || typeof body.keys.auth !== 'string') {
+      if (!res.headersSent) res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Invalid push subscription' }));
+      return;
+    }
+    await this.push.save(body);
+    res.writeHead(204).end();
+  }
+
+  private async handlePushUnsubscribe(req: http.IncomingMessage, res: http.ServerResponse) {
+    const body = await this.readJson(req, res);
+    if (!body) return;
+    if (typeof body.endpoint !== 'string') {
+      if (!res.headersSent) res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'endpoint is required' }));
+      return;
+    }
+    await this.push.remove(body.endpoint);
+    res.writeHead(204).end();
   }
 
   /**

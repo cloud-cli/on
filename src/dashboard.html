@@ -191,6 +191,7 @@
             if (notificationsEnabled.value) {
               notificationsEnabled.value = false;
               localStorage.removeItem('runner-notifications');
+              await disablePushNotifications();
               notificationNotice.value = 'Job notifications are paused on this device.';
               return;
             }
@@ -203,10 +204,54 @@
             notificationsEnabled.value = permission === 'granted';
             if (notificationsEnabled.value) {
               localStorage.setItem('runner-notifications', 'enabled');
+              await enablePushNotifications();
               notificationNotice.value =
-                'Notifications enabled. Keep the dashboard or installed app active to receive job results.';
+                'Notifications enabled. Background delivery is available when server push is configured.';
             } else {
               notificationNotice.value = 'Notification permission was not granted.';
+            }
+          };
+          const urlBase64ToUint8Array = (value) => {
+            const padding = '='.repeat((4 - (value.length % 4)) % 4);
+            const raw = atob((value + padding).replace(/-/g, '+').replace(/_/g, '/'));
+            return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
+          };
+          const enablePushNotifications = async () => {
+            try {
+              if (!notificationsSupported.value) return;
+              const response = await fetch('/api/push/public-key', { headers: { accept: 'application/json' } });
+              if (!response.ok) return;
+              const { publicKey } = await response.json();
+              const registration = await navigator.serviceWorker.ready;
+              const subscription =
+                (await registration.pushManager.getSubscription()) ||
+                (await registration.pushManager.subscribe({
+                  userVisibleOnly: true,
+                  applicationServerKey: urlBase64ToUint8Array(publicKey),
+                }));
+              const saveResponse = await fetch('/api/push/subscriptions', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(subscription),
+              });
+              if (!saveResponse.ok) throw new Error(`Push subscription failed: ${saveResponse.status}`);
+            } catch (error) {
+              console.error('Unable to enable background notifications', error);
+            }
+          };
+          const disablePushNotifications = async () => {
+            try {
+              const registration = await navigator.serviceWorker.ready;
+              const subscription = await registration.pushManager.getSubscription();
+              if (!subscription) return;
+              await fetch('/api/push/subscriptions', {
+                method: 'DELETE',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ endpoint: subscription.endpoint }),
+              });
+              await subscription.unsubscribe();
+            } catch (error) {
+              console.error('Unable to disable background notifications', error);
             }
           };
           const refreshJobs = async () => {
@@ -281,9 +326,14 @@
 
           onInit(() => {
             if (notificationsSupported.value) {
-              navigator.serviceWorker.register('/service-worker.js').catch((error) => {
-                console.error('Service worker registration failed', error);
-              });
+              navigator.serviceWorker
+                .register('/service-worker.js')
+                .then(() => {
+                  if (notificationsEnabled.value) void enablePushNotifications();
+                })
+                .catch((error) => {
+                  console.error('Service worker registration failed', error);
+                });
             }
             eventSource = new EventSource('/api/events');
             eventSource.addEventListener('jobs.available', refreshJobs);

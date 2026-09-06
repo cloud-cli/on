@@ -27,6 +27,15 @@ export const appIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512
 
 export const serviceWorker = `self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener('push', (event) => {
+  const data = event.data?.json() || {};
+  event.waitUntil(self.registration.showNotification(data.title || 'Runner Engine', {
+    body: data.body || 'A job status changed.',
+    icon: '/app-icon.svg',
+    badge: '/app-icon.svg',
+    data: { url: data.url || '/runs' },
+  }));
+});
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const target = event.notification.data?.url || '/runs';

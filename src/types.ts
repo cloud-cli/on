@@ -28,6 +28,12 @@ export interface RunnerConfig {
   env: Record<string, string>;
   /** External integrations notified about workflow lifecycle changes */
   plugins: WorkflowPlugin[];
+  /** Optional VAPID credentials for background Web Push notifications. */
+  push?: {
+    publicKey: string;
+    privateKey: string;
+    subject: string;
+  };
 }
 
 export type UserRunnerConfig = Partial<RunnerConfig>;

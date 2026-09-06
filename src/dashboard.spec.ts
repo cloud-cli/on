@@ -40,6 +40,7 @@ describe('dashboard', () => {
     expect(html).toContain('`/api/jobs?beforeId=${beforeId}`');
     expect(html).toContain('on-click="loadMore()"');
     expect(html).toContain("new EventSource('/api/events')");
+    expect(html).toContain('/api/push/public-key');
     expect(html).toContain('href="/workflows"');
     expect(html).toContain('class="block p-4 bg-gray-900/60 hover:bg-gray-800/40');
     expect(html).toContain('View Trace</a');
@@ -50,7 +51,7 @@ describe('dashboard', () => {
     expect(html).toContain("addEventListener('jobs.changed', refreshJobs)");
     expect(html).toContain('setInterval(refreshJobs, 60000)');
     expect(html).toContain('href="/manifest.webmanifest"');
-    expect(html).toContain("navigator.serviceWorker.register('/service-worker.js')");
+    expect(html).toContain("register('/service-worker.js')");
     expect(html).toContain('Notification.requestPermission()');
     expect(html).toContain('registration.showNotification(');
     expect(html).toContain("!terminalStatuses.has(previousStatus) && terminalStatuses.has(job.status)");

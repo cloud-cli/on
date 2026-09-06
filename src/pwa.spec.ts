@@ -15,5 +15,6 @@ describe('PWA assets', () => {
   it('opens the related run when a notification is selected', () => {
     expect(serviceWorker).toContain("self.addEventListener('notificationclick'");
     expect(serviceWorker).toContain('self.clients.openWindow(target)');
+    expect(serviceWorker).toContain("self.addEventListener('push'");
   });
 });

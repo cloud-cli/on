@@ -15,7 +15,7 @@ export default defineConfig({
       formats: ['es'],
     },
     rollupOptions: {
-      external: [/^node:.+$/],
+      external: [/^node:.+$/, /^web-push$/],
     },
   },
 

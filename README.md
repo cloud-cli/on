@@ -181,6 +181,9 @@ npx @cloud-cli/on [command] [options]
 |      |              |                       | `RUNNER_WORKER_SECRET` | Worker token for job events and secret retrieval |
 |      |              |                       | `RUNNER_SERVER_URL`    | Webhook server URL used by workers.              |
 |      |              |                       | `RUNNER_TAGS`          | Comma-separated worker capability tags.          |
+|      |              |                       | `RUNNER_VAPID_PUBLIC_KEY`  | Public key for background Web Push notifications. |
+|      |              |                       | `RUNNER_VAPID_PRIVATE_KEY` | Private key for background Web Push notifications. |
+|      |              |                       | `RUNNER_VAPID_SUBJECT`      | VAPID contact, such as `mailto:admin@example.com`. |
 
 Set `RUNNER_ADMIN_SECRET` only on the HTTP server for dashboard and management APIs. Set the same non-empty `RUNNER_WORKER_SECRET` on the server and every worker to publish job-status refresh events and retrieve job-scoped secrets. The dashboard workflow APIs accept either Bearer authentication or HTTP Basic authentication with username `admin` and the admin secret.
 
@@ -221,6 +224,10 @@ export default {
 ```
 
 The GitHub status plugin publishes commit states when a workflow starts and finishes. Its token needs permission to write commit statuses for the target repository.
+
+### Background Notifications
+
+The dashboard can receive job notifications while it is closed through Web Push. Generate a VAPID key pair with `npx web-push generate-vapid-keys`, configure the three `RUNNER_VAPID_*` values on the server, and enable notifications from the dashboard over HTTPS. Without VAPID configuration, notifications work only while the dashboard is open.
 
 Run details are available as HTML at `/runs/:id` and as sanitized JSON at `/api/runs/:id`. The HTML view refreshes reactively through job-specific SSE events while a run is active. Both representations omit raw webhook bodies, sensitive input fields, execution environment values, and internal rerun state.
 

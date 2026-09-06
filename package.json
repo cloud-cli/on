@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "acorn": "^8.18.0",
+    "web-push": "^3.6.7",
     "yaml": "^2.9.0"
   },
   "scripts": {
@@ -33,6 +34,7 @@
     "@changesets/cli": "^2.31.1",
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.2.0",
+    "@types/web-push": "^3.6.4",
     "@typescript-eslint/eslint-plugin": "^8.66.0",
     "@typescript-eslint/parser": "^8.66.0",
     "eslint": "10.8.0",

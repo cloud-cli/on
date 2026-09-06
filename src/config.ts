@@ -40,6 +40,15 @@ export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: U
     storagePath: configFromFile.storagePath ?? _.RUNNER_TMP ?? '/tmp/workspaces',
     env: configFromFile.env ?? {},
     plugins: configFromFile.plugins ?? [],
+    push:
+      configFromFile.push ??
+      (_.RUNNER_VAPID_PUBLIC_KEY && _.RUNNER_VAPID_PRIVATE_KEY
+        ? {
+            publicKey: _.RUNNER_VAPID_PUBLIC_KEY,
+            privateKey: _.RUNNER_VAPID_PRIVATE_KEY,
+            subject: _.RUNNER_VAPID_SUBJECT ?? `mailto:admin@localhost`,
+          }
+        : undefined),
   };
 }
 
