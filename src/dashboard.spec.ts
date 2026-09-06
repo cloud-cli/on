@@ -40,7 +40,7 @@ describe('dashboard', () => {
     expect(html).toContain('`/api/jobs?beforeId=${beforeId}${filterQuery}`');
     expect(html).toContain('on-click="loadMore()"');
     expect(html).toContain('Filter: name: cloud-cli/* or search JSON');
-    expect(html).toContain('onsubmit.prevent="applyFilter()"');
+    expect(html).toContain('on-submit.prevent="applyFilter()"');
     expect(html).toContain('encodeURIComponent(activeFilter.value)');
     expect(html).toContain('<lucide-icon icon="search" size="16"></lucide-icon>');
     expect(html).toContain('<lucide-icon icon="x" size="15"></lucide-icon>');
