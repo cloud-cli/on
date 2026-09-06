@@ -42,7 +42,7 @@
           </div>
         </header>
 
-        <form class="flex items-center gap-2" on-submit="applyFilter($event)">
+        <div class="flex items-center gap-2">
           <div class="relative min-w-0 flex-1">
             <label class="sr-only" for="job-filter">Filter jobs</label>
             <input
@@ -63,13 +63,14 @@
             </template>
           </div>
           <button
-            type="submit"
+            type="button"
+            on-click="applyFilter()"
             aria-label="Search jobs"
             class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-indigo-500/40 bg-indigo-500/10 text-indigo-200 hover:bg-indigo-500/20"
           >
             <lucide-icon icon="search" size="16"></lucide-icon>
           </button>
-        </form>
+        </div>
 
         <template if="notificationNotice">
           <button
@@ -361,8 +362,7 @@
               loadingMore.value = false;
             }
           };
-          const applyFilter = (event) => {
-            event.preventDefault();
+          const applyFilter = () => {
             activeFilter.value = filter.value.trim();
             jobs.value = [];
             hasMore.value = false;
