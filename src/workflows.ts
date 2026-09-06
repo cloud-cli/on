@@ -9,6 +9,7 @@ export interface StoredWorkflow {
   sourceYaml: string;
   revision: number;
   status: 'draft' | 'published' | 'archived';
+  enabled: boolean;
 }
 
 function workflowId(value: unknown): string {
@@ -48,7 +49,7 @@ export class WorkflowRepository {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS workflows (
         id TEXT PRIMARY KEY, name TEXT NOT NULL, source_yaml TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'draft', active_revision INTEGER,
+        status TEXT NOT NULL DEFAULT 'draft', active_revision INTEGER, enabled INTEGER NOT NULL DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS workflow_revisions (
@@ -62,6 +63,10 @@ export class WorkflowRepository {
         PRIMARY KEY (workflow_id, trigger_id, scheduled_for)
       );
     `);
+    const columns = await db.all('PRAGMA table_info(workflows)');
+    if (!columns.some((column: any) => column.name === 'enabled')) {
+      await db.run('ALTER TABLE workflows ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+    }
   }
 
   validate(sourceYaml: string): WorkflowDefinition[] {
@@ -77,15 +82,15 @@ export class WorkflowRepository {
     return workflows;
   }
 
-  async saveDraft(id: string, sourceYaml: string): Promise<StoredWorkflow> {
+  async saveDraft(id: string, sourceYaml: string, enabled = true): Promise<StoredWorkflow> {
     const workflows = this.validate(sourceYaml);
     if (workflows.length !== 1 || workflows[0].id !== id) throw new Error('Workflow id must match the YAML name or id');
     const previous = await db.get('SELECT COALESCE(MAX(revision), 0) AS revision FROM workflow_revisions WHERE workflow_id = ?', [id]);
     const revision = Number(previous?.revision || 0) + 1;
-    await db.run(`INSERT INTO workflows (id, name, source_yaml, status) VALUES (?, ?, ?, 'draft')
-      ON CONFLICT(id) DO UPDATE SET name = excluded.name, source_yaml = excluded.source_yaml, status = 'draft', updated_at = CURRENT_TIMESTAMP`, [id, workflows[0].name, sourceYaml]);
+    await db.run(`INSERT INTO workflows (id, name, source_yaml, status, enabled) VALUES (?, ?, ?, 'draft', ?)
+      ON CONFLICT(id) DO UPDATE SET name = excluded.name, source_yaml = excluded.source_yaml, status = 'draft', enabled = excluded.enabled, updated_at = CURRENT_TIMESTAMP`, [id, workflows[0].name, sourceYaml, enabled ? 1 : 0]);
     await db.run('INSERT INTO workflow_revisions (workflow_id, revision, source_yaml, normalized_json) VALUES (?, ?, ?, ?)', [id, revision, sourceYaml, JSON.stringify(workflows[0])]);
-    return { id, name: workflows[0].name, sourceYaml, revision, status: 'draft' };
+    return { id, name: workflows[0].name, sourceYaml, revision, status: 'draft', enabled };
   }
 
   async publish(id: string): Promise<StoredWorkflow | null> {
@@ -94,17 +99,17 @@ export class WorkflowRepository {
     this.validate(workflow.source_yaml);
     const revision = await db.get('SELECT MAX(revision) AS revision FROM workflow_revisions WHERE workflow_id = ?', [id]);
     await db.run("UPDATE workflows SET status = 'published', active_revision = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [revision.revision, id]);
-    return { id, name: workflow.name, sourceYaml: workflow.source_yaml, revision: Number(revision.revision), status: 'published' };
+    return { id, name: workflow.name, sourceYaml: workflow.source_yaml, revision: Number(revision.revision), status: 'published', enabled: Boolean(workflow.enabled) };
   }
 
   async list(): Promise<StoredWorkflow[]> {
-    const rows = await db.all('SELECT id, name, source_yaml, COALESCE(active_revision, 0) AS revision, status FROM workflows ORDER BY name');
-    return rows.map((row: any) => ({ id: row.id, name: row.name, sourceYaml: row.source_yaml, revision: Number(row.revision), status: row.status }));
+    const rows = await db.all('SELECT id, name, source_yaml, COALESCE(active_revision, 0) AS revision, status, enabled FROM workflows ORDER BY name');
+    return rows.map((row: any) => ({ id: row.id, name: row.name, sourceYaml: row.source_yaml, revision: Number(row.revision), status: row.status, enabled: Boolean(row.enabled) }));
   }
 
   async get(id: string): Promise<StoredWorkflow | null> {
-    const row = await db.get('SELECT id, name, source_yaml, COALESCE(active_revision, 0) AS revision, status FROM workflows WHERE id = ?', [id]);
-    return row ? { id: row.id, name: row.name, sourceYaml: row.source_yaml, revision: Number(row.revision), status: row.status } : null;
+    const row = await db.get('SELECT id, name, source_yaml, COALESCE(active_revision, 0) AS revision, status, enabled FROM workflows WHERE id = ?', [id]);
+    return row ? { id: row.id, name: row.name, sourceYaml: row.source_yaml, revision: Number(row.revision), status: row.status, enabled: Boolean(row.enabled) } : null;
   }
 
   async delete(id: string): Promise<boolean> {
@@ -118,7 +123,7 @@ export class WorkflowRepository {
 
   async published(): Promise<WorkflowRevision[]> {
     const rows = await db.all(`SELECT w.id AS workflow_id, r.revision, r.normalized_json FROM workflows w JOIN workflow_revisions r
-      ON r.workflow_id = w.id AND r.revision = w.active_revision WHERE w.status = 'published'`);
+      ON r.workflow_id = w.id AND r.revision = w.active_revision WHERE w.status = 'published' AND w.enabled = 1`);
     return rows.map((row: any) => ({ workflowId: row.workflow_id, revision: Number(row.revision), definition: JSON.parse(row.normalized_json) }));
   }
 

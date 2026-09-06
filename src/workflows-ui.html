@@ -104,6 +104,15 @@
                     placeholder="derived-from-workflow-name"
                   />
                 </label>
+                <label class="inline-flex items-center gap-2 text-sm text-gray-300">
+                  <input
+                    type="checkbox"
+                    bind-checked="enabled"
+                    on-change="setEnabled($event)"
+                    class="h-4 w-4 rounded border-gray-700 bg-gray-950 text-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                  />
+                  Enabled
+                </label>
                 <div class="flex flex-wrap gap-2">
                   <button
                     on-click="validate()"
@@ -225,6 +234,7 @@
           const secrets = ref([]);
           const source = ref('');
           const workflowId = ref('');
+          const enabled = ref(true);
           const selectedId = ref('');
           const secretName = ref('');
           const secretValue = ref('');
@@ -277,6 +287,7 @@
             selectedId.value = workflow.id;
             workflowId.value = workflow.id;
             source.value = workflow.sourceYaml;
+            enabled.value = workflow.enabled;
           };
           const validate = () =>
             run(async () => {
@@ -292,7 +303,7 @@
               if (!id) throw new Error('Set an ID or add a workflow name first.');
               const workflow = await api(`/api/workflows/${id}`, {
                 method: 'PUT',
-                body: JSON.stringify({ sourceYaml: source.value }),
+                body: JSON.stringify({ sourceYaml: source.value, enabled: enabled.value }),
               });
               selectedId.value = workflow.id;
               workflowId.value = workflow.id;
@@ -339,6 +350,9 @@
           const setWorkflowId = (event) => {
             workflowId.value = event.target.value;
           };
+          const setEnabled = (event) => {
+            enabled.value = event.target.checked;
+          };
           const setSecretName = (event) => {
             secretName.value = event.target.value;
           };
@@ -367,6 +381,7 @@
             secrets,
             source,
             workflowId,
+            enabled,
             selectedId,
             secretName,
             secretValue,
@@ -381,6 +396,7 @@
             removeSecret,
             setSource,
             setWorkflowId,
+            setEnabled,
             setSecretName,
             setSecretValue,
             selectSecret,

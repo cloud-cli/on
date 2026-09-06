@@ -12,6 +12,8 @@ describe('workflow management UI', () => {
     expect(html).toContain('<template app>');
     expect(html).toContain('/api/workflows/validate');
     expect(html).toContain('Save draft');
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain('bind-checked="enabled"');
     expect(html).toContain('Publish');
     expect(html).toContain('/api/secrets/');
     expect(html).toContain('type="password"');

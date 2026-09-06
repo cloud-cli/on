@@ -385,7 +385,7 @@ export class WebhookServer {
       return;
     }
     try {
-      const workflow = await this.workflows.saveDraft(id, body.sourceYaml);
+      const workflow = await this.workflows.saveDraft(id, body.sourceYaml, body.enabled !== false);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify(workflow));
     } catch (error: any) {
