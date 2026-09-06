@@ -28,7 +28,7 @@ describe('QueueManager.listJobs', () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
     vi.stubGlobal('fetch', fetchMock);
 
-    await new QueueManager('test').listJobs(51, undefined, undefined, 'name: cloud-cli/*');
+    await new QueueManager('test').listJobs(51, undefined, undefined, 'name:cloud-cli/*');
 
     const request = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(request.s).toContain("json_extract(payload, '$.inputs.' || ?) GLOB ?");

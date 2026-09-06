@@ -39,7 +39,7 @@ describe('dashboard', () => {
     expect(html).toContain('Array.from(merged.values()).sort');
     expect(html).toContain('`/api/jobs?beforeId=${beforeId}${filterQuery}`');
     expect(html).toContain('on-click="loadMore()"');
-    expect(html).toContain('Filter: name: cloud-cli/* or search JSON');
+    expect(html).toContain('Filter: name:cloud-cli/* or search JSON');
     expect(html).toContain('on-submit.prevent="applyFilter()"');
     expect(html).toContain('on-input="setFilter($event)"');
     expect(html).toContain('Showing {{ jobs.length }} jobs matching');
