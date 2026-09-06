@@ -7,6 +7,7 @@ const SENSITIVE_KEY =
 
 export interface RunView {
   jobId: string;
+  workerId?: string;
   parentId: string;
   workflowName: string;
   status: WorkflowExecutionReport['status'];
@@ -32,6 +33,7 @@ export function buildRunView(
 
   return {
     jobId: String(job.id),
+    workerId: job.worker_id || undefined,
     parentId: String(report.parentId || job.parentId || ''),
     workflowName: redact(report.workflowName),
     status,
