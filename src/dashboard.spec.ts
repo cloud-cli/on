@@ -41,6 +41,7 @@ describe('dashboard', () => {
     expect(html).toContain('on-click="loadMore()"');
     expect(html).toContain('Filter: name: cloud-cli/* or search JSON');
     expect(html).toContain('on-submit.prevent="applyFilter()"');
+    expect(html).toContain('on-input="setFilter($event)"');
     expect(html).toContain('encodeURIComponent(activeFilter.value)');
     expect(html).toContain('if (searchInProgress && !isSearch) return');
     expect(html).toContain('generation !== refreshGeneration');
