@@ -22,6 +22,30 @@ describe('QueueManager.listJobs', () => {
       d: [42, 100, 51],
     });
   });
+
+  it('filters shallow trigger fields with glob syntax', async () => {
+    setUrl('http://database.test');
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new QueueManager('test').listJobs(51, undefined, undefined, 'name: cloud-cli/*');
+
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(request.s).toContain("json_extract(payload, '$.inputs.' || ?) GLOB ?");
+    expect(request.d).toEqual(['name', 'cloud-cli/*', 51]);
+  });
+
+  it('searches serialized trigger inputs when no field is specified', async () => {
+    setUrl('http://database.test');
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new QueueManager('test').listJobs(51, undefined, undefined, 'cloud-cli');
+
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(request.s).toContain('LOWER(payload) LIKE LOWER(?)');
+    expect(request.d).toEqual(['%cloud-cli%', 51]);
+  });
 });
 
 describe('QueueManager.claimNextJob', () => {

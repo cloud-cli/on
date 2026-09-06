@@ -32,13 +32,16 @@ describe('dashboard', () => {
     const stateSource = html.match(/<script state>(.*?)<\/script>/s)?.[1];
 
     expect(JSON.parse(stateSource!)).toEqual({ jobs, hasMore: true });
-    expect(html).toContain('`/api/jobs?afterId=${afterId}&limit=500`');
+    expect(html).toContain('`/api/jobs?afterId=${afterId}&limit=500${filterQuery}`');
     expect(html).toContain("new Set(['success', 'failed', 'cancelled'])");
     expect(html).toContain('Math.max(0, Math.min(...activeIds) - 1)');
     expect(html).toContain('new Map(jobs.value.map((job) => [job.id, job]))');
     expect(html).toContain('Array.from(merged.values()).sort');
-    expect(html).toContain('`/api/jobs?beforeId=${beforeId}`');
+    expect(html).toContain('`/api/jobs?beforeId=${beforeId}${filterQuery}`');
     expect(html).toContain('on-click="loadMore()"');
+    expect(html).toContain('Filter: name: cloud-cli/* or search JSON');
+    expect(html).toContain('on-submit="applyFilter($event)"');
+    expect(html).toContain('encodeURIComponent(activeFilter.value)');
     expect(html).toContain("new EventSource('/api/events')");
     expect(html).toContain('/api/push/public-key');
     expect(html).toContain('https://sodium.static.apphor.de/lucide-icon.html');

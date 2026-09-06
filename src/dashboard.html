@@ -42,6 +42,29 @@
           </div>
         </header>
 
+        <form class="flex flex-col gap-2 sm:flex-row" on-submit="applyFilter($event)">
+          <label class="sr-only" for="job-filter">Filter jobs</label>
+          <input
+            id="job-filter"
+            bind-value="filter"
+            class="min-w-0 flex-1 rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm text-gray-200 outline-none placeholder:text-gray-600 focus:border-indigo-500"
+            placeholder="Filter: name: cloud-cli/* or search JSON"
+          />
+          <button
+            type="submit"
+            class="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-4 py-2 text-sm text-indigo-200 hover:bg-indigo-500/20"
+          >
+            Search
+          </button>
+          <button
+            type="button"
+            on-click="clearFilter()"
+            class="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800"
+          >
+            Clear
+          </button>
+        </form>
+
         <template if="notificationNotice">
           <button
             class="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-3 text-left text-sm text-gray-300"
@@ -156,6 +179,8 @@
           const refreshError = ref(false);
           const hasMore = ref(false);
           const loadingMore = ref(false);
+          const filter = ref('');
+          const activeFilter = ref('');
           const notificationsSupported = ref('Notification' in window && 'serviceWorker' in navigator);
           const notificationsEnabled = ref(
             notificationsSupported.value &&
@@ -273,7 +298,11 @@
                 : knownIds.length
                   ? Math.max(...knownIds)
                   : null;
-              const url = afterId === null ? '/api/jobs?limit=500' : `/api/jobs?afterId=${afterId}&limit=500`;
+              const filterQuery = activeFilter.value ? `&filter=${encodeURIComponent(activeFilter.value)}` : '';
+              const url =
+                afterId === null
+                  ? `/api/jobs?limit=500${filterQuery}`
+                  : `/api/jobs?afterId=${afterId}&limit=500${filterQuery}`;
               const response = await fetch(url, { headers: { accept: 'application/json' } });
               if (!response.ok) throw new Error(`Dashboard refresh failed: ${response.status}`);
 
@@ -308,7 +337,8 @@
 
             try {
               const beforeId = Math.min(...jobs.value.map((job) => Number(job.id)));
-              const response = await fetch(`/api/jobs?beforeId=${beforeId}`, {
+              const filterQuery = activeFilter.value ? `&filter=${encodeURIComponent(activeFilter.value)}` : '';
+              const response = await fetch(`/api/jobs?beforeId=${beforeId}${filterQuery}`, {
                 headers: { accept: 'application/json' },
               });
               if (!response.ok) throw new Error(`Loading older jobs failed: ${response.status}`);
@@ -324,6 +354,20 @@
             } finally {
               loadingMore.value = false;
             }
+          };
+          const applyFilter = (event) => {
+            event.preventDefault();
+            activeFilter.value = filter.value.trim();
+            jobs.value = [];
+            hasMore.value = false;
+            void refreshJobs();
+          };
+          const clearFilter = () => {
+            filter.value = '';
+            activeFilter.value = '';
+            jobs.value = [];
+            hasMore.value = false;
+            void refreshJobs();
           };
 
           onInit(() => {
@@ -356,7 +400,10 @@
             refreshError,
             hasMore,
             loadingMore,
+            filter,
             loadMore,
+            applyFilter,
+            clearFilter,
             upper,
             notificationsSupported,
             notificationsEnabled,

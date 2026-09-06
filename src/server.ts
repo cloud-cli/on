@@ -96,6 +96,7 @@ export class WebhookServer {
       const afterIdParam = url.searchParams.get('afterId');
       const beforeIdParam = url.searchParams.get('beforeId');
       const limitParam = url.searchParams.get('limit');
+      const filter = url.searchParams.get('filter')?.trim() || undefined;
       const afterId = afterIdParam === null ? undefined : Number(afterIdParam);
       const beforeId = beforeIdParam === null ? undefined : Number(beforeIdParam);
       const limit = limitParam === null ? DASHBOARD_PAGE_SIZE : Number(limitParam);
@@ -112,8 +113,12 @@ export class WebhookServer {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         return res.end(JSON.stringify({ error: `limit must be an integer from 1 to ${MAX_DASHBOARD_PAGE_SIZE}` }));
       }
+      if (filter && filter.length > 200) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ error: 'filter must be at most 200 characters' }));
+      }
 
-      return this.renderDashboardJobs(res, limit, afterId, beforeId);
+      return this.renderDashboardJobs(res, limit, afterId, beforeId, filter);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/events') {
@@ -553,8 +558,20 @@ export class WebhookServer {
     res.end(redacted);
   }
 
-  private async renderDashboardJobs(res: http.ServerResponse, limit: number, afterId?: number, beforeId?: number) {
-    const rows = await this.queue.listJobs(limit + 1, afterId, beforeId);
+  private async renderDashboardJobs(
+    res: http.ServerResponse,
+    limit: number,
+    afterId?: number,
+    beforeId?: number,
+    filter?: string,
+  ) {
+    let rows;
+    try {
+      rows = await this.queue.listJobs(limit + 1, afterId, beforeId, filter);
+    } catch (error: any) {
+      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({ error: error.message }));
+    }
     const jobs = toDashboardJobs(rows.slice(0, limit));
     const body = await this.redactText(JSON.stringify({ jobs, hasMore: rows.length > limit }));
     res.writeHead(200, {

@@ -190,9 +190,9 @@ export class QueueManager {
   /**
    * List recent jobs for dashboard status monitoring
    */
-  async listJobs(limit = 50, afterId?: number, beforeId?: number): Promise<any[]> {
+  async listJobs(limit = 50, afterId?: number, beforeId?: number, filter?: string): Promise<any[]> {
     const conditions: string[] = [];
-    const values: number[] = [];
+    const values: Array<number | string> = [];
 
     if (afterId !== undefined) {
       conditions.push('id > ?');
@@ -201,6 +201,19 @@ export class QueueManager {
     if (beforeId !== undefined) {
       conditions.push('id < ?');
       values.push(beforeId);
+    }
+    if (filter) {
+      const separator = filter.indexOf(':');
+      if (separator > 0) {
+        const field = filter.slice(0, separator).trim();
+        const pattern = filter.slice(separator + 1).trim();
+        if (!/^[A-Za-z0-9_-]+$/.test(field) || !pattern) throw new Error('Invalid job filter');
+        conditions.push("json_extract(payload, '$.inputs.' || ?) GLOB ?");
+        values.push(field, pattern);
+      } else {
+        conditions.push('LOWER(payload) LIKE LOWER(?)');
+        values.push(`%${filter}%`);
+      }
     }
 
     const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
