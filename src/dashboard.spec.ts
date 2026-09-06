@@ -42,6 +42,8 @@ describe('dashboard', () => {
     expect(html).toContain('Filter: name: cloud-cli/* or search JSON');
     expect(html).toContain('on-submit.prevent="applyFilter()"');
     expect(html).toContain('encodeURIComponent(activeFilter.value)');
+    expect(html).toContain('if (searchInProgress && !isSearch) return');
+    expect(html).toContain('generation !== refreshGeneration');
     expect(html).toContain('<lucide-icon icon="search" size="16"></lucide-icon>');
     expect(html).toContain('<lucide-icon icon="x" size="15"></lucide-icon>');
     expect(html).toContain("new EventSource('/api/events')");

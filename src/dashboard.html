@@ -198,6 +198,8 @@
           let eventSource;
           let refreshing = false;
           let refreshPending = false;
+          let searchInProgress = false;
+          let refreshGeneration = 0;
 
           const upper = (value) => String(value || '').toUpperCase();
           const terminalStatuses = new Set(['success', 'failed', 'cancelled']);
@@ -287,12 +289,14 @@
               console.error('Unable to disable background notifications', error);
             }
           };
-          const refreshJobs = async () => {
-            if (refreshing) {
+          const refreshJobs = async (isSearch = false) => {
+            if (searchInProgress && !isSearch) return;
+            if (refreshing && !isSearch) {
               refreshPending = true;
               return;
             }
             refreshing = true;
+            const generation = refreshGeneration;
 
             try {
               const activeIds = jobs.value
@@ -309,10 +313,11 @@
                 afterId === null
                   ? `/api/jobs?limit=500${filterQuery}`
                   : `/api/jobs?afterId=${afterId}&limit=500${filterQuery}`;
-              const response = await fetch(url, { headers: { accept: 'application/json' } });
-              if (!response.ok) throw new Error(`Dashboard refresh failed: ${response.status}`);
+               const response = await fetch(url, { headers: { accept: 'application/json' } });
+               if (!response.ok) throw new Error(`Dashboard refresh failed: ${response.status}`);
 
-              const data = await response.json();
+               const data = await response.json();
+               if (generation !== refreshGeneration) return;
               const previousStatuses = new Map(jobs.value.map((job) => [job.id, job.status]));
               const merged = new Map(jobs.value.map((job) => [job.id, job]));
               for (const job of data.jobs) {
@@ -330,10 +335,10 @@
               refreshError.value = true;
             } finally {
               refreshing = false;
-              if (refreshPending) {
-                refreshPending = false;
-                void refreshJobs();
-              }
+               if (refreshPending && !searchInProgress) {
+                 refreshPending = false;
+                 void refreshJobs();
+               }
             }
           };
 
@@ -361,18 +366,32 @@
               loadingMore.value = false;
             }
           };
-          const applyFilter = () => {
+          const applyFilter = async () => {
+            searchInProgress = true;
+            refreshGeneration++;
             activeFilter.value = filter.value.trim();
             jobs.value = [];
             hasMore.value = false;
-            void refreshJobs();
+            try {
+              await refreshJobs(true);
+            } finally {
+              searchInProgress = false;
+              refreshPending = false;
+            }
           };
-          const clearFilter = () => {
+          const clearFilter = async () => {
+            searchInProgress = true;
+            refreshGeneration++;
             filter.value = '';
             activeFilter.value = '';
             jobs.value = [];
             hasMore.value = false;
-            void refreshJobs();
+            try {
+              await refreshJobs(true);
+            } finally {
+              searchInProgress = false;
+              refreshPending = false;
+            }
           };
 
           onInit(() => {
