@@ -1,5 +1,6 @@
 import YAML from 'yaml';
 import db from './db-client.js';
+import { runMigrations } from './migrations.js';
 import { expandMatrix } from './parser/matrix-expander.js';
 import type { WorkflowDefinition, WorkflowRevision } from './types.js';
 
@@ -63,10 +64,7 @@ export class WorkflowRepository {
         PRIMARY KEY (workflow_id, trigger_id, scheduled_for)
       );
     `);
-    const columns = await db.all('PRAGMA table_info(workflows)');
-    if (!columns.some((column: any) => column.name === 'enabled')) {
-      await db.run('ALTER TABLE workflows ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
-    }
+    await runMigrations();
   }
 
   validate(sourceYaml: string): WorkflowDefinition[] {

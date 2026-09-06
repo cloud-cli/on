@@ -600,7 +600,8 @@ export class WebhookServer {
     return this.redact(value, await this.currentSecrets());
   }
 
-  listen(port: number): Promise<WebhookServer> {
+  async listen(port: number): Promise<WebhookServer> {
+    await this.workflowsLoaded;
     return new Promise((resolve) => {
       this.server.listen(port, process.env.RUNNER_HOST || '0.0.0.0', () => {
         console.log(`🌐 Webhook Ingress Server running on port ${port}`);
