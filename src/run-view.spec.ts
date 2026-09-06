@@ -127,7 +127,8 @@ describe('run view', () => {
     const stateSource = html.match(/<script state>(.*?)<\/script>/s)?.[1];
 
     expect(JSON.parse(stateSource!)).toEqual({ report: unsafe });
-    expect(html).toContain('template for="[step, index] of report.steps"');
+    expect(html).toContain('lucide-icon');
+    expect(html).toContain("'circle-check'");
     expect(html).toContain("new EventSource('/api/events')");
     expect(html).toContain("addEventListener('jobs.changed', handleJobChange)");
     expect(html).toContain('fetch(`/api/runs/${report.value.jobId}`');

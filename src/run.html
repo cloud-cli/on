@@ -7,6 +7,7 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
+    <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
     <title>Workflow Run</title>
     <script type="importmap">
       {
@@ -68,17 +69,34 @@
 
         <section class="rounded overflow-hidden border-b border-gray-800">
           <h2 class="sr-only">Execution Steps</h2>
-          <template for="[step, index] of report.steps">
+          <template for="step of report.steps">
             <details class="border border-b-0 border-gray-800 bg-gray-900/50 text-sm">
               <summary
                 class="flex flex-col md:flex-row md:items-center justify-between gap-2 p-3 bg-gray-800/40 border-b border-gray-800 cursor-pointer"
               >
                 <div class="flex flex-wrap items-center gap-3 min-w-0">
-                  <span class="font-mono text-gray-500">
-                    #{{ index + 1 }}<template if="step.exitCode !== undefined && step.exitCode !== 0">
-                      ({{ step.exitCode }})</template
-                    >
-                  </span>
+                  <lucide-icon
+                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-700/70"
+                    bind-class="{
+                    'text-emerald-400': step.status === 'success',
+                    'text-rose-400': step.status === 'failed',
+                    'text-indigo-400': step.status === 'running',
+                    'text-gray-400': !['success', 'failed', 'running'].includes(step.status)
+                  }"
+                    bind-icon="
+                    step.status === 'success'
+                      ? 'circle-check'
+                      : step.status === 'failed'
+                        ? 'circle-x'
+                        : step.status === 'running'
+                          ? 'loader-circle'
+                          : 'circle'
+                  "
+                    size="15"
+                  ></lucide-icon>
+                  <template if="step.exitCode !== undefined && step.exitCode !== 0">
+                    <span class="font-mono text-gray-500">({{ step.exitCode }})</span>
+                  </template>
                   <h3 class="font-semibold text-gray-200 break-words">{{ step.name }}</h3>
                   <span
                     class="px-2.5 py-0.5 rounded-full font-medium"

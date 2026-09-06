@@ -105,7 +105,10 @@
           class="md:hidden bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800 overflow-hidden"
         >
           <template for="job of jobs">
-            <article class="p-4 bg-gray-900/60">
+            <a
+              attr-href="'/runs/' + job.id"
+              class="block p-4 bg-gray-900/60 hover:bg-gray-800/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
+            >
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
@@ -122,13 +125,8 @@
                   </div>
                   <p class="mt-1 pl-[18px] text-xs font-mono text-gray-400">#{{ job.id }} · {{ upper(job.status) }}</p>
                 </div>
-                <a
-                  attr-href="'/runs/' + job.id"
-                  class="shrink-0 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-2.5 py-1 rounded border border-gray-700"
-                  >Trace</a
-                >
               </div>
-            </article>
+            </a>
           </template>
           <template if="!jobs.length">
             <div class="p-8 text-center text-gray-500">No jobs recorded yet.</div>

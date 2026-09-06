@@ -41,6 +41,9 @@ describe('dashboard', () => {
     expect(html).toContain('on-click="loadMore()"');
     expect(html).toContain("new EventSource('/api/events')");
     expect(html).toContain('href="/workflows"');
+    expect(html).toContain('class="block p-4 bg-gray-900/60 hover:bg-gray-800/40');
+    expect(html).toContain('View Trace</a');
+    expect(html).not.toContain('>Trace</a>');
     expect(html).toContain("if=\"refreshError\"");
     expect(html).not.toContain('System operational');
     expect(html).toContain("addEventListener('jobs.available', refreshJobs)");
