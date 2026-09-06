@@ -1,5 +1,6 @@
 import db from './db-client.js';
 import { WorkflowExecutionReport, JobPayload, JobRecord, JobStatus } from './types.js';
+import { timestampLogLines } from './timestamped-log.js';
 
 export class QueueManager {
   constructor(private workerId: string) {}
@@ -237,7 +238,7 @@ export class QueueManager {
        ON CONFLICT(job_id, step_id) DO UPDATE SET
          log_content = excluded.log_content,
          created_at = CURRENT_TIMESTAMP`,
-      [jobId, stepId, logContent],
+      [jobId, stepId, timestampLogLines(logContent)],
     );
   }
 
