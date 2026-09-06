@@ -4,6 +4,8 @@ import { runMigrations } from './migrations.js';
 import { expandMatrix } from './parser/matrix-expander.js';
 import type { WorkflowDefinition, WorkflowRevision } from './types.js';
 
+export const DEFAULT_STEP_TIMEOUT_MS = 30_000;
+
 export interface StoredWorkflow {
   id: string;
   name: string;
@@ -31,6 +33,15 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
   return expandMatrix(parsed).map((workflow: any) => {
     const webhook = Object.entries(workflow.on).find(([name]) => name !== 'schedule' && name !== 'solar');
     const [provider, trigger] = webhook || ['generic', {}];
+    if (workflow.retries !== undefined && (!Number.isInteger(workflow.retries) || workflow.retries < 0)) {
+      throw new Error('retries must be a non-negative integer');
+    }
+    const steps = workflow.steps.map((step: any) => {
+      const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
+      if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new Error('step.timeoutMs must be a positive integer');
+      return { ...step, timeoutMs };
+    });
+
     return {
       id: workflowId(workflow.id || workflow.name),
       name: workflow.name,
@@ -38,7 +49,8 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
       schedule: Array.isArray(workflow.on.schedule) ? workflow.on.schedule : undefined,
       solar: Array.isArray(workflow.on.solar) ? workflow.on.solar : undefined,
       concurrency: workflow.concurrency,
-      steps: workflow.steps,
+      steps,
+      retries: workflow.retries ?? 0,
       env: workflow.env,
       tags: Array.isArray(workflow.tags) ? [...new Set((workflow.tags as unknown[]).filter((tag): tag is string => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean))] : undefined,
     };

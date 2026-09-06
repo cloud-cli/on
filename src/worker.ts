@@ -22,7 +22,7 @@ import {
 import { setupSignalHandlers } from './signals.js';
 import { consumeRunnerEvents } from './events.js';
 import { PluginManager } from './plugins/manager.js';
-import { WorkflowRepository } from './workflows.js';
+import { DEFAULT_STEP_TIMEOUT_MS, WorkflowRepository } from './workflows.js';
 import { debug } from './debug.js';
 
 export const shutdownState = {
@@ -360,16 +360,28 @@ async function processSteps(
       await queue.saveReport(job.id, executionReport);
       void notifyJobChange(config, job.id);
 
-      const stepResult = await executeSingleStep({
-        workerId,
-        jobId: job.id,
-        step,
-        stepIndex: i,
-        executionContext,
-        driver,
-        queue,
-        config,
-      });
+      let stepResult: ExecOutput = {
+        failed: true,
+        skipped: false,
+        cancelled: false,
+        report: null,
+      };
+      const retries = p.workflow?.retries ?? 0;
+      for (let attempt = 1; attempt <= retries + 1; attempt++) {
+        stepResult = await executeSingleStep({
+          workerId,
+          jobId: job.id,
+          step,
+          stepIndex: i,
+          attempt,
+          executionContext,
+          driver,
+          queue,
+          config,
+        });
+        if (!stepResult.failed || stepResult.cancelled || attempt > retries) break;
+        console.log(`[${workerId}] 🔁 Retrying step [${step.id}] (${attempt}/${retries + 1})`);
+      }
 
       if (stepResult.report) {
         stepReports[i] = {
@@ -439,6 +451,7 @@ async function executeSingleStep(params: {
   jobId: string | number;
   step: WorkflowStep;
   stepIndex: number;
+  attempt: number;
   executionContext: JobExecutionContext;
   driver: ExecutionDriver;
   queue: QueueManager;
@@ -469,7 +482,8 @@ async function executeSingleStep(params: {
       jobId: String(params.jobId),
       step,
       command: step.run!,
-      timeoutMs: step.timeoutMs,
+      timeoutMs: step.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS,
+      attempt: params.attempt,
       image: step.image,
       workingDir: executionContext.workingDir,
       logsDir: executionContext.logsDir,
@@ -510,9 +524,17 @@ async function executeEvalStep(params: {
   const startTime = Date.now();
   const stepId = step.id!;
   const stepName = step.name!;
+  let timeoutTimer: NodeJS.Timeout | undefined;
 
   try {
-    const evalResult = await SafeExpressionEvaluator.evaluateExpression(step.eval!, executionContext);
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutTimer = setTimeout(() => reject(new Error(`Step timed out after ${stepContext.timeoutMs}ms`)), stepContext.timeoutMs);
+      timeoutTimer.unref();
+    });
+    const evalResult = await Promise.race([
+      SafeExpressionEvaluator.evaluateExpression(step.eval!, executionContext),
+      timeout,
+    ]);
 
     // Store outputs in execution context for downstream steps
     executionContext.steps[stepId] = {
@@ -567,6 +589,8 @@ async function executeEvalStep(params: {
         logContent: '',
       },
     };
+  } finally {
+    if (timeoutTimer) clearTimeout(timeoutTimer);
   }
 }
 

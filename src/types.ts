@@ -41,6 +41,7 @@ export interface StepContext {
   env?: Record<string, string>;
   image?: string; // Optional: Docker container image
   timeoutMs?: number;
+  attempt?: number;
 }
 
 export interface StepResult {
@@ -128,6 +129,8 @@ export interface WorkflowDefinition {
     group: string;
     cancelInProgress?: boolean;
   };
+  /** Number of additional attempts for a failed step. */
+  retries?: number;
   steps: WorkflowStep[];
   env?: Record<string, string>;
   /** Worker capabilities required to execute this workflow */

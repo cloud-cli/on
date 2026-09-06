@@ -66,4 +66,51 @@ describe('incremental workflow reports', () => {
     ]);
     expect(queue.completeJob).toHaveBeenCalledWith(1, 'success', expect.any(Object));
   });
+
+  it('retries failed steps according to the workflow setting', async () => {
+    let attempts = 0;
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+    };
+    const driver = {
+      execute: vi.fn(() => ({
+        done: Promise.resolve({ exitCode: ++attempts === 2 ? 0 : 1, durationMs: 1 }),
+        cancel: async () => {},
+        logFilePath: '',
+      })),
+      readLog: vi.fn(async () => ''),
+    };
+
+    await processJob({
+      workerId: 'test-worker',
+      job: {
+        id: 2,
+        workflow_id: 'retry-workflow',
+        workflow_revision: 1,
+        required_tags: '[]',
+        concurrency_key: null,
+        status: 'running',
+        worker_id: 'test-worker',
+        payload: JSON.stringify({ inputs: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({}) },
+      config: { storagePath: '/tmp', serverUrl: 'http://runner.test', env: {}, plugins: [] },
+      driver,
+      workflow: {
+        id: 'retry-workflow',
+        name: 'Retry workflow',
+        on: { provider: 'generic' },
+        retries: 1,
+        steps: [{ id: 'retry', run: 'false' }],
+      },
+    } as Processable);
+
+    expect(driver.execute).toHaveBeenCalledTimes(2);
+    expect(queue.completeJob).toHaveBeenCalledWith(2, 'success', expect.any(Object));
+  });
 });

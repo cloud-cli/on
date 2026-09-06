@@ -45,7 +45,10 @@ export class SystemdDriver implements ExecutionDriver {
       };
     }
 
-    const unitName = `workflow-${ctx.jobId}-${ctx.step.id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const unitName = `workflow-${ctx.jobId}-${ctx.step.id}-attempt-${ctx.attempt || 1}-${Date.now()}`.replace(
+      /[^a-zA-Z0-9_-]/g,
+      '_',
+    );
     const systemdFlags: string[] = [
       `--unit=${unitName}`,
       '--wait',
