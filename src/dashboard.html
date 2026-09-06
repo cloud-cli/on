@@ -7,6 +7,7 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
+    <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
     <title>Workflow Engine Dashboard</title>
     <script type="importmap">
       { "imports": { "@li3/": "https://cdn.li3.dev/@li3/" } }
@@ -24,11 +25,12 @@
             <a href="/workflows" class="text-indigo-400 hover:text-indigo-300 hover:underline">Manage workflows</a>
             <template if="notificationsSupported">
               <button
-                class="rounded border px-3 py-1"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-full border"
                 bind-class="notificationsEnabled ? 'border-emerald-500/30.bg-emerald-500/10.text-emerald-300' : 'border-indigo-500/40.bg-indigo-500/10.text-indigo-300'"
                 on-click="toggleNotifications()"
               >
-                {{ notificationsEnabled ? 'Notifications on' : 'Enable notifications' }}
+                <lucide-icon bind-icon="notificationsEnabled ? 'bell-ring' : 'bell-off'" size="16"></lucide-icon>
+                <span class="sr-only">{{ notificationsEnabled ? 'Notifications on' : 'Enable notifications' }}</span>
               </button>
             </template>
             <span class="text-gray-500">Updated {{ lastUpdated }}</span>
