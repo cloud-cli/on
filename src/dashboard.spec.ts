@@ -42,6 +42,8 @@ describe('dashboard', () => {
     expect(html).toContain('Filter: name: cloud-cli/* or search JSON');
     expect(html).toContain('on-submit="applyFilter($event)"');
     expect(html).toContain('encodeURIComponent(activeFilter.value)');
+    expect(html).toContain('<lucide-icon icon="search" size="16"></lucide-icon>');
+    expect(html).toContain('<lucide-icon icon="x" size="15"></lucide-icon>');
     expect(html).toContain("new EventSource('/api/events')");
     expect(html).toContain('/api/push/public-key');
     expect(html).toContain('https://sodium.static.apphor.de/lucide-icon.html');
