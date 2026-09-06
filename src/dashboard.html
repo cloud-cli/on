@@ -42,7 +42,7 @@
           </div>
         </header>
 
-        <div class="flex items-center gap-2">
+        <form class="flex items-center gap-2" onsubmit.prevent="applyFilter()">
           <div class="relative min-w-0 flex-1">
             <label class="sr-only" for="job-filter">Filter jobs</label>
             <input
@@ -63,14 +63,13 @@
             </template>
           </div>
           <button
-            type="button"
-            on-click="applyFilter()"
+            type="submit"
             aria-label="Search jobs"
             class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-indigo-500/40 bg-indigo-500/10 text-indigo-200 hover:bg-indigo-500/20"
           >
             <lucide-icon icon="search" size="16"></lucide-icon>
           </button>
-        </div>
+        </form>
 
         <template if="notificationNotice">
           <button
