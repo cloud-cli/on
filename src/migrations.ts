@@ -28,6 +28,17 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: '003_add_push_delivery_history',
+    async apply() {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS push_deliveries (
+          job_id INTEGER PRIMARY KEY,
+          delivered_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

@@ -128,9 +128,11 @@
               </template>
             </tbody>
           </table>
-          <template if="!jobs.length">
-            <div class="p-8 text-center text-gray-500">No jobs recorded yet.</div>
-          </template>
+         <template if="!jobs.length">
+             <div class="p-8 text-center text-gray-500">
+               {{ activeFilter ? 'No jobs match the current filter.' : 'No jobs recorded yet.' }}
+             </div>
+           </template>
         </section>
 
         <section
@@ -161,7 +163,9 @@
             </a>
           </template>
           <template if="!jobs.length">
-            <div class="p-8 text-center text-gray-500">No jobs recorded yet.</div>
+             <div class="p-8 text-center text-gray-500">
+               {{ activeFilter ? 'No jobs match the current filter.' : 'No jobs recorded yet.' }}
+             </div>
           </template>
         </section>
 
@@ -188,6 +192,7 @@
           const loadingMore = ref(false);
           const filter = ref('');
           const activeFilter = ref('');
+          const pushConfigured = ref(false);
           const notificationsSupported = ref('Notification' in window && 'serviceWorker' in navigator);
           const notificationsEnabled = ref(
             notificationsSupported.value &&
@@ -205,7 +210,7 @@
           const upper = (value) => String(value || '').toUpperCase();
           const terminalStatuses = new Set(['success', 'failed', 'cancelled']);
           const notifyCompletedJob = async (job) => {
-            if (!notificationsEnabled.value || !['success', 'failed'].includes(job.status)) return;
+             if (!notificationsEnabled.value || pushConfigured.value || !['success', 'failed'].includes(job.status)) return;
             try {
               const registration = await navigator.serviceWorker.ready;
               await registration.showNotification(
@@ -258,6 +263,7 @@
               const response = await fetch('/api/push/public-key', { headers: { accept: 'application/json' } });
               if (!response.ok) return;
               const { publicKey } = await response.json();
+              pushConfigured.value = true;
               const registration = await navigator.serviceWorker.ready;
               const subscription =
                 (await registration.pushManager.getSubscription()) ||
@@ -328,7 +334,7 @@
                   void notifyCompletedJob(job);
                 }
               }
-              jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
+               jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
               lastUpdated.value = new Date().toLocaleTimeString();
               refreshError.value = false;
             } catch (error) {
@@ -355,10 +361,10 @@
               });
               if (!response.ok) throw new Error(`Loading older jobs failed: ${response.status}`);
 
-              const data = await response.json();
+             const data = await response.json();
               const merged = new Map(jobs.value.map((job) => [job.id, job]));
               for (const job of data.jobs) merged.set(job.id, job);
-              jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
+             jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
               hasMore.value = data.hasMore;
             } catch (error) {
               console.error(error);
@@ -429,6 +435,8 @@
             hasMore,
             loadingMore,
             filter,
+            activeFilter,
+            pushConfigured,
             setFilter,
             loadMore,
             applyFilter,

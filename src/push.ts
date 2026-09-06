@@ -28,6 +28,11 @@ export class PushRepository {
 
   async notify(job: { id: number; workflow_id: string; status: string }): Promise<void> {
     if (!this.config.push || !['success', 'failed', 'cancelled'].includes(job.status)) return;
+    const delivery = await db.get(
+      'INSERT INTO push_deliveries (job_id) VALUES (?) ON CONFLICT(job_id) DO NOTHING RETURNING job_id',
+      [job.id],
+    );
+    if (!delivery) return;
     webpush.setVapidDetails(this.config.push.subject, this.config.push.publicKey, this.config.push.privateKey);
     const subscriptions = await db.all('SELECT endpoint, p256dh, auth FROM push_subscriptions');
     const payload = JSON.stringify({
