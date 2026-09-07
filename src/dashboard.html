@@ -112,7 +112,7 @@
                   <td class="py-3 px-4 font-medium text-white">{{ job.workflowId }}</td>
                   <td class="py-3 px-4">
                     <span
-                      class="px-2.5 py-0.5 rounded-full text-xs font-semibold"
+                      class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold"
                       bind-class="{
                       'bg-emerald-500/10.text-emerald-400': job.status === 'success',
                       'bg-rose-500/10.text-rose-400': job.status === 'failed',
@@ -120,6 +120,25 @@
                       'bg-gray-500/10.text-gray-400': !['success', 'failed', 'running'].includes(job.status)
                     }"
                     >
+                      <lucide-icon
+                        class="shrink-0"
+                        bind-class="{
+                        'text-emerald-400': job.status === 'success',
+                        'text-rose-400': job.status === 'failed',
+                        'text-indigo-400.animate-spin': job.status === 'running',
+                        'text-gray-400': !['success', 'failed', 'running'].includes(job.status)
+                      }"
+                        bind-icon="
+                        job.status === 'success'
+                          ? 'circle-check'
+                          : job.status === 'failed'
+                            ? 'circle-x'
+                            : job.status === 'running'
+                              ? 'loader-circle'
+                              : 'circle'
+                      "
+                        size="14"
+                      ></lucide-icon>
                       {{ upper(job.status) }}
                     </span>
                   </td>
@@ -156,18 +175,28 @@
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
-                    <span
-                      class="w-2.5 h-2.5 rounded-full shrink-0"
+                    <lucide-icon
+                      class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-700/70"
                       bind-class="{
-                      'bg-emerald-400': job.status === 'success',
-                      'bg-rose-400': job.status === 'failed',
-                      'bg-indigo-400.animate-pulse': job.status === 'running',
-                      'bg-gray-500': !['success', 'failed', 'running'].includes(job.status)
+                      'text-emerald-400': job.status === 'success',
+                      'text-rose-400': job.status === 'failed',
+                      'text-indigo-400.animate-spin': job.status === 'running',
+                      'text-gray-400': !['success', 'failed', 'running'].includes(job.status)
                     }"
-                    ></span>
+                      bind-icon="
+                      job.status === 'success'
+                        ? 'circle-check'
+                        : job.status === 'failed'
+                          ? 'circle-x'
+                          : job.status === 'running'
+                            ? 'loader-circle'
+                            : 'circle'
+                    "
+                      size="15"
+                    ></lucide-icon>
                     <h2 class="font-medium text-white truncate">{{ job.workflowId }}</h2>
                   </div>
-                  <p class="mt-1 pl-[18px] text-xs font-mono text-gray-400">#{{ job.id }} · {{ upper(job.status) }}</p>
+                  <p class="mt-1 pl-[36px] text-xs font-mono text-gray-400">#{{ job.id }} · {{ upper(job.status) }}</p>
                 </div>
               </div>
             </a>

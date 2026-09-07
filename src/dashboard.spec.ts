@@ -34,6 +34,10 @@ describe('dashboard', () => {
     expect(JSON.parse(stateSource!)).toEqual({ jobs, hasMore: true });
     expect(html).toContain('`/api/jobs?afterId=${afterId}&limit=500${filterQuery}`');
     expect(html).toContain("new Set(['success', 'failed', 'cancelled'])");
+    expect(html).toContain("? 'circle-check'");
+    expect(html).toContain("? 'circle-x'");
+    expect(html).toContain("? 'loader-circle'");
+    expect(html).not.toContain('rounded-full shrink-0');
     expect(html).toContain('Math.max(0, Math.min(...activeIds) - 1)');
     expect(html).toContain('new Map(jobs.value.map((job) => [job.id, job]))');
     expect(html).toContain('Array.from(merged.values()).sort');
