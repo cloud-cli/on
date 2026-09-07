@@ -133,6 +133,7 @@ describe('run view', () => {
     expect(JSON.parse(stateSource!)).toEqual({ report: unsafe });
     expect(html).toContain('lucide-icon');
     expect(html).toContain('highlight.jsfn');
+    expect(html).toContain('bind-innerhtml="inputsHtml"');
     expect(html).toContain("'circle-check'");
     expect(html).toContain('worker: {{ report.workerId }}');
     expect(html).toContain("new EventSource('/api/events')");
