@@ -19,14 +19,18 @@ describe('incremental workflow reports', () => {
       isCancelled: vi.fn(async () => false),
     };
     const payload = {
-      inputs: {},
+      inputs: { repo: 'example' },
     };
     const workflow = {
       id: 'incremental',
       name: 'Incremental',
       on: { provider: 'generic' },
+      env: {
+        image: '${inputs.repo}',
+        image_tag: '${env.image}:latest',
+      },
       steps: [
-        { id: 'first', eval: '({ value: 1 })' },
+        { id: 'first', eval: '({ image: env.image, tag: env.image_tag })' },
         { id: 'second', eval: '({ value: 2 })' },
       ],
     };
@@ -59,9 +63,12 @@ describe('incremental workflow reports', () => {
       ['success', 'success'],
       ['success', 'success'],
     ]);
-    expect(reports.at(-1)?.steps.map((step) => step.outputs)).toEqual([{ value: 1 }, { value: 2 }]);
+    expect(reports.at(-1)?.steps.map((step) => step.outputs)).toEqual([
+      { image: 'example', tag: 'example:latest' },
+      { value: 2 },
+    ]);
     expect(logs).toEqual([
-      { stepId: 'first', content: '[JS EVAL OUTPUT]:\n{\n  "value": 1\n}' },
+      { stepId: 'first', content: '[JS EVAL OUTPUT]:\n{\n  "image": "example",\n  "tag": "example:latest"\n}' },
       { stepId: 'second', content: '[JS EVAL OUTPUT]:\n{\n  "value": 2\n}' },
     ]);
     expect(queue.completeJob).toHaveBeenCalledWith(1, 'success', expect.any(Object));

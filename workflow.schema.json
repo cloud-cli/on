@@ -102,6 +102,18 @@
         "name": { "type": "string" },
         "if": { "type": "string" },
         "image": { "type": "string", "description": "Docker container image" },
+        "volumes": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          ],
+          "description": "Docker volume mappings such as /host/path:/container/path"
+        },
+        "dockerArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Additional arguments passed to docker run"
+        },
         "env": {
           "type": "object",
           "additionalProperties": { "type": "string" }

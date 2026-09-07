@@ -37,7 +37,11 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
   const steps = parsed.steps.map((step: any) => {
     const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
     if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new Error('step.timeoutMs must be a positive integer');
-    return { ...step, timeoutMs };
+    const volumes = step.volumes === undefined ? undefined : Array.isArray(step.volumes) ? step.volumes : [step.volumes];
+    const dockerArgs = step.dockerArgs === undefined ? undefined : Array.isArray(step.dockerArgs) ? step.dockerArgs : [step.dockerArgs];
+    if (volumes?.some((volume: unknown) => typeof volume !== 'string' || !volume.trim())) throw new Error('step.volumes must contain non-empty strings');
+    if (dockerArgs?.some((arg: unknown) => typeof arg !== 'string')) throw new Error('step.dockerArgs must contain strings');
+    return { ...step, timeoutMs, volumes, dockerArgs };
   });
 
   return [{

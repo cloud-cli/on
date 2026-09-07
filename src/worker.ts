@@ -492,6 +492,8 @@ async function executeSingleStep(params: {
       timeoutMs: step.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS,
       attempt: params.attempt,
       image: step.image,
+      volumes: step.volumes,
+      dockerArgs: step.dockerArgs,
       workingDir: executionContext.workingDir,
       logsDir: executionContext.logsDir,
       env: {
@@ -602,12 +604,12 @@ async function executeEvalStep(params: {
 }
 
 async function evaluateEnv(env, context) {
-  // Evaluate step environment variables
+  // Resolve entries in declaration order so later values can reference env.*.
   const evaluated: Record<string, string> = {};
 
   if (env) {
     for (const [key, val] of Object.entries(env)) {
-      evaluated[key] = String(await SafeExpressionEvaluator.evaluateValue(val, context));
+      evaluated[key] = String(await SafeExpressionEvaluator.evaluateValue(val, { ...context, env: { ...context.env, ...evaluated } }));
     }
   }
 

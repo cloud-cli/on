@@ -46,6 +46,8 @@ export interface StepContext {
   command: string;
   env?: Record<string, string>;
   image?: string; // Optional: Docker container image
+  volumes?: string[];
+  dockerArgs?: string[];
   timeoutMs?: number;
   attempt?: number;
 }
@@ -123,6 +125,8 @@ export interface WorkflowStep {
   eval?: string;
   dispatch?: string;
   image?: string;
+  volumes?: string[];
+  dockerArgs?: string[];
   timeoutMs?: number;
   env?: Record<string, string>;
 }

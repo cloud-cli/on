@@ -42,6 +42,21 @@ steps:
     expect(workflow.steps[0].timeoutMs).toBe(30_000);
   });
 
+  it('normalizes Docker volume and argument options', () => {
+    const [workflow] = parseWorkflow(`
+name: Container
+on: { generic: {} }
+steps:
+  - image: alpine:latest
+    run: 'true'
+    volumes: secrets-store:/secrets
+    dockerArgs: ['--network=host']
+`);
+
+    expect(workflow.steps[0].volumes).toEqual(['secrets-store:/secrets']);
+    expect(workflow.steps[0].dockerArgs).toEqual(['--network=host']);
+  });
+
   it('preserves matrix definitions for trigger-time expansion', () => {
     const [workflow] = parseWorkflow(`
 name: Matrix build
