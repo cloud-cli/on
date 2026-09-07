@@ -11,6 +11,12 @@
       "description": "Human-readable name for the workflow."
     },
 
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Optional workflow identity. The management API ID is authoritative after creation."
+    },
+
     "tags": {
       "type": "array",
       "description": "Worker capability tags required to execute this workflow.",

@@ -14,6 +14,8 @@ describe('workflow management UI', () => {
     expect(html).toContain('Save draft');
     expect(html).toContain('type="checkbox"');
     expect(html).toContain('bind-checked="enabled"');
+    expect(html).toContain('bind-disabled="selectedId"');
+    expect(html).toContain('The ID becomes permanent after the first save.');
     expect(html).toContain('No changes to save.');
     expect(html).toContain('setTimeout(() =>');
     expect(html).toContain('}, 1000);');

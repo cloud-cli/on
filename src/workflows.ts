@@ -96,13 +96,15 @@ export class WorkflowRepository {
 
   async saveDraft(id: string, sourceYaml: string, enabled = true): Promise<StoredWorkflow> {
     const workflows = this.validate(sourceYaml);
-    if (workflows.length !== 1 || workflows[0].id !== id) throw new Error('Workflow id must match the YAML name or id');
-    const previous = await db.get('SELECT COALESCE(MAX(revision), 0) AS revision FROM workflow_revisions WHERE workflow_id = ?', [id]);
+    if (workflows.length !== 1) throw new Error('Workflow must contain exactly one definition');
+    const canonicalId = workflowId(id);
+    workflows[0].id = canonicalId;
+    const previous = await db.get('SELECT COALESCE(MAX(revision), 0) AS revision FROM workflow_revisions WHERE workflow_id = ?', [canonicalId]);
     const revision = Number(previous?.revision || 0) + 1;
     await db.run(`INSERT INTO workflows (id, name, source_yaml, status, enabled) VALUES (?, ?, ?, 'draft', ?)
-      ON CONFLICT(id) DO UPDATE SET name = excluded.name, source_yaml = excluded.source_yaml, status = 'draft', enabled = excluded.enabled, updated_at = CURRENT_TIMESTAMP`, [id, workflows[0].name, sourceYaml, enabled ? 1 : 0]);
-    await db.run('INSERT INTO workflow_revisions (workflow_id, revision, source_yaml, normalized_json) VALUES (?, ?, ?, ?)', [id, revision, sourceYaml, JSON.stringify(workflows[0])]);
-    return { id, name: workflows[0].name, sourceYaml, revision, status: 'draft', enabled };
+      ON CONFLICT(id) DO UPDATE SET name = excluded.name, source_yaml = excluded.source_yaml, status = 'draft', enabled = excluded.enabled, updated_at = CURRENT_TIMESTAMP`, [canonicalId, workflows[0].name, sourceYaml, enabled ? 1 : 0]);
+    await db.run('INSERT INTO workflow_revisions (workflow_id, revision, source_yaml, normalized_json) VALUES (?, ?, ?, ?)', [canonicalId, revision, sourceYaml, JSON.stringify(workflows[0])]);
+    return { id: canonicalId, name: workflows[0].name, sourceYaml, revision, status: 'draft', enabled };
   }
 
   async publish(id: string): Promise<StoredWorkflow | null> {

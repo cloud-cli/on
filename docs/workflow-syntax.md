@@ -189,8 +189,8 @@ Secret values are delivered to a worker after it claims the job. Do not write th
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `name` | string | Required human-readable workflow name. It also supplies the ID when `id` is absent. |
-| `id` | string | Optional identifier. It is normalized to lowercase kebab case. |
+| `name` | string | Required human-readable workflow name shown in the UI and reports. |
+| `id` | string | Optional identifier used when deriving an ID outside the management API. The management API ID is authoritative after creation. |
 | `on` | object | Required trigger configuration. |
 | `env` | object | Workflow environment values, evaluated in declaration order. |
 | `matrix` | object | Matrix dimensions. Each value is an array of strings, numbers, or booleans. |

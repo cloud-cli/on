@@ -70,6 +70,19 @@ steps:
     expect(workflow.matrix).toEqual({ node: [18, 20] });
   });
 
+  it('keeps an explicit identity separate from the display name', () => {
+    const [workflow] = parseWorkflow(`
+id: release-pipeline
+name: Release pipeline
+on: { generic: {} }
+steps:
+  - run: 'true'
+`);
+
+    expect(workflow.id).toBe('release-pipeline');
+    expect(workflow.name).toBe('Release pipeline');
+  });
+
   it('validates retry and timeout settings', () => {
     expect(() => parseWorkflow(`name: Invalid\non: { generic: {} }\nretries: -1\nsteps: [{run: 'true'}]`)).toThrow(
       'retries must be a non-negative integer',
