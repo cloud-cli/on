@@ -63,32 +63,45 @@
         </template>
 
         <section id="workflow-layout" class="space-y-5">
-          <aside class="workflow-list rounded-xl border border-gray-800 bg-gray-900/80 p-3 shadow-xl shadow-black/10">
-            <div class="mb-3 flex items-center justify-between px-2">
-              <h2 class="text-xs font-semibold uppercase tracking-wider text-gray-400">Workflows</h2>
-              <span class="rounded-full bg-gray-800 px-2 py-0.5 text-xs font-mono text-gray-400"
-                >{{ workflows.length }}</span
-              >
+          <nav class="workflow-list rounded-2xl border border-gray-800 bg-gray-900/80 p-4 shadow-xl shadow-black/10" aria-labelledby="workflow-list-title">
+            <div class="mb-4 flex items-end justify-between gap-3 border-b border-gray-800 pb-4">
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-400">Definitions</p>
+                <h2 id="workflow-list-title" class="mt-1 text-lg font-semibold text-white">Workflows</h2>
+              </div>
+              <span class="rounded-full border border-gray-700 bg-gray-950 px-2.5 py-1 text-xs font-mono text-gray-400" aria-label="Workflow count">
+                {{ workflows.length }}
+              </span>
             </div>
-            <div class="space-y-1 flex flex-col w-full">
+            <ul class="grid gap-2" aria-label="Workflow definitions">
               <template for="workflow of workflows">
-                <button
-                  on-click="visitWorkflow(workflow.id)"
-                  class="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition hover:bg-gray-800"
-                  bind-class="workflow.id === selectedId ? 'bg-indigo-500/15.text-indigo-100' : 'text-gray-300'"
-                >
-                  <span class="truncate font-medium">{{ workflow.name }}</span>
-                  <span
-                    class="ml-3 rounded-full border border-gray-700 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400"
-                    >{{ workflow.status }}</span
+                <li>
+                  <a
+                    attr-href="'/workflows/' + workflow.id"
+                    class="group flex min-h-16 items-center gap-3 rounded-xl border border-gray-800 bg-gray-950/50 px-3.5 py-3 text-left text-sm text-gray-300 outline-none transition hover:border-indigo-500/50 hover:bg-indigo-500/10 focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/50"
                   >
-                </button>
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-800 text-gray-400 transition group-hover:bg-indigo-500/15 group-hover:text-indigo-300">
+                      <lucide-icon icon="workflow" size="17"></lucide-icon>
+                    </span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate font-medium text-gray-100">{{ workflow.name }}</span>
+                      <span class="mt-0.5 block truncate font-mono text-[11px] text-gray-500">{{ workflow.id }}</span>
+                    </span>
+                    <span
+                      class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide"
+                      bind-class="workflow.status === 'published' ? 'border-emerald-500/30.bg-emerald-500/10.text-emerald-300' : workflow.status === 'archived' ? 'border-gray-700.bg-gray-800.text-gray-500' : 'border-amber-500/30.bg-amber-500/10.text-amber-300'"
+                    >{{ workflow.status }}</span>
+                    <lucide-icon icon="arrow-up-right" size="16" class="shrink-0 text-gray-600 transition group-hover:text-indigo-300"></lucide-icon>
+                  </a>
+                </li>
               </template>
-              <p class="px-3 py-5 text-center text-sm text-gray-500" class-hidden="workflows.length > 0">
-                No workflows yet.
-              </p>
+            </ul>
+            <div class="rounded-xl border border-dashed border-gray-700 px-4 py-8 text-center" class-hidden="workflows.length > 0">
+              <lucide-icon icon="workflow" size="22" class="mx-auto text-gray-600"></lucide-icon>
+              <p class="mt-2 text-sm font-medium text-gray-300">No workflows yet</p>
+              <p class="mt-1 text-xs text-gray-500">Create a definition to start automating jobs.</p>
             </div>
-          </aside>
+          </nav>
 
           <section
             class="editor-panel overflow-hidden rounded-xl border border-gray-800 bg-gray-900/80 shadow-xl shadow-black/10"
@@ -167,59 +180,77 @@
           </section>
         </section>
 
-        <section
-          class="secrets-panel rounded-xl border border-gray-800 bg-gray-900/80 p-4 shadow-xl shadow-black/10 sm:p-5"
-        >
-          <div class="mb-4 flex items-start gap-3">
-            <span class="rounded-lg bg-indigo-500/10 p-2 text-indigo-300"
-              ><lucide-icon icon="key-round" size="18"></lucide-icon
-            ></span>
-            <div>
-              <h2 class="text-base font-semibold text-white">Secrets</h2>
-              <p class="mt-0.5 text-sm text-gray-400">
-                Values are write-only and encrypted. Re-saving a name replaces its value.
-              </p>
+        <section class="secrets-panel rounded-2xl border border-gray-800 bg-gray-900/80 p-4 shadow-xl shadow-black/10 sm:p-5" aria-labelledby="secrets-title">
+          <div class="mb-5 flex items-start justify-between gap-3">
+            <div class="flex items-start gap-3">
+              <span class="rounded-lg bg-indigo-500/10 p-2 text-indigo-300"><lucide-icon icon="key-round" size="18"></lucide-icon></span>
+              <div>
+                <h2 id="secrets-title" class="text-lg font-semibold text-white">Secrets</h2>
+                <p class="mt-0.5 text-sm text-gray-400">Write-only credentials available to workflows.</p>
+              </div>
+            </div>
+            <span class="rounded-full border border-gray-700 bg-gray-950 px-2.5 py-1 text-xs font-mono text-gray-400" aria-label="Secret count">{{ secrets.length }}</span>
+          </div>
+          <div class="mb-5 rounded-xl border border-gray-800 bg-gray-950/50 p-3">
+            <p class="mb-3 text-xs text-gray-500">Saving an existing name replaces its encrypted value.</p>
+            <div class="grid gap-3 md:grid-cols-[14rem_1fr_auto_auto]">
+              <label class="sr-only" for="secret-name">Secret name</label>
+              <input
+                id="secret-name"
+                bind-value="secretName"
+                on-input="setSecretName($event)"
+                class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 font-mono text-sm uppercase outline-none transition placeholder:text-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                placeholder="NPM_TOKEN"
+              />
+              <label class="sr-only" for="secret-value">Secret value</label>
+              <input
+                id="secret-value"
+                ref="secretValueInput"
+                bind-value="secretValue"
+                on-input="setSecretValue($event)"
+                type="password"
+                class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 font-mono text-sm outline-none transition placeholder:text-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                placeholder="New secret value"
+              />
+              <button
+                type="button"
+                on-click="saveSecret()"
+                bind-disabled="busy"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-500/60 px-3 py-2.5 text-sm font-medium text-indigo-200 outline-none transition hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-50"
+              >
+                <lucide-icon icon="lock-keyhole" size="16"></lucide-icon>Save
+              </button>
+              <button
+                type="button"
+                on-click="removeSecret()"
+                bind-disabled="busy"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-500/50 px-3 py-2.5 text-sm font-medium text-rose-300 outline-none transition hover:bg-rose-500/10 focus-visible:ring-2 focus-visible:ring-rose-400/60 disabled:opacity-50"
+              >
+                <lucide-icon icon="trash-2" size="16"></lucide-icon>Delete
+              </button>
             </div>
           </div>
-          <div class="grid gap-3 md:grid-cols-[14rem_1fr_auto_auto]">
-            <input
-              bind-value="secretName"
-              on-input="setSecretName($event)"
-              class="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2.5 font-mono text-sm uppercase outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-              placeholder="NPM_TOKEN"
-            />
-            <input
-              ref="secretValueInput"
-              bind-value="secretValue"
-              on-input="setSecretValue($event)"
-              type="password"
-              class="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2.5 font-mono text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-              placeholder="New secret value"
-            />
-            <button
-              on-click="saveSecret()"
-              bind-disabled="busy"
-              class="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-500/60 px-3 py-2.5 text-sm font-medium text-indigo-200 transition hover:bg-indigo-500/10 disabled:opacity-50"
-            >
-              <lucide-icon icon="lock-keyhole" size="16"></lucide-icon>Save value
-            </button>
-            <button
-              on-click="removeSecret()"
-              bind-disabled="busy"
-              class="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-500/50 px-3 py-2.5 text-sm font-medium text-rose-300 transition hover:bg-rose-500/10 disabled:opacity-50"
-            >
-              <lucide-icon icon="trash-2" size="16"></lucide-icon>Delete
-            </button>
-          </div>
-          <div class="mt-4 flex flex-col space-y-1">
-            <template for="name of secrets"
-              ><button
-                on-click="selectSecret(name)"
-                class="rounded-md border border-gray-700 px-2.5 py-1.5 font-mono text-xs text-gray-300 transition hover:border-indigo-500 hover:text-indigo-200 w-full"
-              >
-                {{ name }}
-              </button></template
-            >
+          <ul class="grid gap-2" aria-label="Saved secrets">
+            <template for="name of secrets">
+              <li>
+                <button
+                  type="button"
+                  on-click="selectSecret(name)"
+                  class="group flex min-h-14 w-full items-center gap-3 rounded-xl border border-gray-800 bg-gray-950/50 px-3.5 py-3 text-left outline-none transition hover:border-indigo-500/50 hover:bg-indigo-500/10 focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/50"
+                  aria-label="Edit secret {{ name }}"
+                >
+                  <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-800 text-gray-500 group-hover:text-indigo-300"><lucide-icon icon="key-round" size="15"></lucide-icon></span>
+                  <span class="min-w-0 flex-1 truncate font-mono text-sm text-gray-200">{{ name }}</span>
+                  <span class="text-xs text-gray-500">Select</span>
+                  <lucide-icon icon="chevron-right" size="16" class="text-gray-600 transition group-hover:text-indigo-300"></lucide-icon>
+                </button>
+              </li>
+            </template>
+          </ul>
+          <div class="rounded-xl border border-dashed border-gray-700 px-4 py-8 text-center" class-hidden="secrets.length > 0">
+            <lucide-icon icon="key-round" size="22" class="mx-auto text-gray-600"></lucide-icon>
+            <p class="mt-2 text-sm font-medium text-gray-300">No secrets configured</p>
+            <p class="mt-1 text-xs text-gray-500">Add one above to make it available to a workflow.</p>
           </div>
         </section>
       </main>
