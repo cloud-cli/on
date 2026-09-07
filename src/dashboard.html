@@ -116,7 +116,7 @@
                       bind-class="{
                       'bg-emerald-500/10.text-emerald-400': job.status === 'success',
                       'bg-rose-500/10.text-rose-400': job.status === 'failed',
-                      'bg-indigo-500/10.text-indigo-400.animate-pulse': job.status === 'running',
+                      'bg-indigo-500/10.text-indigo-400.animate-pulse': job.status === 'running' || job.status === 'pending',
                       'bg-gray-500/10.text-gray-400': !['success', 'failed', 'running'].includes(job.status)
                     }"
                     >
@@ -125,7 +125,7 @@
                         bind-class="{
                         'text-emerald-400': job.status === 'success',
                         'text-rose-400': job.status === 'failed',
-                        'text-indigo-400.animate-spin': job.status === 'running',
+                        'text-indigo-400.animate-spin': job.status === 'running' || job.status === 'pending',
                         'text-gray-400': !['success', 'failed', 'running'].includes(job.status)
                       }"
                         bind-icon="
@@ -180,7 +180,7 @@
                       bind-class="{
                       'text-emerald-400': job.status === 'success',
                       'text-rose-400': job.status === 'failed',
-                      'text-indigo-400.animate-spin': job.status === 'running',
+                      'text-indigo-400.animate-spin': job.status === 'running' || job.status === 'pending',
                       'text-gray-400': !['success', 'failed', 'running'].includes(job.status)
                     }"
                       bind-icon="
