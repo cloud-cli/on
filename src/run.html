@@ -13,10 +13,16 @@
       {
         "imports": {
           "@li3/": "https://cdn.li3.dev/@li3/",
-          "ansi_up": "https://esm.sh/ansi_up@6.0.6"
+        "ansi_up": "https://esm.sh/ansi_up@6.0.6",
+        "highlight.jsfn": "https://highlight.jsfn.run/index.mjs"
         }
       }
-    </script>
+  </script>
+  <style>
+    .hljs-attr { color: #93c5fd; }
+    .hljs-string { color: #86efac; }
+    .hljs-number, .hljs-literal { color: #fca5a5; }
+  </style>
   </head>
   <body class="bg-gray-950 text-gray-100 min-h-screen p-4 md:p-6 font-sans">
     <template app>
@@ -133,15 +139,14 @@
           <summary class="cursor-pointer">
             <h2 class="inline text-xs font-semibold text-gray-400 uppercase tracking-wider">Trigger Inputs</h2>
           </summary>
-          <pre class="font-mono text-xs text-gray-200 bg-gray-950 p-3 mt-3 rounded-lg overflow-x-auto">
-{{ inputsJson }}</pre
-          >
+          <pre class="font-mono text-xs text-gray-200 bg-gray-950 p-3 mt-3 rounded-lg overflow-x-auto" bind-innerhtml="inputsHtml"></pre>
         </details>
       </div>
 
       <script setup>
         import { computed, onDestroy, onInit, ref } from '@li3/web';
         import { AnsiUp } from 'ansi_up';
+        import highlight from 'highlight.jsfn';
 
         export default function setup() {
           const report = ref({});
@@ -157,6 +162,7 @@
 
           const active = computed(() => ['pending', 'running'].includes(report.value.status));
           const inputsJson = computed(() => JSON.stringify(report.value.inputs || {}, null, 2));
+          const inputsHtml = ref('');
           const timing = computed(() => {
             if (report.value.status === 'pending') return 'Waiting for a worker';
             if (report.value.status === 'running') {
@@ -166,6 +172,16 @@
           });
 
           const upper = (value) => String(value || '').toUpperCase();
+          const escapeHtml = (value) =>
+            value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+          const renderInputs = async () => {
+            const source = inputsJson.value;
+            try {
+              inputsHtml.value = await highlight(source, { language: 'json' });
+            } catch {
+              inputsHtml.value = escapeHtml(source);
+            }
+          };
           const stepLog = (step) => {
             if (step.status === 'skipped') return '';
             if (step.status === 'running')
@@ -209,6 +225,7 @@
               const previousStatus = report.value.status;
               const nextReport = await response.json();
               report.value = nextReport;
+              void renderInputs();
               if (
                 ['pending', 'running'].includes(previousStatus) &&
                 ['success', 'failed'].includes(nextReport.status) &&
@@ -249,6 +266,7 @@
 
           onInit(() => {
             document.title = `Run #${report.value.jobId} - ${report.value.workflowName}`;
+            void renderInputs();
             if ('serviceWorker' in navigator) {
               navigator.serviceWorker.register('/service-worker.js').catch((error) => {
                 console.error('Service worker registration failed', error);

@@ -74,7 +74,11 @@ describe('run view', () => {
       (value) => value.replaceAll('top-secret', '****'),
     );
 
-    expect(runView.inputs).toEqual({ branch: 'main', message: 'contains ****' });
+    expect(runView.inputs).toEqual({
+      branch: 'main',
+      raw: { installation: 'private' },
+      message: 'contains ****',
+    });
     expect(runView.steps[0].logContent).toBe('using ****');
     expect(runView).not.toHaveProperty('environment');
     expect(runView).not.toHaveProperty('rerunToken');
@@ -128,6 +132,7 @@ describe('run view', () => {
 
     expect(JSON.parse(stateSource!)).toEqual({ report: unsafe });
     expect(html).toContain('lucide-icon');
+    expect(html).toContain('highlight.jsfn');
     expect(html).toContain("'circle-check'");
     expect(html).toContain('worker: {{ report.workerId }}');
     expect(html).toContain("new EventSource('/api/events')");

@@ -100,7 +100,7 @@ function sanitizeValue(value: unknown, redact: (value: string) => string): unkno
 
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => key.toLowerCase() !== 'raw' && !SENSITIVE_KEY.test(key))
+      .filter(([key]) => !SENSITIVE_KEY.test(key))
       .map(([key, entry]) => [key, sanitizeValue(entry, redact)]),
   );
 }
