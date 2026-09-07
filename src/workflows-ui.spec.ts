@@ -14,6 +14,11 @@ describe('workflow management UI', () => {
     expect(html).toContain('Save draft');
     expect(html).toContain('type="checkbox"');
     expect(html).toContain('bind-checked="enabled"');
+    expect(html).toContain('No changes to save.');
+    expect(html).toContain('setTimeout(() =>');
+    expect(html).toContain('}, 1000);');
+    expect(html).toContain('hidden sm:inline');
+    expect(html).toContain('aria-label="Save workflow draft"');
     expect(html).toContain('aria-labelledby="workflow-list-title"');
     expect(html).toContain('attr-href="\'/workflows/\' + workflow.id"');
     expect(html).toContain('href="/workflows"');

@@ -141,36 +141,48 @@
                 </label>
                 <div class="flex flex-wrap gap-2">
                   <button
+                    type="button"
+                    aria-label="Validate workflow"
+                    title="Validate workflow"
                     on-click="validate()"
                     bind-disabled="busy"
                     class="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2.5 text-sm font-medium text-gray-200 transition hover:border-gray-500 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <lucide-icon icon="badge-check" size="16"></lucide-icon>
-                    Validate
+                    <span class="hidden sm:inline">Validate</span>
                   </button>
                   <button
+                    type="button"
+                    aria-label="Save workflow draft"
+                    title="Save workflow draft"
                     on-click="save()"
                     bind-disabled="busy"
                     class="inline-flex items-center gap-2 rounded-lg bg-indigo-500 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <lucide-icon icon="save" size="16"></lucide-icon>
-                    Save draft
+                    <span class="hidden sm:inline">Save draft</span>
                   </button>
                   <button
+                    type="button"
+                    aria-label="Publish workflow"
+                    title="Publish workflow"
                     on-click="publish()"
                     bind-disabled="busy"
                     class="inline-flex items-center gap-2 rounded-lg border border-emerald-500/50 px-3 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <lucide-icon icon="rocket" size="16"></lucide-icon>
-                    Publish
+                    <span class="hidden sm:inline">Publish</span>
                   </button>
                   <button
+                    type="button"
+                    aria-label="Delete workflow"
+                    title="Delete workflow"
                     on-click="remove()"
                     bind-disabled="busy"
                     class="inline-flex items-center gap-2 rounded-lg border border-rose-500/50 px-3 py-2.5 text-sm font-medium text-rose-300 transition hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                      <lucide-icon icon="trash" size="16"></lucide-icon>
-                    Delete
+                     <span class="hidden sm:inline">Delete</span>
                   </button>
                 </div>
               </div>
@@ -236,19 +248,23 @@
               />
               <button
                 type="button"
+                aria-label="Save secret value"
+                title="Save secret value"
                 on-click="saveSecret()"
                 bind-disabled="busy"
                 class="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-500/60 px-3 py-2.5 text-sm font-medium text-indigo-200 outline-none transition hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-50"
               >
-                <lucide-icon icon="lock-keyhole" size="16"></lucide-icon>Save
+                <lucide-icon icon="lock-keyhole" size="16"></lucide-icon><span class="hidden sm:inline">Save</span>
               </button>
               <button
                 type="button"
+                aria-label="Delete secret"
+                title="Delete secret"
                 on-click="removeSecret()"
                 bind-disabled="busy"
                 class="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-500/50 px-3 py-2.5 text-sm font-medium text-rose-300 outline-none transition hover:bg-rose-500/10 focus-visible:ring-2 focus-visible:ring-rose-400/60 disabled:opacity-50"
               >
-                <lucide-icon icon="trash" size="16"></lucide-icon>Delete
+                <lucide-icon icon="trash" size="16"></lucide-icon><span class="hidden sm:inline">Delete</span>
               </button>
             </div>
           </div>
@@ -278,7 +294,7 @@
       </main>
 
       <script setup>
-        import { onInit, ref, templateRef } from '@li3/web';
+        import { onDestroy, onInit, ref, templateRef } from '@li3/web';
 
         export default function () {
           const page = document.body.dataset.page;
@@ -286,8 +302,10 @@
           const workflows = ref([]);
           const secrets = ref([]);
           const source = ref('');
+          const savedSource = ref('');
           const workflowId = ref('');
           const enabled = ref(true);
+          const savedEnabled = ref(true);
           const selectedId = ref('');
           const secretName = ref('');
           const secretValue = ref('');
@@ -297,7 +315,8 @@
            const secretValueInput = templateRef('secretValueInput');
            const helpContent = templateRef('helpContent');
            const helpLoaded = ref(false);
-           const helpLoading = ref(false);
+          const helpLoading = ref(false);
+          let validationTimer;
 
           const showNotice = (message, error = false) => {
             notice.value = message;
@@ -343,27 +362,46 @@
             selectedId.value = workflow.id;
             workflowId.value = workflow.id;
             source.value = workflow.sourceYaml;
+            savedSource.value = workflow.sourceYaml;
             enabled.value = workflow.enabled;
+            savedEnabled.value = workflow.enabled;
           };
-          const validate = () =>
-            run(async () => {
-              const result = await api('/api/workflows/validate', {
-                method: 'POST',
-                body: JSON.stringify({ sourceYaml: source.value }),
-              });
-              showNotice(`Valid: ${result.workflows.length} workflow definition(s).`);
-            });
-          const save = () =>
-            run(async () => {
-              const id = workflowId.value.trim() || derivedId();
-              if (!id) throw new Error('Set an ID or add a workflow name first.');
-              const workflow = await api(`/api/workflows/${id}`, {
+           const validateSource = async () => {
+             const sourceAtStart = source.value;
+             const result = await api('/api/workflows/validate', {
+               method: 'POST',
+               body: JSON.stringify({ sourceYaml: sourceAtStart }),
+             });
+             if (sourceAtStart === source.value) showNotice(`Valid: ${result.workflows.length} workflow definition(s).`);
+           };
+           const validate = () => run(validateSource);
+           const scheduleValidation = () => {
+             if (page !== 'editor') return;
+             clearTimeout(validationTimer);
+             const sourceAtSchedule = source.value;
+             validationTimer = setTimeout(() => {
+               void validateSource().catch((error) => {
+                 if (sourceAtSchedule === source.value) showNotice(error.message, true);
+               });
+             }, 1000);
+           };
+           const save = () =>
+             run(async () => {
+               const id = workflowId.value.trim() || derivedId();
+               if (!id) throw new Error('Set an ID or add a workflow name first.');
+               if (initialId && id === selectedId.value && source.value === savedSource.value && enabled.value === savedEnabled.value) {
+                 showNotice('No changes to save.');
+                 return;
+               }
+               const workflow = await api(`/api/workflows/${id}`, {
                 method: 'PUT',
                 body: JSON.stringify({ sourceYaml: source.value, enabled: enabled.value }),
               });
-              selectedId.value = workflow.id;
-              workflowId.value = workflow.id;
-              showNotice(`Saved ${workflow.id} as draft revision ${workflow.revision}.`);
+               selectedId.value = workflow.id;
+               workflowId.value = workflow.id;
+               savedSource.value = source.value;
+               savedEnabled.value = enabled.value;
+               showNotice(`Saved ${workflow.id} as draft revision ${workflow.revision}.`);
               if (!initialId) history.replaceState(null, '', `/workflows/${workflow.id}`);
             });
           const publish = () =>
@@ -400,8 +438,9 @@
               await loadSecrets();
               showNotice(`Deleted ${name}.`);
             });
-          const setSource = (value) => {
-            source.value = value;
+           const setSource = (value) => {
+             source.value = value;
+             scheduleValidation();
           };
           const setWorkflowId = (event) => {
             workflowId.value = event.target.value;
@@ -443,7 +482,9 @@
              }
            };
 
-          onInit(() => {
+           onDestroy(() => clearTimeout(validationTimer));
+
+           onInit(() => {
             const loadPage =
               page === 'editor'
                 ? initialId
