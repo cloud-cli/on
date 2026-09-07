@@ -194,7 +194,9 @@
                   <span class="inline-flex items-center gap-2"><lucide-icon icon="circle-help" size="16"></lucide-icon>Workflow syntax help</span>
                   <span class="ml-2 text-xs font-normal text-gray-500">Reference, tutorials, and examples</span>
                 </summary>
-                <iframe ref="helpFrame" title="Workflow syntax help" data-src="/help?embed=1" loading="lazy" class="h-[38rem] w-full border-t border-gray-800 bg-gray-950"></iframe>
+                <div ref="helpContent" class="max-h-[38rem] overflow-y-auto border-t border-gray-800 bg-gray-950 px-4 py-5" role="region" aria-label="Workflow syntax help" aria-live="polite">
+                  <p class="text-sm text-gray-500">Expand to load the workflow syntax reference.</p>
+                </div>
               </details>
             </div>
           </section>
@@ -293,7 +295,9 @@
           const noticeError = ref(false);
           const busy = ref(false);
            const secretValueInput = templateRef('secretValueInput');
-           const helpFrame = templateRef('helpFrame');
+           const helpContent = templateRef('helpContent');
+           const helpLoaded = ref(false);
+           const helpLoading = ref(false);
 
           const showNotice = (message, error = false) => {
             notice.value = message;
@@ -418,9 +422,25 @@
            const visitWorkflow = (id) => {
              window.location.href = `/workflows/${id}`;
            };
-           const loadHelp = (event) => {
-             if (!event.target.open || !helpFrame.value || helpFrame.value.getAttribute('src')) return;
-             helpFrame.value.setAttribute('src', helpFrame.value.dataset.src);
+           const loadHelp = async (event) => {
+             if (!event.target.open || helpLoaded.value || helpLoading.value || !helpContent.value) return;
+             helpLoading.value = true;
+             helpContent.value.textContent = 'Loading workflow syntax help...';
+             try {
+               const response = await fetch('/help?embed=1', { headers: { accept: 'text/html' } });
+               if (!response.ok) throw new Error(`Help request failed: ${response.status}`);
+               const html = await response.text();
+               const parsed = new DOMParser().parseFromString(html, 'text/html');
+               const sourceNodes = [...Array.from(parsed.head.querySelectorAll('style')), ...Array.from(parsed.body.childNodes)];
+               const nodes = sourceNodes.map((node) => document.importNode(node, true));
+               helpContent.value.replaceChildren(...nodes);
+               helpLoaded.value = true;
+             } catch (error) {
+               helpContent.value.textContent = 'Unable to load workflow syntax help.';
+               console.error(error);
+             } finally {
+               helpLoading.value = false;
+             }
            };
 
           onInit(() => {
