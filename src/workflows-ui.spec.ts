@@ -18,6 +18,9 @@ describe('workflow management UI', () => {
     expect(html).toContain('attr-href="\'/workflows/\' + workflow.id"');
     expect(html).toContain('href="/workflows"');
     expect(html).toContain('Back to workflows');
+    expect(html).toContain('href="/help"');
+    expect(html).toContain('data-src="/help?embed=1"');
+    expect(html).toContain('on-toggle="loadHelp($event)"');
     expect(html).toContain('focus-visible:ring-2');
     expect(html).toContain('Publish');
     expect(html).toContain('/api/secrets/');

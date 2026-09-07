@@ -12,6 +12,7 @@ import { expandMatrix } from './parser/matrix-expander.js';
 import { SecretRepository } from './secret-repository.js';
 import { SecretStore } from './secrets.js';
 import { PushRepository } from './push.js';
+import { renderHelpHtml } from './help.js';
 import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from './types.js';
 import { generateWorkflowManagementHtml } from './workflows-ui.js';
 import { WorkflowRepository } from './workflows.js';
@@ -77,6 +78,11 @@ export class WebhookServer {
 
     if (req.method === 'GET' && (url.pathname === '/runs' || url.pathname === '/')) {
       return this.renderDashboard(res);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/help') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(renderHelpHtml(url.searchParams.get('embed') === '1'));
     }
 
     if (req.method === 'GET' && url.pathname === '/workflows') {
