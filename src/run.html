@@ -91,7 +91,7 @@
                     bind-class="{
                     'text-emerald-400': step.status === 'success',
                     'text-rose-400': step.status === 'failed',
-                    'text-indigo-400': step.status === 'running',
+                    'text-indigo-400.animate-spin': step.status === 'running',
                     'text-gray-400': !['success', 'failed', 'running'].includes(step.status)
                   }"
                     bind-icon="
