@@ -8,6 +8,7 @@ import { appIcon, serviceWorker, webManifest } from './pwa.js';
 import { QueueManager } from './queue.js';
 import { buildRunView, renderRunHtml } from './run-view.js';
 import { SafeExpressionEvaluator } from './safe-eval.js';
+import { expandMatrix } from './parser/matrix-expander.js';
 import { SecretRepository } from './secret-repository.js';
 import { SecretStore } from './secrets.js';
 import { PushRepository } from './push.js';
@@ -290,18 +291,20 @@ export class WebhookServer {
         }
       }
 
-      let concurrencyKey = '';
+      for (const variant of expandMatrix(workflow)) {
+        let concurrencyKey = '';
+        if (variant.concurrency?.group) {
+          concurrencyKey = await SafeExpressionEvaluator.evaluateValue(variant.concurrency.group, { inputs });
+        }
 
-      if (workflow.concurrency?.group) {
-        concurrencyKey = await SafeExpressionEvaluator.evaluateValue(workflow.concurrency.group, { inputs });
+        const jobPayload: JobPayload = {
+          inputs,
+          matrix: variant.matrixContext,
+        };
+
+        await this.queue.enqueue(workflow.id, revision, jobPayload, workflow.tags, concurrencyKey);
+        this.events.publish('jobs.available', { tags: workflow.tags || [] });
       }
-
-      const jobPayload: JobPayload = {
-        inputs,
-      };
-
-      await this.queue.enqueue(workflow.id, revision, jobPayload, workflow.tags, concurrencyKey);
-      this.events.publish('jobs.available', { tags: workflow.tags || [] });
     }
   }
 

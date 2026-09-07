@@ -26,7 +26,7 @@ steps:
     expect(workflow.solar?.[0].event).toBe('sunrise');
   });
 
-  it('rejects filesystem includes', () => {
+  it('rejects workflow includes', () => {
     expect(() => parseWorkflow('name: Invalid\nincludes: [base.yml]\non: {generic: {}}\nsteps: [{run: true}]')).toThrow('includes');
   });
 
@@ -40,6 +40,19 @@ steps:
 
     expect(workflow.retries).toBe(0);
     expect(workflow.steps[0].timeoutMs).toBe(30_000);
+  });
+
+  it('preserves matrix definitions for trigger-time expansion', () => {
+    const [workflow] = parseWorkflow(`
+name: Matrix build
+matrix:
+  node: [18, 20]
+on: { generic: {} }
+steps:
+  - run: 'node --version'
+`);
+
+    expect(workflow.matrix).toEqual({ node: [18, 20] });
   });
 
   it('validates retry and timeout settings', () => {

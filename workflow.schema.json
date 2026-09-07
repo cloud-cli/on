@@ -18,14 +18,6 @@
       "uniqueItems": true
     },
 
-    "includes": {
-      "type": "array",
-      "description": "List of partial YAML files to merge into this workflow before execution.",
-      "items": {
-        "type": "string"
-      }
-    },
-
     "on": {
       "type": "object",
       "description": "Trigger conditions and provider configs.",

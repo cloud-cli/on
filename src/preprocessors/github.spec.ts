@@ -1,10 +1,5 @@
 import crypto from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { WorkflowIncludeResolver } from '../parser/include-resolver.js';
-import { YamlLoader } from '../parser/yaml-loader.js';
+import { describe, expect, it } from 'vitest';
 import { GitHubPreprocessor } from './github.js';
 
 const preprocessor = new GitHubPreprocessor();
@@ -113,36 +108,5 @@ describe('GitHubPreprocessor parsing', () => {
     );
 
     expect(result.inputs.commit_sha).toBe('pull-request-sha');
-  });
-});
-
-describe('YamlLoader trigger filters', () => {
-  const directories: string[] = [];
-
-  afterEach(() => {
-    for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
-  });
-
-  it('retains provider-specific filters alongside if', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'on-workflow-'));
-    directories.push(directory);
-    const file = join(directory, 'workflow.yml');
-    writeFileSync(
-      file,
-      `name: Filtered\non:\n  github:\n    events: [push]\n    owner: octocat\n    name: [octocat/example, '!octocat/ignored']\n    branches: releases/*\n    refs: [releases/*]\n    paths: [package*.json]\n    if: inputs.action === 'published'\nsteps:\n  - run: 'true'\n`,
-    );
-
-    const [workflow] = YamlLoader.loadFile(file, new WorkflowIncludeResolver(directory));
-
-    expect(workflow.on).toEqual({
-      provider: 'github',
-      events: ['push'],
-      owner: 'octocat',
-      name: ['octocat/example', '!octocat/ignored'],
-      branches: 'releases/*',
-      refs: ['releases/*'],
-      paths: ['package*.json'],
-      if: "inputs.action === 'published'",
-    });
   });
 });

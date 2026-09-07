@@ -130,6 +130,7 @@ export interface WorkflowStep {
 export interface WorkflowDefinition {
   id: string;
   name: string;
+  matrix?: MatrixStrategy;
   on: WorkflowTrigger;
   concurrency?: {
     group: string;
@@ -178,6 +179,7 @@ export type WorkflowInputs = Record<string, any>;
 
 export interface JobPayload {
   inputs: WorkflowInputs;
+  matrix?: Record<string, string | number | boolean>;
 }
 
 export type MatrixStrategy = Record<string, (string | number | boolean)[]>;

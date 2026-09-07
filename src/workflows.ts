@@ -1,7 +1,6 @@
 import YAML from 'yaml';
 import db from './db-client.js';
 import { runMigrations } from './migrations.js';
-import { expandMatrix } from './parser/matrix-expander.js';
 import type { WorkflowDefinition, WorkflowRevision } from './types.js';
 
 export const DEFAULT_STEP_TIMEOUT_MS = 30_000;
@@ -30,31 +29,30 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
   if (!Array.isArray(parsed.steps) || !parsed.steps.length) throw new Error('Workflow requires at least one step');
   if (!parsed.on || typeof parsed.on !== 'object') throw new Error('Workflow requires an on block');
 
-  return expandMatrix(parsed).map((workflow: any) => {
-    const webhook = Object.entries(workflow.on).find(([name]) => name !== 'schedule' && name !== 'solar');
-    const [provider, trigger] = webhook || ['generic', {}];
-    if (workflow.retries !== undefined && (!Number.isInteger(workflow.retries) || workflow.retries < 0)) {
-      throw new Error('retries must be a non-negative integer');
-    }
-    const steps = workflow.steps.map((step: any) => {
-      const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
-      if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new Error('step.timeoutMs must be a positive integer');
-      return { ...step, timeoutMs };
-    });
-
-    return {
-      id: workflowId(workflow.id || workflow.name),
-      name: workflow.name,
-      on: { ...(trigger as object), provider },
-      schedule: Array.isArray(workflow.on.schedule) ? workflow.on.schedule : undefined,
-      solar: Array.isArray(workflow.on.solar) ? workflow.on.solar : undefined,
-      concurrency: workflow.concurrency,
-      steps,
-      retries: workflow.retries ?? 0,
-      env: workflow.env,
-      tags: Array.isArray(workflow.tags) ? [...new Set((workflow.tags as unknown[]).filter((tag): tag is string => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean))] : undefined,
-    };
+  const webhook = Object.entries(parsed.on).find(([name]) => name !== 'schedule' && name !== 'solar');
+  const [provider, trigger] = webhook || ['generic', {}];
+  if (parsed.retries !== undefined && (!Number.isInteger(parsed.retries) || parsed.retries < 0)) {
+    throw new Error('retries must be a non-negative integer');
+  }
+  const steps = parsed.steps.map((step: any) => {
+    const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
+    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new Error('step.timeoutMs must be a positive integer');
+    return { ...step, timeoutMs };
   });
+
+  return [{
+    id: workflowId(parsed.id || parsed.name),
+    name: parsed.name,
+    matrix: parsed.matrix,
+    on: { ...(trigger as object), provider },
+    schedule: Array.isArray(parsed.on.schedule) ? parsed.on.schedule : undefined,
+    solar: Array.isArray(parsed.on.solar) ? parsed.on.solar : undefined,
+    concurrency: parsed.concurrency,
+    steps,
+    retries: parsed.retries ?? 0,
+    env: parsed.env,
+    tags: Array.isArray(parsed.tags) ? [...new Set((parsed.tags as unknown[]).filter((tag): tag is string => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean))] : undefined,
+  }];
 }
 
 export class WorkflowRepository {

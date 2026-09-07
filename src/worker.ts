@@ -24,6 +24,7 @@ import { consumeRunnerEvents } from './events.js';
 import { PluginManager } from './plugins/manager.js';
 import { DEFAULT_STEP_TIMEOUT_MS, WorkflowRepository } from './workflows.js';
 import { debug } from './debug.js';
+import { expandMatrix } from './parser/matrix-expander.js';
 
 export const shutdownState = {
   isStopping: false,
@@ -248,7 +249,13 @@ export async function processJob(p: Processable) {
 
   const payload = (typeof job.payload === 'string' ? JSON.parse(job.payload) : job.payload) as JobPayload;
   if (!p.workflow) throw new Error(`Workflow ${job.workflow_id} revision ${job.workflow_revision} was not resolved`);
-  const steps = p.workflow.steps;
+  const candidateWorkflow = payload.matrix
+    ? expandMatrix(p.workflow).find((variant) => JSON.stringify(variant.matrixContext) === JSON.stringify(payload.matrix))
+    : p.workflow;
+  if (!candidateWorkflow) throw new Error(`Matrix variant for job ${job.id} was not found`);
+  const resolvedWorkflow = candidateWorkflow as typeof p.workflow;
+  const processable = { ...p, workflow: resolvedWorkflow };
+  const steps = resolvedWorkflow.steps;
   const inputs = payload.inputs || {};
   const jobStartTime = Date.now();
   const storagePath = Path.join(config.storagePath, `job-${job.id}`);
@@ -295,13 +302,13 @@ export async function processJob(p: Processable) {
   const pluginManager = new PluginManager(config.plugins);
   const workflowContext = {
     jobId: String(job.id),
-    workflowName: job.workflow_id,
+    workflowName: resolvedWorkflow.name,
     inputs,
     runUrl: new URL(`/runs/${job.id}`, config.serverUrl).toString(),
   };
   await pluginManager.triggerWorkflowStart(workflowContext);
 
-  const context = { payload, steps, executionContext, ...p };
+  const context = { payload, steps, executionContext, ...processable };
   const { cancelled, failed } = await processSteps(context, executionReport);
   const finalStatus = cancelled ? 'cancelled' : failed ? 'failed' : 'success';
 

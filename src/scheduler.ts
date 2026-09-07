@@ -1,6 +1,7 @@
 import { QueueManager } from './queue.js';
 import type { JobPayload, RunnerConfig, ScheduleTrigger, WorkflowDefinition, WorkflowRevision } from './types.js';
 import { WorkflowRepository } from './workflows.js';
+import { expandMatrix } from './parser/matrix-expander.js';
 
 function cronFieldMatches(field: string, value: number, min: number, max: number): boolean {
   return field.split(',').some((part) => {
@@ -93,10 +94,11 @@ export class WorkflowScheduler {
   private async enqueue(workflow: WorkflowDefinition, revision: number, trigger: ScheduleTrigger, defaultId: string, scheduledFor: Date): Promise<void> {
     const triggerId = trigger.id || defaultId;
     if (!await this.workflows.claimScheduledRun(workflow.id, triggerId, scheduledFor.toISOString())) return;
-    const payload: JobPayload = {
-      inputs: { trigger: { type: trigger.cron ? 'schedule' : 'solar', id: triggerId, scheduledFor: scheduledFor.toISOString(), ...trigger } },
-    };
-    await this.queue.enqueue(workflow.id, revision, payload, workflow.tags);
+    const inputs = { trigger: { type: trigger.cron ? 'schedule' : 'solar', id: triggerId, scheduledFor: scheduledFor.toISOString(), ...trigger } };
+    for (const variant of expandMatrix(workflow)) {
+      const payload: JobPayload = { inputs, matrix: variant.matrixContext };
+      await this.queue.enqueue(workflow.id, revision, payload, workflow.tags);
+    }
     console.log(`Scheduled ${workflow.id} via ${triggerId}`);
   }
 }
