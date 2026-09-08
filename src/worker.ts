@@ -308,7 +308,6 @@ export async function processJob(p: Processable) {
       ? String(await SafeExpressionEvaluator.evaluateValue(resolvedWorkflow.cache.key, executionContext))
       : '';
     if (cacheKey && resolvedWorkflow.cache) await restoreStoredFiles(queue, 'cache', `${job.workflow_id}:${cacheKey}`, resolvedWorkflow.cache.paths, workingDir);
-    executionReport.environment = { ...executionContext.env };
     await queue.saveReport(job.id, executionReport);
   } catch (error: any) {
     executionReport.status = 'failed';
