@@ -22,14 +22,17 @@
             <p class="text-xs text-gray-400">Live Job Queue &amp; Execution Traces</p>
           </div>
           <div class="flex flex-wrap items-center gap-3 text-xs font-mono">
-            <a href="/help" class="inline-flex items-center gap-1.5 text-indigo-400 outline-none hover:text-indigo-300 hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-indigo-400/60">
-              <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.6 9a2.5 2.5 0 1 1 4.2 1.8c-1.2 1-1.8 1.4-1.8 2.7"></path><path d="M12 17h.01"></path></svg>
-              Help
+            <a href="/help" aria-label="Help" title="Help" class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-500/40 bg-indigo-500/10 text-indigo-200 outline-none transition hover:bg-indigo-500/20 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.6 9a2.5 2.5 0 1 1 4.2 1.8c-1.2 1-1.8 1.4-1.8 2.7"></path><path d="M12 17h.01"></path></svg>
             </a>
-            <a href="/workflows" class="text-indigo-400 hover:text-indigo-300 hover:underline">Manage workflows</a>
+            <a href="/workflows" aria-label="Settings" title="Settings" class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-500/40 bg-indigo-500/10 text-indigo-200 outline-none transition hover:bg-indigo-500/20 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+              <lucide-icon icon="settings" size="16"></lucide-icon>
+            </a>
             <template if="notificationsSupported">
               <button
-                class="inline-flex h-9 w-9 items-center justify-center rounded-full border"
+                aria-label="Notifications"
+                title="Notifications"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-full border outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
                 bind-class="notificationsEnabled ? 'border-emerald-500/30.bg-emerald-500/10.text-emerald-300' : 'border-indigo-500/40.bg-indigo-500/10.text-indigo-300'"
                 on-click="toggleNotifications()"
               >
@@ -37,7 +40,6 @@
                 <span class="sr-only">{{ notificationsEnabled ? 'Notifications on' : 'Enable notifications' }}</span>
               </button>
             </template>
-            <span class="text-gray-500">Updated {{ lastUpdated }}</span>
             <template if="refreshError">
               <span class="rounded border border-rose-500/20 bg-rose-500/10 px-3 py-1 text-rose-400"
                 >Refresh failed</span
@@ -225,7 +227,6 @@
 
         export default function setup() {
           const jobs = ref([]);
-          const lastUpdated = ref('now');
           const refreshError = ref(false);
           const hasMore = ref(false);
           const loadingMore = ref(false);
@@ -374,7 +375,6 @@
                 }
               }
                jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
-              lastUpdated.value = new Date().toLocaleTimeString();
               refreshError.value = false;
             } catch (error) {
               console.error(error);
@@ -469,7 +469,6 @@
 
           return {
             jobs,
-            lastUpdated,
             refreshError,
             hasMore,
             loadingMore,

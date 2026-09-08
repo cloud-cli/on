@@ -57,7 +57,12 @@ describe('dashboard', () => {
     expect(html).toContain('https://sodium.static.apphor.de/lucide-icon.html');
     expect(html).toContain("notificationsEnabled ? 'bell-ring' : 'bell-off'");
     expect(html).toContain('class="sr-only">{{ notificationsEnabled ? \'Notifications on\' : \'Enable notifications\' }}</span>');
-    expect(html).toContain('href="/workflows"');
+    expect(html).toContain('aria-label="Settings"');
+    expect(html).toContain('title="Settings"');
+    expect(html).toContain('icon="settings"');
+    expect(html).toContain('aria-label="Help"');
+    expect(html).toContain('aria-label="Notifications"');
+    expect(html).not.toContain('lastUpdated');
     expect(html).toContain('class="block p-4 bg-gray-900/60 hover:bg-gray-800/40');
     expect(html).toContain('View Trace</a');
     expect(html).not.toContain('>Trace</a>');
