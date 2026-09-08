@@ -39,5 +39,6 @@ describe('workflow management UI', () => {
     expect(html).toContain('aria-label="Edit secret {{ name }}"');
     expect(html).toContain('data-page="editor"');
     expect(html).toContain('const initialId = "example"');
+    expect(html).toContain('const initialRevision = null');
   });
 });

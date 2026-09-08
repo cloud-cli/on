@@ -47,6 +47,14 @@
                   from #{{ report.parentId }}
                 </a>
               </template>
+              <template if="report.canViewLogs">
+                <a
+                  attr-href="'/workflows/' + report.workflowId + '?revision=' + report.workflowRevision"
+                  class="text-sm font-mono text-indigo-400 hover:underline"
+                >
+                  workflow r{{ report.workflowRevision }}
+                </a>
+              </template>
             </h1>
             <p class="text-xs text-gray-400 mt-1">Started {{ report.startedAt }} · {{ timing }}</p>
           </div>

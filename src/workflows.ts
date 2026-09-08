@@ -146,6 +146,25 @@ export class WorkflowRepository {
     return row ? JSON.parse(row.normalized_json) : null;
   }
 
+  async getRevisionSnapshot(workflowId: string, revision: number): Promise<StoredWorkflow | null> {
+    const row = await db.get(
+      `SELECT w.id, w.enabled, r.source_yaml, r.normalized_json
+       FROM workflows w JOIN workflow_revisions r ON r.workflow_id = w.id
+       WHERE w.id = ? AND r.revision = ?`,
+      [workflowId, revision],
+    );
+    if (!row) return null;
+    const definition = JSON.parse(row.normalized_json) as WorkflowDefinition;
+    return {
+      id: row.id,
+      name: definition.name,
+      sourceYaml: row.source_yaml,
+      revision,
+      status: 'archived',
+      enabled: Boolean(row.enabled),
+    };
+  }
+
   async claimScheduledRun(workflowId: string, triggerId: string, scheduledFor: string): Promise<boolean> {
     const row = await db.get(`INSERT INTO scheduled_runs (workflow_id, trigger_id, scheduled_for) VALUES (?, ?, ?)
       ON CONFLICT(workflow_id, trigger_id, scheduled_for) DO NOTHING RETURNING workflow_id`, [workflowId, triggerId, scheduledFor]);

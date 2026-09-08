@@ -138,6 +138,7 @@ describe('run view', () => {
     expect(html).toContain('worker: {{ report.workerId }}');
     expect(html).toContain("new EventSource('/api/events')");
     expect(html).toContain("addEventListener('jobs.changed', handleJobChange)");
+    expect(html).toContain("'/workflows/' + report.workflowId + '?revision='");
     expect(html).toContain('fetch(`/api/runs/${report.value.jobId}`');
     expect(html).toContain('now.value = Date.now()');
     expect(html).toContain('href="/manifest.webmanifest"');

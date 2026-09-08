@@ -96,7 +96,10 @@ export class WebhookServer {
       if (!this.requireAdmin(req, res)) return;
       const workflowId = workflowEditorMatch[1] === 'new' ? '' : workflowEditorMatch[1];
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      return res.end(generateWorkflowManagementHtml('editor', workflowId));
+      const revisionParam = url.searchParams.get('revision');
+      const parsedRevision = revisionParam === null ? undefined : Number(revisionParam);
+      const revision = parsedRevision !== undefined && Number.isSafeInteger(parsedRevision) && parsedRevision > 0 ? parsedRevision : undefined;
+      return res.end(generateWorkflowManagementHtml('editor', workflowId, revision));
     }
 
     if (req.method === 'GET' && url.pathname === '/api/jobs') {
@@ -156,7 +159,7 @@ export class WebhookServer {
     const workflowMatch = url.pathname.match(/^\/api\/workflows\/([a-z0-9-]+)(\/publish)?$/);
     if (workflowMatch) {
       const [, workflowId, publish] = workflowMatch;
-      if (req.method === 'GET' && !publish) return this.handleWorkflowGet(req, res, workflowId);
+      if (req.method === 'GET' && !publish) return this.handleWorkflowGet(req, res, workflowId, url.searchParams.get('revision'));
       if (req.method === 'PUT' && !publish) return this.handleWorkflowSave(req, res, workflowId);
       if (req.method === 'DELETE' && !publish) return this.handleWorkflowDelete(req, res, workflowId);
       if (req.method === 'POST' && publish) return this.handleWorkflowPublish(req, res, workflowId);
@@ -384,9 +387,12 @@ export class WebhookServer {
     res.end(JSON.stringify({ workflows: await this.workflows.list() }));
   }
 
-  private async handleWorkflowGet(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
+  private async handleWorkflowGet(req: http.IncomingMessage, res: http.ServerResponse, id: string, revisionParam: string | null = null) {
     if (!this.requireAdmin(req, res)) return;
-    const workflow = await this.workflows.get(id);
+    const revision = revisionParam === null ? undefined : Number(revisionParam);
+    const workflow = revision !== undefined && Number.isSafeInteger(revision) && revision > 0
+      ? await this.workflows.getRevisionSnapshot(id, revision)
+      : await this.workflows.get(id);
     if (!workflow) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Workflow not found' }));

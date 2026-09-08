@@ -82,16 +82,20 @@ describe('QueueManager.restartJob', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        json: async () => ({ active_revision: 7 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
         json: async () => ({ id: 43 }),
       });
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(new QueueManager('test').restartJob(42)).resolves.toBe(43);
 
-    const request = JSON.parse(fetchMock.mock.calls[1][1].body);
+    const request = JSON.parse(fetchMock.mock.calls[2][1].body);
     expect(request.m).toBe('get');
     expect(request.s).toContain("'pending', NULL, NULL, NULL, NULL");
     expect(request.s).toContain('WHERE id = ?');
-    expect(request.d).toEqual([42]);
+    expect(request.d).toEqual([7, 42]);
   });
 });

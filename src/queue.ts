@@ -113,17 +113,23 @@ export class QueueManager {
       await db.run(`UPDATE jobs SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP WHERE id = ?;`, [jobId]);
     }
 
+    const activeWorkflow = await db.get('SELECT active_revision FROM workflows WHERE id = ?', [job.workflow_id]);
+    const activeRevision = Number(activeWorkflow?.active_revision);
+    if (!Number.isSafeInteger(activeRevision) || activeRevision < 1) {
+      throw new Error(`Workflow ${job.workflow_id} has no active revision`);
+    }
+
     const newJob = await db.get(
       `INSERT INTO jobs (
          parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload,
          status, worker_id, report, started_at, finished_at
        )
-       SELECT id, workflow_id, workflow_revision, required_tags, concurrency_key, payload,
+       SELECT id, workflow_id, ?, required_tags, concurrency_key, payload,
               'pending', NULL, NULL, NULL, NULL
        FROM jobs
        WHERE id = ?
        RETURNING *`,
-      [jobId],
+      [activeRevision, jobId],
     );
 
     return newJob.id;

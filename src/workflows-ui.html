@@ -142,7 +142,7 @@
                   />
                   Enabled
                 </label>
-                <div class="flex flex-wrap gap-2">
+                <div class="flex flex-wrap gap-2" class-hidden="readOnly">
                   <button
                     type="button"
                     aria-label="Validate workflow"
@@ -202,6 +202,7 @@
                 nostatus="true"
                 class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-hidden rounded-lg border border-gray-700 bg-gray-950"
                 bind-value="source"
+                bind-disabled="readOnly"
                 on-change="setSource($event.detail)"
               ></code-editor>
               <details class="mt-4 overflow-hidden rounded-xl border border-gray-800 bg-gray-950/50" on-toggle="loadHelp($event)">
@@ -300,8 +301,10 @@
         import { onDestroy, onInit, ref, templateRef } from '@li3/web';
 
         export default function () {
-          const page = document.body.dataset.page;
-          const initialId = __WORKFLOW_ID__;
+           const page = document.body.dataset.page;
+           const initialId = __WORKFLOW_ID__;
+           const initialRevision = __WORKFLOW_REVISION__;
+           const readOnly = Boolean(initialRevision);
           const workflows = ref([]);
           const secrets = ref([]);
           const source = ref('');
@@ -360,8 +363,9 @@
           const loadSecrets = async () => {
             secrets.value = (await api('/api/secrets')).secrets;
           };
-          const openWorkflow = async (id) => {
-            const workflow = await api(`/api/workflows/${id}`);
+           const openWorkflow = async (id) => {
+             const workflowUrl = initialRevision ? `/api/workflows/${id}?revision=${initialRevision}` : `/api/workflows/${id}`;
+             const workflow = await api(workflowUrl);
             selectedId.value = workflow.id;
             workflowId.value = workflow.id;
             source.value = workflow.sourceYaml;
@@ -501,7 +505,8 @@
             secrets,
             source,
             workflowId,
-            enabled,
+             enabled,
+             readOnly,
             selectedId,
             secretName,
             secretValue,
