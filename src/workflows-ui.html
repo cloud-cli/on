@@ -226,7 +226,7 @@
                     title="Validate workflow"
                     on-click="validate(1)"
                     bind-disabled="validation.running"
-                    bind-class="{ 'hidden': readOnly, 'text-emerald-400': sourceValid, 'text-rose-400': !sourceValid }"
+                    bind-class="{ 'hidden': readOnly, 'text-emerald-400': validation.valid, 'text-rose-400': !validation.valid }"
                     class="disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <lucide-icon
@@ -611,7 +611,7 @@
             workflows,
             secrets,
             source,
-            sourceValid,
+            validation,
             workflowId,
             enabled,
             readOnly,
