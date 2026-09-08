@@ -1,0 +1,246 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "On Workflow Runner API",
+    "version": "1.0.0",
+    "description": "Control-plane, job, workflow, webhook, event, secret, artifact, and notification APIs for the On workflow runner."
+  },
+  "servers": [{ "url": "/" }],
+  "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
+  "tags": [
+    { "name": "discovery" },
+    { "name": "jobs" },
+    { "name": "workflows" },
+    { "name": "secrets" },
+    { "name": "events" },
+    { "name": "webhooks" },
+    { "name": "notifications" }
+  ],
+  "paths": {
+    "/api": {
+      "get": {
+        "tags": ["discovery"],
+        "summary": "Get this OpenAPI specification",
+        "security": [],
+        "responses": { "200": { "description": "OpenAPI JSON document", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "tags": ["jobs"],
+        "summary": "List jobs",
+        "security": [],
+        "parameters": [
+          { "$ref": "#/components/parameters/AfterId" },
+          { "$ref": "#/components/parameters/BeforeId" },
+          { "$ref": "#/components/parameters/Limit" },
+          { "$ref": "#/components/parameters/Filter" }
+        ],
+        "responses": { "200": { "description": "Dashboard job list", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobList" } } } } }
+      }
+    },
+    "/api/jobs/{jobId}/cancel": {
+      "post": {
+        "tags": ["jobs"],
+        "summary": "Cancel an active job",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": { "200": { "description": "Job cancelled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobStatus" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
+      }
+    },
+    "/api/jobs/{jobId}/secrets": {
+      "get": {
+        "tags": ["jobs"],
+        "summary": "Get secrets for an assigned worker job",
+        "security": [{ "workerBearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/WorkerId" }],
+        "responses": { "200": { "description": "Decrypted job secrets", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Secrets" } } } }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/runs/{jobId}": {
+      "get": {
+        "tags": ["jobs"],
+        "summary": "Get a run view",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": { "200": { "description": "Run details", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RunView" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/runs/{jobId}/artifacts/{path}": {
+      "get": {
+        "tags": ["jobs"],
+        "summary": "Download an artifact",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Artifact bytes", "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/workflows/validate": {
+      "post": {
+        "tags": ["workflows"],
+        "summary": "Validate workflow YAML",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowSource" } } } },
+        "responses": { "200": { "description": "Valid workflow definitions", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationResult" } } } }, "422": { "$ref": "#/components/responses/ValidationError" } }
+      }
+    },
+    "/api/workflows": {
+      "get": {
+        "tags": ["workflows"],
+        "summary": "List workflows",
+        "responses": { "200": { "description": "Workflow list", "content": { "application/json": { "schema": { "type": "object", "properties": { "workflows": { "type": "array", "items": { "$ref": "#/components/schemas/Workflow" } } } } } } } }
+      }
+    },
+    "/api/workflows/{workflowId}": {
+      "get": {
+        "tags": ["workflows"],
+        "summary": "Get a workflow or historical revision",
+        "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }, { "$ref": "#/components/parameters/Revision" }],
+        "responses": { "200": { "description": "Workflow definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "put": {
+        "tags": ["workflows"],
+        "summary": "Save a workflow draft",
+        "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowSave" } } } },
+        "responses": { "200": { "description": "Draft saved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } } }, "422": { "$ref": "#/components/responses/ValidationError" } }
+      },
+      "delete": {
+        "tags": ["workflows"],
+        "summary": "Delete a workflow and its revisions",
+        "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
+        "responses": { "204": { "description": "Workflow deleted" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/workflows/{workflowId}/publish": {
+      "post": {
+        "tags": ["workflows"],
+        "summary": "Publish the latest workflow revision",
+        "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
+        "responses": { "200": { "description": "Workflow published", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/secrets": {
+      "get": {
+        "tags": ["secrets"],
+        "summary": "List secret names",
+        "responses": { "200": { "description": "Secret names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecretNames" } } } } }
+      }
+    },
+    "/api/secrets/{name}": {
+      "put": {
+        "tags": ["secrets"],
+        "summary": "Create or replace an encrypted secret",
+        "parameters": [{ "$ref": "#/components/parameters/SecretName" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecretValue" } } } },
+        "responses": { "204": { "description": "Secret saved" } }
+      },
+      "delete": {
+        "tags": ["secrets"],
+        "summary": "Delete a secret",
+        "parameters": [{ "$ref": "#/components/parameters/SecretName" }],
+        "responses": { "204": { "description": "Secret deleted" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/events": {
+      "get": {
+        "tags": ["events"],
+        "summary": "Subscribe to runner events",
+        "security": [],
+        "responses": { "200": { "description": "Server-sent event stream", "content": { "text/event-stream": { "schema": { "type": "string" } } } } }
+      },
+      "post": {
+        "tags": ["events"],
+        "summary": "Publish a worker job-change event",
+        "security": [{ "workerBearerAuth": [] }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobEvent" } } } },
+        "responses": { "202": { "description": "Event accepted" } }
+      }
+    },
+    "/api/push/public-key": {
+      "get": {
+        "tags": ["notifications"],
+        "summary": "Get the Web Push public key",
+        "security": [],
+        "responses": { "200": { "description": "VAPID public key", "content": { "application/json": { "schema": { "type": "object", "properties": { "publicKey": { "type": "string" } } } } } } }
+      }
+    },
+    "/api/push/subscriptions": {
+      "post": {
+        "tags": ["notifications"],
+        "summary": "Register a Web Push subscription",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "201": { "description": "Subscription saved" } }
+      },
+      "delete": {
+        "tags": ["notifications"],
+        "summary": "Remove a Web Push subscription",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["endpoint"], "properties": { "endpoint": { "type": "string", "format": "uri" } } } } } },
+        "responses": { "204": { "description": "Subscription removed" } }
+      }
+    },
+    "/webhooks/{provider}": {
+      "post": {
+        "tags": ["webhooks"],
+        "summary": "Receive a provider webhook",
+        "security": [],
+        "parameters": [{ "name": "provider", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "202": { "description": "Webhook accepted" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" } }
+      }
+    },
+    "/restart/{jobId}": {
+      "post": {
+        "tags": ["jobs"],
+        "summary": "Create a new run from the active workflow revision",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": { "201": { "description": "New job created", "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "integer" } } } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/admin/reload-secrets": {
+      "post": {
+        "tags": ["secrets"],
+        "summary": "Reload legacy in-memory secrets",
+        "responses": { "200": { "description": "Secrets reloaded" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer" },
+      "basicAuth": { "type": "http", "scheme": "basic" },
+      "workerBearerAuth": { "type": "http", "scheme": "bearer", "description": "RUNNER_WORKER_SECRET" }
+    },
+    "parameters": {
+      "JobId": { "name": "jobId", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
+      "WorkflowId": { "name": "workflowId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[a-z0-9-]+$" } },
+      "Revision": { "name": "revision", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1 } },
+      "SecretName": { "name": "name", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" } },
+      "WorkerId": { "name": "X-Runner-Worker-Id", "in": "header", "required": true, "schema": { "type": "string" } },
+      "AfterId": { "name": "afterId", "in": "query", "schema": { "type": "integer", "minimum": 0 } },
+      "BeforeId": { "name": "beforeId", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+      "Limit": { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 50 } },
+      "Filter": { "name": "filter", "in": "query", "schema": { "type": "string", "maxLength": 200 } }
+    },
+    "responses": {
+      "Unauthorized": { "description": "Unauthorized" },
+      "Forbidden": { "description": "Forbidden" },
+      "NotFound": { "description": "Not found" },
+      "Conflict": { "description": "Conflict" },
+      "ValidationError": { "description": "Validation error" },
+      "PayloadTooLarge": { "description": "Payload too large" }
+    },
+    "schemas": {
+      "Job": { "type": "object", "properties": { "id": { "type": "integer" }, "workflowId": { "type": "string" }, "status": { "type": "string" }, "workerId": { "type": ["string", "null"] }, "createdAt": { "type": "string" }, "updatedAt": { "type": "string" } } },
+      "JobList": { "type": "object", "required": ["jobs", "hasMore"], "properties": { "jobs": { "type": "array", "items": { "$ref": "#/components/schemas/Job" } }, "hasMore": { "type": "boolean" } } },
+      "JobStatus": { "type": "object", "properties": { "id": { "type": "integer" }, "status": { "type": "string" } } },
+      "JobEvent": { "type": "object", "properties": { "jobId": { "type": "integer" } } },
+      "Workflow": { "type": "object", "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "sourceYaml": { "type": "string" }, "revision": { "type": "integer" }, "status": { "type": "string" }, "enabled": { "type": "boolean" } } },
+      "WorkflowSource": { "type": "object", "required": ["sourceYaml"], "properties": { "sourceYaml": { "type": "string" } } },
+      "WorkflowSave": { "allOf": [{ "$ref": "#/components/schemas/WorkflowSource" }, { "type": "object", "properties": { "enabled": { "type": "boolean" } } }] },
+      "ValidationResult": { "type": "object", "properties": { "valid": { "type": "boolean" }, "workflows": { "type": "array", "items": { "type": "object" } } } },
+      "SecretNames": { "type": "object", "properties": { "secrets": { "type": "array", "items": { "type": "string" } } } },
+      "SecretValue": { "type": "object", "required": ["value"], "properties": { "value": { "type": "string", "format": "password" } } },
+      "Secrets": { "type": "object", "properties": { "secrets": { "type": "object", "additionalProperties": { "type": "string" } } } },
+      "RunView": { "type": "object", "properties": { "jobId": { "type": "string" }, "workflowName": { "type": "string" }, "status": { "type": "string" }, "inputs": { "type": "object" }, "steps": { "type": "array", "items": { "type": "object" } }, "artifacts": { "type": "array", "items": { "type": "string" } }, "canViewLogs": { "type": "boolean" } } }
+    }
+  }
+}

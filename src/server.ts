@@ -13,6 +13,7 @@ import { SecretRepository } from './secret-repository.js';
 import { SecretStore } from './secrets.js';
 import { PushRepository } from './push.js';
 import { renderHelpHtml } from './help.js';
+import openApiSpec from '../openapi.json' with { type: 'json' };
 import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from './types.js';
 import { generateWorkflowManagementHtml } from './workflows-ui.js';
 import { WorkflowRepository } from './workflows.js';
@@ -83,6 +84,11 @@ export class WebhookServer {
     if (req.method === 'GET' && url.pathname === '/help') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(renderHelpHtml(url.searchParams.get('embed') === '1'));
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api') {
+      res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify(openApiSpec));
     }
 
     if (req.method === 'GET' && url.pathname === '/workflows') {
