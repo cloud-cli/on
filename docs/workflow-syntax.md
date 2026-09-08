@@ -194,7 +194,7 @@ artifacts:
     - reports/**/*.json
 ```
 
-Caches are restored before steps start and replaced after a successful run:
+Caches are restored before steps start and saved after a successful run:
 
 ```yaml
 cache:
@@ -203,7 +203,9 @@ cache:
     - node_modules
 ```
 
-Configure a shared FileBin backend on the server and workers with `RUNNER_FILE_API_URL`, `RUNNER_FILE_BIN`, and optionally `RUNNER_FILE_PASSWORD`. Without it, the runner uses the database fallback. Cache keys are scoped by workflow; artifacts are scoped by job.
+Configure a shared FileBin backend on the server and workers with `RUNNER_FILE_API_URL`, `RUNNER_FILE_BIN`, and optionally `RUNNER_FILE_PASSWORD`. Create a bin with `POST /bin`, then configure its ID. Without FileBin configuration, the runner uses the central database fallback. Cache keys are scoped by workflow; artifacts are scoped by job. Stored collections are limited to 50 MiB per capture.
+
+Administrators can download a captured artifact with `GET /api/runs/:jobId/artifacts/:path`.
 
 Populate workspace files from managed secrets before steps run:
 
@@ -212,7 +214,7 @@ secretFiles:
   .config/signing.key: SIGNING_KEY
 ```
 
-Secret files are created with owner-only permissions and are removed with the job workspace.
+Secret files are created with owner-only permissions in the worker workspace. They must be handled according to the worker storage lifecycle and should not be included in artifacts or caches.
 
 ## Reference
 
