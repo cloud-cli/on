@@ -611,7 +611,15 @@ export class WebhookServer {
     const logsMap = canViewLogs ? await this.queue.getJobLogs(jobId) : {};
     const secretValues = await this.currentSecrets();
     const definition = await this.workflows.getRevision(job.workflow_id, job.workflow_revision);
-    const report = buildRunView(job, logsMap, (value) => this.redact(value, secretValues), definition?.steps, canViewLogs);
+    const snapshot = canViewLogs ? await this.workflows.getRevisionSnapshot(job.workflow_id, job.workflow_revision) : null;
+    const report = buildRunView(
+      job,
+      logsMap,
+      (value) => this.redact(value, secretValues),
+      definition?.steps,
+      canViewLogs,
+      snapshot?.sourceYaml,
+    );
 
     if (format === 'json') {
       res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });

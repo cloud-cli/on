@@ -10,6 +10,7 @@ export interface RunView {
   workerId?: string;
   workflowId: string;
   workflowRevision: number;
+  workflowSourceYaml?: string;
   parentId: string;
   workflowName: string;
   status: WorkflowExecutionReport['status'];
@@ -28,6 +29,7 @@ export function buildRunView(
   redact: (value: string) => string,
   steps: WorkflowStep[] = [],
   canViewLogs = true,
+  workflowSourceYaml?: string,
 ): RunView {
   const payload = JSON.parse(job.payload) as JobPayload;
   const report = job.report ? (JSON.parse(job.report) as WorkflowExecutionReport) : buildPendingReport(job, payload, steps);
@@ -38,6 +40,7 @@ export function buildRunView(
     workerId: job.worker_id || undefined,
     workflowId: job.workflow_id,
     workflowRevision: Number(job.workflow_revision),
+    workflowSourceYaml: canViewLogs ? workflowSourceYaml : undefined,
     parentId: String(report.parentId || job.parentId || ''),
     workflowName: redact(report.workflowName),
     status,

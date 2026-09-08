@@ -133,6 +133,8 @@ describe('run view', () => {
     expect(JSON.parse(stateSource!)).toEqual({ report: unsafe });
     expect(html).toContain('lucide-icon');
     expect(html).toContain('highlight.jsfn');
+    expect(html).toContain('Workflow source YAML');
+    expect(html).toContain('https://sodium.static.apphor.de/code-block.html');
     expect(html).toContain('bind-innerhtml="inputsHtml"');
     expect(html).toContain("'circle-check'");
     expect(html).toContain('worker: {{ report.workerId }}');
