@@ -542,14 +542,25 @@ async function executeSingleStep(params: {
     } else {
       return executeRunStep({ ...params, stepContext });
     }
-  } catch (e) {
+  } catch (e: any) {
+    const errorMessage = e?.message || String(e);
+    await params.queue.saveStepLog(params.jobId, step.id!, `[STEP ERROR]:\n${errorMessage}`);
     debug(`⏩ Failed to run step ${step.id}`, executionContext, e);
 
     return {
       failed: true,
       cancelled: false,
       skipped: false,
-      report: null,
+      report: {
+        id: step.id!,
+        name: step.name!,
+        status: 'failed',
+        durationMs: 0,
+        exitCode: 1,
+        error: errorMessage,
+        outputs: {},
+        logContent: '',
+      },
     };
   }
 }
