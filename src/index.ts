@@ -7,10 +7,12 @@ import { WebhookServer } from './server.js';
 import { startWorkers } from './worker.js';
 import { WorkflowRepository } from './workflows.js';
 import { WorkflowScheduler } from './scheduler.js';
+import { installTimestampedConsole } from './logger.js';
 
 export { GitHubStatusPlugin } from './plugins/github-status.plugin.js';
 
 async function main() {
+  installTimestampedConsole();
   const { config, command } = await loadFromArgs();
 
   if (!config) {

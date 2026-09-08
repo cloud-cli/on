@@ -23,6 +23,7 @@
   </head>
   <body data-page="__WORKFLOW_PAGE__" class="min-h-screen bg-gray-950 p-4 font-sans text-gray-100 md:p-6">
     <link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />
+    <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
 
     <template app>
@@ -195,16 +196,25 @@
                 <span class="font-medium">YAML definition</span>
                 <span class="font-mono">{{ source.length }} characters</span>
               </div>
-              <code-editor
-                id="source-yaml"
-                language="yaml"
-                theme="atom-one-dark"
-                nostatus="true"
-                class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-hidden rounded-lg border border-gray-700 bg-gray-950"
-                bind-value="source"
-                bind-disabled="readOnly"
-                on-change="setSource($event.detail)"
-              ></code-editor>
+              <template if="readOnly">
+                <code-block
+                  language="yaml"
+                  theme="atom-one-dark"
+                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-auto rounded-lg border border-gray-700 bg-gray-950 p-4"
+                  bind-source="source"
+                ></code-block>
+              </template>
+              <template if="!readOnly">
+                <code-editor
+                  id="source-yaml"
+                  language="yaml"
+                  theme="atom-one-dark"
+                  nostatus="true"
+                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-hidden rounded-lg border border-gray-700 bg-gray-950"
+                  bind-value="source"
+                  on-change="setSource($event.detail)"
+                ></code-editor>
+              </template>
               <details class="mt-4 overflow-hidden rounded-xl border border-gray-800 bg-gray-950/50" on-toggle="loadHelp($event)">
                 <summary class="cursor-pointer list-none px-4 py-3 text-sm font-medium text-gray-300 outline-none transition hover:bg-gray-900 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
                   <span class="inline-flex items-center gap-2"><lucide-icon icon="circle-help" size="16"></lucide-icon>Workflow syntax help</span>

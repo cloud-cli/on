@@ -8,6 +8,7 @@ describe('workflow management UI', () => {
     expect(html).toContain('<code-editor');
     expect(html).toContain('id="source-yaml"');
     expect(html).toContain('https://sodium.static.apphor.de/code-editor.html');
+    expect(html).toContain('https://sodium.static.apphor.de/code-block.html');
     expect(html).toContain('https://sodium.static.apphor.de/lucide-icon.html');
     expect(html).toContain('<template app>');
     expect(html).toContain('/api/workflows/validate');
