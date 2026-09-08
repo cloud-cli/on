@@ -224,19 +224,21 @@
                     type="button"
                     aria-label="Validate workflow"
                     title="Validate workflow"
-                    on-click="validate()"
-                    bind-disabled="busy"
+                    on-click="validate(1)"
+                    bind-disabled="validation.running"
                     bind-class="{ 'hidden': readOnly, 'text-emerald-400': sourceValid, 'text-rose-400': !sourceValid }"
                     class="disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <lucide-icon
                       class="inline-block"
-                      bind-icon="busy ? 'loader-circle' : (sourceValid ? 'badge-check' : 'circle-x')"
-                      bind-class="busy ? 'animate-spin' : ''"
+                      bind-icon="validation.running ? 'loader-circle' : (validation.valid ? 'circle-check' : 'circle-alert')"
+                      bind-class="validation.running ? 'animate-spin' : ''"
                       size="16"
                     ></lucide-icon>
                   </button>
-                  <span class="font-medium">YAML definition</span>
+                  <span class="font-medium" bind-class="validation.error ? 'bg-rose-500/10 text-rose-100' : ''"
+                    >{{ validation.error || '' }}</span
+                  >
                 </div>
                 <span class="font-mono">{{ source.length }} characters</span>
               </div>
@@ -394,7 +396,7 @@
           const workflows = ref([]);
           const secrets = ref([]);
           const source = ref('');
-          const sourceValid = ref(true);
+          const validation = ref({ valid: true });
           const savedSource = ref('');
           const workflowId = ref('');
           const enabled = ref(true);
@@ -415,6 +417,7 @@
             notice.value = message;
             noticeError.value = error;
           };
+
           const api = async (url, options = {}) => {
             const response = await fetch(url, {
               headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}) },
@@ -424,6 +427,7 @@
             if (!response.ok) throw new Error(body.error || `Request failed: ${response.status}`);
             return body;
           };
+
           const derivedId = () =>
             source.value
               .match(/^\s*(?:id:\s*([^\n]+)|name:\s*([^\n]+))/m)
@@ -433,9 +437,12 @@
               .toLowerCase()
               .replace(/[^a-z0-9]/g, '-')
               .replace(/(^-|-$)/g, '') || '';
+
           const run = async (action) => {
             if (busy.value) return;
+
             busy.value = true;
+
             try {
               await action();
             } catch (error) {
@@ -444,12 +451,15 @@
               busy.value = false;
             }
           };
+
           const loadWorkflows = async () => {
             workflows.value = (await api('/api/workflows')).workflows;
           };
+
           const loadSecrets = async () => {
             secrets.value = (await api('/api/secrets')).secrets;
           };
+
           const openWorkflow = async (id) => {
             const workflowUrl = initialRevision
               ? `/api/workflows/${id}?revision=${initialRevision}`
@@ -462,25 +472,24 @@
             enabled.value = workflow.enabled;
             savedEnabled.value = workflow.enabled;
           };
+
           const validateSource = async () => {
-            const sourceAtStart = source.value;
-            const result = await api('/api/workflows/validate', {
+            validation.value = await api('/api/workflows/validate', {
               method: 'POST',
-              body: JSON.stringify({ sourceYaml: sourceAtStart }),
+              body: JSON.stringify({ sourceYaml: source.value }),
             });
-            sourceValid.value = sourceAtStart === source.value;
           };
-          const validate = () => run(validateSource);
-          const scheduleValidation = () => {
+
+          const validate = (ms = 1000) => {
             if (page !== 'editor') return;
+
             clearTimeout(validationTimer);
-            const sourceAtSchedule = source.value;
             validationTimer = setTimeout(() => {
-              void validateSource().catch((error) => {
-                if (sourceAtSchedule === source.value) showNotice(error.message, true);
-              });
-            }, 1000);
+              validation.running = true;
+              validateSource();
+            }, ms);
           };
+
           const save = () =>
             run(async () => {
               const id = workflowId.value.trim() || derivedId();
@@ -541,7 +550,7 @@
             });
           const setSource = (value) => {
             source.value = value;
-            scheduleValidation();
+            validate();
           };
           const setWorkflowId = (event) => {
             workflowId.value = event.target.value;
