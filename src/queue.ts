@@ -1,8 +1,11 @@
 import db from './db-client.js';
 import { WorkflowExecutionReport, JobPayload, JobRecord, JobStatus } from './types.js';
 import { timestampLogLines } from './timestamped-log.js';
+import { FileStorage } from './file-storage.js';
 
 export class QueueManager {
+  private readonly fileStorage = new FileStorage();
+
   constructor(private workerId: string) {}
 
   async init() {
@@ -184,6 +187,16 @@ export class QueueManager {
         SELECT MAX(id) FROM step_logs GROUP BY job_id, step_id
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_step_logs_job_step ON step_logs(job_id, step_id);
+
+      CREATE TABLE IF NOT EXISTS stored_files (
+        kind TEXT NOT NULL,
+        owner_key TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (kind, owner_key, file_path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_stored_files_owner ON stored_files(kind, owner_key);
     `);
   }
 
@@ -259,5 +272,21 @@ export class QueueManager {
       logMap[row.step_id] = row.log_content;
     }
     return logMap;
+  }
+
+  async saveStoredFiles(kind: 'artifact' | 'cache', ownerKey: string, files: Array<{ path: string; content: string }>): Promise<void> {
+    if (this.fileStorage.enabled) return this.fileStorage.save(`${kind}/${ownerKey}`, files);
+    for (const file of files) {
+      await db.run(
+        `INSERT INTO stored_files (kind, owner_key, file_path, content) VALUES (?, ?, ?, ?)
+         ON CONFLICT(kind, owner_key, file_path) DO UPDATE SET content = excluded.content, created_at = CURRENT_TIMESTAMP`,
+        [kind, ownerKey, file.path, file.content],
+      );
+    }
+  }
+
+  async getStoredFiles(kind: 'artifact' | 'cache', ownerKey: string): Promise<Array<{ path: string; content: string }>> {
+    if (this.fileStorage.enabled) return this.fileStorage.load(`${kind}/${ownerKey}`);
+    return db.all('SELECT file_path AS path, content FROM stored_files WHERE kind = ? AND owner_key = ?', [kind, ownerKey]);
   }
 }

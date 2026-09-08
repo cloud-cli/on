@@ -19,7 +19,8 @@ describe('workflow management UI', () => {
     expect(html).toContain('The ID becomes permanent after the first save.');
     expect(html).toContain('No changes to save.');
     expect(html).toContain('setTimeout(() =>');
-    expect(html).toContain('}, 1000);');
+    expect(html).toContain('validation.running = true;');
+    expect(html).toContain('validateSource();');
     expect(html).toContain('hidden sm:inline');
     expect(html).toContain('aria-label="Save workflow draft"');
     expect(html).toContain('aria-labelledby="workflow-list-title"');

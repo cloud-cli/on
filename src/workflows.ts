@@ -43,6 +43,19 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
     if (dockerArgs?.some((arg: unknown) => typeof arg !== 'string')) throw new Error('step.dockerArgs must contain strings');
     return { ...step, timeoutMs, volumes, dockerArgs };
   });
+  const artifacts = parsed.artifacts === undefined ? undefined : {
+    paths: Array.isArray(parsed.artifacts.paths) ? parsed.artifacts.paths : [],
+  };
+  const cache = parsed.cache === undefined ? undefined : {
+    key: parsed.cache.key,
+    paths: Array.isArray(parsed.cache.paths) ? parsed.cache.paths : [],
+  };
+  if (artifacts && artifacts.paths.some((path: unknown) => typeof path !== 'string' || !path.trim())) {
+    throw new Error('artifacts.paths must contain non-empty strings');
+  }
+  if (cache && (typeof cache.key !== 'string' || !cache.key.trim() || cache.paths.some((path: unknown) => typeof path !== 'string' || !path.trim()))) {
+    throw new Error('cache requires a non-empty key and paths');
+  }
 
   return [{
     id: workflowId(parsed.id || parsed.name),
@@ -55,6 +68,9 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
     steps,
     retries: parsed.retries ?? 0,
     env: parsed.env,
+    artifacts,
+    cache,
+    secretFiles: parsed.secretFiles,
     tags: Array.isArray(parsed.tags) ? [...new Set((parsed.tags as unknown[]).filter((tag): tag is string => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean))] : undefined,
   }];
 }

@@ -134,6 +134,8 @@ describe('run view', () => {
     expect(html).toContain('lucide-icon');
     expect(html).toContain('highlight.jsfn');
     expect(html).toContain('Workflow source YAML');
+    expect(html).toContain('Artifacts');
+    expect(html).toContain('artifactUrl(artifact)');
     expect(html).toContain('https://sodium.static.apphor.de/code-block.html');
     expect(html).toContain('bind-innerhtml="inputsHtml"');
     expect(html).toContain("'circle-check'");

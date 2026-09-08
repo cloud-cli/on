@@ -57,6 +57,36 @@ steps:
     expect(workflow.steps[0].dockerArgs).toEqual(['--network=host']);
   });
 
+  it('normalizes artifact and cache storage settings', () => {
+    const [workflow] = parseWorkflow(`
+name: Stored files
+on: { generic: {} }
+artifacts:
+  paths: [dist]
+cache:
+  key: cache-\${inputs.branch}
+  paths: [node_modules]
+steps:
+  - run: 'true'
+`);
+
+    expect(workflow.artifacts).toEqual({ paths: ['dist'] });
+    expect(workflow.cache).toEqual({ key: 'cache-${inputs.branch}', paths: ['node_modules'] });
+  });
+
+  it('preserves secret file mappings', () => {
+    const [workflow] = parseWorkflow(`
+name: Signing
+on: { generic: {} }
+secretFiles:
+  .config/signing.key: SIGNING_KEY
+steps:
+  - run: 'true'
+`);
+
+    expect(workflow.secretFiles).toEqual({ '.config/signing.key': 'SIGNING_KEY' });
+  });
+
   it('preserves matrix definitions for trigger-time expansion', () => {
     const [workflow] = parseWorkflow(`
 name: Matrix build

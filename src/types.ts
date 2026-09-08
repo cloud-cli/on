@@ -144,6 +144,14 @@ export interface WorkflowDefinition {
   retries?: number;
   steps: WorkflowStep[];
   env?: Record<string, string>;
+  artifacts?: {
+    paths: string[];
+  };
+  cache?: {
+    key: string;
+    paths: string[];
+  };
+  secretFiles?: Record<string, string>;
   /** Worker capabilities required to execute this workflow */
   tags?: string[];
   /** Time triggers stored alongside webhook triggers in DB-authored workflows. */

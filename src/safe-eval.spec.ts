@@ -26,3 +26,9 @@ describe('workspace file helpers', () => {
     expect(() => files.exists('../outside')).toThrow('escapes working directory');
   });
 });
+
+describe('safe expression helpers', () => {
+  it('supports Object.keys for secret and input inspection', async () => {
+    await expect(SafeExpressionEvaluator.evaluateValue('${Object.keys(secrets).join(",")}', { secrets: { A: '1', B: '2' } })).resolves.toBe('A,B');
+  });
+});

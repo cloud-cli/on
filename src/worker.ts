@@ -18,6 +18,7 @@ import {
   ContextualizedProcessable,
   JobExecutionContext,
   JobRecord,
+  FinalJobStatus,
 } from './types.js';
 import { setupSignalHandlers } from './signals.js';
 import { consumeRunnerEvents } from './events.js';
@@ -272,6 +273,7 @@ export async function processJob(p: Processable) {
     workingDir,
     files: workspaceFiles(workingDir),
   };
+  let cacheKey = '';
 
   const stepReports = steps.map((step, index): StepReport => {
     step.id ||= `step-${index}`;
@@ -299,6 +301,24 @@ export async function processJob(p: Processable) {
   // Make the trace available before the first step starts.
   await queue.saveReport(job.id, executionReport);
   void notifyJobChange(config, job.id);
+  try {
+    Object.assign(executionContext.env, await evaluateEnv(resolvedWorkflow.env, executionContext));
+    writeSecretFiles(resolvedWorkflow.secretFiles, secrets.getAll(), workingDir);
+    cacheKey = resolvedWorkflow.cache
+      ? String(await SafeExpressionEvaluator.evaluateValue(resolvedWorkflow.cache.key, executionContext))
+      : '';
+    if (cacheKey && resolvedWorkflow.cache) await restoreStoredFiles(queue, 'cache', `${job.workflow_id}:${cacheKey}`, resolvedWorkflow.cache.paths, workingDir);
+    executionReport.environment = { ...executionContext.env };
+    await queue.saveReport(job.id, executionReport);
+  } catch (error: any) {
+    executionReport.status = 'failed';
+    executionReport.finishedAt = new Date().toISOString();
+    executionReport.durationMs = Date.now() - jobStartTime;
+    const failedReport = { ...executionReport, steps: executionReport.steps.map((step) => ({ ...step, status: 'skipped' as const })) };
+    await queue.completeJob(job.id, 'failed', failedReport);
+    console.error(`[${workerId}] ❌ Job setup failed:`, error);
+    return;
+  }
   const pluginManager = new PluginManager(config.plugins);
   const workflowContext = {
     jobId: String(job.id),
@@ -310,7 +330,25 @@ export async function processJob(p: Processable) {
 
   const context = { payload, steps, executionContext, ...processable };
   const { cancelled, failed } = await processSteps(context, executionReport);
-  const finalStatus = cancelled ? 'cancelled' : failed ? 'failed' : 'success';
+  let finalStatus: FinalJobStatus = cancelled ? 'cancelled' : failed ? 'failed' : 'success';
+  if (finalStatus === 'success') {
+    try {
+      const artifacts = resolvedWorkflow.artifacts
+        ? await collectStoredFiles(resolvedWorkflow.artifacts.paths, workingDir)
+        : [];
+      if (artifacts.length) {
+        await queue.saveStoredFiles('artifact', String(job.id), artifacts);
+        executionReport.artifacts = artifacts.map((file) => file.path);
+      }
+      if (cacheKey && resolvedWorkflow.cache) {
+        const cacheFiles = await collectStoredFiles(resolvedWorkflow.cache.paths, workingDir);
+        if (cacheFiles.length) await queue.saveStoredFiles('cache', `${job.workflow_id}:${cacheKey}`, cacheFiles);
+      }
+    } catch (error: any) {
+      console.error(`[${workerId}] ⚠️ Failed to store workflow files:`, error);
+      finalStatus = 'failed';
+    }
+  }
 
   executionReport.status = finalStatus;
   executionReport.durationMs = Date.now() - jobStartTime;
@@ -345,10 +383,6 @@ async function processSteps(
   let processedSteps = 0;
 
   try {
-    if (p.workflow?.env) {
-      Object.assign(executionContext.env, await evaluateEnv(p.workflow.env, executionContext));
-    }
-
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
       const stepStartedAt = new Date().toISOString();
@@ -614,6 +648,90 @@ async function evaluateEnv(env, context) {
   }
 
   return evaluated;
+}
+
+const MAX_STORED_FILE_BYTES = 50 * 1024 * 1024;
+
+function workspacePath(workingDir: string, relativePath: string): string {
+  const root = Path.resolve(workingDir);
+  const target = Path.resolve(root, relativePath);
+  if (target !== root && !target.startsWith(`${root}${Path.sep}`)) throw new Error(`Stored file path escapes workspace: ${relativePath}`);
+  return target;
+}
+
+function globMatches(relativePath: string, pattern: string): boolean {
+  let expression = '^';
+  for (let index = 0; index < pattern.length; index++) {
+    if (pattern[index] === '*' && pattern[index + 1] === '*') {
+      expression += '.*';
+      index++;
+    } else if (pattern[index] === '*') {
+      expression += '[^/]*';
+    } else {
+      expression += pattern[index].replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
+    }
+  }
+  return new RegExp(`${expression}$`).test(relativePath);
+}
+
+function workspaceFilesForPatterns(paths: string[], workingDir: string): string[] {
+  const root = Path.resolve(workingDir);
+  const files: string[] = [];
+  const visit = (directory: string) => {
+    for (const entry of FS.readdirSync(directory, { withFileTypes: true })) {
+      const absolute = Path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(absolute);
+      else if (entry.isFile()) files.push(Path.relative(root, absolute).split(Path.sep).join('/'));
+    }
+  };
+  visit(root);
+  return files.filter((file) => paths.some((pattern) => {
+    const target = workspacePath(workingDir, pattern);
+    if (FS.existsSync(target)) {
+      const stat = FS.statSync(target);
+      if (stat.isFile()) return file === pattern;
+      if (stat.isDirectory()) return file === pattern || file.startsWith(`${pattern.replace(/\/$/, '')}/`);
+    }
+    return globMatches(file, pattern);
+  }));
+}
+
+async function collectStoredFiles(paths: string[], workingDir: string): Promise<Array<{ path: string; content: string }>> {
+  const files = workspaceFilesForPatterns(paths, workingDir);
+  let totalBytes = 0;
+  return files.map((file) => {
+    const content = FS.readFileSync(workspacePath(workingDir, file));
+    if (content.byteLength > MAX_STORED_FILE_BYTES || (totalBytes += content.byteLength) > MAX_STORED_FILE_BYTES) {
+      throw new Error(`Stored files exceed ${MAX_STORED_FILE_BYTES} bytes`);
+    }
+    return { path: file, content: content.toString('base64') };
+  });
+}
+
+async function restoreStoredFiles(
+  queue: QueueManager,
+  kind: 'cache',
+  ownerKey: string,
+  paths: string[],
+  workingDir: string,
+): Promise<void> {
+  for (const file of await queue.getStoredFiles(kind, ownerKey)) {
+    if (!paths.some((pattern) => file.path === pattern || file.path.startsWith(`${pattern.replace(/\/$/, '')}/`) || globMatches(file.path, pattern))) continue;
+    const target = workspacePath(workingDir, file.path);
+    FS.mkdirSync(Path.dirname(target), { recursive: true });
+    FS.writeFileSync(target, Buffer.from(file.content, 'base64'));
+  }
+}
+
+function writeSecretFiles(secretFiles: Record<string, string> | undefined, values: Record<string, string>, workingDir: string): void {
+  for (const [relativePath, secretName] of Object.entries(secretFiles || {})) {
+    const value = values[secretName];
+    if (value === undefined) throw new Error(`Secret '${secretName}' is not available for file '${relativePath}'`);
+    const target = workspacePath(workingDir, relativePath);
+    FS.mkdirSync(Path.dirname(target), { recursive: true });
+    FS.writeFileSync(target, value, { mode: 0o600 });
+    FS.chmodSync(target, 0o600);
+  }
 }
 
 /**

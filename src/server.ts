@@ -175,6 +175,8 @@ export class WebhookServer {
     }
 
     if (req.method === 'GET' && url.pathname.startsWith('/api/runs/')) {
+      const artifactMatch = url.pathname.match(/^\/api\/runs\/(\d+)\/artifacts\/(.+)$/);
+      if (artifactMatch) return this.handleArtifactDownload(req, res, artifactMatch[1], decodeURIComponent(artifactMatch[2]));
       const jobId = url.pathname.replace('/api/runs/', '');
       return this.renderRunDetails(jobId, res, 'json', this.isAdmin(req));
     }
@@ -643,6 +645,21 @@ export class WebhookServer {
 
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Job not found' }));
+  }
+
+  private async handleArtifactDownload(req: http.IncomingMessage, res: http.ServerResponse, jobId: string, filePath: string) {
+    if (!this.requireAdmin(req, res)) return;
+    const file = (await this.queue.getStoredFiles('artifact', jobId)).find((entry) => entry.path === filePath);
+    if (!file) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Artifact not found' }));
+    }
+    res.writeHead(200, {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${filePath.replace(/[^a-zA-Z0-9._-]/g, '_')}"`,
+    });
+    return res.end(Buffer.from(file.content, 'base64'));
   }
 
   private async handleCancelJob(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {

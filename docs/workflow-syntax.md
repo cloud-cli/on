@@ -183,6 +183,37 @@ steps:
 
 Secret values are delivered to a worker after it claims the job. Do not write them into reports or artifacts.
 
+### Persist Artifacts and Caches
+
+Artifacts are captured from the workspace after a successful run:
+
+```yaml
+artifacts:
+  paths:
+    - dist
+    - reports/**/*.json
+```
+
+Caches are restored before steps start and replaced after a successful run:
+
+```yaml
+cache:
+  key: npm-${inputs.repo}-${inputs.branch}
+  paths:
+    - node_modules
+```
+
+Configure a shared FileBin backend on the server and workers with `RUNNER_FILE_API_URL`, `RUNNER_FILE_BIN`, and optionally `RUNNER_FILE_PASSWORD`. Without it, the runner uses the database fallback. Cache keys are scoped by workflow; artifacts are scoped by job.
+
+Populate workspace files from managed secrets before steps run:
+
+```yaml
+secretFiles:
+  .config/signing.key: SIGNING_KEY
+```
+
+Secret files are created with owner-only permissions and are removed with the job workspace.
+
 ## Reference
 
 ### Top-Level Workflow Fields
@@ -196,6 +227,9 @@ Secret values are delivered to a worker after it claims the job. Do not write th
 | `matrix` | object | Matrix dimensions. Each value is an array of strings, numbers, or booleans. |
 | `concurrency` | object | Optional concurrency group and cancellation policy. |
 | `tags` | string[] | Worker capability tags required by the job. |
+| `artifacts` | object | Workspace paths captured after successful runs. |
+| `cache` | object | Keyed workspace paths restored before and saved after successful runs. |
+| `secretFiles` | object | Workspace-relative file paths mapped to secret names. |
 | `steps` | object[] | Required non-empty ordered list of steps. |
 | `retries` | integer | Additional attempts for a failed step. Must be zero or greater. |
 
@@ -253,6 +287,7 @@ Number(value)
 Boolean(value)
 JSON.parse(value)
 JSON.stringify(value)
+Object.keys(value)
 ```
 
 Available context objects are:

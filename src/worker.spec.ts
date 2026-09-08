@@ -57,6 +57,7 @@ describe('incremental workflow reports', () => {
 
     expect(reports.map((report) => report.steps.map((step) => step.status))).toEqual([
       ['pending', 'pending'],
+      ['pending', 'pending'],
       ['running', 'pending'],
       ['success', 'pending'],
       ['success', 'running'],

@@ -167,6 +167,23 @@
             ></code-block>
           </details>
         </template>
+        <template if="report.canViewLogs && report.artifacts.length">
+          <details class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+            <summary class="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 outline-none transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+              Artifacts
+            </summary>
+            <ul class="divide-y divide-gray-800 border-t border-gray-800">
+              <template for="artifact of report.artifacts">
+                <li class="px-4 py-3">
+                  <a
+                    attr-href="artifactUrl(artifact)"
+                    class="font-mono text-sm text-indigo-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+                  >{{ artifact }}</a>
+                </li>
+              </template>
+            </ul>
+          </details>
+        </template>
       </div>
 
       <script setup>
@@ -198,6 +215,7 @@
           });
 
           const upper = (value) => String(value || '').toUpperCase();
+          const artifactUrl = (path) => `/api/runs/${report.value.jobId}/artifacts/${encodeURIComponent(path)}`;
           const escapeHtml = (value) =>
             value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
           const renderInputs = async () => {
@@ -313,7 +331,7 @@
             clearInterval(clockTimer);
           });
 
-          return { report, inputsJson, inputsHtml, timing, upper, stepLog, restartJob, cancelJob, cancelling };
+          return { report, inputsJson, inputsHtml, timing, upper, artifactUrl, stepLog, restartJob, cancelJob, cancelling };
         }
       </script>
       <script state>
