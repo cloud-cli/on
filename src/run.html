@@ -14,15 +14,11 @@
       {
         "imports": {
           "@li3/": "https://cdn.li3.dev/@li3/",
-        "ansi_up": "https://esm.sh/ansi_up@6.0.6",
-        "highlight.jsfn": "https://highlight.jsfn.run/index.mjs"
+        "ansi_up": "https://esm.sh/ansi_up@6.0.6"
         }
       }
   </script>
   <style>
-    .hljs-attr { color: #93c5fd; }
-    .hljs-string { color: #86efac; }
-    .hljs-number, .hljs-literal { color: #fca5a5; }
   </style>
   </head>
   <body class="bg-gray-950 text-gray-100 min-h-screen p-4 md:p-6 font-sans">
@@ -38,26 +34,16 @@
             <h1 class="text-2xl font-bold text-white flex flex-wrap items-center gap-3">
               {{ report.workflowName }}
               <span class="text-sm font-mono text-gray-500">#{{ report.jobId }}</span>
-              <template if="report.workerId">
-                <span class="rounded-full border border-gray-700 bg-gray-800/70 px-2 py-0.5 text-xs font-mono text-gray-400"
-                  >worker: {{ report.workerId }}</span
-                >
-              </template>
               <template if="report.parentId">
                 <a attr-href="'/runs/' + report.parentId" class="text-sm font-mono text-indigo-400 hover:underline">
                   from #{{ report.parentId }}
                 </a>
               </template>
-              <template if="report.canViewLogs">
-                <a
-                  attr-href="'/workflows/' + report.workflowId + '?revision=' + report.workflowRevision"
-                  class="text-sm font-mono text-indigo-400 hover:underline"
-                >
-                  workflow r{{ report.workflowRevision }}
-                </a>
-              </template>
             </h1>
-            <p class="text-xs text-gray-400 mt-1">Started {{ report.startedAt }} · {{ timing }}</p>
+            <p class="text-xs text-gray-400 mt-1">
+              Started {{ report.startedAt }} · {{ timing }}
+              <template if="report.workerId"> · worker: {{ report.workerId }}</template>
+            </p>
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <span
@@ -148,11 +134,16 @@
           </template>
         </section>
 
-        <details class="bg-gray-900 border border-gray-800 rounded-xl p-4 overflow-auto max-h-[400px]">
-          <summary class="cursor-pointer">
-            <h2 class="inline text-xs font-semibold text-gray-400 uppercase tracking-wider">Trigger Inputs</h2>
+        <details class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <summary class="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 outline-none transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+            Trigger Inputs
           </summary>
-          <pre class="font-mono text-xs text-gray-200 bg-gray-950 p-3 mt-3 rounded-lg overflow-x-auto" bind-innerhtml="inputsHtml"></pre>
+          <code-block
+            language="json"
+            theme="atom-one-dark"
+            bind-source="inputsJson"
+            class="block max-h-[38rem] overflow-auto border-t border-gray-800 bg-gray-950 p-4"
+          ></code-block>
         </details>
         <template if="report.workflowSourceYaml">
           <details class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
@@ -189,7 +180,6 @@
       <script setup>
         import { computed, onDestroy, onInit, ref } from '@li3/web';
         import { AnsiUp } from 'ansi_up';
-        import highlight from 'highlight.jsfn';
 
         export default function setup() {
           const report = ref({});
@@ -205,7 +195,6 @@
 
           const active = computed(() => ['pending', 'running'].includes(report.value.status));
           const inputsJson = computed(() => JSON.stringify(report.value.inputs || {}, null, 2));
-          const inputsHtml = ref('');
           const timing = computed(() => {
             if (report.value.status === 'pending') return 'Waiting for a worker';
             if (report.value.status === 'running') {
@@ -216,16 +205,6 @@
 
           const upper = (value) => String(value || '').toUpperCase();
           const artifactUrl = (path) => `/api/runs/${report.value.jobId}/artifacts/${encodeURIComponent(path)}`;
-          const escapeHtml = (value) =>
-            value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
-          const renderInputs = async () => {
-            const source = inputsJson.value;
-            try {
-              inputsHtml.value = await highlight(source, { language: 'json' });
-            } catch {
-              inputsHtml.value = escapeHtml(source);
-            }
-          };
           const stepLog = (step) => {
             if (step.status === 'skipped') return '';
             if (step.status === 'running')
@@ -269,7 +248,6 @@
               const previousStatus = report.value.status;
               const nextReport = await response.json();
               report.value = nextReport;
-              void renderInputs();
               if (
                 ['pending', 'running'].includes(previousStatus) &&
                 ['success', 'failed'].includes(nextReport.status) &&
@@ -310,7 +288,6 @@
 
           onInit(() => {
             document.title = `Run #${report.value.jobId} - ${report.value.workflowName}`;
-            void renderInputs();
             if ('serviceWorker' in navigator) {
               navigator.serviceWorker.register('/service-worker.js').catch((error) => {
                 console.error('Service worker registration failed', error);
@@ -331,7 +308,7 @@
             clearInterval(clockTimer);
           });
 
-          return { report, inputsJson, inputsHtml, timing, upper, artifactUrl, stepLog, restartJob, cancelJob, cancelling };
+          return { report, inputsJson, timing, upper, artifactUrl, stepLog, restartJob, cancelJob, cancelling };
         }
       </script>
       <script state>
