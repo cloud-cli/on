@@ -22,10 +22,34 @@
             <p class="text-xs text-gray-400">Live Job Queue &amp; Execution Traces</p>
           </div>
           <div class="flex flex-wrap items-center gap-3 text-xs font-mono">
-            <a href="/help" aria-label="Help" title="Help" class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-500/40 bg-indigo-500/10 text-indigo-200 outline-none transition hover:bg-indigo-500/20 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
-              <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.6 9a2.5 2.5 0 1 1 4.2 1.8c-1.2 1-1.8 1.4-1.8 2.7"></path><path d="M12 17h.01"></path></svg>
+            <a
+              href="/help"
+              aria-label="Help"
+              title="Help"
+              class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-500/40 bg-indigo-500/10 text-indigo-200 outline-none transition hover:bg-indigo-500/20 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12" r="9"></circle>
+                <path d="M9.6 9a2.5 2.5 0 1 1 4.2 1.8c-1.2 1-1.8 1.4-1.8 2.7"></path>
+                <path d="M12 17h.01"></path>
+              </svg>
             </a>
-            <a href="/workflows" aria-label="Settings" title="Settings" class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-500/40 bg-indigo-500/10 text-indigo-200 outline-none transition hover:bg-indigo-500/20 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+            <a
+              href="/workflows"
+              aria-label="Settings"
+              title="Settings"
+              class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-500/40 bg-indigo-500/10 text-indigo-200 outline-none transition hover:bg-indigo-500/20 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+            >
               <lucide-icon icon="settings" size="16"></lucide-icon>
             </a>
             <template if="notificationsSupported">
@@ -56,7 +80,7 @@
               bind-value="filter"
               on-input="setFilter($event)"
               class="w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 pr-10 text-sm text-gray-200 outline-none placeholder:text-gray-600 focus:border-indigo-500"
-              placeholder="Filter: name:cloud-cli/* or search JSON"
+              placeholder="Filter: name:cloud-cli/* or text search"
             />
             <template if="filter">
               <button
@@ -79,12 +103,13 @@
         </form>
 
         <template if="activeFilter">
-          <p class="text-xs text-gray-400">
-            Showing {{ jobs.length }} jobs matching <span class="font-mono text-indigo-300">{{ activeFilter }}</span>
+          <p class="flex items-center gap-1">
+            <span class="text-xs text-gray-400">Showing {{ jobs.length }} jobs matching </span
+            ><span class="font-mono text-indigo-300">{{ activeFilter }}</span>
           </p>
         </template>
 
-         <template if="notificationNotice">
+        <template if="notificationNotice">
           <button
             class="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-3 text-left text-sm text-gray-300"
             on-click="notificationNotice = ''"
@@ -159,11 +184,11 @@
               </template>
             </tbody>
           </table>
-         <template if="!jobs.length">
-             <div class="p-8 text-center text-gray-500">
-               {{ activeFilter ? 'No jobs match the current filter.' : 'No jobs recorded yet.' }}
-             </div>
-           </template>
+          <template if="!jobs.length">
+            <div class="p-8 text-center text-gray-500">
+              {{ activeFilter ? 'No jobs match the current filter.' : 'No jobs recorded yet.' }}
+            </div>
+          </template>
         </section>
 
         <section
@@ -204,9 +229,9 @@
             </a>
           </template>
           <template if="!jobs.length">
-             <div class="p-8 text-center text-gray-500">
-               {{ activeFilter ? 'No jobs match the current filter.' : 'No jobs recorded yet.' }}
-             </div>
+            <div class="p-8 text-center text-gray-500">
+              {{ activeFilter ? 'No jobs match the current filter.' : 'No jobs recorded yet.' }}
+            </div>
           </template>
         </section>
 
@@ -250,7 +275,8 @@
           const upper = (value) => String(value || '').toUpperCase();
           const terminalStatuses = new Set(['success', 'failed', 'cancelled']);
           const notifyCompletedJob = async (job) => {
-             if (!notificationsEnabled.value || pushConfigured.value || !['success', 'failed'].includes(job.status)) return;
+            if (!notificationsEnabled.value || pushConfigured.value || !['success', 'failed'].includes(job.status))
+              return;
             try {
               const registration = await navigator.serviceWorker.ready;
               await registration.showNotification(
@@ -360,11 +386,11 @@
                 afterId === null
                   ? `/api/jobs?limit=500${filterQuery}`
                   : `/api/jobs?afterId=${afterId}&limit=500${filterQuery}`;
-               const response = await fetch(url, { headers: { accept: 'application/json' } });
-               if (!response.ok) throw new Error(`Dashboard refresh failed: ${response.status}`);
+              const response = await fetch(url, { headers: { accept: 'application/json' } });
+              if (!response.ok) throw new Error(`Dashboard refresh failed: ${response.status}`);
 
-               const data = await response.json();
-               if (generation !== refreshGeneration) return;
+              const data = await response.json();
+              if (generation !== refreshGeneration) return;
               const previousStatuses = new Map(jobs.value.map((job) => [job.id, job.status]));
               const merged = new Map(jobs.value.map((job) => [job.id, job]));
               for (const job of data.jobs) {
@@ -374,17 +400,17 @@
                   void notifyCompletedJob(job);
                 }
               }
-               jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
+              jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
               refreshError.value = false;
             } catch (error) {
               console.error(error);
               refreshError.value = true;
             } finally {
               refreshing = false;
-               if (refreshPending && !searchInProgress) {
-                 refreshPending = false;
-                 void refreshJobs();
-               }
+              if (refreshPending && !searchInProgress) {
+                refreshPending = false;
+                void refreshJobs();
+              }
             }
           };
 
@@ -400,10 +426,10 @@
               });
               if (!response.ok) throw new Error(`Loading older jobs failed: ${response.status}`);
 
-             const data = await response.json();
+              const data = await response.json();
               const merged = new Map(jobs.value.map((job) => [job.id, job]));
               for (const job of data.jobs) merged.set(job.id, job);
-             jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
+              jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
               hasMore.value = data.hasMore;
             } catch (error) {
               console.error(error);
@@ -488,7 +514,7 @@
         }
       </script>
       <script state>
-        __DASHBOARD_STATE__
+        __DASHBOARD_STATE__;
       </script>
     </template>
 
