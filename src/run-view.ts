@@ -1,5 +1,4 @@
 import runTemplate from './run.html?raw';
-import { serializeHtmlState } from './html-state.js';
 import type { JobPayload, JobRecord, StepReport, WorkflowExecutionReport, WorkflowStep } from './types.js';
 
 const SENSITIVE_KEY =
@@ -72,7 +71,7 @@ export function buildRunView(
 }
 
 export function renderRunHtml(report: RunView): string {
-  return runTemplate.replace('__REPORT_STATE__', () => serializeHtmlState({ report }));
+  return runTemplate;
 }
 
 function buildPendingReport(job: JobRecord & Record<string, any>, payload: JobPayload, steps: WorkflowStep[]): WorkflowExecutionReport {

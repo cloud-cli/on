@@ -574,11 +574,8 @@ export class WebhookServer {
    * Serves the Server Health & Jobs Dashboard
    */
   private async renderDashboard(res: http.ServerResponse) {
-    const rows = await this.queue.listJobs(DASHBOARD_PAGE_SIZE + 1);
-    const jobs = toDashboardJobs(rows.slice(0, DASHBOARD_PAGE_SIZE));
-    const redacted = await this.redactText(generateDashboardHtml(jobs, rows.length > DASHBOARD_PAGE_SIZE));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(redacted);
+    res.end(generateDashboardHtml());
   }
 
   private async renderDashboardJobs(

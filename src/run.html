@@ -182,7 +182,8 @@
         import { AnsiUp } from 'ansi_up';
 
         export default function setup() {
-          const report = ref({});
+          const jobId = window.location.pathname.split('/').filter(Boolean).pop() || '';
+          const report = ref({ jobId });
           const now = ref(Date.now());
           const ansiUp = new AnsiUp();
           ansiUp.use_classes = false;
@@ -241,13 +242,14 @@
             refreshing = true;
 
             try {
-              const response = await fetch(`/api/runs/${report.value.jobId}`, {
+              const response = await fetch(`/api/runs/${jobId}`, {
                 headers: { accept: 'application/json' },
               });
               if (!response.ok) throw new Error(`Run refresh failed: ${response.status}`);
               const previousStatus = report.value.status;
               const nextReport = await response.json();
               report.value = nextReport;
+              document.title = `Run #${nextReport.jobId} - ${nextReport.workflowName}`;
               if (
                 ['pending', 'running'].includes(previousStatus) &&
                 ['success', 'failed'].includes(nextReport.status) &&
@@ -287,7 +289,7 @@
           };
 
           onInit(() => {
-            document.title = `Run #${report.value.jobId} - ${report.value.workflowName}`;
+            void refreshRun();
             if ('serviceWorker' in navigator) {
               navigator.serviceWorker.register('/service-worker.js').catch((error) => {
                 console.error('Service worker registration failed', error);
@@ -310,9 +312,6 @@
 
           return { report, inputsJson, timing, upper, artifactUrl, stepLog, restartJob, cancelJob, cancelling };
         }
-      </script>
-      <script state>
-        __REPORT_STATE__
       </script>
     </template>
 

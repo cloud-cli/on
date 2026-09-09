@@ -1,5 +1,4 @@
 import dashboardTemplate from './dashboard.html?raw';
-import { serializeHtmlState } from './html-state.js';
 
 export interface DashboardJob {
   id: number;
@@ -21,6 +20,6 @@ export function toDashboardJobs(rows: any[]): DashboardJob[] {
   }));
 }
 
-export function generateDashboardHtml(jobs: DashboardJob[], hasMore = false): string {
-  return dashboardTemplate.replace('__DASHBOARD_STATE__', () => serializeHtmlState({ jobs, hasMore }));
+export function generateDashboardHtml(_jobs: DashboardJob[] = [], _hasMore = false): string {
+  return dashboardTemplate;
 }

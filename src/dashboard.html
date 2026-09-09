@@ -391,6 +391,7 @@
 
               const data = await response.json();
               if (generation !== refreshGeneration) return;
+              hasMore.value = data.hasMore;
               const previousStatuses = new Map(jobs.value.map((job) => [job.id, job.status]));
               const merged = new Map(jobs.value.map((job) => [job.id, job]));
               for (const job of data.jobs) {
@@ -486,6 +487,7 @@
             eventSource.onerror = () => {
               refreshError.value = true;
             };
+            void refreshJobs();
             refreshTimer = setInterval(refreshJobs, 60000);
           });
           onDestroy(() => {
@@ -512,9 +514,6 @@
             toggleNotifications,
           };
         }
-      </script>
-      <script state>
-        __DASHBOARD_STATE__;
       </script>
     </template>
 

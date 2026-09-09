@@ -128,9 +128,8 @@ describe('run view', () => {
     const unsafe = view('running');
     unsafe.steps[0].logContent = '</script><script>alert(1)</script>';
     const html = renderRunHtml(unsafe);
-    const stateSource = html.match(/<script state>(.*?)<\/script>/s)?.[1];
-
-    expect(JSON.parse(stateSource!)).toEqual({ report: unsafe });
+    expect(html).not.toContain('<script state>');
+    expect(html).toContain('fetch(`/api/runs/${jobId}`');
     expect(html).toContain('lucide-icon');
     expect(html).toContain('Workflow source YAML');
     expect(html).toContain('Artifacts');
@@ -141,13 +140,13 @@ describe('run view', () => {
     expect(html).toContain('worker: {{ report.workerId }}');
     expect(html).toContain("new EventSource('/api/events')");
     expect(html).toContain("addEventListener('jobs.changed', handleJobChange)");
-    expect(html).toContain('fetch(`/api/runs/${report.value.jobId}`');
+    expect(html).toContain('fetch(`/api/runs/${jobId}`');
     expect(html).toContain('now.value = Date.now()');
     expect(html).toContain('href="/manifest.webmanifest"');
     expect(html).toContain("navigator.serviceWorker.register('/service-worker.js')");
     expect(html).toContain('registration.showNotification(');
     expect(html).not.toContain('location.reload()');
     expect(html).not.toContain('</script><script>alert(1)</script>');
-    expect(html).toContain('\\u003c/script\\u003e');
+    expect(html).not.toContain('unsafe');
   });
 });

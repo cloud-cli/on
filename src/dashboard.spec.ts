@@ -29,9 +29,8 @@ describe('dashboard', () => {
   it('hydrates a li3 app and refreshes from server events', () => {
     const jobs = toDashboardJobs([row]);
     const html = generateDashboardHtml(jobs, true);
-    const stateSource = html.match(/<script state>(.*?)<\/script>/s)?.[1];
-
-    expect(JSON.parse(stateSource!)).toEqual({ jobs, hasMore: true });
+    expect(html).not.toContain('<script state>');
+    expect(html).toContain('void refreshJobs()');
     expect(html).toContain('`/api/jobs?afterId=${afterId}&limit=500${filterQuery}`');
     expect(html).toContain("new Set(['success', 'failed', 'cancelled'])");
     expect(html).toContain("? 'circle-check'");
