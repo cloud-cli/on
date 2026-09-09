@@ -384,8 +384,8 @@
               const filterQuery = activeFilter.value ? `&filter=${encodeURIComponent(activeFilter.value)}` : '';
               const url =
                 afterId === null
-                  ? `/api/jobs?limit=500${filterQuery}`
-                  : `/api/jobs?afterId=${afterId}&limit=500${filterQuery}`;
+                  ? `/api/jobs?limit=100${filterQuery}`
+                  : `/api/jobs?afterId=${afterId}&limit=100${filterQuery}`;
               const response = await fetch(url, { headers: { accept: 'application/json' } });
               if (!response.ok) throw new Error(`Dashboard refresh failed: ${response.status}`);
 
