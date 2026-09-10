@@ -304,7 +304,7 @@ export async function processJob(p: Processable) {
   void notifyJobChange(config, job.id);
   try {
     Object.assign(executionContext.env, await evaluateEnv(resolvedWorkflow.env, executionContext));
-    writeSecretFiles(resolvedWorkflow.secretFiles, secrets.getAll(), workingDir);
+  writeSecretFiles(resolvedWorkflow.secretFiles, secrets, workingDir);
     cacheKey = resolvedWorkflow.cache
       ? String(await SafeExpressionEvaluator.evaluateValue(resolvedWorkflow.cache.key, executionContext))
       : '';
@@ -743,13 +743,13 @@ async function restoreStoredFiles(
   }
 }
 
-function writeSecretFiles(secretFiles: Record<string, string> | undefined, values: Record<string, string>, workingDir: string): void {
+function writeSecretFiles(secretFiles: Record<string, string> | undefined, secrets: SecretStore, workingDir: string): void {
   for (const [relativePath, secretName] of Object.entries(secretFiles || {})) {
-    const value = values[secretName];
-    if (value === undefined) throw new Error(`Secret '${secretName}' is not available for file '${relativePath}'`);
+    const secret = secrets.getValue(secretName);
+    if (!secret) throw new Error(`Secret '${secretName}' is not available for file '${relativePath}'`);
     const target = workspacePath(workingDir, relativePath);
     FS.mkdirSync(Path.dirname(target), { recursive: true });
-    FS.writeFileSync(target, value, { mode: 0o600 });
+    FS.writeFileSync(target, secret.encoding === 'base64' ? Buffer.from(secret.value, 'base64') : secret.value, { mode: 0o600 });
     FS.chmodSync(target, 0o600);
   }
 }

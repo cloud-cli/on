@@ -322,6 +322,14 @@
                 class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 font-mono text-sm outline-none transition placeholder:text-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
                 placeholder="New secret value"
               />
+              <label class="sr-only" for="secret-file">Secret file</label>
+              <input
+                id="secret-file"
+                ref="secretFileInput"
+                on-change="setSecretFile($event)"
+                type="file"
+                class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-400 file:mr-3 file:rounded file:border-0 file:bg-gray-700 file:px-2 file:py-1 file:text-xs file:text-gray-200 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+              />
               <button
                 type="button"
                 aria-label="Save secret value"
@@ -374,7 +382,7 @@
           >
             <lucide-icon icon="key-round" size="22" class="mx-auto text-gray-600"></lucide-icon>
             <p class="mt-2 text-sm font-medium text-gray-300">No secrets configured</p>
-            <p class="mt-1 text-xs text-gray-500">Add one above to make it available to a workflow.</p>
+              <p class="mt-1 text-xs text-gray-500">Add one above to make it available to a workflow.</p>
           </div>
         </section>
       </main>
@@ -396,12 +404,15 @@
           const enabled = ref(true);
           const savedEnabled = ref(true);
           const selectedId = ref('');
-          const secretName = ref('');
-          const secretValue = ref('');
+           const secretName = ref('');
+           const secretValue = ref('');
+           const secretFileName = ref('');
+           const secretFileData = ref('');
           const notice = ref('');
           const noticeError = ref(false);
           const busy = ref(false);
-          const secretValueInput = templateRef('secretValueInput');
+           const secretValueInput = templateRef('secretValueInput');
+           const secretFileInput = templateRef('secretFileInput');
           const helpContent = templateRef('helpContent');
           const helpLoaded = ref(false);
           const helpLoading = ref(false);
@@ -530,12 +541,18 @@
               await api(`/api/workflows/${id}`, { method: 'DELETE' });
               window.location.href = '/workflows';
             });
-          const saveSecret = () =>
-            run(async () => {
-              const name = secretName.value.trim();
-              if (!name || !secretValue.value) throw new Error('Set a secret name and value first.');
-              await api(`/api/secrets/${name}`, { method: 'PUT', body: JSON.stringify({ value: secretValue.value }) });
-              secretValue.value = '';
+           const saveSecret = () =>
+             run(async () => {
+               const name = secretName.value.trim();
+               if (!name || (!secretValue.value && !secretFileData.value)) throw new Error('Set a secret name and value or choose a file first.');
+               await api(`/api/secrets/${name}`, {
+                 method: 'PUT',
+                 body: JSON.stringify(secretFileData.value ? { value: secretFileData.value, encoding: 'base64', originalName: secretFileName.value } : { value: secretValue.value, encoding: 'utf8' }),
+               });
+               secretValue.value = '';
+               secretFileName.value = '';
+               secretFileData.value = '';
+               if (secretFileInput.value) secretFileInput.value.value = '';
               await loadSecrets();
               showNotice(`Saved ${name}.`);
             });
@@ -544,8 +561,11 @@
               const name = secretName.value.trim();
               if (!name || !confirm(`Delete ${name}?`)) return;
               await api(`/api/secrets/${name}`, { method: 'DELETE' });
-              secretName.value = '';
-              secretValue.value = '';
+               secretName.value = '';
+               secretValue.value = '';
+               secretFileName.value = '';
+               secretFileData.value = '';
+               if (secretFileInput.value) secretFileInput.value.value = '';
               await loadSecrets();
               showNotice(`Deleted ${name}.`);
             });
@@ -562,8 +582,25 @@
           const setSecretName = (event) => {
             secretName.value = event.target.value;
           };
-          const setSecretValue = (event) => {
-            secretValue.value = event.target.value;
+           const setSecretValue = (event) => {
+             secretValue.value = event.target.value;
+             if (secretValue.value) {
+               secretFileName.value = '';
+               secretFileData.value = '';
+               if (secretFileInput.value) secretFileInput.value.value = '';
+             }
+           };
+           const setSecretFile = async (event) => {
+             const file = event.target.files?.[0];
+             if (!file) return;
+             const bytes = new Uint8Array(await file.arrayBuffer());
+             let binary = '';
+             for (let index = 0; index < bytes.length; index += 0x8000) {
+               binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+             }
+             secretFileName.value = file.name;
+             secretFileData.value = btoa(binary);
+             secretValue.value = '';
           };
           const selectSecret = (name) => {
             secretName.value = name;
@@ -617,8 +654,10 @@
             enabled,
             readOnly,
             selectedId,
-            secretName,
-            secretValue,
+             secretName,
+             secretValue,
+             secretFileName,
+             secretFileData,
             notice,
             noticeError,
             busy,
@@ -632,7 +671,8 @@
             setWorkflowId,
             setEnabled,
             setSecretName,
-            setSecretValue,
+             setSecretValue,
+             setSecretFile,
             selectSecret,
             visitWorkflow,
             loadHelp,

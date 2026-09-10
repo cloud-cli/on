@@ -465,7 +465,7 @@ export class WebhookServer {
       return;
     }
     try {
-      await this.secretRepository.set(name, body.value);
+      await this.secretRepository.set(name, body.value, body.encoding || 'utf8');
       res.writeHead(204).end();
     } catch (error: any) {
       res.writeHead(422, { 'Content-Type': 'application/json' });
@@ -493,7 +493,7 @@ export class WebhookServer {
       return res.end(JSON.stringify({ error: 'Job is not assigned to this worker' }));
     }
     res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ secrets: await this.secretRepository.getAll() }));
+    res.end(JSON.stringify({ secrets: await this.secretRepository.getAllForJob() }));
   }
 
   /**

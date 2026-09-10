@@ -188,6 +188,18 @@ steps:
 
 Secret values are delivered to a worker after it claims the job. Do not write them into reports or artifacts.
 
+Managed secrets can be text or binary. Use the management UI's file picker for binary values, or send base64 through the API:
+
+```json
+{
+  "value": "<base64 file bytes>",
+  "encoding": "base64",
+  "originalName": "release.keystore"
+}
+```
+
+Binary values are encrypted at rest and are decoded only when written through a file secret mapping. They should not be injected into environment variables.
+
 ### Persist Artifacts and Caches
 
 Artifacts are captured from the workspace after a successful run:
