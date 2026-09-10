@@ -44,13 +44,6 @@
             </div>
           </div>
           <a
-            href="/workflows/new"
-            class="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-950/40 transition hover:bg-indigo-400"
-          >
-            <lucide-icon icon="plus" size="16"></lucide-icon>
-            New workflow
-          </a>
-          <a
             href="/help"
             class="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-800 bg-gray-900 px-3 py-2.5 text-sm font-medium text-gray-300 outline-none transition hover:border-indigo-500/50 hover:text-indigo-200 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
           >
@@ -94,12 +87,13 @@
                 <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-400">Definitions</p>
                 <h2 id="workflow-list-title" class="mt-1 text-lg font-semibold text-white">Workflows</h2>
               </div>
-              <span
-                class="rounded-full border border-gray-700 bg-gray-950 px-2.5 py-1 text-xs font-mono text-gray-400"
-                aria-label="Workflow count"
+              <a
+                href="/workflows/new"
+                class="inline-flex items-center gap-2 rounded-lg bg-indigo-500 px-3 py-2 text-sm font-semibold text-white outline-none transition hover:bg-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
               >
-                {{ workflows.length }}
-              </span>
+                <lucide-icon icon="plus" size="16"></lucide-icon>
+                New workflow
+              </a>
             </div>
             <ul class="grid gap-2" aria-label="Workflow definitions">
               <template for="workflow of workflows">
@@ -114,7 +108,7 @@
                       <lucide-icon icon="workflow" size="17"></lucide-icon>
                     </span>
                     <span class="min-w-0 flex-1">
-                      <span class="block truncate font-medium text-gray-100">{{ workflow.name }}</span>
+                      <span class="block truncate text-base font-semibold text-gray-100">{{ workflow.name }}</span>
                       <span class="mt-0.5 block truncate font-mono text-[11px] text-gray-500">{{ workflow.id }}</span>
                     </span>
                     <span
@@ -473,22 +467,29 @@
             savedEnabled.value = workflow.enabled;
           };
 
-          const validateSource = async () => {
-            validation.value = await api('/api/workflows/validate', {
-              method: 'POST',
-              body: JSON.stringify({ sourceYaml: source.value }),
-            });
-          };
+           const validateSource = async () => {
+             return api('/api/workflows/validate', {
+               method: 'POST',
+               body: JSON.stringify({ sourceYaml: source.value }),
+             });
+           };
 
-          const validate = (ms = 1000) => {
-            if (page !== 'editor') return;
+           const validate = (ms = 1000) => {
+             if (page !== 'editor') return;
 
-            clearTimeout(validationTimer);
-            validationTimer = setTimeout(() => {
-              validation.running = true;
-              validateSource();
-            }, ms);
-          };
+             clearTimeout(validationTimer);
+             validationTimer = setTimeout(() => {
+               validation.value = { ...validation.value, running: true, error: '' };
+               void validateSource()
+                 .then((result) => {
+                   validation.value = { ...result, running: false };
+                 })
+                 .catch((error) => {
+                   validation.value = { valid: false, running: false, error: error.message };
+                   showNotice(error.message, true);
+                 });
+             }, ms);
+           };
 
           const save = () =>
             run(async () => {
