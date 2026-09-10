@@ -303,7 +303,7 @@
           </div>
           <div class="mb-5 rounded-xl border border-gray-800 bg-gray-950/50 p-3">
             <p class="mb-3 text-xs text-gray-500">Saving an existing name replaces its encrypted value.</p>
-            <div class="grid gap-3 md:grid-cols-[14rem_1fr_auto_auto]">
+            <div class="space-y-3">
               <label class="sr-only" for="secret-name">Secret name</label>
               <input
                 id="secret-name"
@@ -312,67 +312,74 @@
                 class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 font-mono text-sm uppercase outline-none transition placeholder:text-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
                 placeholder="NPM_TOKEN"
               />
-              <label class="sr-only" for="secret-value">Secret value</label>
-              <input
-                id="secret-value"
-                ref="secretValueInput"
-                bind-value="secretValue"
-                on-input="setSecretValue($event)"
-                type="password"
-                class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 font-mono text-sm outline-none transition placeholder:text-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
-                placeholder="New secret value"
-              />
-              <label class="sr-only" for="secret-file">Secret file</label>
-              <input
-                id="secret-file"
-                ref="secretFileInput"
-                on-change="setSecretFile($event)"
-                type="file"
-                class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-400 file:mr-3 file:rounded file:border-0 file:bg-gray-700 file:px-2 file:py-1 file:text-xs file:text-gray-200 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-              />
-              <button
-                type="button"
-                aria-label="Save secret value"
-                title="Save secret value"
-                on-click="saveSecret()"
-                bind-disabled="busy"
-                class="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-500/60 px-3 py-2.5 text-sm font-medium text-indigo-200 outline-none transition hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-50"
-              >
-                <lucide-icon icon="lock-keyhole" size="16"></lucide-icon><span class="hidden sm:inline">Save</span>
-              </button>
-              <button
-                type="button"
-                aria-label="Delete secret"
-                title="Delete secret"
-                on-click="removeSecret()"
-                bind-disabled="busy"
-                class="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-500/50 px-3 py-2.5 text-sm font-medium text-rose-300 outline-none transition hover:bg-rose-500/10 focus-visible:ring-2 focus-visible:ring-rose-400/60 disabled:opacity-50"
-              >
-                <lucide-icon icon="trash" size="16"></lucide-icon><span class="hidden sm:inline">Delete</span>
-              </button>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-300">
+                <input type="checkbox" bind-checked="fileMode" on-change="setFileMode($event)" class="h-4 w-4 rounded border-gray-700 bg-gray-900 text-indigo-500 focus:ring-2 focus:ring-indigo-500/30" />
+                Binary file secret
+              </label>
+              <template if="!fileMode">
+                <label class="sr-only" for="secret-value">Text secret value</label>
+                <input
+                  id="secret-value"
+                  ref="secretValueInput"
+                  bind-value="secretValue"
+                  on-input="setSecretValue($event)"
+                  type="password"
+                  class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 font-mono text-sm outline-none transition placeholder:text-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                  placeholder="New secret value"
+                />
+              </template>
+              <template if="fileMode">
+                <label class="sr-only" for="secret-file">Binary secret file</label>
+                <input
+                  id="secret-file"
+                  ref="secretFileInput"
+                  on-change="setSecretFile($event)"
+                  type="file"
+                  class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-400 file:mr-3 file:rounded file:border-0 file:bg-gray-700 file:px-2 file:py-1 file:text-xs file:text-gray-200 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                />
+              </template>
+              <div>
+                <button
+                  type="button"
+                  aria-label="Save secret value"
+                  title="Save secret value"
+                  on-click="saveSecret()"
+                  bind-disabled="busy"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-500/60 px-3 py-2.5 text-sm font-medium text-indigo-200 outline-none transition hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-50"
+                >
+                  <lucide-icon icon="lock-keyhole" size="16"></lucide-icon>Save secret
+                </button>
+              </div>
             </div>
           </div>
           <ul class="grid gap-2" aria-label="Saved secrets">
             <template for="name of secrets">
               <li>
-                <button
-                  type="button"
-                  on-click="selectSecret(name)"
-                  class="group flex min-h-14 w-full items-center gap-3 rounded-xl border border-gray-800 bg-gray-950/50 px-3.5 py-3 text-left outline-none transition hover:border-indigo-500/50 hover:bg-indigo-500/10 focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/50"
-                  aria-label="Edit secret {{ name }}"
-                >
+                <div class="flex min-h-14 items-center gap-2 rounded-xl border border-gray-800 bg-gray-950/50 px-3.5 py-3">
+                  <button
+                    type="button"
+                    on-click="selectSecret(name)"
+                    class="group flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/50"
+                    aria-label="Edit secret {{ name }}"
+                  >
                   <span
                     class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-800 text-gray-500 group-hover:text-indigo-300"
                     ><lucide-icon icon="key-round" size="15"></lucide-icon
                   ></span>
                   <span class="min-w-0 flex-1 truncate font-mono text-sm text-gray-200">{{ name }}</span>
-                  <span class="text-xs text-gray-500">Select</span>
-                  <lucide-icon
-                    icon="chevron-right"
-                    size="16"
-                    class="text-gray-600 transition group-hover:text-indigo-300"
-                  ></lucide-icon>
-                </button>
+                    <span class="text-xs text-gray-500">Select</span>
+                    <lucide-icon icon="chevron-right" size="16" class="text-gray-600 transition group-hover:text-indigo-300"></lucide-icon>
+                  </button>
+                  <button
+                    type="button"
+                    on-click="removeSecret(name)"
+                    aria-label="Delete secret {{ name }}"
+                    title="Delete secret"
+                    class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-rose-300 outline-none transition hover:bg-rose-500/10 focus-visible:ring-2 focus-visible:ring-rose-400/60"
+                  >
+                    <lucide-icon icon="trash" size="15"></lucide-icon>
+                  </button>
+                </div>
               </li>
             </template>
           </ul>
@@ -406,6 +413,7 @@
           const selectedId = ref('');
            const secretName = ref('');
            const secretValue = ref('');
+           const fileMode = ref(false);
            const secretFileName = ref('');
            const secretFileData = ref('');
           const notice = ref('');
@@ -544,28 +552,32 @@
            const saveSecret = () =>
              run(async () => {
                const name = secretName.value.trim();
-               if (!name || (!secretValue.value && !secretFileData.value)) throw new Error('Set a secret name and value or choose a file first.');
+               if (!name || (fileMode.value ? !secretFileData.value : !secretValue.value)) throw new Error(fileMode.value ? 'Choose a file first.' : 'Set a secret value first.');
                await api(`/api/secrets/${name}`, {
                  method: 'PUT',
-                 body: JSON.stringify(secretFileData.value ? { value: secretFileData.value, encoding: 'base64', originalName: secretFileName.value } : { value: secretValue.value, encoding: 'utf8' }),
+                 body: JSON.stringify(fileMode.value ? { value: secretFileData.value, encoding: 'base64', originalName: secretFileName.value } : { value: secretValue.value, encoding: 'utf8' }),
                });
                secretValue.value = '';
                secretFileName.value = '';
                secretFileData.value = '';
+               fileMode.value = false;
                if (secretFileInput.value) secretFileInput.value.value = '';
               await loadSecrets();
               showNotice(`Saved ${name}.`);
             });
-          const removeSecret = () =>
-            run(async () => {
-              const name = secretName.value.trim();
-              if (!name || !confirm(`Delete ${name}?`)) return;
-              await api(`/api/secrets/${name}`, { method: 'DELETE' });
-               secretName.value = '';
-               secretValue.value = '';
-               secretFileName.value = '';
-               secretFileData.value = '';
-               if (secretFileInput.value) secretFileInput.value.value = '';
+           const removeSecret = (requestedName = '') =>
+             run(async () => {
+               const name = requestedName || secretName.value.trim();
+               if (!name || !confirm(`Delete ${name}?`)) return;
+               await api(`/api/secrets/${name}`, { method: 'DELETE' });
+               if (secretName.value.trim() === name) {
+                 secretName.value = '';
+                 secretValue.value = '';
+                 secretFileName.value = '';
+                 secretFileData.value = '';
+                 fileMode.value = false;
+                 if (secretFileInput.value) secretFileInput.value.value = '';
+               }
               await loadSecrets();
               showNotice(`Deleted ${name}.`);
             });
@@ -584,10 +596,21 @@
           };
            const setSecretValue = (event) => {
              secretValue.value = event.target.value;
+             fileMode.value = false;
              if (secretValue.value) {
                secretFileName.value = '';
                secretFileData.value = '';
                if (secretFileInput.value) secretFileInput.value.value = '';
+             }
+           };
+           const setFileMode = (event) => {
+             fileMode.value = event.target.checked;
+             if (!fileMode.value) {
+               secretFileName.value = '';
+               secretFileData.value = '';
+               if (secretFileInput.value) secretFileInput.value.value = '';
+             } else {
+               secretValue.value = '';
              }
            };
            const setSecretFile = async (event) => {
@@ -656,6 +679,7 @@
             selectedId,
              secretName,
              secretValue,
+             fileMode,
              secretFileName,
              secretFileData,
             notice,
@@ -672,6 +696,7 @@
             setEnabled,
             setSecretName,
              setSecretValue,
+             setFileMode,
              setSecretFile,
             selectSecret,
             visitWorkflow,

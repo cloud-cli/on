@@ -40,7 +40,11 @@ describe('workflow management UI', () => {
     expect(html).toContain('/api/secrets/');
     expect(html).toContain('type="password"');
     expect(html).toContain('type="file"');
+    expect(html).toContain('Binary file secret');
+    expect(html).toContain('bind-checked="fileMode"');
     expect(html).toContain('encoding: \'base64\'');
+    expect(html).toContain('on-click="removeSecret(name)"');
+    expect(html).toContain('aria-label="Delete secret {{ name }}"');
     expect(html).toContain('icon="trash"');
     expect(html).toContain('aria-label="Saved secrets"');
     expect(html).toContain('aria-label="Edit secret {{ name }}"');
