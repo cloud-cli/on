@@ -131,6 +131,9 @@ matrix:
   node: [18, 20]
   os: [ubuntu, alpine]
 
+tags:
+  - '${matrix.os}'
+
 on:
   generic: {}
 
@@ -143,7 +146,9 @@ steps:
     run: npm pack
 ```
 
-The runner creates one job for every Cartesian combination. The example creates four jobs. Each variant receives `MATRIX_NODE` and `MATRIX_OS` environment variables.
+The runner creates one job for every Cartesian combination. The example creates four jobs. Each variant receives `MATRIX_NODE` and `MATRIX_OS` environment variables. Matrix expressions in `tags` are resolved before enqueueing, so each job can target a different runner. Tags remain an AND requirement within each job.
+
+If a matching runner is offline before claiming its matrix job, the job remains pending and is claimed when that runner reconnects. A job already claimed by a worker is recovered as stale after one hour if the worker process does not complete it.
 
 ### Add a Scheduled Trigger
 

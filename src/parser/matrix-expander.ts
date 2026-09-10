@@ -1,4 +1,5 @@
 import type { ParsedWorkflow } from '../types.js';
+import { SafeExpressionEvaluator } from '../safe-eval.js';
 
 /**
  * Expands a workflow definition containing a `matrix` into dynamic single-instance workflow jobs.
@@ -53,4 +54,15 @@ export function expandMatrix(workflow: ParsedWorkflow): ParsedWorkflow[] {
 
     return clone;
   });
+}
+
+export async function resolveMatrixTags(
+  tags: string[] | undefined,
+  matrix: Record<string, any> | undefined,
+  inputs: Record<string, any> = {},
+): Promise<string[]> {
+  const resolved = await Promise.all(
+    (tags || []).map(async (tag) => String(await SafeExpressionEvaluator.evaluateValue(tag, { inputs, matrix })).trim()),
+  );
+  return [...new Set(resolved.filter(Boolean))];
 }

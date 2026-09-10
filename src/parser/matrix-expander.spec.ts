@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandMatrix } from './matrix-expander.js';
+import { expandMatrix, resolveMatrixTags } from './matrix-expander.js';
 
 describe('expandMatrix', () => {
   it('creates one runtime variant for each Cartesian combination', () => {
@@ -20,5 +20,11 @@ describe('expandMatrix', () => {
     ]);
     expect(variants[0].env).toMatchObject({ MATRIX_NODE: '18', MATRIX_OS: 'linux' });
     expect(variants[0].name).toBe('Build (node=18, os=linux)');
+  });
+});
+
+describe('resolveMatrixTags', () => {
+  it('resolves each matrix variant to its required AND tags', async () => {
+    await expect(resolveMatrixTags(['${matrix.runner}', 'docker'], { runner: 'alpha' })).resolves.toEqual(['alpha', 'docker']);
   });
 });
