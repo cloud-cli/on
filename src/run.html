@@ -61,7 +61,7 @@
               <button
                 class="text-sm text-rose-300 px-4 py-1.5 border border-rose-500/50 hover:border-rose-400 rounded-full disabled:opacity-50"
                 on-click="cancelJob()"
-                attr-disabled="cancelling"
+                bind-disabled.bool="cancelling"
               >
                 {{ cancelling ? 'Cancelling...' : 'Cancel' }}
               </button>
