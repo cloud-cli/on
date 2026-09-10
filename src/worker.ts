@@ -26,6 +26,7 @@ import { PluginManager } from './plugins/manager.js';
 import { DEFAULT_STEP_TIMEOUT_MS, WorkflowRepository } from './workflows.js';
 import { debug } from './debug.js';
 import { expandMatrix } from './parser/matrix-expander.js';
+import { GitHubStatusPlugin } from './plugins/github-status.plugin.js';
 
 export const shutdownState = {
   isStopping: false,
@@ -318,7 +319,21 @@ export async function processJob(p: Processable) {
     console.error(`[${workerId}] ❌ Job setup failed:`, error);
     return;
   }
-  const pluginManager = new PluginManager(config.plugins);
+  const plugins = [...config.plugins];
+  for (const definition of resolvedWorkflow.plugins || []) {
+    if (definition.name === 'github-status') {
+      const pluginSecrets = await evaluateEnv(definition.secrets, executionContext);
+      const token = pluginSecrets.GITHUB_TOKEN || pluginSecrets.token;
+      if (token) {
+        plugins.push(new GitHubStatusPlugin({ token, context: definition.context, apiUrl: definition.apiUrl }));
+      } else {
+        console.error(`[${workerId}] GitHub status plugin requires a configured token secret.`);
+      }
+    } else {
+      console.error(`[${workerId}] Unknown workflow plugin '${definition.name}'.`);
+    }
+  }
+  const pluginManager = new PluginManager(plugins);
   const workflowContext = {
     jobId: String(job.id),
     workflowName: resolvedWorkflow.name,

@@ -216,6 +216,20 @@ secretFiles:
 
 Secret files are created with owner-only permissions in the worker workspace. They must be handled according to the worker storage lifecycle and should not be included in artifacts or caches.
 
+### Configure Workflow Plugins
+
+Enable status updates for an individual GitHub workflow by declaring a plugin and mapping its secret inputs through the existing server-managed secrets:
+
+```yaml
+plugins:
+  - name: github-status
+    secrets:
+      GITHUB_TOKEN: ${secrets.GITHUB_TOKEN}
+    context: ci/build
+```
+
+The worker uses that secret for `pending`, `success`, `failure`, or `error` commit statuses. The token is never stored in workflow YAML or job reports. The workflow must have GitHub `owner`, `repo`, and `commit_sha` inputs; otherwise no status request is made.
+
 ## Reference
 
 ### Top-Level Workflow Fields
@@ -232,6 +246,7 @@ Secret files are created with owner-only permissions in the worker workspace. Th
 | `artifacts` | object | Workspace paths captured after successful runs. |
 | `cache` | object | Keyed workspace paths restored before and saved after successful runs. |
 | `secretFiles` | object | Workspace-relative file paths mapped to secret names. |
+| `plugins` | object[] | Optional per-workflow plugin declarations and secret mappings. |
 | `steps` | object[] | Required non-empty ordered list of steps. |
 | `retries` | integer | Additional attempts for a failed step. Must be zero or greater. |
 

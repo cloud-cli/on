@@ -152,6 +152,7 @@ export interface WorkflowDefinition {
     paths: string[];
   };
   secretFiles?: Record<string, string>;
+  plugins?: WorkflowPluginDefinition[];
   /** Worker capabilities required to execute this workflow */
   tags?: string[];
   /** Time triggers stored alongside webhook triggers in DB-authored workflows. */
@@ -163,6 +164,13 @@ export interface WorkflowRevision {
   workflowId: string;
   revision: number;
   definition: WorkflowDefinition;
+}
+
+export interface WorkflowPluginDefinition {
+  name: string;
+  secrets?: Record<string, string>;
+  context?: string;
+  apiUrl?: string;
 }
 
 export interface WebhookServerOptions {

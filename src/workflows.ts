@@ -71,6 +71,7 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
     artifacts,
     cache,
     secretFiles: parsed.secretFiles,
+    plugins: Array.isArray(parsed.plugins) ? parsed.plugins : undefined,
     tags: Array.isArray(parsed.tags) ? [...new Set((parsed.tags as unknown[]).filter((tag): tag is string => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean))] : undefined,
   }];
 }

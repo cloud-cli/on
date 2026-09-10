@@ -87,6 +87,22 @@ steps:
     expect(workflow.secretFiles).toEqual({ '.config/signing.key': 'SIGNING_KEY' });
   });
 
+  it('preserves generic workflow plugin settings', () => {
+    const [workflow] = parseWorkflow(`
+name: GitHub status
+on: { github: { events: [push] } }
+plugins:
+  - name: github-status
+    secrets:
+      GITHUB_TOKEN: \${secrets.GITHUB_TOKEN}
+    context: ci/build
+steps:
+  - run: 'true'
+`);
+
+    expect(workflow.plugins).toEqual([{ name: 'github-status', secrets: { GITHUB_TOKEN: '${secrets.GITHUB_TOKEN}' }, context: 'ci/build' }]);
+  });
+
   it('preserves matrix definitions for trigger-time expansion', () => {
     const [workflow] = parseWorkflow(`
 name: Matrix build
