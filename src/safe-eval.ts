@@ -11,9 +11,6 @@ export const BUILTIN_HELPERS: Record<string, any> = {
     parse: (str: string) => JSON.parse(str),
     stringify: (obj: any) => JSON.stringify(obj, null, 2),
   },
-  Object: {
-    keys: (obj: object) => Object.keys(obj),
-  },
 };
 
 /** Filesystem helpers constrained to a claimed job's workspace. */

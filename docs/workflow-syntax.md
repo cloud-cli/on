@@ -311,7 +311,6 @@ Number(value)
 Boolean(value)
 JSON.parse(value)
 JSON.stringify(value)
-Object.keys(value)
 ```
 
 Available context objects are:
