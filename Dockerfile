@@ -1,4 +1,4 @@
-FROM ghcr.io/cloud-cli/node:latest AS builder
+FROM ghcr.io/cloud-cli/image-node:latest AS builder
 
 COPY --chown=1000 . .
 USER 0
