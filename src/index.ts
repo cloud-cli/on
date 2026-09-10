@@ -10,6 +10,7 @@ import { WorkflowScheduler } from './scheduler.js';
 import { installTimestampedConsole } from './logger.js';
 
 export { GitHubStatusPlugin } from './plugins/github-status.plugin.js';
+export { createWorkflowPlugin, registerWorkflowPlugin } from './plugins/workflow-registry.js';
 
 async function main() {
   installTimestampedConsole();

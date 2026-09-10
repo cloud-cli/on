@@ -230,6 +230,8 @@ plugins:
 
 The worker uses that secret for `pending`, `success`, `failure`, or `error` commit statuses. The token is never stored in workflow YAML or job reports. The workflow must have GitHub `owner`, `repo`, and `commit_sha` inputs; otherwise no status request is made.
 
+Plugin names are resolved through the server's workflow plugin registry. `github-status` is built in. External integrations can register a factory during runner configuration with `registerWorkflowPlugin(name, factory)` before workers start.
+
 ## Reference
 
 ### Top-Level Workflow Fields
