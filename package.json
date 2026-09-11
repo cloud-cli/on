@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "description": "CLI entry point for the on plugin ecosystem.",
   "type": "module",
-  "packageManager": "pnpm@10.30.3",
+  "packageManager": "pnpm@12.3.4",
   "license": "MIT",
   "exports": {
     ".": {
@@ -42,7 +42,7 @@
     "tsx": "^4.23.13",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.0",
-    "vite": "^8.3.0",
+    "vite": "^8.2.0",
     "vitest": "^4.1.11"
   }
 }

@@ -1,10 +1,12 @@
 packages:
   - packages/**
 
+allowBuilds:
+  esbuild: true
+
 autoInstallPeers: true
 
 linkWorkspacePackages: false
 
-onlyBuiltDependencies:
-  - esbuild
-  - nx
+minimumReleaseAgeExclude:
+  - vite@8.3.0
