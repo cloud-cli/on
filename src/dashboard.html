@@ -442,8 +442,9 @@
           const applyFilter = async () => {
             searchInProgress = true;
             refreshGeneration++;
-            activeFilter.value = filter.value.trim();
-            jobs.value = [];
+           activeFilter.value = filter.value.trim();
+             updateSearchUrl(activeFilter.value);
+             jobs.value = [];
             hasMore.value = false;
             try {
               await refreshJobs(true);
@@ -452,14 +453,22 @@
               refreshPending = false;
             }
           };
-          const setFilter = (event) => {
-            filter.value = event.target.value;
-          };
-          const clearFilter = async () => {
+           const setFilter = (event) => {
+             filter.value = event.target.value;
+           };
+           const updateSearchUrl = (value) => {
+             const params = new URLSearchParams(window.location.search);
+             if (value) params.set('search', value);
+             else params.delete('search');
+             const query = params.toString();
+             history.pushState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+           };
+           const clearFilter = async () => {
             searchInProgress = true;
             refreshGeneration++;
-            filter.value = '';
-            activeFilter.value = '';
+           filter.value = '';
+           activeFilter.value = '';
+             updateSearchUrl('');
             jobs.value = [];
             hasMore.value = false;
             try {
