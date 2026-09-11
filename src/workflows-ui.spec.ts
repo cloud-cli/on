@@ -25,6 +25,9 @@ describe('workflow management UI', () => {
     expect(html).toContain('validation.value = { ...validation.value, running: true, error: \'\' }');
     expect(html).toContain("validation.value = { valid: false, running: false, error: error.message }");
     expect(html).toContain('hidden sm:inline');
+    expect(html).toContain('Workflow revision {{ revisionNumber }}');
+    expect(html).toContain('on-click="navigateRevision(-1)"');
+    expect(html).toContain('bind-source="revisionSource"');
     expect(html).toContain('aria-label="Save workflow draft"');
     expect(html).toContain('aria-labelledby="workflow-list-title"');
     expect(html).toContain('attr-href="\'/workflows/\' + workflow.id"');

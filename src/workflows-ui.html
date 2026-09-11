@@ -234,7 +234,14 @@
                     >{{ validation.error || '' }}</span
                   >
                 </div>
-                <span class="font-mono">{{ source.length }} characters</span>
+                 <template if="revision">
+                   <button
+                     type="button"
+                     on-click="openRevisionDialog()"
+                     class="font-mono text-indigo-300 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+                   >Revision {{ revision }}</button>
+                 </template>
+                 <template if="!revision"><span class="font-mono">Unsaved draft</span></template>
               </div>
               <template if="readOnly">
                 <code-block
@@ -260,7 +267,7 @@
                 on-toggle="loadHelp($event)"
               >
                 <summary
-                  class="cursor-pointer list-none px-4 py-3 text-sm font-medium text-gray-300 outline-none transition hover:bg-gray-900 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+                  class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-gray-300 outline-none transition hover:bg-gray-900 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
                 >
                   <span class="inline-flex items-center gap-2"
                     ><lucide-icon icon="circle-question-mark" size="16"></lucide-icon>Syntax</span
@@ -280,6 +287,39 @@
             </div>
           </section>
         </section>
+
+        <template if="revisionDialogOpen">
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80 p-4" role="presentation">
+            <div
+              class="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="revision-dialog-title"
+            >
+              <div class="flex items-center justify-between border-b border-gray-800 px-4 py-3">
+                <div>
+                  <h2 id="revision-dialog-title" class="font-semibold text-white">Workflow revision {{ revisionNumber }}</h2>
+                  <p class="text-xs text-gray-500">Read-only source snapshot</p>
+                </div>
+                <button type="button" on-click="closeRevisionDialog()" aria-label="Close revision dialog" class="rounded-lg p-2 text-gray-400 outline-none hover:bg-gray-800 hover:text-white focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+                  <lucide-icon icon="x" size="17"></lucide-icon>
+                </button>
+              </div>
+              <div class="min-h-0 flex-1 overflow-auto p-4">
+                <p class="mb-3 text-sm text-rose-300" class-hidden="!revisionError">{{ revisionError }}</p>
+                <code-block language="yaml" theme="atom-one-dark" bind-source="revisionSource" class="block min-h-[20rem] overflow-auto rounded-lg border border-gray-700 bg-gray-950 p-4"></code-block>
+              </div>
+              <div class="flex items-center justify-between border-t border-gray-800 px-4 py-3">
+                <button type="button" on-click="navigateRevision(-1)" bind-disabled="revisionLoading || revisionNumber <= 1" class="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-40">
+                  <lucide-icon icon="chevron-left" size="16"></lucide-icon>Previous
+                </button>
+                <button type="button" on-click="navigateRevision(1)" bind-disabled="revisionLoading" class="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-40">
+                  Next<lucide-icon icon="chevron-right" size="16"></lucide-icon>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
 
         <section
           class="secrets-panel rounded-2xl border border-gray-800 bg-gray-900/80 p-4 shadow-xl shadow-black/10 sm:p-5"
@@ -406,7 +446,13 @@
           const secrets = ref([]);
           const source = ref('');
           const validation = ref({ valid: true });
-          const savedSource = ref('');
+           const savedSource = ref('');
+           const revision = ref(null);
+           const revisionDialogOpen = ref(false);
+           const revisionNumber = ref(0);
+           const revisionSource = ref('');
+           const revisionError = ref('');
+           const revisionLoading = ref(false);
           const workflowId = ref('');
           const enabled = ref(true);
           const savedEnabled = ref(true);
@@ -483,7 +529,8 @@
             source.value = workflow.sourceYaml;
             savedSource.value = workflow.sourceYaml;
             enabled.value = workflow.enabled;
-            savedEnabled.value = workflow.enabled;
+             savedEnabled.value = workflow.enabled;
+             revision.value = workflow.revision || null;
           };
 
            const validateSource = async () => {
@@ -505,7 +552,7 @@
                  })
                  .catch((error) => {
                    validation.value = { valid: false, running: false, error: error.message };
-                   showNotice(error.message, true);
+                   
                  });
              }, ms);
            };
@@ -530,7 +577,8 @@
               selectedId.value = workflow.id;
               workflowId.value = workflow.id;
               savedSource.value = source.value;
-              savedEnabled.value = enabled.value;
+               savedEnabled.value = enabled.value;
+               revision.value = workflow.revision;
               showNotice(`Saved ${workflow.id} as draft revision ${workflow.revision}.`);
               if (!initialId) history.replaceState(null, '', `/workflows/${workflow.id}`);
             });
@@ -539,8 +587,9 @@
               const id = workflowId.value.trim() || selectedId.value;
               if (!id) throw new Error('Save a workflow before publishing it.');
               const workflow = await api(`/api/workflows/${id}/publish`, { method: 'POST' });
-              selectedId.value = workflow.id;
-              showNotice(`Published ${workflow.id} revision ${workflow.revision}.`);
+               selectedId.value = workflow.id;
+               revision.value = workflow.revision;
+               showNotice(`Published ${workflow.id} revision ${workflow.revision}.`);
             });
           const remove = () =>
             run(async () => {
@@ -632,7 +681,7 @@
           const visitWorkflow = (id) => {
             window.location.href = `/workflows/${id}`;
           };
-          const loadHelp = async (event) => {
+           const loadHelp = async (event) => {
             if (!event.target.open || helpLoaded.value || helpLoading.value || !helpContent.value) return;
             helpLoading.value = true;
             helpContent.value.textContent = 'Loading workflow syntax help...';
@@ -654,7 +703,34 @@
             } finally {
               helpLoading.value = false;
             }
-          };
+           };
+
+           const openRevisionDialog = () => {
+             if (!revision.value) return;
+             revisionNumber.value = revision.value;
+             revisionSource.value = source.value;
+             revisionError.value = '';
+             revisionDialogOpen.value = true;
+           };
+           const closeRevisionDialog = () => {
+             revisionDialogOpen.value = false;
+           };
+           const navigateRevision = async (offset) => {
+             if (!selectedId.value || revisionLoading.value) return;
+             const target = revisionNumber.value + offset;
+             if (target < 1) return;
+             revisionLoading.value = true;
+             revisionError.value = '';
+             try {
+               const workflow = await api(`/api/workflows/${selectedId.value}?revision=${target}`);
+               revisionNumber.value = workflow.revision;
+               revisionSource.value = workflow.sourceYaml;
+             } catch (error) {
+               revisionError.value = error.message;
+             } finally {
+               revisionLoading.value = false;
+             }
+           };
 
           onDestroy(() => clearTimeout(validationTimer));
 
@@ -671,8 +747,14 @@
           return {
             workflows,
             secrets,
-            source,
-            validation,
+             source,
+             validation,
+             revision,
+             revisionDialogOpen,
+             revisionNumber,
+             revisionSource,
+             revisionError,
+             revisionLoading,
             workflowId,
             enabled,
             readOnly,
@@ -700,7 +782,10 @@
              setSecretFile,
             selectSecret,
             visitWorkflow,
-            loadHelp,
+             loadHelp,
+             openRevisionDialog,
+             closeRevisionDialog,
+             navigateRevision,
           };
         }
       </script>
