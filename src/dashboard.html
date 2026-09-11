@@ -471,6 +471,9 @@
           };
 
           onInit(() => {
+            const initialSearch = new URLSearchParams(window.location.search).get('search')?.trim() || '';
+            filter.value = initialSearch;
+            activeFilter.value = initialSearch;
             if (notificationsSupported.value) {
               navigator.serviceWorker
                 .register('/service-worker.js')

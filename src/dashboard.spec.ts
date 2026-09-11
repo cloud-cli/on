@@ -31,6 +31,7 @@ describe('dashboard', () => {
     const html = generateDashboardHtml(jobs, true);
     expect(html).not.toContain('<script state>');
     expect(html).toContain('void refreshJobs()');
+    expect(html).toContain("new URLSearchParams(window.location.search).get('search')");
     expect(html).toContain('`/api/jobs?afterId=${afterId}&limit=100${filterQuery}`');
     expect(html).toContain("new Set(['success', 'failed', 'cancelled'])");
     expect(html).toContain("? 'circle-check'");
