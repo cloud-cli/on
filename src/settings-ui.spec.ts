@@ -10,5 +10,7 @@ describe('settings UI', () => {
     expect(html).toContain('/api/api-keys');
     expect(html).toContain('Issue key');
     expect(html).toContain('workflows:write');
+    expect(html).toContain('peer-checked:bg-indigo-500');
+    expect(html).toContain('peer-focus-visible:ring-2');
   });
 });
