@@ -47,9 +47,9 @@
             <button type="button" on-click="issueKey()" class="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/60"><lucide-icon icon="key-round" size="16"></lucide-icon>Issue key</button>
             <fieldset class="md:col-span-2">
               <legend class="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Scopes</legend>
-              <div class="flex flex-wrap gap-3">
+              <div class="space-y-2">
                 <template for="scope of scopeOptions">
-                  <label class="inline-flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" bind-checked="scope.selected" on-change="toggleScope(scope)" class="h-4 w-4 rounded border-gray-700 bg-gray-900 text-indigo-500" />{{ scope.label }}</label>
+                  <label class="flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" bind-checked="scope.selected" on-change="toggleScope(scope)" class="h-4 w-4 rounded border-gray-700 bg-gray-900 text-indigo-500" />{{ scope.label }}</label>
                 </template>
               </div>
             </fieldset>
