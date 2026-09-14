@@ -14,6 +14,8 @@ import { SecretStore } from './secrets.js';
 import { PushRepository } from './push.js';
 import { renderHelpHtml } from './help.js';
 import openApiSpec from '../openapi.json' with { type: 'json' };
+import { ApiKeyRepository } from './api-key-repository.js';
+import { generateSettingsHtml } from './settings-ui.js';
 import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from './types.js';
 import { generateWorkflowManagementHtml } from './workflows-ui.js';
 import { WorkflowRepository } from './workflows.js';
@@ -29,6 +31,7 @@ export class WebhookServer {
   private queue: QueueManager;
   private secrets: SecretStore;
   private push: PushRepository;
+  private apiKeys = new ApiKeyRepository();
   private adminToken: string;
   private workerToken: string;
   private events = new EventBroker();
@@ -46,7 +49,7 @@ export class WebhookServer {
     this.adminToken = options.adminToken;
     this.workerToken = options.config.workerToken;
 
-    this.workflowsLoaded = Promise.all([this.workflows.init(), this.secretRepository.init()]).then(() => undefined);
+    this.workflowsLoaded = Promise.all([this.workflows.init(), this.secretRepository.init(), this.apiKeys.init()]).then(() => undefined);
 
     this.registerPreprocessor(new GitHubPreprocessor());
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
@@ -95,6 +98,35 @@ export class WebhookServer {
       if (!this.requireAdmin(req, res)) return;
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(generateWorkflowManagementHtml('list'));
+    }
+
+    if (req.method === 'GET' && url.pathname === '/settings') {
+      if (!this.isAdmin(req)) return this.requireAdmin(req, res);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(generateSettingsHtml());
+    }
+
+    if (url.pathname === '/api/api-keys') {
+      if (!this.isAdmin(req)) return this.requireAdmin(req, res);
+      if (req.method === 'GET') return res.end(JSON.stringify({ keys: await this.apiKeys.list() }));
+      if (req.method === 'POST') {
+        const body = await this.readJson(req, res);
+        try {
+          const key = await this.apiKeys.issue(body?.name, body?.scopes || []);
+          res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
+          return res.end(JSON.stringify(key));
+        } catch (error: any) {
+          res.writeHead(422, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: error.message }));
+        }
+      }
+    }
+    const apiKeyMatch = url.pathname.match(/^\/api\/api-keys\/([^/]+)$/);
+    if (apiKeyMatch && req.method === 'DELETE') {
+      if (!this.isAdmin(req)) return this.requireAdmin(req, res);
+      const revoked = await this.apiKeys.revoke(apiKeyMatch[1]);
+      res.writeHead(revoked ? 204 : 404).end();
+      return;
     }
 
     const workflowEditorMatch = url.pathname.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
@@ -177,14 +209,14 @@ export class WebhookServer {
 
     if (req.method === 'GET' && url.pathname.startsWith('/runs/')) {
       const jobId = url.pathname.replace('/runs/', '');
-      return this.renderRunDetails(jobId, res, 'html', this.isAdmin(req));
+       return this.renderRunDetails(jobId, res, 'html', await this.hasScope(req, 'logs:read'));
     }
 
     if (req.method === 'GET' && url.pathname.startsWith('/api/runs/')) {
       const artifactMatch = url.pathname.match(/^\/api\/runs\/(\d+)\/artifacts\/(.+)$/);
       if (artifactMatch) return this.handleArtifactDownload(req, res, artifactMatch[1], decodeURIComponent(artifactMatch[2]));
       const jobId = url.pathname.replace('/api/runs/', '');
-      return this.renderRunDetails(jobId, res, 'json', this.isAdmin(req));
+       return this.renderRunDetails(jobId, res, 'json', await this.hasScope(req, 'logs:read'));
     }
 
     if (req.method === 'POST' && url.pathname.startsWith('/restart/')) {
@@ -334,6 +366,21 @@ export class WebhookServer {
     return this.matchesToken(req, this.workerToken, false);
   }
 
+  private async hasScope(req: http.IncomingMessage, scope: string): Promise<boolean> {
+    if (this.isAdmin(req)) return true;
+    const authorization = req.headers.authorization || '';
+    if (!authorization.startsWith('Bearer ')) return false;
+    const scopes = await this.apiKeys.scopesForToken(authorization.slice(7));
+    return Boolean(scopes?.includes(scope));
+  }
+
+  private async requireScope(req: http.IncomingMessage, res: http.ServerResponse, scope: string): Promise<boolean> {
+    if (await this.hasScope(req, scope)) return true;
+    res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8', 'WWW-Authenticate': 'Basic realm="Runner"' });
+    res.end(JSON.stringify({ error: `Missing scope: ${scope}` }));
+    return false;
+  }
+
   private matchesToken(req: http.IncomingMessage, token: string, allowBasic: boolean): boolean {
     if (!token) return false;
     const auth = req.headers.authorization || '';
@@ -376,7 +423,7 @@ export class WebhookServer {
   }
 
   private async handleWorkflowValidation(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.requireAdmin(req, res)) return;
+    if (!(await this.requireScope(req, res, 'workflows:write'))) return;
     const body = await this.readJson(req, res);
     if (!body) return;
     try {
@@ -390,14 +437,14 @@ export class WebhookServer {
   }
 
   private async handleWorkflowList(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.requireAdmin(req, res)) return;
+    if (!(await this.requireScope(req, res, 'workflows:read'))) return;
     await this.workflowsLoaded;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ workflows: await this.workflows.list() }));
   }
 
   private async handleWorkflowGet(req: http.IncomingMessage, res: http.ServerResponse, id: string, revisionParam: string | null = null) {
-    if (!this.requireAdmin(req, res)) return;
+    if (!(await this.requireScope(req, res, 'workflows:read'))) return;
     const revision = revisionParam === null ? undefined : Number(revisionParam);
     const workflow = revision !== undefined && Number.isSafeInteger(revision) && revision > 0
       ? await this.workflows.getRevisionSnapshot(id, revision)
@@ -411,7 +458,7 @@ export class WebhookServer {
   }
 
   private async handleWorkflowSave(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
-    if (!this.requireAdmin(req, res)) return;
+    if (!(await this.requireScope(req, res, 'workflows:write'))) return;
     const body = await this.readJson(req, res);
     if (!body || typeof body.sourceYaml !== 'string') {
       if (!res.headersSent)
@@ -431,7 +478,7 @@ export class WebhookServer {
   }
 
   private async handleWorkflowDelete(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
-    if (!this.requireAdmin(req, res)) return;
+    if (!(await this.requireScope(req, res, 'workflows:write'))) return;
     if (!(await this.workflows.delete(id))) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Workflow not found' }));
@@ -440,7 +487,7 @@ export class WebhookServer {
   }
 
   private async handleWorkflowPublish(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
-    if (!this.requireAdmin(req, res)) return;
+    if (!(await this.requireScope(req, res, 'workflows:write'))) return;
     const workflow = await this.workflows.publish(id);
     if (!workflow) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -637,7 +684,7 @@ export class WebhookServer {
   }
 
   private async handleRestartJob(req: http.IncomingMessage, jobId: string, res: http.ServerResponse) {
-    if (!this.requireAdmin(req, res)) return;
+    if (!(await this.requireScope(req, res, 'runs:control'))) return;
     const id = await this.queue.restartJob(jobId);
 
     if (id) {
@@ -652,7 +699,7 @@ export class WebhookServer {
   }
 
   private async handleArtifactDownload(req: http.IncomingMessage, res: http.ServerResponse, jobId: string, filePath: string) {
-    if (!this.requireAdmin(req, res)) return;
+    if (!(await this.requireScope(req, res, 'artifacts:read'))) return;
     const file = (await this.queue.getStoredFiles('artifact', jobId)).find((entry) => entry.path === filePath);
     if (!file) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -667,7 +714,7 @@ export class WebhookServer {
   }
 
   private async handleCancelJob(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
-    if (!this.requireAdmin(req, res)) return;
+    if (!(await this.requireScope(req, res, 'runs:control'))) return;
 
     const result = await this.queue.cancelJob(jobId);
     if (result === 'not_found') {

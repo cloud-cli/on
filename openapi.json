@@ -25,6 +25,27 @@
         "responses": { "200": { "description": "OpenAPI JSON document", "content": { "application/json": { "schema": { "type": "object" } } } } }
       }
     },
+    "/api/api-keys": {
+      "get": {
+        "tags": ["discovery"],
+        "summary": "List active API keys",
+        "responses": { "200": { "description": "API key metadata", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiKeyList" } } } } }
+      },
+      "post": {
+        "tags": ["discovery"],
+        "summary": "Issue a scoped API key",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiKeyIssue" } } } },
+        "responses": { "201": { "description": "Key metadata and one-time token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiKeyCreated" } } } } }
+      }
+    },
+    "/api/api-keys/{keyId}": {
+      "delete": {
+        "tags": ["discovery"],
+        "summary": "Revoke an API key",
+        "parameters": [{ "name": "keyId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": { "204": { "description": "Key revoked" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
     "/api/jobs": {
       "get": {
         "tags": ["jobs"],
@@ -240,7 +261,10 @@
       "SecretNames": { "type": "object", "properties": { "secrets": { "type": "array", "items": { "type": "string" } } } },
       "SecretValue": { "type": "object", "required": ["value"], "properties": { "value": { "type": "string", "format": "password" } } },
       "Secrets": { "type": "object", "properties": { "secrets": { "type": "object", "additionalProperties": { "type": "string" } } } },
-      "RunView": { "type": "object", "properties": { "jobId": { "type": "string" }, "workflowName": { "type": "string" }, "status": { "type": "string" }, "inputs": { "type": "object" }, "steps": { "type": "array", "items": { "type": "object" } }, "artifacts": { "type": "array", "items": { "type": "string" } }, "canViewLogs": { "type": "boolean" } } }
+      "RunView": { "type": "object", "properties": { "jobId": { "type": "string" }, "workflowName": { "type": "string" }, "status": { "type": "string" }, "inputs": { "type": "object" }, "steps": { "type": "array", "items": { "type": "object" } }, "artifacts": { "type": "array", "items": { "type": "string" } }, "canViewLogs": { "type": "boolean" } } },
+      "ApiKeyIssue": { "type": "object", "required": ["name", "scopes"], "properties": { "name": { "type": "string" }, "scopes": { "type": "array", "items": { "type": "string", "enum": ["workflows:read", "workflows:write", "logs:read", "artifacts:read", "runs:control"] } } } },
+      "ApiKeyCreated": { "allOf": [{ "$ref": "#/components/schemas/ApiKeyIssue" }, { "type": "object", "required": ["id", "token"], "properties": { "id": { "type": "string", "format": "uuid" }, "token": { "type": "string" } } }] },
+      "ApiKeyList": { "type": "object", "properties": { "keys": { "type": "array", "items": { "$ref": "#/components/schemas/ApiKeyCreated" } } } }
     }
   }
 }

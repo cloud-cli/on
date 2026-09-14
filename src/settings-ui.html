@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Runner settings</title>
+    <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
+  </head>
+  <body class="min-h-screen bg-gray-950 p-4 font-sans text-gray-100 md:p-6">
+    <template app>
+      <main class="mx-auto max-w-4xl space-y-5">
+        <header class="flex items-center justify-between border-b border-gray-800 pb-5">
+          <div>
+            <a href="/runs" class="text-xs text-indigo-400 hover:underline">Back to jobs</a>
+            <h1 class="mt-2 text-2xl font-bold text-white">Settings</h1>
+            <p class="mt-1 text-sm text-gray-400">Human-admin controls and automation credentials.</p>
+          </div>
+          <details class="relative">
+            <summary class="cursor-pointer list-none rounded-lg border border-gray-700 p-2 text-gray-300 outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60" aria-label="Open settings menu">
+              <lucide-icon icon="settings" size="18"></lucide-icon>
+            </summary>
+            <nav class="absolute right-0 z-10 mt-2 w-48 rounded-xl border border-gray-700 bg-gray-900 p-2 shadow-2xl">
+              <a href="/workflows" class="block rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Workflow editor</a>
+              <a href="/help" class="block rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Workflow help</a>
+            </nav>
+          </details>
+        </header>
+
+        <section class="rounded-2xl border border-gray-800 bg-gray-900/80 p-5">
+          <h2 class="text-lg font-semibold text-white">Profile</h2>
+          <p class="mt-1 text-sm text-gray-400">Authenticated as the human administrator.</p>
+        </section>
+
+        <section class="rounded-2xl border border-gray-800 bg-gray-900/80 p-5" aria-labelledby="keys-title">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h2 id="keys-title" class="text-lg font-semibold text-white">API keys</h2>
+              <p class="mt-1 text-sm text-gray-400">Issue narrowly scoped credentials for automation tools. Keys are shown only once.</p>
+            </div>
+          </div>
+          <div class="mt-5 grid gap-3 rounded-xl border border-gray-800 bg-gray-950/50 p-4 md:grid-cols-[1fr_auto]">
+            <label class="sr-only" for="key-name">Key name</label>
+            <input id="key-name" bind-value="keyName" on-input="setKeyName($event)" placeholder="Documentation bot" class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30" />
+            <button type="button" on-click="issueKey()" class="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/60"><lucide-icon icon="key-round" size="16"></lucide-icon>Issue key</button>
+            <fieldset class="md:col-span-2">
+              <legend class="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Scopes</legend>
+              <div class="flex flex-wrap gap-3">
+                <template for="scope of scopeOptions">
+                  <label class="inline-flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" bind-checked="scope.selected" on-change="toggleScope(scope)" class="h-4 w-4 rounded border-gray-700 bg-gray-900 text-indigo-500" />{{ scope.label }}</label>
+                </template>
+              </div>
+            </fieldset>
+          </div>
+          <template if="newToken">
+            <div class="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4" role="alert">
+              <p class="text-sm font-semibold text-amber-200">Copy this key now. It cannot be shown again.</p>
+              <code class="mt-2 block select-all break-all rounded bg-gray-950 p-3 font-mono text-xs text-amber-100">{{ newToken }}</code>
+            </div>
+          </template>
+          <ul class="mt-5 divide-y divide-gray-800" aria-label="Active API keys">
+            <template for="key of keys">
+              <li class="flex items-center justify-between gap-3 py-3">
+                <div class="min-w-0"><p class="truncate text-sm font-medium text-gray-200">{{ key.name }}</p><p class="text-xs text-gray-500">{{ key.scopes.join(', ') }} · created {{ key.created_at }}</p></div>
+                <button type="button" on-click="revokeKey(key)" class="shrink-0 rounded-lg p-2 text-rose-300 outline-none hover:bg-rose-500/10 focus-visible:ring-2 focus-visible:ring-rose-400/60" aria-label="Revoke {{ key.name }}" title="Revoke key"><lucide-icon icon="trash" size="16"></lucide-icon></button>
+              </li>
+            </template>
+          </ul>
+        </section>
+        <p class="text-sm text-rose-300" role="alert" class-hidden="!error">{{ error }}</p>
+      </main>
+      <script setup>
+        import { onInit, ref } from '@li3/web';
+        export default function () {
+          const keys = ref([]);
+          const keyName = ref('');
+          const newToken = ref('');
+          const error = ref('');
+          const scopeOptions = ref([
+            { name: 'workflows:read', label: 'Read workflows', selected: true },
+            { name: 'workflows:write', label: 'Modify workflows', selected: false },
+            { name: 'logs:read', label: 'Read logs', selected: false },
+            { name: 'artifacts:read', label: 'Read artifacts', selected: false },
+            { name: 'runs:control', label: 'Control runs', selected: false },
+          ]);
+          const api = async (url, options = {}) => { const response = await fetch(url, { headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}) }, ...options }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || `Request failed: ${response.status}`); return body; };
+          const load = async () => { keys.value = (await api('/api/api-keys')).keys; };
+          const issueKey = async () => { try { error.value = ''; const result = await api('/api/api-keys', { method: 'POST', body: JSON.stringify({ name: keyName.value, scopes: scopeOptions.value.filter((scope) => scope.selected).map((scope) => scope.name) }) }); newToken.value = result.token; keyName.value = ''; await load(); } catch (reason) { error.value = reason.message; } };
+          const revokeKey = async (key) => { if (!confirm(`Revoke ${key.name}?`)) return; try { await api(`/api/api-keys/${key.id}`, { method: 'DELETE' }); await load(); } catch (reason) { error.value = reason.message; } };
+          const setKeyName = (event) => { keyName.value = event.target.value; };
+          const toggleScope = (scope) => { scope.selected = !scope.selected; };
+          onInit(() => { load().catch((reason) => { error.value = reason.message; }); });
+          return { keys, keyName, newToken, error, scopeOptions, issueKey, revokeKey, setKeyName, toggleScope };
+        }
+      </script>
+    </template>
+    <script type="module">import '@li3/web';</script>
+  </body>
+</html>
