@@ -6,6 +6,7 @@ describe('settings UI', () => {
     const html = generateSettingsHtml();
 
     expect(html).toContain('https://cdn.li3.dev/@li3/');
+    expect(html).toContain('https://cdn.tailwindcss.com');
     expect(html).toContain('/api/api-keys');
     expect(html).toContain('Issue key');
     expect(html).toContain('workflows:write');
