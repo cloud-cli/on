@@ -190,8 +190,8 @@
                     type="button"
                     aria-label="Publish workflow"
                     title="Publish workflow"
-                    on-click="publish()"
-                    bind-disabled="busy"
+                     on-click="publish()"
+                     bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"
                     class="inline-flex items-center gap-2 rounded-lg border border-emerald-500/50 px-3 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <lucide-icon icon="rocket" size="16"></lucide-icon>

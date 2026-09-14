@@ -29,6 +29,7 @@ describe('workflow management UI', () => {
     expect(html).toContain('on-click="navigateRevision(-1)"');
     expect(html).toContain('bind-source="revisionSource"');
     expect(html).toContain('aria-label="Save workflow draft"');
+    expect(html).toContain('bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"');
     expect(html).toContain('aria-labelledby="workflow-list-title"');
     expect(html).toContain('attr-href="\'/workflows/\' + workflow.id"');
     expect(html).toContain('href="/workflows"');

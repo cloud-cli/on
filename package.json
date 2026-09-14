@@ -28,6 +28,7 @@
     "build": "vite build && tsc --emitDeclarationOnly --declaration",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:e2e": "docker build -t on:e2e . && node tests/docker-smoke.mjs",
     "release": "npx --yes semantic-release@24 -b main --no-ci"
   },
   "devDependencies": {
