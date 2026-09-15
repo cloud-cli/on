@@ -51,11 +51,12 @@
         "tags": ["jobs"],
         "summary": "List jobs",
         "security": [],
-        "parameters": [
+      "parameters": [
           { "$ref": "#/components/parameters/AfterId" },
           { "$ref": "#/components/parameters/BeforeId" },
           { "$ref": "#/components/parameters/Limit" },
-          { "$ref": "#/components/parameters/Filter" }
+          { "$ref": "#/components/parameters/Filter" },
+          { "$ref": "#/components/parameters/WorkflowFilter" }
         ],
         "responses": { "200": { "description": "Dashboard job list", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobList" } } } } }
       }
@@ -240,6 +241,7 @@
       "BeforeId": { "name": "beforeId", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
       "Limit": { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 50 } },
       "Filter": { "name": "filter", "in": "query", "schema": { "type": "string", "maxLength": 200 } }
+      ,"WorkflowFilter": { "name": "workflowId", "in": "query", "schema": { "type": "string", "pattern": "^[a-z0-9-]+$" } }
     },
     "responses": {
       "Unauthorized": { "description": "Unauthorized" },

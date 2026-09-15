@@ -63,6 +63,23 @@
             </template>
           </div>
         </div>
+        <template if="previousRuns.length">
+          <details class="rounded-xl border border-gray-800 bg-gray-900/70">
+            <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-gray-300 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+              Previous runs
+            </summary>
+            <ul class="divide-y divide-gray-800 border-t border-gray-800">
+              <template for="run of previousRuns">
+                <li>
+                  <a attr-href="'/runs/' + run.id" class="flex items-center justify-between gap-3 px-4 py-3 text-sm outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+                    <span><span class="font-mono text-indigo-300">#{{ run.id }}</span><span class="ml-3 text-gray-400">{{ run.createdAt }}</span></span>
+                    <span class="font-semibold uppercase text-xs text-gray-400">{{ upper(run.status) }}</span>
+                  </a>
+                </li>
+              </template>
+            </ul>
+          </details>
+        </template>
 
         <section class="rounded overflow-hidden border-b border-gray-800">
           <h2 class="sr-only">Execution Steps</h2>
@@ -171,6 +188,8 @@
         export default function setup() {
           const jobId = window.location.pathname.split('/').filter(Boolean).pop() || '';
           const report = ref({ jobId });
+          const previousRuns = ref([]);
+          let previousRunsLoaded = false;
           const now = ref(Date.now());
           const ansiUp = new AnsiUp();
           ansiUp.use_classes = false;
@@ -193,6 +212,14 @@
 
           const upper = (value) => String(value || '').toUpperCase();
           const artifactUrl = (path) => `/api/runs/${report.value.jobId}/artifacts/${encodeURIComponent(path)}`;
+          const loadPreviousRuns = async () => {
+            if (previousRunsLoaded || !report.value.workflowId) return;
+            const response = await fetch(`/api/jobs?workflowId=${encodeURIComponent(report.value.workflowId)}&limit=50`, { headers: { accept: 'application/json' } });
+            if (!response.ok) throw new Error(`Previous runs request failed: ${response.status}`);
+            const data = await response.json();
+            previousRuns.value = data.jobs.filter((run) => String(run.id) !== String(report.value.jobId));
+            previousRunsLoaded = true;
+          };
           const stepLog = (step) => {
             if (step.status === 'skipped') return '';
             if (step.status === 'running')
@@ -237,6 +264,7 @@
               const nextReport = await response.json();
               report.value = nextReport;
               document.title = `Run #${nextReport.jobId} - ${nextReport.workflowName}`;
+              void loadPreviousRuns();
               if (
                 ['pending', 'running'].includes(previousStatus) &&
                 ['success', 'failed'].includes(nextReport.status) &&
@@ -297,7 +325,7 @@
             clearInterval(clockTimer);
           });
 
-          return { report, inputsJson, timing, upper, artifactUrl, stepLog, restartJob, cancelJob, cancelling };
+           return { report, previousRuns, inputsJson, timing, upper, artifactUrl, stepLog, restartJob, cancelJob, cancelling };
         }
       </script>
     </template>

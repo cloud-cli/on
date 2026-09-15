@@ -169,6 +169,7 @@ export class WebhookServer {
       const beforeIdParam = url.searchParams.get('beforeId');
       const limitParam = url.searchParams.get('limit');
       const filter = url.searchParams.get('filter')?.trim() || undefined;
+      const workflowId = url.searchParams.get('workflowId')?.trim() || undefined;
       const afterId = afterIdParam === null ? undefined : Number(afterIdParam);
       const beforeId = beforeIdParam === null ? undefined : Number(beforeIdParam);
       const limit = limitParam === null ? DASHBOARD_PAGE_SIZE : Number(limitParam);
@@ -190,7 +191,7 @@ export class WebhookServer {
         return res.end(JSON.stringify({ error: 'filter must be at most 200 characters' }));
       }
 
-      return this.renderDashboardJobs(res, limit, afterId, beforeId, filter);
+      return this.renderDashboardJobs(res, limit, afterId, beforeId, filter, workflowId);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/events') {
@@ -656,10 +657,11 @@ export class WebhookServer {
     afterId?: number,
     beforeId?: number,
     filter?: string,
+    workflowId?: string,
   ) {
     let rows;
     try {
-      rows = await this.queue.listJobs(limit + 1, afterId, beforeId, filter);
+      rows = await this.queue.listJobs(limit + 1, afterId, beforeId, filter, workflowId);
     } catch (error: any) {
       res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
       return res.end(JSON.stringify({ error: error.message }));

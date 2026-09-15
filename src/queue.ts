@@ -210,7 +210,7 @@ export class QueueManager {
   /**
    * List recent jobs for dashboard status monitoring
    */
-  async listJobs(limit = 50, afterId?: number, beforeId?: number, filter?: string): Promise<any[]> {
+  async listJobs(limit = 50, afterId?: number, beforeId?: number, filter?: string, workflowId?: string): Promise<any[]> {
     const conditions: string[] = [];
     const values: Array<number | string> = [];
 
@@ -234,6 +234,10 @@ export class QueueManager {
         conditions.push('LOWER(payload) LIKE LOWER(?)');
         values.push(`%${filter}%`);
       }
+    }
+    if (workflowId) {
+      conditions.push('workflow_id = ?');
+      values.push(workflowId);
     }
 
     const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
