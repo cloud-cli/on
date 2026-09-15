@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 const dbPort = 18_888;
 const appPort = 18_889;
 const image = process.env.E2E_IMAGE || 'on:e2e';
+const containerName = 'on-e2e-smoke';
 let workflow;
 
 const database = http.createServer(async (request, response) => {
@@ -25,7 +26,7 @@ const database = http.createServer(async (request, response) => {
 await new Promise((resolve) => database.listen(dbPort, '127.0.0.1', resolve));
 
 const container = spawn('docker', [
-  'run', '--rm', '--network', 'host',
+  'run', '--rm', '--name', containerName, '--network', 'host',
   '-e', 'RUNNER_ADMIN_SECRET=e2e-admin-secret',
   '-e', `RUNNER_DATABASE_URL=http://127.0.0.1:${dbPort}`,
   '-e', `PORT=${appPort}`,
@@ -37,9 +38,9 @@ container.stdout.on('data', (chunk) => { containerOutput += chunk; });
 container.stderr.on('data', (chunk) => { containerOutput += chunk; });
 
 const stop = async () => {
-  if (container.exitCode !== null) return;
-  container.kill('SIGTERM');
-  await new Promise((resolve) => container.once('exit', resolve));
+  if (container.exitCode === null) container.kill('SIGTERM');
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  spawn('docker', ['rm', '-f', containerName], { stdio: 'ignore' });
 };
 
 const waitForServer = async () => {
@@ -66,8 +67,13 @@ try {
   const authorization = `Basic ${Buffer.from('admin:e2e-admin-secret').toString('base64')}`;
   const settingsResponse = await fetch(`http://127.0.0.1:${appPort}/settings`, { headers: { authorization } });
   const settings = await settingsResponse.text();
-  if (!settingsResponse.ok || !settings.includes('Settings') || !settings.includes('/api/api-keys')) {
-    throw new Error('Authenticated Settings page failed');
+  if (!settingsResponse.ok || !settings.includes('<app-router')) {
+    throw new Error(`Authenticated Settings page failed: ${settingsResponse.status}\n${settings.slice(0, 300)}`);
+  }
+  const settingsPageResponse = await fetch(`http://127.0.0.1:${appPort}/pages/settings.html?page=tokens`, { headers: { authorization } });
+  const settingsPage = await settingsPageResponse.text();
+  if (!settingsPageResponse.ok || !settingsPage.includes('template component="page-settings"')) {
+    throw new Error(`Settings page component failed: ${settingsPageResponse.status}\n${settingsPage.slice(0, 300)}`);
   }
 
   const workflowsResponse = await fetch(`http://127.0.0.1:${appPort}/workflows`, { headers: { authorization } });

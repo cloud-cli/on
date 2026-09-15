@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { URL } from 'node:url';
-import { generateDashboardHtml, toDashboardJobs } from './dashboard.js';
+import { dashboardTemplate, generateDashboardHtml, toDashboardJobs } from './dashboard.js';
 import { EventBroker } from './events.js';
 import { GitHubPreprocessor } from './preprocessors/github.js';
 import { appIcon, serviceWorker, webManifest } from './pwa.js';
@@ -17,6 +17,9 @@ import openApiSpec from '../openapi.json' with { type: 'json' };
 import { ApiKeyRepository } from './api-key-repository.js';
 import { generateSettingsHtml } from './settings-ui.js';
 import appHeaderTemplate from './app-header.html?raw';
+import appShellTemplate from './app-shell.html?raw';
+import appRouterTemplate from './app-router.html?raw';
+import { runTemplate } from './run-view.js';
 import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from './types.js';
 import { generateWorkflowManagementHtml } from './workflows-ui.js';
 import { WorkflowRepository } from './workflows.js';
@@ -86,18 +89,44 @@ export class WebhookServer {
       return res.end(appHeaderTemplate);
     }
 
+    if (req.method === 'GET' && url.pathname === '/app-router.html') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(appRouterTemplate);
+    }
+
     if (req.method === 'GET' && (url.pathname === '/runs' || url.pathname === '/')) {
-      return this.renderDashboard(res);
+      return this.renderAppShell(res);
     }
 
     if (req.method === 'GET' && url.pathname === '/help') {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      return res.end(renderHelpHtml(url.searchParams.get('embed') === '1'));
+      return this.renderAppShell(res);
     }
 
     if (req.method === 'GET' && url.pathname === '/api') {
       res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
       return res.end(JSON.stringify(openApiSpec));
+    }
+
+    if (req.method === 'GET' && url.pathname === '/pages/dashboard.html') {
+      return this.renderPageComponent(res, 'page-dashboard', dashboardTemplate);
+    }
+    if (req.method === 'GET' && url.pathname === '/pages/run.html') {
+      return this.renderPageComponent(res, 'page-run', runTemplate);
+    }
+    if (req.method === 'GET' && url.pathname === '/pages/help.html') {
+      return this.renderPageComponent(res, 'page-help', renderHelpHtml(false), true);
+    }
+    if (req.method === 'GET' && url.pathname === '/pages/workflows.html') {
+      if (!this.requireAdmin(req, res)) return;
+      const page = url.searchParams.get('page') === 'secrets' ? 'secrets' : url.searchParams.get('page') === 'editor' ? 'editor' : 'workflows';
+      const id = url.searchParams.get('id') || '';
+      const revision = Number(url.searchParams.get('revision'));
+      return this.renderPageComponent(res, page === 'editor' ? 'page-workflow-editor' : page === 'secrets' ? 'page-secrets' : 'page-workflows', generateWorkflowManagementHtml(page, id, Number.isSafeInteger(revision) && revision > 0 ? revision : undefined));
+    }
+    if (req.method === 'GET' && url.pathname === '/pages/settings.html') {
+      if (!this.requireAdmin(req, res)) return;
+      const page = url.searchParams.get('page') === 'notifications' ? 'notifications' : 'tokens';
+      return this.renderPageComponent(res, 'page-settings', generateSettingsHtml(page));
     }
 
     if (req.method === 'GET' && url.pathname === '/workflows') {
@@ -116,9 +145,7 @@ export class WebhookServer {
     if (req.method === 'GET' && settingsPageMatch) {
       if (!this.requireAdmin(req, res)) return;
       const page = settingsPageMatch[1] as 'workflows' | 'secrets' | 'tokens' | 'notifications';
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      if (page === 'workflows' || page === 'secrets') return res.end(generateWorkflowManagementHtml(page === 'workflows' ? 'workflows' : 'secrets'));
-      return res.end(generateSettingsHtml(page));
+      return this.renderAppShell(res);
     }
 
     if (url.pathname === '/api/api-keys') {
@@ -151,8 +178,7 @@ export class WebhookServer {
       const revisionParam = url.searchParams.get('revision');
       const parsedRevision = revisionParam === null ? undefined : Number(revisionParam);
       const revision = parsedRevision !== undefined && Number.isSafeInteger(parsedRevision) && parsedRevision > 0 ? parsedRevision : undefined;
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      return res.end(generateWorkflowManagementHtml('editor', workflowId, revision));
+      return this.renderAppShell(res);
     }
 
     const workflowEditorMatch = url.pathname.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
@@ -650,6 +676,20 @@ export class WebhookServer {
   private async renderDashboard(res: http.ServerResponse) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(generateDashboardHtml());
+  }
+
+  private renderAppShell(res: http.ServerResponse) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    return res.end(appShellTemplate);
+  }
+
+  private renderPageComponent(res: http.ServerResponse, name: string, source: string, body = false) {
+    const styles = Array.from(source.matchAll(/<style[\s\S]*?<\/style>/gi)).map((match) => match[0]).join('');
+    const content = body
+      ? source.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] || source
+      : source.match(/<template app>([\s\S]*?)<\/template>/i)?.[1] || source;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    return res.end(`<template component="${name}">${styles}${content}</template>`);
   }
 
   private async renderDashboardJobs(

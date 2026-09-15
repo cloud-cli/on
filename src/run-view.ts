@@ -1,4 +1,5 @@
 import runTemplate from './run.html?raw';
+export { runTemplate };
 import type { JobPayload, JobRecord, StepReport, WorkflowExecutionReport, WorkflowStep } from './types.js';
 
 const SENSITIVE_KEY =

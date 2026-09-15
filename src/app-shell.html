@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#030712" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
+    <script type="importmap">
+      { "imports": { "@li3/": "https://cdn.li3.dev/@li3/", "ansi_up": "https://esm.sh/ansi_up@6.0.6", "diff": "https://unpkg.com/diff@9.0.0/libesm/index.js" } }
+    </script>
+    <link rel="component" href="/app-router.html" />
+    <link rel="component" href="/app-header.html" />
+    <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
+    <link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />
+    <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
+    <title>On Workflow Runner</title>
+  </head>
+  <body class="min-h-screen bg-gray-950 text-gray-100 font-sans">
+    <template app>
+      <app-router></app-router>
+    </template>
+    <script type="module">import '@li3/web';</script>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </body>
+</html>
