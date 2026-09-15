@@ -11,6 +11,10 @@ describe('settings UI', () => {
     expect(html).toContain('/api/api-keys');
     expect(html).toContain('Issue key');
     expect(html).toContain('workflows:write');
+    expect(html).toContain('Active tokens');
+    expect(html).toContain('bg-gray-950/60');
+    expect(html).toContain("page === 'tokens'");
+    expect(html).not.toContain('Authenticated as the human administrator.');
     expect(html).toContain('peer-checked:bg-indigo-500');
     expect(html).toContain('peer-focus-visible:ring-2');
   });

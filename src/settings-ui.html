@@ -17,15 +17,11 @@
         <nav class="flex flex-wrap gap-1 rounded-xl border border-gray-800 bg-gray-900/70 p-1" aria-label="Settings navigation">
           <a href="/settings/workflows" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Workflows</a>
           <a href="/settings/secrets" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Secrets</a>
-          <a href="/settings/tokens" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">API tokens</a>
-          <a href="/settings/notifications" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Notifications</a>
+          <a href="/settings/tokens" bind-class="page === 'tokens' ? 'bg-gray-800.text-white' : ''" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">API tokens</a>
+          <a href="/settings/notifications" bind-class="page === 'notifications' ? 'bg-gray-800.text-white' : ''" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Notifications</a>
         </nav>
 
         <template if="page === 'tokens'">
-        <section class="rounded-2xl border border-gray-800 bg-gray-900/80 p-5">
-          <h2 class="text-lg font-semibold text-white">Profile</h2>
-          <p class="mt-1 text-sm text-gray-400">Authenticated as the human administrator.</p>
-        </section>
         </template>
         <template if="page === 'notifications'">
           <section class="rounded-2xl border border-gray-800 bg-gray-900/80 p-5" aria-labelledby="notifications-title">
@@ -72,9 +68,10 @@
               <code class="mt-2 block select-all break-all rounded bg-gray-950 p-3 font-mono text-xs text-amber-100">{{ newToken }}</code>
             </div>
           </template>
-          <ul class="mt-5 divide-y divide-gray-800" aria-label="Active API keys">
+          <h3 class="mt-5 text-xs font-semibold uppercase tracking-wider text-gray-500">Active tokens</h3>
+          <ul class="mt-2 space-y-2" aria-label="Active API keys">
             <template for="key of keys">
-              <li class="flex items-center justify-between gap-3 py-3">
+              <li class="flex items-center justify-between gap-3 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
                 <div class="min-w-0"><p class="truncate text-sm font-medium text-gray-200">{{ key.name }}</p><p class="text-xs text-gray-500">{{ key.scopes.join(', ') }} · created {{ key.created_at }}</p></div>
                 <button type="button" on-click="revokeKey(key)" class="shrink-0 rounded-lg p-2 text-rose-300 outline-none hover:bg-rose-500/10 focus-visible:ring-2 focus-visible:ring-rose-400/60" aria-label="Revoke {{ key.name }}" title="Revoke key"><lucide-icon icon="trash" size="16"></lucide-icon></button>
               </li>
