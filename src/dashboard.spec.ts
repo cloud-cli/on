@@ -57,11 +57,8 @@ describe('dashboard', () => {
     expect(html).toContain("new EventSource('/api/events')");
     expect(html).toContain('/api/push/public-key');
     expect(html).toContain('https://sodium.static.apphor.de/lucide-icon.html');
-    expect(html).toContain("notificationsEnabled ? 'bell-ring' : 'bell-off'");
-    expect(html).toContain('class="sr-only">{{ notificationsEnabled ? \'Notifications on\' : \'Enable notifications\' }}</span>');
     expect(html).toContain('<app-header');
     expect(html).toContain('href="/app-header.html"');
-    expect(html).toContain('aria-label="Notifications"');
     expect(html).not.toContain('lastUpdated');
     expect(html).toContain('class="block p-4 bg-gray-900/60 hover:bg-gray-800/40');
     expect(html).toContain('View Trace</a');

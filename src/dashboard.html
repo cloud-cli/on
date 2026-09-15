@@ -19,18 +19,6 @@
       <main class="max-w-6xl mx-auto space-y-6">
         <app-header title="Runner Engine Status" subtitle="Live Job Queue &amp; Execution Traces"></app-header>
         <div class="flex justify-end gap-2 text-xs font-mono">
-            <template if="notificationsSupported">
-              <button
-                aria-label="Notifications"
-                title="Notifications"
-                class="inline-flex h-9 w-9 items-center justify-center rounded-full border outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
-                bind-class="notificationsEnabled ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-indigo-500/40 bg-indigo-500/10 text-indigo-300'"
-                on-click="toggleNotifications()"
-              >
-                <lucide-icon bind-icon="notificationsEnabled ? 'bell-ring' : 'bell-off'" size="16"></lucide-icon>
-                <span class="sr-only">{{ notificationsEnabled ? 'Notifications on' : 'Enable notifications' }}</span>
-              </button>
-            </template>
             <template if="refreshError">
               <span class="rounded border border-rose-500/20 bg-rose-500/10 px-3 py-1 text-rose-400"
                 >Refresh failed</span

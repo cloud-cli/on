@@ -15,6 +15,12 @@
       body[data-page='list'] .editor-panel {
         display: none;
       }
+      body[data-page='workflows'] .editor-panel,
+      body[data-page='workflows'] .secrets-panel,
+      body[data-page='secrets'] .workflow-list,
+      body[data-page='secrets'] .editor-panel {
+        display: none;
+      }
       body[data-page='editor'] .workflow-list,
       body[data-page='editor'] .secrets-panel {
         display: none;
@@ -29,7 +35,14 @@
 
     <template app>
       <main class="mx-auto max-w-6xl space-y-5">
-        <app-header title="Workflow control room" subtitle="Draft, validate, and publish revisioned YAML definitions" back="/runs" back-label="Back to dashboard"></app-header>
+        <template if="page === 'secrets'"><app-header title="Secrets" subtitle="Write-only credentials available to workflows" back="/runs" back-label="Back to dashboard"></app-header></template>
+        <template if="page !== 'secrets'"><app-header title="Workflow control room" subtitle="Draft, validate, and publish revisioned YAML definitions" back="/runs" back-label="Back to dashboard"></app-header></template>
+        <nav class="flex flex-wrap gap-1 rounded-xl border border-gray-800 bg-gray-900/70 p-1" aria-label="Settings navigation">
+          <a href="/settings/workflows" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800" bind-class="page === 'workflows' || page === 'editor' ? 'bg-gray-800.text-white' : ''">Workflows</a>
+          <a href="/settings/secrets" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800" bind-class="page === 'secrets' ? 'bg-gray-800.text-white' : ''">Secrets</a>
+          <a href="/settings/tokens" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">API tokens</a>
+          <a href="/settings/notifications" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Notifications</a>
+        </nav>
 
         <template if="notice">
           <div
@@ -700,17 +713,15 @@
           onDestroy(() => clearTimeout(validationTimer));
 
           onInit(() => {
-            const loadPage =
-              page === 'editor'
-                ? initialId
-                  ? openWorkflow(initialId)
-                  : Promise.resolve()
-                : Promise.all([loadWorkflows(), loadSecrets()]);
+             const loadPage = page === 'editor'
+               ? initialId ? openWorkflow(initialId) : Promise.resolve()
+               : page === 'secrets' ? loadSecrets() : loadWorkflows();
             loadPage.catch((error) => showNotice(error.message, true));
           });
 
-          return {
-            workflows,
+           return {
+             page,
+             workflows,
             secrets,
              source,
              validation,

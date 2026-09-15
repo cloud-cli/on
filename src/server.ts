@@ -102,14 +102,23 @@ export class WebhookServer {
 
     if (req.method === 'GET' && url.pathname === '/workflows') {
       if (!this.requireAdmin(req, res)) return;
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      return res.end(generateWorkflowManagementHtml('list'));
+      res.writeHead(302, { Location: '/settings/workflows' });
+      return res.end();
     }
 
     if (req.method === 'GET' && url.pathname === '/settings') {
       if (!this.isAdmin(req)) return this.requireAdmin(req, res);
+      res.writeHead(302, { Location: '/settings/workflows' });
+      return res.end();
+    }
+
+    const settingsPageMatch = url.pathname.match(/^\/settings\/(workflows|secrets|tokens|notifications)$/);
+    if (req.method === 'GET' && settingsPageMatch) {
+      if (!this.requireAdmin(req, res)) return;
+      const page = settingsPageMatch[1] as 'workflows' | 'secrets' | 'tokens' | 'notifications';
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      return res.end(generateSettingsHtml());
+      if (page === 'workflows' || page === 'secrets') return res.end(generateWorkflowManagementHtml(page === 'workflows' ? 'workflows' : 'secrets'));
+      return res.end(generateSettingsHtml(page));
     }
 
     if (url.pathname === '/api/api-keys') {
@@ -135,15 +144,24 @@ export class WebhookServer {
       return;
     }
 
+    const settingsEditorMatch = url.pathname.match(/^\/settings\/workflows\/(new|[a-z0-9-]+)$/);
+    if (req.method === 'GET' && settingsEditorMatch) {
+      if (!this.requireAdmin(req, res)) return;
+      const workflowId = settingsEditorMatch[1] === 'new' ? '' : settingsEditorMatch[1];
+      const revisionParam = url.searchParams.get('revision');
+      const parsedRevision = revisionParam === null ? undefined : Number(revisionParam);
+      const revision = parsedRevision !== undefined && Number.isSafeInteger(parsedRevision) && parsedRevision > 0 ? parsedRevision : undefined;
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(generateWorkflowManagementHtml('editor', workflowId, revision));
+    }
+
     const workflowEditorMatch = url.pathname.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
     if (req.method === 'GET' && workflowEditorMatch) {
       if (!this.requireAdmin(req, res)) return;
       const workflowId = workflowEditorMatch[1] === 'new' ? '' : workflowEditorMatch[1];
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      const revisionParam = url.searchParams.get('revision');
-      const parsedRevision = revisionParam === null ? undefined : Number(revisionParam);
-      const revision = parsedRevision !== undefined && Number.isSafeInteger(parsedRevision) && parsedRevision > 0 ? parsedRevision : undefined;
-      return res.end(generateWorkflowManagementHtml('editor', workflowId, revision));
+      const target = workflowId ? `/settings/workflows/${workflowId}` : '/settings/workflows/new';
+      res.writeHead(302, { Location: `${target}${url.search}` });
+      return res.end();
     }
 
     if (req.method === 'GET' && url.pathname === '/api/jobs') {

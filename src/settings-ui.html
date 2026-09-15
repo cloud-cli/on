@@ -10,16 +10,36 @@
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
     <link rel="component" href="/app-header.html" />
   </head>
-  <body class="min-h-screen bg-gray-950 p-4 font-sans text-gray-100 md:p-6">
+  <body data-page="__SETTINGS_PAGE__" class="min-h-screen bg-gray-950 p-4 font-sans text-gray-100 md:p-6">
     <template app>
       <main class="mx-auto max-w-4xl space-y-5">
         <app-header title="Settings" subtitle="Human-admin controls and automation credentials" back="/runs" back-label="Back to jobs"></app-header>
+        <nav class="flex flex-wrap gap-1 rounded-xl border border-gray-800 bg-gray-900/70 p-1" aria-label="Settings navigation">
+          <a href="/settings/workflows" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Workflows</a>
+          <a href="/settings/secrets" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Secrets</a>
+          <a href="/settings/tokens" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">API tokens</a>
+          <a href="/settings/notifications" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Notifications</a>
+        </nav>
 
+        <template if="page === 'tokens'">
         <section class="rounded-2xl border border-gray-800 bg-gray-900/80 p-5">
           <h2 class="text-lg font-semibold text-white">Profile</h2>
           <p class="mt-1 text-sm text-gray-400">Authenticated as the human administrator.</p>
         </section>
+        </template>
+        <template if="page === 'notifications'">
+          <section class="rounded-2xl border border-gray-800 bg-gray-900/80 p-5" aria-labelledby="notifications-title">
+            <h2 id="notifications-title" class="text-lg font-semibold text-white">Notifications</h2>
+            <p class="mt-1 text-sm text-gray-400">Receive job completion notifications on this device.</p>
+            <button type="button" on-click="toggleNotifications()" class="mt-5 inline-flex items-center gap-2 rounded-lg border border-indigo-500/60 px-4 py-2.5 text-sm font-medium text-indigo-200 outline-none hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+              <lucide-icon bind-icon="notificationsEnabled ? 'bell-off' : 'bell-ring'" size="16"></lucide-icon>
+              {{ notificationsEnabled ? 'Disable notifications' : 'Enable notifications' }}
+            </button>
+            <p class="mt-3 text-sm text-gray-400" role="status">{{ notificationMessage }}</p>
+          </section>
+        </template>
 
+        <template if="page === 'tokens'">
         <section class="rounded-2xl border border-gray-800 bg-gray-900/80 p-5" aria-labelledby="keys-title">
           <div class="flex items-start justify-between gap-3">
             <div>
@@ -61,15 +81,20 @@
             </template>
           </ul>
         </section>
+        </template>
         <p class="text-sm text-rose-300" role="alert" class-hidden="!error">{{ error }}</p>
       </main>
       <script setup>
         import { onInit, ref } from '@li3/web';
         export default function () {
+          const page = document.body.dataset.page;
           const keys = ref([]);
           const keyName = ref('');
           const newToken = ref('');
           const error = ref('');
+          const notificationsSupported = ref('Notification' in window && 'serviceWorker' in navigator);
+          const notificationsEnabled = ref(notificationsSupported.value && Notification.permission === 'granted' && localStorage.getItem('runner-notifications') === 'enabled');
+          const notificationMessage = ref('');
           const scopeOptions = ref([
             { name: 'workflows:read', label: 'Read workflows', selected: true },
             { name: 'workflows:write', label: 'Modify workflows', selected: false },
@@ -83,8 +108,21 @@
           const revokeKey = async (key) => { if (!confirm(`Revoke ${key.name}?`)) return; try { await api(`/api/api-keys/${key.id}`, { method: 'DELETE' }); await load(); } catch (reason) { error.value = reason.message; } };
           const setKeyName = (event) => { keyName.value = event.target.value; };
           const toggleScope = (scope) => { scope.selected = !scope.selected; };
-          onInit(() => { load().catch((reason) => { error.value = reason.message; }); });
-          return { keys, keyName, newToken, error, scopeOptions, issueKey, revokeKey, setKeyName, toggleScope };
+          const toggleNotifications = async () => {
+            if (notificationsEnabled.value) {
+              notificationsEnabled.value = false;
+              localStorage.removeItem('runner-notifications');
+              notificationMessage.value = 'Notifications disabled on this device.';
+              return;
+            }
+            if (!notificationsSupported.value) { notificationMessage.value = 'Notifications are not supported by this browser.'; return; }
+            const permission = await Notification.requestPermission();
+            notificationsEnabled.value = permission === 'granted';
+            if (notificationsEnabled.value) { localStorage.setItem('runner-notifications', 'enabled'); notificationMessage.value = 'Notifications enabled.'; }
+            else notificationMessage.value = 'Notification permission was not granted.';
+          };
+          onInit(() => { if (page === 'tokens') load().catch((reason) => { error.value = reason.message; }); });
+          return { page, keys, keyName, newToken, error, scopeOptions, issueKey, revokeKey, setKeyName, toggleScope, notificationsEnabled, notificationMessage, toggleNotifications };
         }
       </script>
     </template>
