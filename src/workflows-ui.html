@@ -25,46 +25,11 @@
     <link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />
     <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
+    <link rel="component" href="/app-header.html" />
 
     <template app>
       <main class="mx-auto max-w-6xl space-y-5">
-        <header class="flex flex-col gap-4 border-b border-gray-800 pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div class="flex items-start gap-3">
-            <a
-              href="/runs"
-              aria-label="Back to dashboard"
-              class="mt-1 rounded-lg border border-gray-800 bg-gray-900 p-2 text-gray-400 transition hover:border-indigo-500/60 hover:text-indigo-300"
-            >
-              <lucide-icon icon="arrow-left" size="17"></lucide-icon>
-            </a>
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-400">Runner engine</p>
-              <h1 class="mt-1 text-2xl font-bold tracking-tight text-white">Workflow control room</h1>
-              <p class="mt-1 text-sm text-gray-400">Draft, validate, and publish revisioned YAML definitions.</p>
-            </div>
-          </div>
-          <a
-            href="/help"
-            class="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-800 bg-gray-900 px-3 py-2.5 text-sm font-medium text-gray-300 outline-none transition hover:border-indigo-500/50 hover:text-indigo-200 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
-          >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="12" cy="12" r="9"></circle>
-              <path d="M9.6 9a2.5 2.5 0 1 1 4.2 1.8c-1.2 1-1.8 1.4-1.8 2.7"></path>
-              <path d="M12 17h.01"></path>
-            </svg>
-            Help
-          </a>
-        </header>
+        <app-header title="Workflow control room" subtitle="Draft, validate, and publish revisioned YAML definitions" back="/runs" back-label="Back to dashboard"></app-header>
 
         <template if="notice">
           <div

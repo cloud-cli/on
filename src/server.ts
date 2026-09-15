@@ -16,6 +16,7 @@ import { renderHelpHtml } from './help.js';
 import openApiSpec from '../openapi.json' with { type: 'json' };
 import { ApiKeyRepository } from './api-key-repository.js';
 import { generateSettingsHtml } from './settings-ui.js';
+import appHeaderTemplate from './app-header.html?raw';
 import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from './types.js';
 import { generateWorkflowManagementHtml } from './workflows-ui.js';
 import { WorkflowRepository } from './workflows.js';
@@ -78,6 +79,11 @@ export class WebhookServer {
     if (req.method === 'GET' && url.pathname === '/service-worker.js') {
       res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
       return res.end(serviceWorker);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/app-header.html') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(appHeaderTemplate);
     }
 
     if (req.method === 'GET' && (url.pathname === '/runs' || url.pathname === '/')) {

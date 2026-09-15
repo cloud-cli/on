@@ -8,26 +8,12 @@
       { "imports": { "@li3/": "https://cdn.li3.dev/@li3/" } }
     </script>
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
+    <link rel="component" href="/app-header.html" />
   </head>
   <body class="min-h-screen bg-gray-950 p-4 font-sans text-gray-100 md:p-6">
     <template app>
       <main class="mx-auto max-w-4xl space-y-5">
-        <header class="flex items-center justify-between border-b border-gray-800 pb-5">
-          <div>
-            <a href="/runs" class="text-xs text-indigo-400 hover:underline">Back to jobs</a>
-            <h1 class="mt-2 text-2xl font-bold text-white">Settings</h1>
-            <p class="mt-1 text-sm text-gray-400">Human-admin controls and automation credentials.</p>
-          </div>
-          <details class="relative">
-            <summary class="cursor-pointer list-none rounded-lg border border-gray-700 p-2 text-gray-300 outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60" aria-label="Open settings menu">
-              <lucide-icon icon="settings" size="18"></lucide-icon>
-            </summary>
-            <nav class="absolute right-0 z-10 mt-2 w-48 rounded-xl border border-gray-700 bg-gray-900 p-2 shadow-2xl">
-              <a href="/workflows" class="block rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Workflow editor</a>
-              <a href="/help" class="block rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Workflow help</a>
-            </nav>
-          </details>
-        </header>
+        <app-header title="Settings" subtitle="Human-admin controls and automation credentials" back="/runs" back-label="Back to jobs"></app-header>
 
         <section class="rounded-2xl border border-gray-800 bg-gray-900/80 p-5">
           <h2 class="text-lg font-semibold text-white">Profile</h2>

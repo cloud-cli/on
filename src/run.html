@@ -9,6 +9,7 @@
     <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
     <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
+    <link rel="component" href="/app-header.html" />
     <title>Workflow Run</title>
     <script type="importmap">
       {
@@ -24,27 +25,13 @@
   <body class="bg-gray-950 text-gray-100 min-h-screen p-4 md:p-6 font-sans">
     <template app>
       <div class="max-w-5xl mx-auto space-y-4">
-        <header class="flex flex-col md:flex-row md:items-center justify-between border-b border-gray-800 pb-6 gap-4">
-          <div class="min-w-0">
-          <a href="/runs" class="text-xs text-indigo-400 hover:underline mb-1 inline-block">Back to Dashboard</a>
-          <a href="/help" class="ml-3 inline-flex items-center gap-1 text-xs text-indigo-400 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-indigo-400/60">
-            <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.6 9a2.5 2.5 0 1 1 4.2 1.8c-1.2 1-1.8 1.4-1.8 2.7"></path><path d="M12 17h.01"></path></svg>
-            Help
-          </a>
-            <h1 class="text-2xl font-bold text-white flex flex-wrap items-center gap-3">
-              {{ report.workflowName }}
-              <span class="text-sm font-mono text-gray-500">#{{ report.jobId }}</span>
-              <template if="report.parentId">
-                <a attr-href="'/runs/' + report.parentId" class="text-sm font-mono text-indigo-400 hover:underline">
-                  from #{{ report.parentId }}
-                </a>
-              </template>
-            </h1>
-            <p class="text-xs text-gray-400 mt-1">
-              Started {{ report.startedAt }} · {{ timing }}
-              <template if="report.workerId"> · worker: {{ report.workerId }}</template>
-            </p>
-          </div>
+        <app-header title="{{ report.workflowName }}" subtitle="Run #{{ report.jobId }}" back="/runs" back-label="Back to jobs"></app-header>
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 pb-4">
+          <p class="text-xs text-gray-400">
+            Started {{ report.startedAt }} · {{ timing }}
+            <template if="report.workerId"> · worker: {{ report.workerId }}</template>
+            <template if="report.parentId"> · from #{{ report.parentId }}</template>
+          </p>
           <div class="flex items-center gap-2 shrink-0">
             <span
               class="px-4 py-1.5 rounded-full text-sm font-semibold border"
@@ -75,7 +62,7 @@
               </button>
             </template>
           </div>
-        </header>
+        </div>
 
         <section class="rounded overflow-hidden border-b border-gray-800">
           <h2 class="sr-only">Execution Steps</h2>

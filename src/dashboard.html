@@ -8,6 +8,7 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
+    <link rel="component" href="/app-header.html" />
     <title>Workflow Engine Dashboard</title>
     <script type="importmap">
       { "imports": { "@li3/": "https://cdn.li3.dev/@li3/" } }
@@ -16,42 +17,8 @@
   <body class="bg-gray-950 text-gray-100 min-h-screen p-4 md:p-6 font-sans">
     <template app>
       <main class="max-w-6xl mx-auto space-y-6">
-        <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-4">
-          <div>
-            <h1 class="text-2xl font-bold text-white">Runner Engine Status</h1>
-            <p class="text-xs text-gray-400">Live Job Queue &amp; Execution Traces</p>
-          </div>
-          <div class="flex flex-wrap items-center gap-3 text-xs font-mono">
-            <a
-              href="/help"
-              aria-label="Help"
-              title="Help"
-              class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-500/40 bg-indigo-500/10 text-indigo-200 outline-none transition hover:bg-indigo-500/20 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
-            >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <circle cx="12" cy="12" r="9"></circle>
-                <path d="M9.6 9a2.5 2.5 0 1 1 4.2 1.8c-1.2 1-1.8 1.4-1.8 2.7"></path>
-                <path d="M12 17h.01"></path>
-              </svg>
-            </a>
-            <a
-              href="/settings"
-              aria-label="Settings"
-              title="Settings"
-              class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-500/40 bg-indigo-500/10 text-indigo-200 outline-none transition hover:bg-indigo-500/20 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
-            >
-              <lucide-icon icon="settings" size="16"></lucide-icon>
-            </a>
+        <app-header title="Runner Engine Status" subtitle="Live Job Queue &amp; Execution Traces"></app-header>
+        <div class="flex justify-end gap-2 text-xs font-mono">
             <template if="notificationsSupported">
               <button
                 aria-label="Notifications"
@@ -69,8 +36,7 @@
                 >Refresh failed</span
               >
             </template>
-          </div>
-        </header>
+        </div>
 
         <form class="flex items-center gap-2" on-submit.prevent="applyFilter()">
           <div class="relative min-w-0 flex-1">

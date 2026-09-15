@@ -1,0 +1,43 @@
+<template shadow-dom="open" component="app-header">
+  <style>
+    :host { display: block; }
+    header { align-items: center; border-bottom: 1px solid #1f2937; display: flex; gap: 1rem; justify-content: space-between; padding-bottom: 1.25rem; }
+    .identity { align-items: flex-start; display: flex; gap: .75rem; min-width: 0; }
+    .back { align-items: center; border: 1px solid #1f2937; border-radius: .5rem; color: #9ca3af; display: inline-flex; height: 2.25rem; justify-content: center; margin-top: .1rem; text-decoration: none; width: 2.25rem; }
+    .back:hover, .back:focus-visible { border-color: #6366f1; color: #e0e7ff; outline: none; }
+    .eyebrow { color: #818cf8; font-size: .7rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { color: #fff; font-size: 1.5rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; margin: .25rem 0 0; }
+    p { color: #9ca3af; font-size: .75rem; margin: .35rem 0 0; }
+    .actions { align-items: center; display: flex; gap: .5rem; }
+    .action { align-items: center; border: 1px solid #374151; border-radius: 999px; color: #c7d2fe; display: inline-flex; height: 2.25rem; justify-content: center; text-decoration: none; width: 2.25rem; }
+    .action:hover, .action:focus-visible { background: #111827; border-color: #6366f1; color: #fff; outline: none; }
+  </style>
+  <header>
+    <div class="identity">
+      <template if="back">
+        <a class="back" attr-href="back" attr-aria-label="backLabel || 'Back'" attr-title="backLabel || 'Back'">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>
+        </a>
+      </template>
+      <div>
+        <div class="eyebrow">Runner engine</div>
+        <h1>{{ title }}</h1>
+        <p>{{ subtitle }}</p>
+      </div>
+    </div>
+    <div class="actions">
+      <a class="action" href="/help" aria-label="Help" title="Help">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.6 9a2.5 2.5 0 1 1 4.2 1.8c-1.2 1-1.8 1.4-1.8 2.7"></path><path d="M12 17h.01"></path></svg>
+      </a>
+      <a class="action" href="/settings" aria-label="Settings" title="Settings">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2"></path><path d="M12 19v2"></path><path d="m4.22 4.22 1.42 1.42"></path><path d="m18.36 18.36 1.42 1.42"></path><path d="M3 12h2"></path><path d="M19 12h2"></path><path d="m4.22 19.78 1.42-1.42"></path><path d="m18.36 5.64 1.42-1.42"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      </a>
+    </div>
+  </header>
+  <script setup>
+    import { defineProp } from '@li3/web';
+    export default function () {
+      return { title: defineProp('title'), subtitle: defineProp('subtitle'), back: defineProp('back'), backLabel: defineProp('back-label') };
+    }
+  </script>
+</template>

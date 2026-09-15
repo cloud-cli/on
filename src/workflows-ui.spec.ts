@@ -34,7 +34,8 @@ describe('workflow management UI', () => {
     expect(html).toContain('attr-href="\'/workflows/\' + workflow.id"');
     expect(html).toContain('href="/workflows"');
     expect(html).toContain('Back to workflows');
-    expect(html).toContain('href="/help"');
+    expect(html).toContain('<app-header');
+    expect(html).toContain('href="/app-header.html"');
     expect(html).toContain('ref="helpContent"');
     expect(html).toContain('on-toggle="loadHelp($event)"');
     expect(html).toContain('new DOMParser()');
