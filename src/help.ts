@@ -27,8 +27,9 @@ const styles = `
   th, td { border-bottom: 1px solid #1f2937; padding: .65rem .75rem; text-align: left; vertical-align: top; }
   th { color: #f9fafb; background: #111827; }
   blockquote { border-left: 3px solid #6366f1; margin-left: 0; padding-left: 1rem; color: #94a3b8; }
-  .topbar { display: flex; justify-content: space-between; gap: 1rem; align-items: center; max-width: 78rem; margin: 0 auto; padding: 1rem; }
-  .back { display: inline-flex; align-items: center; gap: .45rem; color: #94a3b8; text-decoration: none; font-size: .85rem; }
+  .topbar { backdrop-filter: blur(12px); background: rgba(3, 7, 18, .88); border-bottom: 1px solid #1f2937; display: flex; position: sticky; top: 0; z-index: 10; }
+  .topbar-inner { display: flex; align-items: center; margin: 0 auto; max-width: 78rem; padding: 1rem; width: 100%; }
+  .back { align-items: center; background: none; border: 0; color: #94a3b8; cursor: pointer; display: inline-flex; font: inherit; font-size: .85rem; gap: .45rem; padding: .35rem .5rem; }
   .back:hover, .back:focus-visible { color: #f9fafb; }
   .help-layout { display: grid; grid-template-columns: minmax(0, 54rem); gap: 3rem; justify-content: center; }
   .toc { display: none; }
@@ -75,7 +76,7 @@ export function renderHelpHtml(embed = false): string {
     : '';
   const navigation = embed
     ? ''
-    : `<div class="topbar"><a class="back" href="/runs">${helpIcon}<span>Back to jobs</span></a><a class="back" href="/workflows">Manage workflows</a></div>`;
+    : `<div class="topbar"><div class="topbar-inner"><button class="back" type="button" onclick="history.back()">${helpIcon}<span>Back</span></button></div></div>`;
 
   return `<!doctype html>
 <html lang="en" class="dark">

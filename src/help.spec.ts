@@ -12,7 +12,8 @@ describe('workflow help', () => {
     expect(html).toContain('id="workflow-documentation"');
     expect(html).toContain('On this page');
     expect(html).toContain('href="#tutorials"');
-    expect(html).toContain('href="/workflows"');
+    expect(html).toContain('onclick="history.back()"');
+    expect(html).not.toContain('Manage workflows');
   });
 
   it('supports an embedded view without global navigation', () => {
