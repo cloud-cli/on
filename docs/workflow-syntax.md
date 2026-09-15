@@ -64,6 +64,16 @@ steps:
 
 GitHub webhooks must be signed with the configured `GITHUB_WEBHOOK_SECRET`. The preprocessor exposes normalized inputs including `event`, `owner`, `repo`, `branch`, `tag`, `ref`, `full_name`, `clone_url`, `commit_sha`, `author`, `action`, `changes`, and the original `raw` body.
 
+GitHub workflow `if:` conditions also receive an async `github.fileExists(path)` helper. It checks the repository contents API using the webhook's owner, repository, and ref:
+
+```yaml
+on:
+  github:
+    if: github.fileExists('Dockerfile')
+```
+
+The helper is only available to GitHub workflows. A missing file returns `false`; unsafe paths and failed lookups do not trigger the workflow.
+
 ## How-To Guides
 
 ### Reference Another Environment Value

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GitHubPreprocessor } from './github.js';
 
 const preprocessor = new GitHubPreprocessor();
@@ -108,5 +108,19 @@ describe('GitHubPreprocessor parsing', () => {
     );
 
     expect(result.inputs.commit_sha).toBe('pull-request-sha');
+  });
+});
+
+describe('GitHubPreprocessor condition context', () => {
+  it('checks repository files through the GitHub contents API', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(new GitHubPreprocessor().conditionContext({ owner: 'octocat', repo: 'hello-world', ref: 'main' }).github.fileExists('Dockerfile')).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/repos/octocat/hello-world/contents/Dockerfile?ref=main',
+      expect.objectContaining({ method: 'HEAD' }),
+    );
+    vi.unstubAllGlobals();
   });
 });

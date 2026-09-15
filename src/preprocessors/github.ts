@@ -31,6 +31,7 @@ interface GithubWorkflowTrigger extends WorkflowTrigger {
 
 export class GitHubPreprocessor implements WebhookPreprocessor {
   name = 'github';
+  private readonly apiUrl = 'https://api.github.com';
 
   parse(headers: Record<string, string>, rawBodyBuffer: Buffer, secret?: string): PreprocessedWebhook {
     let isValid = false;
@@ -114,5 +115,33 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
     }
 
     return { isValid, inputs };
+  }
+
+  conditionContext(inputs: Record<string, any>): Record<string, any> {
+    return {
+      github: {
+        fileExists: async (path: string) => {
+          if (typeof path !== 'string' || !path || path.startsWith('/') || path.split('/').includes('..')) return false;
+          const owner = encodeURIComponent(String(inputs.owner || ''));
+          const repo = encodeURIComponent(String(inputs.repo || ''));
+          const ref = encodeURIComponent(String(inputs.ref || inputs.commit_sha || ''));
+          if (!owner || !repo || !ref) return false;
+          const encodedPath = path.split('/').map((part) => encodeURIComponent(part)).join('/');
+          const headers: Record<string, string> = {
+            Accept: 'application/vnd.github+json',
+            'User-Agent': '@cloud-cli/on',
+            'X-GitHub-Api-Version': '2022-11-28',
+          };
+          const token = process.env.GITHUB_TOKEN || process.env.GITHUB_API_TOKEN;
+          if (token) headers.Authorization = `Bearer ${token}`;
+          const response = await fetch(`${this.apiUrl}/repos/${owner}/${repo}/contents/${encodedPath}?ref=${ref}`, {
+            method: 'HEAD',
+            headers,
+            signal: AbortSignal.timeout(10_000),
+          });
+          return response.ok;
+        },
+      },
+    };
   }
 }
