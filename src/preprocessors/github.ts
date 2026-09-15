@@ -117,7 +117,7 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
     return { isValid, inputs };
   }
 
-  conditionContext(inputs: Record<string, any>): Record<string, any> {
+  conditionContext(inputs: Record<string, any>, secrets: Record<string, string> = {}): Record<string, any> {
     return {
       github: {
         fileExists: async (path: string) => {
@@ -132,7 +132,7 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
             'User-Agent': '@cloud-cli/on',
             'X-GitHub-Api-Version': '2022-11-28',
           };
-          const token = process.env.GITHUB_TOKEN || process.env.GITHUB_API_TOKEN;
+          const token = secrets.GITHUB_TOKEN || process.env.GITHUB_TOKEN || process.env.GITHUB_API_TOKEN;
           if (token) headers.Authorization = `Bearer ${token}`;
           const response = await fetch(`${this.apiUrl}/repos/${owner}/${repo}/contents/${encodedPath}?ref=${ref}`, {
             method: 'HEAD',

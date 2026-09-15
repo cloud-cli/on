@@ -100,7 +100,7 @@ export interface WebhookPreprocessor {
   name: string;
   parse(headers: Record<string, string>, rawBodyBuffer: Buffer, secret?: string): PreprocessedWebhook;
   filter?(inputs: Record<string, any>, trigger: WorkflowTrigger): PreprocessedWebhook;
-  conditionContext?(inputs: Record<string, any>): Record<string, any>;
+  conditionContext?(inputs: Record<string, any>, secrets?: Record<string, string>): Record<string, any>;
 }
 
 export interface WorkflowTrigger {

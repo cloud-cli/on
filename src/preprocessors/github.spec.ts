@@ -116,10 +116,10 @@ describe('GitHubPreprocessor condition context', () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(new GitHubPreprocessor().conditionContext({ owner: 'octocat', repo: 'hello-world', ref: 'main' }).github.fileExists('Dockerfile')).resolves.toBe(true);
+    await expect(new GitHubPreprocessor().conditionContext({ owner: 'octocat', repo: 'hello-world', ref: 'main' }, { GITHUB_TOKEN: 'server-token' }).github.fileExists('Dockerfile')).resolves.toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.github.com/repos/octocat/hello-world/contents/Dockerfile?ref=main',
-      expect.objectContaining({ method: 'HEAD' }),
+      expect.objectContaining({ method: 'HEAD', headers: expect.objectContaining({ Authorization: 'Bearer server-token' }) }),
     );
     vi.unstubAllGlobals();
   });

@@ -272,7 +272,7 @@ export class WebhookServer {
 
       if (res.headersSent || !rawBuffer) return;
 
-      const { isValid, inputs } = await this.preprocess(provider, headers, rawBuffer);
+       const { isValid, inputs, secretValues } = await this.preprocess(provider, headers, rawBuffer);
 
       if (!isValid) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -281,7 +281,7 @@ export class WebhookServer {
       }
 
       await this.workflowsLoaded;
-      await this.matchWorkflows(provider, inputs, await this.workflows.published());
+       await this.matchWorkflows(provider, inputs, await this.workflows.published(), secretValues);
 
       res.writeHead(202, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ message: 'OK' }));
@@ -331,17 +331,17 @@ export class WebhookServer {
       if (preprocessor) {
         const result = preprocessor.parse(headers, rawBuffer, secret);
         const { inputs, isValid } = result;
-        return { inputs, isValid };
+        return { inputs, isValid, secretValues: dbSecrets };
       }
 
       const inputs = JSON.parse(rawBuffer.toString('utf-8'));
-      return { isValid: true, inputs };
+      return { isValid: true, inputs, secretValues: dbSecrets };
     } catch {
-      return { isValid: false, inputs: null };
+      return { isValid: false, inputs: null, secretValues: dbSecrets };
     }
   }
 
-  private async matchWorkflows(provider: string, inputs: any, workflows: import('./types.js').WorkflowRevision[]) {
+  private async matchWorkflows(provider: string, inputs: any, workflows: import('./types.js').WorkflowRevision[], secretValues: Record<string, string> = {}) {
     for (const { definition: workflow, revision } of workflows) {
       if (workflow.on.provider !== provider) continue;
 
@@ -353,7 +353,7 @@ export class WebhookServer {
 
       if (workflow.on.if) {
         try {
-          const conditionContext = preprocessor?.conditionContext?.(inputs) || {};
+          const conditionContext = preprocessor?.conditionContext?.(inputs, secretValues) || {};
           const shouldRun = await SafeExpressionEvaluator.evaluateConditions(workflow.on.if, { inputs, ...conditionContext });
 
           if (!shouldRun) {
