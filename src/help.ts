@@ -65,7 +65,7 @@ export function renderHelpHtml(embed = false): string {
     : '';
   const navigation = embed
     ? ''
-    : '<app-header title="Workflow help" subtitle="Tutorials, guides, and workflow syntax" back="/runs" back-label="Back to dashboard"></app-header>';
+    : '<app-header title="Workflow Documentation" subtitle="" back="/runs" back-label="Back to dashboard"></app-header>';
 
   return `<!doctype html>
 <html lang="en" class="dark">
