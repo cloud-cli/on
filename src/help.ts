@@ -83,6 +83,7 @@ export function renderHelpHtml(embed = false): string {
     ${navigation}
     <main><div class="help-layout"><article>${content}</article>${embed ? '' : toc}</div></main>
     <script type="module">import '@li3/web';</script>
+    <script src="https://cdn.tailwindcss.com"></script>
   </body>
 </html>`;
 }
