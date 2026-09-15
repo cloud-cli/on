@@ -61,6 +61,12 @@ try {
   const api = await apiResponse.json();
   if (api.openapi !== '3.0.3' || !api.paths['/api']) throw new Error('OpenAPI discovery endpoint failed');
 
+  for (const path of ['/', '/runs', '/help']) {
+    const response = await fetch(`http://127.0.0.1:${appPort}${path}`);
+    const html = await response.text();
+    if (!response.ok || !html.includes('<app-router')) throw new Error(`Public SPA shell failed for ${path}`);
+  }
+
   const protectedResponse = await fetch(`http://127.0.0.1:${appPort}/settings`);
   if (protectedResponse.status !== 401) throw new Error(`Expected protected Settings page, got ${protectedResponse.status}`);
 
@@ -70,10 +76,27 @@ try {
   if (!settingsResponse.ok || !settings.includes('<app-router')) {
     throw new Error(`Authenticated Settings page failed: ${settingsResponse.status}\n${settings.slice(0, 300)}`);
   }
+  for (const path of ['/settings/workflows', '/settings/secrets', '/settings/tokens', '/settings/notifications']) {
+    const response = await fetch(`http://127.0.0.1:${appPort}${path}`, { headers: { authorization } });
+    const html = await response.text();
+    if (!response.ok || !html.includes('<app-router')) throw new Error(`Authenticated SPA shell failed for ${path}`);
+  }
   const settingsPageResponse = await fetch(`http://127.0.0.1:${appPort}/pages/settings.html?page=tokens`, { headers: { authorization } });
   const settingsPage = await settingsPageResponse.text();
   if (!settingsPageResponse.ok || !settingsPage.includes('template component="page-settings"')) {
     throw new Error(`Settings page component failed: ${settingsPageResponse.status}\n${settingsPage.slice(0, 300)}`);
+  }
+  for (const [path, component] of [
+    ['/pages/workflows.html?page=workflows', 'page-workflows'],
+    ['/pages/workflows.html?page=secrets', 'page-secrets'],
+    ['/pages/workflows.html?page=editor&id=new', 'page-workflow-editor'],
+    ['/pages/settings.html?page=notifications', 'page-settings'],
+  ]) {
+    const response = await fetch(`http://127.0.0.1:${appPort}${path}`, { headers: { authorization } });
+    const html = await response.text();
+    if (!response.ok || !html.includes(`template component="${component}"`) || !html.includes('script setup')) {
+      throw new Error(`Protected page component failed for ${path}`);
+    }
   }
 
   const workflowsResponse = await fetch(`http://127.0.0.1:${appPort}/workflows`, { headers: { authorization } });
