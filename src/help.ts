@@ -1,13 +1,6 @@
 import { marked } from 'marked';
 import workflowDocs from '../docs/workflow-syntax.md?raw';
 
-const helpIcon = `
-  <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="12" cy="12" r="9"></circle>
-    <path d="M9.6 9a2.5 2.5 0 1 1 4.2 1.8c-1.2 1-1.8 1.4-1.8 2.7"></path>
-    <path d="M12 17h.01"></path>
-  </svg>`;
-
 const styles = `
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -27,10 +20,6 @@ const styles = `
   th, td { border-bottom: 1px solid #1f2937; padding: .65rem .75rem; text-align: left; vertical-align: top; }
   th { color: #f9fafb; background: #111827; }
   blockquote { border-left: 3px solid #6366f1; margin-left: 0; padding-left: 1rem; color: #94a3b8; }
-  .topbar { backdrop-filter: blur(12px); background: rgba(3, 7, 18, .88); border-bottom: 1px solid #1f2937; display: flex; position: sticky; top: 0; z-index: 10; }
-  .topbar-inner { display: flex; align-items: center; margin: 0 auto; max-width: 78rem; padding: 1rem; width: 100%; }
-  .back { align-items: center; background: none; border: 0; color: #94a3b8; cursor: pointer; display: inline-flex; font: inherit; font-size: .85rem; gap: .45rem; padding: .35rem .5rem; }
-  .back:hover, .back:focus-visible { color: #f9fafb; }
   .help-layout { display: grid; grid-template-columns: minmax(0, 54rem); gap: 3rem; justify-content: center; }
   .toc { display: none; }
   .toc nav { position: sticky; top: 1.25rem; max-height: calc(100vh - 2.5rem); overflow-y: auto; border-left: 1px solid #1f2937; padding-left: 1rem; }
@@ -76,7 +65,7 @@ export function renderHelpHtml(embed = false): string {
     : '';
   const navigation = embed
     ? ''
-    : `<div class="topbar"><div class="topbar-inner"><button class="back" type="button" onclick="history.back()">${helpIcon}<span>Back</span></button></div></div>`;
+    : '<app-header title="Workflow help" subtitle="Tutorials, guides, and workflow syntax" back="/runs" back-label="Back to dashboard"></app-header>';
 
   return `<!doctype html>
 <html lang="en" class="dark">
@@ -84,11 +73,13 @@ export function renderHelpHtml(embed = false): string {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Workflow help</title>
+    <link rel="component" href="/app-header.html" />
     <style>${styles}</style>
   </head>
   <body>
     ${navigation}
     <main><div class="help-layout"><article>${content}</article>${embed ? '' : toc}</div></main>
+    <script type="module">import '@li3/web';</script>
   </body>
 </html>`;
 }
