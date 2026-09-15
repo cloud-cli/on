@@ -73,6 +73,9 @@ export function renderHelpHtml(embed = false): string {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Workflow help</title>
+    <script type="importmap">
+      { "imports": { "@li3/": "https://cdn.li3.dev/@li3/" } }
+    </script>
     <link rel="component" href="/app-header.html" />
     <style>${styles}</style>
   </head>
