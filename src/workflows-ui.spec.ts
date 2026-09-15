@@ -27,7 +27,8 @@ describe('workflow management UI', () => {
     expect(html).toContain('hidden sm:inline');
     expect(html).toContain('Workflow revision {{ revisionNumber }}');
     expect(html).toContain('on-click="navigateRevision(-1)"');
-    expect(html).toContain('bind-source="revisionSource"');
+    expect(html).toContain('bind-innerhtml="revisionDiffHtml"');
+    expect(html).toContain('https://unpkg.com/diff@9.0.0');
     expect(html).toContain('aria-label="Save workflow draft"');
     expect(html).toContain('bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"');
     expect(html).toContain('aria-labelledby="workflow-list-title"');

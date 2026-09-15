@@ -9,7 +9,7 @@
     <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
     <title>Runner Workflow Management</title>
     <script type="importmap">
-      { "imports": { "@li3/": "https://cdn.li3.dev/@li3/" } }
+      { "imports": { "@li3/": "https://cdn.li3.dev/@li3/", "diff": "https://unpkg.com/diff@9.0.0" } }
     </script>
     <style>
       body[data-page='list'] .editor-panel {
@@ -283,15 +283,15 @@
                   <lucide-icon icon="x" size="17"></lucide-icon>
                 </button>
               </div>
-              <div class="min-h-0 flex-1 overflow-auto p-4">
-                <p class="mb-3 text-sm text-rose-300" class-hidden="!revisionError">{{ revisionError }}</p>
-                <code-block language="yaml" theme="atom-one-dark" bind-source="revisionSource" class="block min-h-[20rem] overflow-auto rounded-lg border border-gray-700 bg-gray-950 p-4"></code-block>
+               <div class="min-h-0 flex-1 overflow-auto p-4">
+                 <p class="mb-3 text-sm text-rose-300" class-hidden="!revisionError">{{ revisionError }}</p>
+                 <pre class="min-h-[20rem] overflow-auto rounded-lg border border-gray-700 bg-gray-950 p-4 font-mono text-xs leading-6" bind-innerhtml="revisionDiffHtml"></pre>
               </div>
-              <div class="flex items-center justify-between border-t border-gray-800 px-4 py-3">
+               <div class="flex items-center justify-between border-t border-gray-800 px-4 py-3">
                 <button type="button" on-click="navigateRevision(-1)" bind-disabled="revisionLoading || revisionNumber <= 1" class="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-40">
                   <lucide-icon icon="chevron-left" size="16"></lucide-icon>Previous
                 </button>
-                <button type="button" on-click="navigateRevision(1)" bind-disabled="revisionLoading" class="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-40">
+                 <button type="button" on-click="navigateRevision(1)" bind-disabled="revisionLoading || revisionNumber >= revision" class="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-40">
                   Next<lucide-icon icon="chevron-right" size="16"></lucide-icon>
                 </button>
               </div>
@@ -418,7 +418,8 @@
       </main>
 
       <script setup>
-        import { onDestroy, onInit, ref, templateRef } from '@li3/web';
+         import { onDestroy, onInit, ref, templateRef } from '@li3/web';
+         import { diffLines } from 'diff';
 
         export default function () {
           const page = document.body.dataset.page;
@@ -433,7 +434,7 @@
            const revision = ref(null);
            const revisionDialogOpen = ref(false);
            const revisionNumber = ref(0);
-           const revisionSource = ref('');
+           const revisionDiffHtml = ref('');
            const revisionError = ref('');
            const revisionLoading = ref(false);
           const workflowId = ref('');
@@ -690,31 +691,45 @@
             }
            };
 
-           const openRevisionDialog = () => {
+           const escapeRevisionHtml = (value) => value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] || '');
+           const renderRevisionDiff = (previousSource, currentSource) => {
+             if (previousSource === null) return `<span class="text-emerald-300">+ ${escapeRevisionHtml(currentSource)}</span>\n`;
+             return diffLines(previousSource, currentSource).map((part) => {
+               const className = part.added ? 'text-emerald-300 bg-emerald-500/10' : part.removed ? 'text-rose-300 bg-rose-500/10' : 'text-gray-300';
+               const prefix = part.added ? '+ ' : part.removed ? '- ' : '  ';
+               return part.value.split('\n').filter((line, index, lines) => index < lines.length - 1 || line).map((line) => `<span class="block ${className}">${prefix}${escapeRevisionHtml(line)}</span>`).join('');
+             }).join('');
+           };
+           const openRevisionDialog = async () => {
              if (!revision.value) return;
              revisionNumber.value = revision.value;
-             revisionSource.value = source.value;
+             revisionDiffHtml.value = '';
              revisionError.value = '';
              revisionDialogOpen.value = true;
+             await loadRevisionDiff(revision.value);
            };
            const closeRevisionDialog = () => {
              revisionDialogOpen.value = false;
            };
-           const navigateRevision = async (offset) => {
-             if (!selectedId.value || revisionLoading.value) return;
-             const target = revisionNumber.value + offset;
-             if (target < 1) return;
+           const loadRevisionDiff = async (number) => {
              revisionLoading.value = true;
              revisionError.value = '';
              try {
-               const workflow = await api(`/api/workflows/${selectedId.value}?revision=${target}`);
-               revisionNumber.value = workflow.revision;
-               revisionSource.value = workflow.sourceYaml;
+               const current = await api(`/api/workflows/${selectedId.value}?revision=${number}`);
+               const previous = number > 1 ? await api(`/api/workflows/${selectedId.value}?revision=${number - 1}`) : null;
+               revisionDiffHtml.value = renderRevisionDiff(previous?.sourceYaml ?? null, current.sourceYaml);
              } catch (error) {
                revisionError.value = error.message;
              } finally {
                revisionLoading.value = false;
              }
+           };
+           const navigateRevision = async (offset) => {
+             if (!selectedId.value || revisionLoading.value) return;
+             const target = revisionNumber.value + offset;
+             if (target < 1 || target > revision.value) return;
+             revisionNumber.value = target;
+             await loadRevisionDiff(target);
            };
 
           onDestroy(() => clearTimeout(validationTimer));
@@ -735,7 +750,7 @@
              revision,
              revisionDialogOpen,
              revisionNumber,
-             revisionSource,
+             revisionDiffHtml,
              revisionError,
              revisionLoading,
             workflowId,
