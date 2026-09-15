@@ -129,6 +129,7 @@ describe('run view', () => {
     unsafe.steps[0].logContent = '</script><script>alert(1)</script>';
     const html = renderRunHtml(unsafe);
     expect(html).not.toContain('<script state>');
+    expect(html).toContain("bind-title=\"report.workflowName\"");
     expect(html).toContain('fetch(`/api/runs/${jobId}`');
     expect(html).toContain('lucide-icon');
     expect(html).toContain('Workflow source YAML');
