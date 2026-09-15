@@ -685,9 +685,14 @@ export class WebhookServer {
 
   private renderPageComponent(res: http.ServerResponse, name: string, source: string, body = false) {
     const styles = Array.from(source.matchAll(/<style[\s\S]*?<\/style>/gi)).map((match) => match[0]).join('');
-    const content = body
-      ? source.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] || source
-      : source.match(/<template app>([\s\S]*?)<\/template>/i)?.[1] || source;
+    let content = source;
+    if (body) {
+      content = source.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] || source;
+    } else {
+      const start = source.indexOf('<template app>');
+      const end = source.lastIndexOf('</template>');
+      if (start !== -1 && end > start) content = source.slice(start + '<template app>'.length, end);
+    }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     return res.end(`<template component="${name}">${styles}${content}</template>`);
   }
