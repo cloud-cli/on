@@ -319,9 +319,13 @@
               >{{ secrets.length }}</span
             >
           </div>
-          <div class="mb-5 rounded-xl border border-gray-800 bg-gray-950/50 p-3">
-            <p class="mb-3 text-xs text-gray-500">Saving an existing name replaces its encrypted value.</p>
-            <div class="space-y-3">
+          <details ref="secretForm" class="mb-5 overflow-hidden rounded-xl border border-gray-800 bg-gray-950/50">
+            <summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-gray-300 outline-none hover:bg-gray-900 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+              <span>Add a secret</span>
+              <lucide-icon icon="plus" size="17"></lucide-icon>
+            </summary>
+            <div class="space-y-3 border-t border-gray-800 p-4">
+              <p class="text-xs text-gray-500">Saving an existing name replaces its encrypted value.</p>
               <label class="sr-only" for="secret-name">Secret name</label>
               <input
                 id="secret-name"
@@ -369,7 +373,8 @@
                 </button>
               </div>
             </div>
-          </div>
+            </div>
+          </details>
           <ul class="grid gap-2" aria-label="Saved secrets">
             <template for="name of secrets">
               <li>
@@ -444,7 +449,8 @@
           const noticeError = ref(false);
           const busy = ref(false);
            const secretValueInput = templateRef('secretValueInput');
-           const secretFileInput = templateRef('secretFileInput');
+            const secretFileInput = templateRef('secretFileInput');
+           const secretForm = templateRef('secretForm');
           const helpContent = templateRef('helpContent');
           const helpLoaded = ref(false);
           const helpLoading = ref(false);
@@ -589,6 +595,7 @@
                secretFileData.value = '';
                fileMode.value = false;
                if (secretFileInput.value) secretFileInput.value.value = '';
+               if (secretForm.value) secretForm.value.open = false;
               await loadSecrets();
               showNotice(`Saved ${name}.`);
             });

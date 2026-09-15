@@ -50,6 +50,8 @@ describe('workflow management UI', () => {
     expect(html).toContain('encoding: \'base64\'');
     expect(html).toContain('on-click="removeSecret(name)"');
     expect(html).toContain('aria-label="Delete secret {{ name }}"');
+    expect(html).toContain('ref="secretForm"');
+    expect(html).toContain('Add a secret');
     expect(html).toContain('icon="trash"');
     expect(html).toContain('aria-label="Saved secrets"');
     expect(html).toContain('aria-label="Edit secret {{ name }}"');
