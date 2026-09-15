@@ -34,7 +34,7 @@
     <link rel="component" href="/app-header.html" />
 
     <template app>
-      <main class="mx-auto max-w-6xl space-y-5">
+        <main class="mx-auto max-w-6xl space-y-5 py-6">
         <template if="page === 'secrets'"><app-header title="Secrets" subtitle="Write-only credentials available to workflows" back="/runs" back-label="Back to dashboard"></app-header></template>
         <template if="page !== 'secrets'"><app-header title="Workflow control room" subtitle="Draft, validate, and publish revisioned YAML definitions" back="/runs" back-label="Back to dashboard"></app-header></template>
         <nav class="flex flex-wrap gap-1 rounded-xl border border-gray-800 bg-gray-900/70 p-1" aria-label="Settings navigation">
