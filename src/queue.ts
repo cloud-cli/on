@@ -293,4 +293,8 @@ export class QueueManager {
     if (this.fileStorage.enabled) return this.fileStorage.load(`${kind}/${ownerKey}`);
     return db.all('SELECT file_path AS path, content FROM stored_files WHERE kind = ? AND owner_key = ?', [kind, ownerKey]);
   }
+
+  async saveAiRequest(jobId: string | number, workflowUrl: string, request: unknown): Promise<void> {
+    await db.run('INSERT INTO ai_requests (job_id, workflow_url, request_json) VALUES (?, ?, ?)', [jobId, workflowUrl, JSON.stringify(request)]);
+  }
 }

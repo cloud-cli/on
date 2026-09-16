@@ -39,6 +39,21 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: '004_add_ai_requests',
+    async apply() {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS ai_requests (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          job_id INTEGER NOT NULL,
+          workflow_url TEXT NOT NULL,
+          request_json TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_requests_job ON ai_requests(job_id);
+      `);
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

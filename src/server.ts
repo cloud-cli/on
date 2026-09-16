@@ -16,6 +16,7 @@ import { renderHelpHtml } from './help.js';
 import openApiSpec from '../openapi.json' with { type: 'json' };
 import { ApiKeyRepository } from './api-key-repository.js';
 import { generateSettingsHtml } from './settings-ui.js';
+import { buildAiHelpMessages, createAiRequest, requestAiHelp } from './ai-help.js';
 import appHeaderTemplate from './app-header.html?raw';
 import appShellTemplate from './app-shell.html?raw';
 import appRouterTemplate from './app-router.html?raw';
@@ -262,6 +263,9 @@ export class WebhookServer {
       const jobId = url.pathname.replace('/runs/', '');
        return this.renderRunDetails(jobId, res, 'html', await this.hasScope(req, 'logs:read'));
     }
+
+    const aiHelpMatch = url.pathname.match(/^\/api\/runs\/(\d+)\/ai-help$/);
+    if (req.method === 'POST' && aiHelpMatch) return this.handleAiHelp(req, res, aiHelpMatch[1]);
 
     if (req.method === 'GET' && url.pathname.startsWith('/api/runs/')) {
       const artifactMatch = url.pathname.match(/^\/api\/runs\/(\d+)\/artifacts\/(.+)$/);
@@ -783,6 +787,49 @@ export class WebhookServer {
       'Content-Disposition': `attachment; filename="${filePath.replace(/[^a-zA-Z0-9._-]/g, '_')}"`,
     });
     return res.end(Buffer.from(file.content, 'base64'));
+  }
+
+  private async handleAiHelp(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
+    if (!(await this.hasScope(req, 'logs:read'))) return this.requireScope(req, res, 'logs:read');
+    const apiKey = await this.currentSecrets().then((secrets) => secrets.OPENAI_API_KEY || process.env.OPENAI_API_KEY);
+    const model = process.env.OPENAI_API_MODEL;
+    const apiUrl = process.env.OPENAI_API_URL;
+    if (!model || !apiUrl) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'AI help is not configured' }));
+    }
+    const job = await this.queue.getJob(jobId);
+    if (!job?.report) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Run report not found' }));
+    }
+    const body = await this.readJson(req, res);
+    const failedStepId = typeof body?.stepId === 'string' ? body.stepId : '';
+    const report = JSON.parse(job.report);
+    const snapshot = await this.workflows.getRevisionSnapshot(job.workflow_id, job.workflow_revision);
+    if (!snapshot || !failedStepId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'A failed step and workflow revision are required' }));
+    }
+    const secretValues = await this.currentSecrets();
+    const messages = buildAiHelpMessages(
+      snapshot.sourceYaml,
+      report.steps || [],
+      await this.queue.getJobLogs(jobId),
+      failedStepId,
+      (value) => this.redact(value, secretValues),
+    );
+    try {
+      const requestBody = createAiRequest(model, messages);
+      const workflowUrl = new URL(`/runs/${jobId}`, `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers['x-forwarded-host'] || req.headers.host}`).toString();
+      await this.queue.saveAiRequest(jobId, workflowUrl, requestBody);
+      const answer = await requestAiHelp(apiUrl, apiKey, requestBody);
+      res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ answer }));
+    } catch (error: any) {
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: error.message }));
+    }
   }
 
   private async handleCancelJob(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
