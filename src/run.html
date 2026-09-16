@@ -113,11 +113,6 @@
                   </template>
                   <h3 class="font-semibold text-gray-200 truncate min-w-0 flex-1">{{ step.name }}</h3>
                    <div class="font-mono text-gray-400 shrink-0">{{ step.durationMs }}ms</div>
-                   <template if="report.canViewLogs && step.status === 'failed'">
-                     <button type="button" on-click="askAi(step, $event)" bind-disabled="aiHelp[step.id] && aiHelp[step.id].loading" aria-label="Get AI help for failed step" title="Get AI help" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-indigo-300 outline-none hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-50">
-                       <lucide-icon bind-icon="aiHelp[step.id] && aiHelp[step.id].loading ? 'loader-circle' : 'sparkles'" bind-class="aiHelp[step.id] && aiHelp[step.id].loading ? 'animate-spin' : ''" size="16"></lucide-icon>
-                     </button>
-                   </template>
                   <span
                     class="sr-only px-2.5 py-0.5 rounded-full font-medium"
                     bind-class="{
@@ -132,7 +127,12 @@
                 </div>
               </summary>
               <template if="report.canViewLogs">
-                <div class="p-4 bg-gray-950 font-mono text-gray-300 leading-relaxed overflow-auto w-full">
+                 <div class="relative p-4 bg-gray-950 font-mono text-gray-300 leading-relaxed overflow-auto w-full">
+                   <template if="step.status === 'failed'">
+                     <button type="button" on-click="askAi(step, $event)" aria-label="Get AI help for failed step" title="Get AI help" class="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gray-900 text-indigo-300 outline-none hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+                       <lucide-icon bind-icon="aiLoading && aiStepId === step.id ? 'loader-circle' : 'sparkles'" bind-class="aiLoading && aiStepId === step.id ? 'animate-spin' : ''" size="16"></lucide-icon>
+                     </button>
+                   </template>
                   <pre class="whitespace-pre-wrap" bind-innerhtml="stepLog(step)"></pre>
                 </div>
               </template>
@@ -167,7 +167,7 @@
             ></code-block>
           </details>
         </template>
-        <template if="report.canViewLogs">
+        <template if="report.canViewLogs && aiStepId">
           <aside class="mt-4 rounded-2xl border border-indigo-500/20 bg-gray-900/95 p-4 lg:fixed lg:right-6 lg:top-24 lg:mt-0 lg:flex lg:max-h-[calc(100vh-7rem)] lg:w-[20rem] lg:flex-col" aria-labelledby="ai-help-title">
             <div class="flex items-start justify-between gap-3 border-b border-gray-800 pb-3">
               <div><h2 id="ai-help-title" class="font-semibold text-white">AI help</h2><p class="mt-1 text-xs text-gray-500">Ask about a failed step.</p></div>
@@ -219,7 +219,6 @@
           const jobId = window.location.pathname.split('/').filter(Boolean).pop() || '';
           const report = ref({ jobId });
           const previousRuns = ref([]);
-          const aiHelp = ref({});
           const aiMessages = ref([]);
           const aiStepId = ref('');
           const aiQuestion = ref('');
