@@ -66,6 +66,11 @@ try {
     const html = await response.text();
     if (!response.ok || !html.includes('<app-router')) throw new Error(`Public SPA shell failed for ${path}`);
   }
+  const embeddedHelp = await fetch(`http://127.0.0.1:${appPort}/help?embed=1`);
+  const embeddedHelpHtml = await embeddedHelp.text();
+  if (!embeddedHelp.ok || !embeddedHelpHtml.includes('Workflow Documentation') || embeddedHelpHtml.includes('<app-router')) {
+    throw new Error('Embedded help document failed');
+  }
 
   const protectedResponse = await fetch(`http://127.0.0.1:${appPort}/settings`);
   if (protectedResponse.status !== 401) throw new Error(`Expected protected Settings page, got ${protectedResponse.status}`);

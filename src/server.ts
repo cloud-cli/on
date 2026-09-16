@@ -100,6 +100,10 @@ export class WebhookServer {
     }
 
     if (req.method === 'GET' && url.pathname === '/help') {
+      if (url.searchParams.get('embed') === '1') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end(renderHelpHtml(true));
+      }
       return this.renderAppShell(res);
     }
 
