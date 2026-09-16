@@ -805,6 +805,10 @@ export class WebhookServer {
     }
     const body = await this.readJson(req, res);
     const failedStepId = typeof body?.stepId === 'string' ? body.stepId : '';
+    const question = typeof body?.question === 'string' && body.question.trim() ? body.question.trim() : undefined;
+    const conversation = Array.isArray(body?.conversation)
+      ? body.conversation.filter((message: any) => (message?.role === 'user' || message?.role === 'assistant') && typeof message.content === 'string').slice(-20)
+      : [];
     const report = JSON.parse(job.report);
     const snapshot = await this.workflows.getRevisionSnapshot(job.workflow_id, job.workflow_revision);
     if (!snapshot || !failedStepId) {
@@ -818,6 +822,8 @@ export class WebhookServer {
       await this.queue.getJobLogs(jobId),
       failedStepId,
       (value) => this.redact(value, secretValues),
+      question,
+      conversation,
     );
     try {
       const requestBody = createAiRequest(model, messages);

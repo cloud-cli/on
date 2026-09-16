@@ -24,7 +24,7 @@
   </head>
   <body class="bg-gray-950 text-gray-100 min-h-screen p-4 md:p-6 font-sans">
     <template app>
-      <div class="max-w-5xl mx-auto space-y-4 py-6">
+      <div class="max-w-7xl mx-auto space-y-4 py-6 lg:pr-[22rem]">
         <app-header bind-title="report.workflowName" bind-subtitle="'Run #' + report.jobId" back="/runs" back-label="Back to jobs"></app-header>
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 pb-4">
           <p class="text-xs text-gray-400">
@@ -139,15 +139,6 @@
               <template if="!report.canViewLogs">
                 <div class="p-4 bg-gray-950 text-sm text-gray-500">Logs are available to authenticated users.</div>
               </template>
-              <template if="aiHelp[step.id] && aiHelp[step.id].answer">
-                <div class="border-t border-indigo-500/20 bg-indigo-500/5 p-4">
-                  <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-indigo-300">AI help</p>
-                  <pre class="whitespace-pre-wrap text-sm leading-relaxed text-gray-200">{{ aiHelp[step.id].answer }}</pre>
-                </div>
-              </template>
-              <template if="aiHelp[step.id] && aiHelp[step.id].error">
-                <p class="border-t border-rose-500/20 bg-rose-500/5 p-4 text-sm text-rose-300">{{ aiHelp[step.id].error }}</p>
-              </template>
             </details>
           </template>
         </section>
@@ -175,6 +166,31 @@
               class="block max-h-[38rem] overflow-auto border-t border-gray-800 bg-gray-950 p-4"
             ></code-block>
           </details>
+        </template>
+        <template if="report.canViewLogs">
+          <aside class="mt-4 rounded-2xl border border-indigo-500/20 bg-gray-900/95 p-4 lg:fixed lg:right-6 lg:top-24 lg:mt-0 lg:flex lg:max-h-[calc(100vh-7rem)] lg:w-[20rem] lg:flex-col" aria-labelledby="ai-help-title">
+            <div class="flex items-start justify-between gap-3 border-b border-gray-800 pb-3">
+              <div><h2 id="ai-help-title" class="font-semibold text-white">AI help</h2><p class="mt-1 text-xs text-gray-500">Ask about a failed step.</p></div>
+              <lucide-icon icon="sparkles" size="18" class="text-indigo-300"></lucide-icon>
+            </div>
+            <div class="min-h-0 flex-1 space-y-3 overflow-y-auto py-3" aria-live="polite">
+              <p class="text-sm text-gray-500" class-hidden="aiMessages.length > 0">Select the help icon beside a failed step to start.</p>
+              <template for="message of aiMessages">
+                <div class="rounded-lg p-3 text-sm" bind-class="message.role === 'assistant' ? 'bg-indigo-500/10.text-gray-200' : 'bg-gray-800.text-gray-300'">
+                  <p class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">{{ message.role }}</p>
+                  <pre class="whitespace-pre-wrap font-sans leading-relaxed">{{ message.content }}</pre>
+                </div>
+              </template>
+              <p class="text-sm text-rose-300" class-hidden="!aiError">{{ aiError }}</p>
+            </div>
+            <form class="border-t border-gray-800 pt-3" on-submit.prevent="askFollowup()">
+              <label class="sr-only" for="ai-question">Ask a follow-up question</label>
+              <div class="flex gap-2">
+                <input id="ai-question" bind-value="aiQuestion" placeholder="Ask a follow-up..." bind-disabled="!aiStepId || aiLoading" class="min-w-0 flex-1 rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-200 outline-none placeholder:text-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-50" />
+                <button type="submit" aria-label="Ask AI" bind-disabled="!aiStepId || aiLoading" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500 text-white outline-none hover:bg-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-50"><lucide-icon icon="arrow-up" size="16"></lucide-icon></button>
+              </div>
+            </form>
+          </aside>
         </template>
         <template if="report.canViewLogs && report.artifacts.length">
           <details class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
@@ -204,6 +220,11 @@
           const report = ref({ jobId });
           const previousRuns = ref([]);
           const aiHelp = ref({});
+          const aiMessages = ref([]);
+          const aiStepId = ref('');
+          const aiQuestion = ref('');
+          const aiError = ref('');
+          const aiLoading = ref(false);
           let previousRunsLoaded = false;
           const now = ref(Date.now());
           const ansiUp = new AnsiUp();
@@ -253,19 +274,34 @@
           };
           const askAi = async (step, event) => {
             event.stopPropagation();
-            aiHelp.value = { ...aiHelp.value, [step.id]: { loading: true } };
+            aiStepId.value = step.id;
+            aiMessages.value = [];
+            aiQuestion.value = '';
+            await requestAiHelp(step.id, 'Please explain why this step failed and what I should do next.');
+          };
+          const requestAiHelp = async (stepId, question) => {
+            aiLoading.value = true;
+            aiError.value = '';
             try {
               const response = await fetch(`/api/runs/${report.value.jobId}/ai-help`, {
                 method: 'POST',
                 headers: { accept: 'application/json', 'content-type': 'application/json' },
-                body: JSON.stringify({ stepId: step.id }),
+                body: JSON.stringify({ stepId, question, conversation: aiMessages.value }),
               });
               const data = await response.json().catch(() => ({}));
               if (!response.ok) throw new Error(data.error || `AI help failed: ${response.status}`);
-              aiHelp.value = { ...aiHelp.value, [step.id]: { answer: data.answer } };
+              aiMessages.value = [...aiMessages.value, { role: 'user', content: question }, { role: 'assistant', content: data.answer }];
             } catch (error) {
-              aiHelp.value = { ...aiHelp.value, [step.id]: { error: error.message } };
+              aiError.value = error.message;
+            } finally {
+              aiLoading.value = false;
             }
+          };
+          const askFollowup = async () => {
+            const question = aiQuestion.value.trim();
+            if (!question || !aiStepId.value) return;
+            aiQuestion.value = '';
+            await requestAiHelp(aiStepId.value, question);
           };
           const restartJob = async () => {
             const response = await fetch(`/restart/${report.value.jobId}`, { method: 'POST' });
@@ -364,7 +400,7 @@
             clearInterval(clockTimer);
           });
 
-           return { report, previousRuns, aiHelp, inputsJson, timing, upper, artifactUrl, stepLog, askAi, restartJob, cancelJob, cancelling };
+           return { report, previousRuns, aiMessages, aiStepId, aiQuestion, aiError, aiLoading, inputsJson, timing, upper, artifactUrl, stepLog, askAi, askFollowup, restartJob, cancelJob, cancelling };
         }
       </script>
     </template>

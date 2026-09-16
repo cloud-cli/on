@@ -1,6 +1,6 @@
 import type { StepReport } from './types.js';
 
-export type AiMessage = { role: 'system' | 'user'; content: string };
+export type AiMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
 export function buildAiHelpMessages(
   workflowSourceYaml: string,
@@ -8,6 +8,8 @@ export function buildAiHelpMessages(
   logs: Record<string, string>,
   failedStepId: string,
   redact: (value: string) => string,
+  question = `Please explain why step '${failedStepId}' failed and list the most useful next steps to fix or verify the problem.`,
+  conversation: Array<{ role: 'user' | 'assistant'; content: string }> = [],
 ): AiMessage[] {
   const failedIndex = steps.findIndex((step) => step.id === failedStepId);
   const relevantSteps = steps.slice(0, failedIndex >= 0 ? failedIndex + 1 : steps.length);
@@ -28,10 +30,8 @@ export function buildAiHelpMessages(
       role: 'user',
       content: `The logs and step results from the beginning through the failed step are:\n\n\`\`\`text\n${logBlock}\n\`\`\``,
     },
-    {
-      role: 'user',
-      content: `Please explain why step '${failedStepId}' failed and list the most useful next steps to fix or verify the problem.`,
-    },
+    ...conversation,
+    { role: 'user', content: question },
   ];
 }
 
