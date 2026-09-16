@@ -133,6 +133,8 @@ describe('run view', () => {
     expect(html).toContain('fetch(`/api/runs/${jobId}`');
     expect(html).toContain('lucide-icon');
     expect(html).toContain('Workflow source YAML');
+    expect(html).toContain('Get AI help for failed step');
+    expect(html).toContain('/ai-help');
     expect(html).toContain('Previous runs');
     expect(html).toContain('report.parentId');
     expect(html).toContain('/api/runs/${parentId}');

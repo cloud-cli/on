@@ -83,7 +83,7 @@
 
         <section class="rounded overflow-hidden border-b border-gray-800">
           <h2 class="sr-only">Execution Steps</h2>
-          <template for="step of report.steps">
+          <template for="[step, index] of report.steps">
             <details class="border border-b-0 border-gray-800 bg-gray-900/50 text-sm">
               <summary
                 class="flex flex-col md:flex-row md:items-center justify-between gap-2 p-3 bg-gray-800/40 border-b border-gray-800 cursor-pointer"
@@ -112,7 +112,12 @@
                     <span class="font-mono text-gray-500">({{ step.exitCode }})</span>
                   </template>
                   <h3 class="font-semibold text-gray-200 truncate min-w-0 flex-1">{{ step.name }}</h3>
-                  <div class="font-mono text-gray-400 shrink-0">{{ step.durationMs }}ms</div>
+                   <div class="font-mono text-gray-400 shrink-0">{{ step.durationMs }}ms</div>
+                   <template if="report.canViewLogs && step.status === 'failed'">
+                     <button type="button" on-click="askAi(step, $event)" bind-disabled="aiHelp[step.id] && aiHelp[step.id].loading" aria-label="Get AI help for failed step" title="Get AI help" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-indigo-300 outline-none hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-50">
+                       <lucide-icon bind-icon="aiHelp[step.id] && aiHelp[step.id].loading ? 'loader-circle' : 'sparkles'" bind-class="aiHelp[step.id] && aiHelp[step.id].loading ? 'animate-spin' : ''" size="16"></lucide-icon>
+                     </button>
+                   </template>
                   <span
                     class="sr-only px-2.5 py-0.5 rounded-full font-medium"
                     bind-class="{
@@ -133,6 +138,15 @@
               </template>
               <template if="!report.canViewLogs">
                 <div class="p-4 bg-gray-950 text-sm text-gray-500">Logs are available to authenticated users.</div>
+              </template>
+              <template if="aiHelp[step.id] && aiHelp[step.id].answer">
+                <div class="border-t border-indigo-500/20 bg-indigo-500/5 p-4">
+                  <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-indigo-300">AI help</p>
+                  <pre class="whitespace-pre-wrap text-sm leading-relaxed text-gray-200">{{ aiHelp[step.id].answer }}</pre>
+                </div>
+              </template>
+              <template if="aiHelp[step.id] && aiHelp[step.id].error">
+                <p class="border-t border-rose-500/20 bg-rose-500/5 p-4 text-sm text-rose-300">{{ aiHelp[step.id].error }}</p>
               </template>
             </details>
           </template>
@@ -189,6 +203,7 @@
           const jobId = window.location.pathname.split('/').filter(Boolean).pop() || '';
           const report = ref({ jobId });
           const previousRuns = ref([]);
+          const aiHelp = ref({});
           let previousRunsLoaded = false;
           const now = ref(Date.now());
           const ansiUp = new AnsiUp();
@@ -235,6 +250,22 @@
             if (step.status === 'pending') return '<span class="text-gray-500">Waiting to run.</span>';
             if (step.logContent) return ansiUp.ansi_to_html(step.logContent);
             return '<span class="text-gray-500">(No terminal log output recorded for this step)</span>';
+          };
+          const askAi = async (step, event) => {
+            event.stopPropagation();
+            aiHelp.value = { ...aiHelp.value, [step.id]: { loading: true } };
+            try {
+              const response = await fetch(`/api/runs/${report.value.jobId}/ai-help`, {
+                method: 'POST',
+                headers: { accept: 'application/json', 'content-type': 'application/json' },
+                body: JSON.stringify({ stepId: step.id }),
+              });
+              const data = await response.json().catch(() => ({}));
+              if (!response.ok) throw new Error(data.error || `AI help failed: ${response.status}`);
+              aiHelp.value = { ...aiHelp.value, [step.id]: { answer: data.answer } };
+            } catch (error) {
+              aiHelp.value = { ...aiHelp.value, [step.id]: { error: error.message } };
+            }
           };
           const restartJob = async () => {
             const response = await fetch(`/restart/${report.value.jobId}`, { method: 'POST' });
@@ -333,7 +364,7 @@
             clearInterval(clockTimer);
           });
 
-           return { report, previousRuns, inputsJson, timing, upper, artifactUrl, stepLog, restartJob, cancelJob, cancelling };
+           return { report, previousRuns, aiHelp, inputsJson, timing, upper, artifactUrl, stepLog, askAi, restartJob, cancelJob, cancelling };
         }
       </script>
     </template>

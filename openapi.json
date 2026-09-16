@@ -94,6 +94,15 @@
         "responses": { "200": { "description": "Artifact bytes", "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
+    "/api/runs/{jobId}/ai-help": {
+      "post": {
+        "tags": ["jobs"],
+        "summary": "Ask AI to diagnose a failed step",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["stepId"], "properties": { "stepId": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "AI diagnosis", "content": { "application/json": { "schema": { "type": "object", "properties": { "answer": { "type": "string" } } } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "502": { "description": "AI provider failure" }, "503": { "description": "AI help is not configured" } }
+      }
+    },
     "/api/workflows/validate": {
       "post": {
         "tags": ["workflows"],
