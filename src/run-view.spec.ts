@@ -134,7 +134,8 @@ describe('run view', () => {
     expect(html).toContain('lucide-icon');
     expect(html).toContain('Workflow source YAML');
     expect(html).toContain('Previous runs');
-    expect(html).toContain('workflowId)}&limit=50');
+    expect(html).toContain('report.parentId');
+    expect(html).toContain('/api/runs/${parentId}');
     expect(html).toContain('Artifacts');
     expect(html).toContain('artifactUrl(artifact)');
     expect(html).toContain('https://sodium.static.apphor.de/code-block.html');
