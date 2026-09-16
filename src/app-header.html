@@ -10,7 +10,7 @@
       <div>
         <div class="text-[.7rem] font-bold uppercase tracking-[.16em] text-indigo-400">Runner engine</div>
         <h1 class="mt-1 text-2xl font-bold tracking-tight text-white">{{ title }}</h1>
-        <p class="mt-1 text-xs text-gray-400">{{ subtitle }}</p>
+        <template if="subtitle"><p class="mt-1 text-xs text-gray-400">{{ subtitle }}</p></template>
       </div>
     </div>
     <div class="flex items-center gap-2">
