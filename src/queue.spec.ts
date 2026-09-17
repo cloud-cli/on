@@ -96,6 +96,6 @@ describe('QueueManager.restartJob', () => {
     expect(request.m).toBe('get');
     expect(request.s).toContain("'pending', NULL, NULL, NULL, NULL");
     expect(request.s).toContain('WHERE id = ?');
-    expect(request.d).toEqual([7, 42]);
+    expect(request.d).toEqual([7, JSON.stringify({ inputs: {} }), 42]);
   });
 });

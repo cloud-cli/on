@@ -107,7 +107,7 @@ export class QueueManager {
     return (await this.getJob(jobId))?.status === 'cancelled' ? 'cancelled' : 'not_active';
   }
 
-  async restartJob(jobId: string | number) {
+  async restartJob(jobId: string | number, manualInputs: Record<string, unknown> = {}) {
     const job = await this.getJob(jobId);
 
     if (!job) return;
@@ -121,18 +121,20 @@ export class QueueManager {
     if (!Number.isSafeInteger(activeRevision) || activeRevision < 1) {
       throw new Error(`Workflow ${job.workflow_id} has no active revision`);
     }
+    const payload = job.payload ? typeof job.payload === 'string' ? JSON.parse(job.payload) : job.payload : { inputs: {} };
+    payload.inputs = { ...(payload.inputs || {}), ...manualInputs };
 
     const newJob = await db.get(
       `INSERT INTO jobs (
          parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload,
          status, worker_id, report, started_at, finished_at
        )
-       SELECT id, workflow_id, ?, required_tags, concurrency_key, payload,
+       SELECT id, workflow_id, ?, required_tags, concurrency_key, ?,
               'pending', NULL, NULL, NULL, NULL
        FROM jobs
        WHERE id = ?
        RETURNING *`,
-      [activeRevision, jobId],
+      [activeRevision, JSON.stringify(payload), jobId],
     );
 
     return newJob.id;

@@ -55,15 +55,34 @@
               </button>
             </template>
             <template if="report.status !== 'running'">
-              <button
-                class="text-sm text-white px-4 py-1.5 border border-gray-600 hover:border-gray-400 rounded-full"
-                on-click="restartJob()"
-              >
-                Restart
-              </button>
+              <div class="relative flex items-center gap-1">
+                <button class="text-sm text-white px-4 py-1.5 border border-gray-600 hover:border-gray-400 rounded-full" on-click="restartJob()">Restart</button>
+                <details class="relative">
+                  <summary class="cursor-pointer list-none rounded-full border border-gray-600 p-2 text-gray-300 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60" aria-label="More restart options">
+                    <lucide-icon icon="chevron-down" size="14"></lucide-icon>
+                  </summary>
+                  <div class="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-gray-700 bg-gray-900 p-2 shadow-2xl">
+                    <button type="button" on-click="openManualRestart($event)" class="w-full rounded-lg px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-800">Restart with inputs</button>
+                  </div>
+                </details>
+              </div>
             </template>
           </div>
         </div>
+        <template if="manualRestartOpen">
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80 p-4" role="presentation">
+            <div class="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="manual-restart-title">
+              <div class="flex items-start justify-between gap-3"><div><h2 id="manual-restart-title" class="text-lg font-semibold text-white">Restart with inputs</h2><p class="mt-1 text-sm text-gray-400">These values override the original trigger inputs for the new run.</p></div><button type="button" on-click="closeManualRestart()" aria-label="Close restart dialog" class="rounded-lg p-2 text-gray-400 hover:bg-gray-800"><lucide-icon icon="x" size="17"></lucide-icon></button></div>
+              <div class="mt-5 space-y-3">
+                <template for="entry of manualInputs">
+                  <div class="grid grid-cols-[1fr_1fr_auto] gap-2"><input bind-value="entry.key" placeholder="Key" class="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-200" /><input bind-value="entry.value" placeholder="Value" class="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-200" /><button type="button" on-click="removeManualInput(entry)" aria-label="Remove input" class="rounded-lg px-2 text-rose-300 hover:bg-rose-500/10"><lucide-icon icon="x" size="15"></lucide-icon></button></div>
+                </template>
+                <button type="button" on-click="addManualInput()" class="text-sm text-indigo-300 hover:underline">+ Add input</button>
+              </div>
+              <div class="mt-6 flex justify-end gap-2"><button type="button" on-click="closeManualRestart()" class="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Cancel</button><button type="button" on-click="restartWithInputs()" bind-disabled="manualRestartLoading" class="rounded-lg bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50">{{ manualRestartLoading ? 'Restarting...' : 'Restart' }}</button></div>
+            </div>
+          </div>
+        </template>
         <template if="previousRuns.length">
           <details class="rounded-xl border border-gray-800 bg-gray-900/70">
             <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-gray-300 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
@@ -231,6 +250,9 @@
           const aiQuestion = ref('');
           const aiError = ref('');
           const aiLoading = ref(false);
+          const manualRestartOpen = ref(false);
+          const manualRestartLoading = ref(false);
+          const manualInputs = ref([]);
           let previousRunsLoaded = false;
           const now = ref(Date.now());
           const ansiUp = new AnsiUp();
@@ -355,6 +377,30 @@
               location.href = `/runs/${id}`;
             }
           };
+          const openManualRestart = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            manualInputs.value = Object.entries(report.value.inputs || {}).map(([key, value]) => ({ key, value: typeof value === 'string' ? value : JSON.stringify(value) }));
+            if (!manualInputs.value.length) manualInputs.value = [{ key: '', value: '' }];
+            manualRestartOpen.value = true;
+          };
+          const closeManualRestart = () => { manualRestartOpen.value = false; };
+          const addManualInput = () => { manualInputs.value = [...manualInputs.value, { key: '', value: '' }]; };
+          const removeManualInput = (entry) => { manualInputs.value = manualInputs.value.filter((item) => item !== entry); };
+          const restartWithInputs = async () => {
+            const inputs = Object.fromEntries(manualInputs.value.filter((entry) => entry.key.trim()).map((entry) => [entry.key.trim(), entry.value]));
+            manualRestartLoading.value = true;
+            try {
+              const response = await fetch(`/restart/${report.value.jobId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ inputs }) });
+              if (!response.ok) throw new Error(`Restart failed: ${response.status}`);
+              const { id } = await response.json();
+              location.href = `/runs/${id}`;
+            } catch (error) {
+              aiError.value = error.message;
+            } finally {
+              manualRestartLoading.value = false;
+            }
+          };
           const cancelJob = async () => {
             if (cancelling.value || report.value.status !== 'running') return;
             cancelling.value = true;
@@ -445,7 +491,7 @@
             clearInterval(clockTimer);
           });
 
-           return { report, previousRuns, aiMessages, aiStepId, aiQuestion, aiError, aiLoading, inputsJson, timing, upper, artifactUrl, stepLog, askAi, askFollowup, restartJob, cancelJob, cancelling };
+           return { report, previousRuns, manualRestartOpen, manualRestartLoading, manualInputs, aiMessages, aiStepId, aiQuestion, aiError, aiLoading, inputsJson, timing, upper, artifactUrl, stepLog, askAi, askFollowup, restartJob, openManualRestart, closeManualRestart, addManualInput, removeManualInput, restartWithInputs, cancelJob, cancelling };
         }
       </script>
     </template>
