@@ -136,6 +136,8 @@ describe('run view', () => {
     expect(html).toContain('Get AI help for failed step');
     expect(html).toContain('/ai-help');
     expect(html).toContain('Previous runs');
+    expect(html).toContain('Original inputs');
+    expect(html).toContain('setManualKey(entry, $event)');
     expect(html).toContain('report.parentId');
     expect(html).toContain('/api/runs/${parentId}');
     expect(html).toContain('Artifacts');
