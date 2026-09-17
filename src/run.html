@@ -377,7 +377,11 @@
             await requestAiHelp(aiStepId.value, question);
           };
           const restartJob = async () => {
-            const response = await fetch(`/restart/${report.value.jobId}`, { method: 'POST' });
+             const response = await fetch(`/restart/${report.value.jobId}`, {
+               method: 'POST',
+               headers: { 'content-type': 'application/json' },
+               body: JSON.stringify({ inputs: report.value.inputs || {} }),
+             });
             if (response.ok) {
               const { id } = await response.json();
               location.href = `/runs/${id}`;
