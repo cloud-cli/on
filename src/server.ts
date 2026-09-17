@@ -765,7 +765,9 @@ export class WebhookServer {
 
   private async handleRestartJob(req: http.IncomingMessage, jobId: string, res: http.ServerResponse) {
     if (!(await this.requireScope(req, res, 'runs:control'))) return;
-    const id = await this.queue.restartJob(jobId);
+    const body = req.headers['content-length'] || req.headers['transfer-encoding'] ? await this.readJson(req, res) : {};
+    if (!body || (body.inputs !== undefined && (typeof body.inputs !== 'object' || Array.isArray(body.inputs)))) return;
+    const id = await this.queue.restartJob(jobId, body.inputs || {});
 
     if (id) {
       this.events.publish('jobs.available');
