@@ -24,7 +24,7 @@
   </head>
   <body class="bg-gray-950 text-gray-100 min-h-screen p-4 md:p-6 font-sans">
     <template app>
-      <div class="max-w-7xl mx-auto space-y-4 py-6 lg:pr-[22rem]">
+      <div class="max-w-7xl mx-auto space-y-4 py-6">
         <app-header bind-title="report.workflowName" bind-subtitle="'Run #' + report.jobId" back="/runs" back-label="Back to jobs"></app-header>
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 pb-4">
           <p class="text-xs text-gray-400">
@@ -174,6 +174,10 @@
               <lucide-icon icon="sparkles" size="18" class="text-indigo-300"></lucide-icon>
             </div>
             <div class="min-h-0 flex-1 space-y-3 overflow-y-auto py-3" aria-live="polite">
+              <p class="flex items-center gap-2 text-sm text-indigo-300" class-hidden="!aiLoading">
+                <lucide-icon icon="loader-circle" size="16" class="animate-spin"></lucide-icon>
+                Thinking through the failed step...
+              </p>
               <p class="text-sm text-gray-500" class-hidden="aiMessages.length > 0">Select the help icon beside a failed step to start.</p>
               <template for="message of aiMessages">
                 <div class="rounded-lg p-3 text-sm" bind-class="message.role === 'assistant' ? 'bg-indigo-500/10.text-gray-200' : 'bg-gray-800.text-gray-300'">
