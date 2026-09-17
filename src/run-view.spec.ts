@@ -140,6 +140,7 @@ describe('run view', () => {
     expect(html).toContain('/api/runs/${parentId}');
     expect(html).toContain('Artifacts');
     expect(html).toContain('Thinking through the failed step');
+    expect(html).toContain('marked.parse(content)');
     expect(html).toContain('artifactUrl(artifact)');
     expect(html).toContain('https://sodium.static.apphor.de/code-block.html');
     expect(html).toContain('bind-source="inputsJson"');

@@ -15,7 +15,8 @@
       {
         "imports": {
           "@li3/": "https://cdn.li3.dev/@li3/",
-        "ansi_up": "https://esm.sh/ansi_up@6.0.6"
+         "ansi_up": "https://esm.sh/ansi_up@6.0.6",
+         "marked": "https://cdn.jsdelivr.net/npm/marked@18.0.12/lib/marked.esm.js"
         }
       }
   </script>
@@ -182,7 +183,8 @@
               <template for="message of aiMessages">
                 <div class="rounded-lg p-3 text-sm" bind-class="message.role === 'assistant' ? 'bg-indigo-500/10.text-gray-200' : 'bg-gray-800.text-gray-300'">
                   <p class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">{{ message.role }}</p>
-                  <pre class="whitespace-pre-wrap font-sans leading-relaxed">{{ message.content }}</pre>
+                  <template if="message.html"><div class="ai-markdown text-sm leading-relaxed" bind-innerhtml="message.html"></div></template>
+                  <template if="!message.html"><pre class="whitespace-pre-wrap font-sans leading-relaxed">{{ message.content }}</pre></template>
                 </div>
               </template>
               <p class="text-sm text-rose-300" class-hidden="!aiError">{{ aiError }}</p>
@@ -216,8 +218,9 @@
       </div>
 
       <script setup>
-        import { computed, onDestroy, onInit, ref } from '@li3/web';
-        import { AnsiUp } from 'ansi_up';
+         import { computed, onDestroy, onInit, ref } from '@li3/web';
+         import { AnsiUp } from 'ansi_up';
+         import { marked } from 'marked';
 
         export default function setup() {
           const jobId = window.location.pathname.split('/').filter(Boolean).pop() || '';
@@ -275,6 +278,18 @@
             if (step.logContent) return ansiUp.ansi_to_html(step.logContent);
             return '<span class="text-gray-500">(No terminal log output recorded for this step)</span>';
           };
+          const sanitizeAiHtml = (html) => {
+            const parsed = new DOMParser().parseFromString(html, 'text/html');
+            parsed.querySelectorAll('script,style,iframe,object,embed,form').forEach((node) => node.remove());
+            parsed.querySelectorAll('*').forEach((element) => {
+              [...element.attributes].forEach((attribute) => {
+                if (attribute.name.toLowerCase().startsWith('on')) element.removeAttribute(attribute.name);
+                if (['href', 'src'].includes(attribute.name.toLowerCase()) && /^(javascript|data):/i.test(attribute.value)) element.removeAttribute(attribute.name);
+              });
+            });
+            return parsed.body.innerHTML;
+          };
+          const renderAiMarkdown = (content) => sanitizeAiHtml(marked.parse(content));
           const askAi = async (step, event) => {
             event.stopPropagation();
             aiStepId.value = step.id;
@@ -317,6 +332,10 @@
                   if (data.error) throw new Error(data.error);
                 }
               }
+              const messages = [...aiMessages.value];
+              const answer = messages.at(-1);
+              if (answer) messages[messages.length - 1] = { ...answer, html: renderAiMarkdown(answer.content) };
+              aiMessages.value = messages;
             } catch (error) {
               aiError.value = error.message;
             } finally {
