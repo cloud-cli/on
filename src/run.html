@@ -168,7 +168,7 @@
           </details>
         </template>
         <template if="report.canViewLogs && aiStepId">
-          <aside class="mt-4 rounded-2xl border border-indigo-500/20 bg-gray-900/95 p-4 lg:fixed lg:right-6 lg:top-24 lg:mt-0 lg:flex lg:max-h-[calc(100vh-7rem)] lg:w-[20rem] lg:flex-col" aria-labelledby="ai-help-title">
+          <aside class="fixed bottom-4 left-4 right-4 z-40 mt-4 flex max-h-[70vh] flex-col rounded-2xl border border-indigo-500/30 bg-gray-900/95 p-4 shadow-2xl backdrop-blur lg:left-auto lg:w-[28rem]" aria-labelledby="ai-help-title">
             <div class="flex items-start justify-between gap-3 border-b border-gray-800 pb-3">
               <div><h2 id="ai-help-title" class="font-semibold text-white">AI help</h2><p class="mt-1 text-xs text-gray-500">Ask about a failed step.</p></div>
               <lucide-icon icon="sparkles" size="18" class="text-indigo-300"></lucide-icon>
@@ -287,9 +287,32 @@
                 headers: { accept: 'application/json', 'content-type': 'application/json' },
                 body: JSON.stringify({ stepId, question, conversation: aiMessages.value }),
               });
-              const data = await response.json().catch(() => ({}));
-              if (!response.ok) throw new Error(data.error || `AI help failed: ${response.status}`);
-              aiMessages.value = [...aiMessages.value, { role: 'user', content: question }, { role: 'assistant', content: data.answer }];
+              if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.error || `AI help failed: ${response.status}`);
+              }
+              aiMessages.value = [...aiMessages.value, { role: 'user', content: question }, { role: 'assistant', content: '' }];
+              const reader = response.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = '';
+              while (true) {
+                const chunk = await reader.read();
+                if (chunk.done) break;
+                buffer += decoder.decode(chunk.value, { stream: true });
+                const events = buffer.split('\n\n');
+                buffer = events.pop() || '';
+                for (const event of events) {
+                  const line = event.split('\n').find((value) => value.startsWith('data: '));
+                  if (!line) continue;
+                  const data = JSON.parse(line.slice(6));
+                  if (data.delta) {
+                    const messages = [...aiMessages.value];
+                    messages[messages.length - 1] = { ...messages[messages.length - 1], content: messages[messages.length - 1].content + data.delta };
+                    aiMessages.value = messages;
+                  }
+                  if (data.error) throw new Error(data.error);
+                }
+              }
             } catch (error) {
               aiError.value = error.message;
             } finally {

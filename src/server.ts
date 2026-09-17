@@ -16,7 +16,7 @@ import { renderHelpHtml } from './help.js';
 import openApiSpec from '../openapi.json' with { type: 'json' };
 import { ApiKeyRepository } from './api-key-repository.js';
 import { generateSettingsHtml } from './settings-ui.js';
-import { buildAiHelpMessages, createAiRequest, requestAiHelp } from './ai-help.js';
+import { buildAiHelpMessages, createAiRequest, streamAiHelp } from './ai-help.js';
 import appHeaderTemplate from './app-header.html?raw';
 import appShellTemplate from './app-shell.html?raw';
 import appRouterTemplate from './app-router.html?raw';
@@ -833,10 +833,15 @@ export class WebhookServer {
       const requestBody = createAiRequest(model, messages);
       const workflowUrl = new URL(`/runs/${jobId}`, `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers['x-forwarded-host'] || req.headers.host}`).toString();
       await this.queue.saveAiRequest(jobId, workflowUrl, requestBody);
-      const answer = await requestAiHelp(apiUrl, apiKey, requestBody);
-      res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ answer }));
+      res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'text/event-stream', Connection: 'keep-alive' });
+      await streamAiHelp(apiUrl, apiKey, requestBody, (delta) => res.write(`data: ${JSON.stringify({ delta })}\n\n`));
+      res.write('data: {"done":true}\n\n');
+      return res.end();
     } catch (error: any) {
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+        return res.end();
+      }
       res.writeHead(502, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: error.message }));
     }

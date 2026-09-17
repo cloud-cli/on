@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "acorn": "^8.18.0",
+    "openai": "7.15.0",
     "web-push": "^3.6.7",
     "yaml": "^2.9.0"
   },

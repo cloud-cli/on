@@ -1,4 +1,5 @@
 import type { StepReport } from './types.js';
+import OpenAI from 'openai';
 
 export type AiMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
@@ -39,17 +40,18 @@ export function createAiRequest(model: string, messages: AiMessage[]) {
   return { model, messages };
 }
 
-export async function requestAiHelp(apiUrl: string, apiKey: string | undefined, requestBody: ReturnType<typeof createAiRequest>): Promise<string> {
-  const endpoint = apiUrl.endsWith('/chat/completions') ? apiUrl : `${apiUrl.replace(/\/$/, '')}/chat/completions`;
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}), 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody),
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!response.ok) throw new Error(`AI help request failed with HTTP ${response.status}`);
-  const body = await response.json();
-  const content = body.choices?.[0]?.message?.content;
-  if (typeof content !== 'string' || !content.trim()) throw new Error('AI help returned no response');
-  return content;
+export async function streamAiHelp(
+  apiUrl: string,
+  apiKey: string | undefined,
+  requestBody: ReturnType<typeof createAiRequest>,
+  onDelta: (value: string) => void,
+): Promise<void> {
+  const base = apiUrl.replace(/\/chat\/completions\/?$/, '').replace(/\/$/, '');
+  const baseURL = base.endsWith('/v1') ? base : `${base}/v1`;
+  const client = new OpenAI({ apiKey: apiKey || 'ollama', baseURL, timeout: 120_000 });
+  const stream = await client.chat.completions.create({ ...requestBody, stream: true });
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta?.content;
+    if (delta) onDelta(delta);
+  }
 }
