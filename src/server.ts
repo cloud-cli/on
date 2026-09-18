@@ -225,6 +225,11 @@ export class WebhookServer {
       return this.renderDashboardJobs(res, limit, afterId, beforeId, filter, workflowId);
     }
 
+    const dispatchMatch = url.pathname.match(/^\/api\/dispatch\/([a-z0-9-]+)$/);
+    if (req.method === 'POST' && dispatchMatch) return this.handleDispatch(req, res, dispatchMatch[1]);
+    const waitMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/wait$/);
+    if (req.method === 'GET' && waitMatch) return this.handleJobWait(waitMatch[1], url.searchParams.get('timeout'), res);
+
     if (req.method === 'GET' && url.pathname === '/api/events') {
       return this.events.subscribe(req, res);
     }
@@ -272,6 +277,8 @@ export class WebhookServer {
     if (req.method === 'POST' && aiHelpMatch) return this.handleAiHelp(req, res, aiHelpMatch[1]);
 
     if (req.method === 'GET' && url.pathname.startsWith('/api/runs/')) {
+      const diagnosticsMatch = url.pathname.match(/^\/api\/runs\/(\d+)\/diagnostics$/);
+      if (diagnosticsMatch) return this.handleDiagnostics(req, res, diagnosticsMatch[1]);
       const artifactMatch = url.pathname.match(/^\/api\/runs\/(\d+)\/artifacts\/(.+)$/);
       if (artifactMatch) return this.handleArtifactDownload(req, res, artifactMatch[1], decodeURIComponent(artifactMatch[2]));
       const jobId = url.pathname.replace('/api/runs/', '');
@@ -326,6 +333,58 @@ export class WebhookServer {
     }
   }
 
+  private async handleDispatch(req: http.IncomingMessage, res: http.ServerResponse, provider: string) {
+    if (!(await this.requireScope(req, res, 'runs:dispatch'))) return;
+    const body = await this.readJson(req, res);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return;
+    const jobs = await this.matchWorkflows(provider, body, await this.workflows.published(), await this.currentSecrets());
+    res.writeHead(202, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ jobs: jobs.map((id) => ({ id, provider })) }));
+  }
+
+  private async handleJobWait(jobId: string, timeoutParam: string | null, res: http.ServerResponse) {
+    const timeout = Math.min(120_000, Math.max(0, Number(timeoutParam || 30_000)));
+    const started = Date.now();
+    let job;
+    do {
+      job = await this.queue.getJob(jobId);
+      if (!job || ['success', 'failed', 'cancelled'].includes(job.status) || Date.now() - started >= timeout) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    } while (true);
+    if (!job) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Job not found' }));
+    }
+    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify({ job: toDashboardJobs([job])[0], terminal: ['success', 'failed', 'cancelled'].includes(job.status) }));
+  }
+
+  private async handleDiagnostics(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
+    if (!(await this.hasScope(req, 'logs:read'))) return this.requireScope(req, res, 'logs:read');
+    const job = await this.queue.getJob(jobId);
+    if (!job) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Run not found' }));
+    }
+    const report = job.report ? JSON.parse(job.report) : null;
+    const definition = await this.workflows.getRevision(job.workflow_id, job.workflow_revision);
+    const snapshot = await this.workflows.getRevisionSnapshot(job.workflow_id, job.workflow_revision);
+    const logs = await this.queue.getJobLogs(jobId);
+    const failedIndex = report?.steps?.findIndex((step) => step.status === 'failed') ?? -1;
+    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify({
+      jobId: String(job.id),
+      workflow: { id: job.workflow_id, revision: job.workflow_revision, sourceYaml: snapshot?.sourceYaml },
+      status: job.status,
+      inputs: report?.inputs || {},
+      failedStep: failedIndex >= 0 ? report.steps[failedIndex] : null,
+      steps: failedIndex >= 0 ? report.steps.slice(0, failedIndex + 1) : report?.steps || [],
+      logs,
+      artifacts: report?.artifacts || [],
+      workflowFound: Boolean(definition),
+    }));
+  }
+
   private async readRequest(req: http.IncomingMessage, res: http.ServerResponse) {
     const MAX_PAYLOAD_SIZE = 5 * 1024 * 1024; // 5MB
     const chunks: Buffer[] = [];
@@ -376,6 +435,7 @@ export class WebhookServer {
   }
 
   private async matchWorkflows(provider: string, inputs: any, workflows: import('./types.js').WorkflowRevision[], secretValues: Record<string, string> = {}) {
+    const jobIds: number[] = [];
     for (const { definition: workflow, revision } of workflows) {
       if (workflow.on.provider !== provider) continue;
 
@@ -412,10 +472,12 @@ export class WebhookServer {
           matrix: variant.matrixContext,
         };
 
-        await this.queue.enqueue(workflow.id, revision, jobPayload, requiredTags, concurrencyKey);
+        const jobId = await this.queue.enqueue(workflow.id, revision, jobPayload, requiredTags, concurrencyKey);
+        if (jobId) jobIds.push(jobId);
         this.events.publish('jobs.available', { tags: requiredTags });
       }
     }
+    return jobIds;
   }
 
   private isAdmin(req: http.IncomingMessage): boolean {

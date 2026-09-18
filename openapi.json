@@ -61,6 +61,24 @@
         "responses": { "200": { "description": "Dashboard job list", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobList" } } } } }
       }
     },
+    "/api/dispatch/{trigger}": {
+      "post": {
+        "tags": ["jobs"],
+        "summary": "Dispatch a workflow trigger with manual inputs",
+        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
+        "parameters": [{ "name": "trigger", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "202": { "description": "Jobs queued", "content": { "application/json": { "schema": { "type": "object" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      }
+    },
+    "/api/jobs/{jobId}/wait": {
+      "get": {
+        "tags": ["jobs"],
+        "summary": "Wait for a job to reach a terminal state",
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "name": "timeout", "in": "query", "schema": { "type": "integer", "minimum": 0, "maximum": 120000, "default": 30000 } }],
+        "responses": { "200": { "description": "Latest job state", "content": { "application/json": { "schema": { "type": "object" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
     "/api/jobs/{jobId}/cancel": {
       "post": {
         "tags": ["jobs"],
@@ -273,7 +291,7 @@
       "SecretValue": { "type": "object", "required": ["value"], "properties": { "value": { "type": "string", "format": "password" } } },
       "Secrets": { "type": "object", "properties": { "secrets": { "type": "object", "additionalProperties": { "type": "string" } } } },
       "RunView": { "type": "object", "properties": { "jobId": { "type": "string" }, "workflowName": { "type": "string" }, "status": { "type": "string" }, "inputs": { "type": "object" }, "steps": { "type": "array", "items": { "type": "object" } }, "artifacts": { "type": "array", "items": { "type": "string" } }, "canViewLogs": { "type": "boolean" } } },
-      "ApiKeyIssue": { "type": "object", "required": ["name", "scopes"], "properties": { "name": { "type": "string" }, "scopes": { "type": "array", "items": { "type": "string", "enum": ["workflows:read", "workflows:write", "logs:read", "artifacts:read", "runs:control"] } } } },
+      "ApiKeyIssue": { "type": "object", "required": ["name", "scopes"], "properties": { "name": { "type": "string" }, "scopes": { "type": "array", "items": { "type": "string", "enum": ["workflows:read", "workflows:write", "logs:read", "artifacts:read", "runs:control", "runs:dispatch"] } } } },
       "ApiKeyCreated": { "allOf": [{ "$ref": "#/components/schemas/ApiKeyIssue" }, { "type": "object", "required": ["id", "token"], "properties": { "id": { "type": "string", "format": "uuid" }, "token": { "type": "string" } } }] },
       "ApiKeyList": { "type": "object", "properties": { "keys": { "type": "array", "items": { "$ref": "#/components/schemas/ApiKeyCreated" } } } }
     }

@@ -34,7 +34,7 @@ export class QueueManager {
       JSON.stringify(payload),
     ]);
 
-    return res;
+    return Number(res?.lastInsertRowid ?? res?.id ?? 0);
   }
 
   /**
