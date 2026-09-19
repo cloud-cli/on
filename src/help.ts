@@ -1,5 +1,6 @@
 import { marked } from 'marked';
 import workflowDocs from '../docs/workflow-syntax.md?raw';
+export { workflowDocs };
 
 const styles = `
   :root { color-scheme: dark; }

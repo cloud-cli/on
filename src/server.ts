@@ -17,6 +17,7 @@ import openApiSpec from '../openapi.json' with { type: 'json' };
 import { ApiKeyRepository } from './api-key-repository.js';
 import { generateSettingsHtml } from './settings-ui.js';
 import { buildAiHelpMessages, createAiRequest, streamAiHelp } from './ai-help.js';
+import { workflowDocs } from './help.js';
 import appHeaderTemplate from './app-header.html?raw';
 import appShellTemplate from './app-shell.html?raw';
 import appRouterTemplate from './app-router.html?raw';
@@ -266,6 +267,10 @@ export class WebhookServer {
 
     if (req.method === 'POST' && url.pathname === '/api/events') {
       return this.handleWorkerEvent(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/ai/workflow-help') {
+      return this.handleWorkflowAiHelp(req, res);
     }
 
     if (req.method === 'GET' && url.pathname.startsWith('/runs/')) {
@@ -908,6 +913,34 @@ export class WebhookServer {
       }
       res.writeHead(502, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: error.message }));
+    }
+  }
+
+  private async handleWorkflowAiHelp(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (!(await this.requireScope(req, res, 'workflows:write'))) return;
+    const body = await this.readJson(req, res);
+    const request = typeof body?.request === 'string' ? body.request.trim() : '';
+    const sourceYaml = typeof body?.sourceYaml === 'string' ? body.sourceYaml : '';
+    const apiKey = (await this.currentSecrets()).OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+    const model = process.env.OPENAI_API_MODEL;
+    const apiUrl = process.env.OPENAI_API_URL;
+    if (!request) return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'request is required' }));
+    if (!model || !apiUrl) return res.writeHead(503, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'AI help is not configured' }));
+
+    const requestBody = createAiRequest(model, [
+      { role: 'system', content: 'You are an expert workflow author. Return only a complete replacement workflow YAML document, without Markdown fences or explanations. Preserve valid existing behavior unless the user explicitly asks to change it.' },
+      { role: 'user', content: `The complete workflow syntax documentation is:\n\n${workflowDocs}` },
+      { role: 'user', content: `The current workflow YAML is:\n\n${sourceYaml || '(empty editor)'}` },
+      { role: 'user', content: `Apply this requested change and return the complete replacement YAML:\n\n${request}` },
+    ]);
+    try {
+      res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'text/event-stream', Connection: 'keep-alive' });
+      await streamAiHelp(apiUrl, apiKey, requestBody, (delta) => res.write(`data: ${JSON.stringify({ delta })}\n\n`));
+      res.write('data: {"done":true}\n\n');
+      res.end();
+    } catch (error: any) {
+      if (res.headersSent) return res.end(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      res.writeHead(502, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: error.message }));
     }
   }
 

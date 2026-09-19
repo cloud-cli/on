@@ -29,6 +29,9 @@ describe('workflow management UI', () => {
     expect(html).toContain('on-click="navigateRevision(-1)"');
     expect(html).toContain('bind-innerhtml="revisionDiffHtml"');
     expect(html).toContain('https://unpkg.com/diff@9.0.0/libesm/index.js');
+    expect(html).toContain('Get AI workflow help');
+    expect(html).toContain('/api/ai/workflow-help');
+    expect(html).toContain('Accept suggestion');
     expect(html).toContain('aria-label="Save workflow draft"');
     expect(html).toContain('bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"');
     expect(html).toContain('aria-labelledby="workflow-list-title"');

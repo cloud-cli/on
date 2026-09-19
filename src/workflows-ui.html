@@ -152,7 +152,10 @@
                   />
                   Enabled
                 </label>
-                <div class="flex flex-wrap gap-2" class-hidden="readOnly">
+                 <div class="flex flex-wrap gap-2" class-hidden="readOnly">
+                   <button type="button" aria-label="Get AI workflow help" title="Get AI workflow help" on-click="openAiHelp()" class="inline-flex items-center gap-2 rounded-lg border border-indigo-500/50 px-3 py-2.5 text-sm font-medium text-indigo-200 outline-none hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+                     <lucide-icon icon="sparkles" size="16"></lucide-icon><span class="hidden sm:inline">AI help</span>
+                   </button>
                   <button
                     type="button"
                     aria-label="Save workflow draft"
@@ -265,6 +268,23 @@
             </div>
           </section>
         </section>
+
+        <template if="aiDialogOpen">
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80 p-4" role="presentation">
+            <div class="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="workflow-ai-title">
+              <div class="flex items-start justify-between gap-3 border-b border-gray-800 px-5 py-4"><div><h2 id="workflow-ai-title" class="text-lg font-semibold text-white">AI workflow help</h2><p class="mt-1 text-sm text-gray-400">Describe the change you want. The suggestion will not modify the editor until you accept it.</p></div><button type="button" on-click="closeAiHelp()" aria-label="Close AI help" class="rounded-lg p-2 text-gray-400 hover:bg-gray-800"><lucide-icon icon="x" size="17"></lucide-icon></button></div>
+              <div class="min-h-0 overflow-auto p-5">
+                <label class="sr-only" for="workflow-ai-request">Requested workflow change</label>
+                <textarea id="workflow-ai-request" bind-value="aiRequest" placeholder="Example: Add a Docker cache volume to the build step." class="min-h-24 w-full rounded-xl border border-gray-700 bg-gray-950 p-3 text-sm text-gray-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"></textarea>
+                <p class="mt-2 text-xs text-rose-300" class-hidden="!aiError">{{ aiError }}</p>
+                <template if="aiDiffHtml">
+                  <div class="mt-4"><p class="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Suggested changes</p><pre class="max-h-[36rem] overflow-auto rounded-xl border border-gray-700 bg-gray-950 p-4 font-mono text-xs leading-6" bind-innerhtml="aiDiffHtml"></pre></div>
+                </template>
+              </div>
+              <div class="flex items-center justify-end gap-2 border-t border-gray-800 px-5 py-3"><button type="button" on-click="closeAiHelp()" class="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Cancel</button><template if="aiDiffHtml"><button type="button" on-click="rejectAiSuggestion()" class="rounded-lg border border-rose-500/50 px-3 py-2 text-sm text-rose-300 hover:bg-rose-500/10">Reject</button><button type="button" on-click="acceptAiSuggestion()" class="rounded-lg bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400">Accept suggestion</button></template><button type="button" on-click="requestAiHelp()" bind-disabled="aiLoading || !aiRequest.trim()" class="rounded-lg bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50">{{ aiLoading ? 'Thinking...' : 'Suggest' }}</button></div>
+            </div>
+          </div>
+        </template>
 
         <template if="revisionDialogOpen">
           <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80 p-4" role="presentation">
@@ -437,6 +457,12 @@
            const revisionDiffHtml = ref('');
            const revisionError = ref('');
            const revisionLoading = ref(false);
+           const aiDialogOpen = ref(false);
+           const aiRequest = ref('');
+           const aiLoading = ref(false);
+           const aiError = ref('');
+           const aiSuggestion = ref('');
+           const aiDiffHtml = ref('');
           const workflowId = ref('');
           const enabled = ref(true);
           const savedEnabled = ref(true);
@@ -731,6 +757,61 @@
              revisionNumber.value = target;
              await loadRevisionDiff(target);
            };
+           const openAiHelp = () => {
+             aiRequest.value = '';
+             aiError.value = '';
+             aiSuggestion.value = '';
+             aiDiffHtml.value = '';
+             aiDialogOpen.value = true;
+           };
+           const closeAiHelp = () => { if (!aiLoading.value) aiDialogOpen.value = false; };
+           const requestAiHelp = async () => {
+             if (!aiRequest.value.trim() || aiLoading.value) return;
+             aiLoading.value = true;
+             aiError.value = '';
+             aiDiffHtml.value = '';
+             try {
+               const response = await fetch('/api/ai/workflow-help', {
+                 method: 'POST',
+                 headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
+                 body: JSON.stringify({ sourceYaml: source.value, request: aiRequest.value }),
+               });
+               if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.error || `AI help failed: ${response.status}`); }
+               const reader = response.body.getReader();
+               const decoder = new TextDecoder();
+               let buffer = '';
+               let suggestion = '';
+               while (true) {
+                 const chunk = await reader.read();
+                 if (chunk.done) break;
+                 buffer += decoder.decode(chunk.value, { stream: true });
+                 const events = buffer.split('\n\n');
+                 buffer = events.pop() || '';
+                 for (const event of events) {
+                   const line = event.split('\n').find((value) => value.startsWith('data: '));
+                   if (!line) continue;
+                   const data = JSON.parse(line.slice(6));
+                   if (data.error) throw new Error(data.error);
+                   if (data.delta) suggestion += data.delta;
+                 }
+               }
+               suggestion = suggestion.replace(/^```(?:yaml|yml)?\s*/i, '').replace(/\s*```$/i, '').trim();
+               if (!source.value.trim()) {
+                 source.value = suggestion;
+                 aiDialogOpen.value = false;
+                 validate();
+               } else {
+                 aiSuggestion.value = suggestion;
+                 aiDiffHtml.value = renderRevisionDiff(source.value, suggestion);
+               }
+             } catch (error) {
+               aiError.value = error.message;
+             } finally {
+               aiLoading.value = false;
+             }
+           };
+           const acceptAiSuggestion = () => { source.value = aiSuggestion.value; aiDialogOpen.value = false; validate(); };
+           const rejectAiSuggestion = () => { aiSuggestion.value = ''; aiDiffHtml.value = ''; };
 
           onDestroy(() => clearTimeout(validationTimer));
 
@@ -753,6 +834,11 @@
              revisionDiffHtml,
              revisionError,
              revisionLoading,
+             aiDialogOpen,
+             aiRequest,
+             aiLoading,
+             aiError,
+             aiDiffHtml,
             workflowId,
             enabled,
             readOnly,
@@ -784,6 +870,11 @@
              openRevisionDialog,
              closeRevisionDialog,
              navigateRevision,
+             openAiHelp,
+             closeAiHelp,
+             requestAiHelp,
+             acceptAiSuggestion,
+             rejectAiSuggestion,
           };
         }
       </script>
