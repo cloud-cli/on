@@ -199,6 +199,15 @@ export class QueueManager {
         PRIMARY KEY (kind, owner_key, file_path)
       );
       CREATE INDEX IF NOT EXISTS idx_stored_files_owner ON stored_files(kind, owner_key);
+
+      CREATE TABLE IF NOT EXISTS worker_presence (
+        worker_id TEXT PRIMARY KEY,
+        version TEXT NOT NULL,
+        tags TEXT NOT NULL DEFAULT '[]',
+        concurrency INTEGER NOT NULL DEFAULT 0,
+        active_jobs INTEGER NOT NULL DEFAULT 0,
+        last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
     `);
   }
 
@@ -294,6 +303,29 @@ export class QueueManager {
   async getStoredFiles(kind: 'artifact' | 'cache', ownerKey: string): Promise<Array<{ path: string; content: string }>> {
     if (this.fileStorage.enabled) return this.fileStorage.load(`${kind}/${ownerKey}`);
     return db.all('SELECT file_path AS path, content FROM stored_files WHERE kind = ? AND owner_key = ?', [kind, ownerKey]);
+  }
+
+  async updateWorkerPresence(worker: { id: string; version: string; tags: string[]; concurrency: number; activeJobs: number }): Promise<void> {
+    await db.run(
+      `INSERT INTO worker_presence (worker_id, version, tags, concurrency, active_jobs, last_seen)
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(worker_id) DO UPDATE SET version = excluded.version, tags = excluded.tags,
+       concurrency = excluded.concurrency, active_jobs = excluded.active_jobs, last_seen = CURRENT_TIMESTAMP`,
+      [worker.id, worker.version, JSON.stringify(worker.tags), worker.concurrency, worker.activeJobs],
+    );
+  }
+
+  async listWorkerPresence(): Promise<any[]> {
+    const rows = await db.all('SELECT worker_id, version, tags, concurrency, active_jobs, last_seen FROM worker_presence ORDER BY worker_id');
+    return rows.map((row: any) => ({
+      workerId: row.worker_id,
+      version: row.version,
+      tags: JSON.parse(row.tags || '[]'),
+      concurrency: row.concurrency,
+      activeJobs: row.active_jobs,
+      lastSeen: row.last_seen,
+      online: Date.now() - Date.parse(`${row.last_seen}Z`) < 45_000,
+    }));
   }
 
   async saveAiRequest(jobId: string | number, workflowUrl: string, request: unknown): Promise<void> {

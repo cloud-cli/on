@@ -27,6 +27,7 @@ import { DEFAULT_STEP_TIMEOUT_MS, WorkflowRepository } from './workflows.js';
 import { debug } from './debug.js';
 import { expandMatrix } from './parser/matrix-expander.js';
 import { createWorkflowPlugin } from './plugins/workflow-registry.js';
+import { RUNNER_VERSION } from './version.js';
 
 export const shutdownState = {
   isStopping: false,
@@ -80,10 +81,14 @@ export async function startWorkerScheduler(
     wakeVersion++;
     pendingWake?.();
   };
+  const workerId = process.env.WORKER_NAME || 'cli';
 
   wakeScheduler = wake;
   eventStreamController = new AbortController();
   const eventStream = maintainEventStream(config, eventStreamController.signal, wake);
+  const heartbeat = setInterval(() => void notifyWorkerHeartbeat(config, workerId, concurrency, activeJobs.size), 15_000);
+  heartbeat.unref();
+  void notifyWorkerHeartbeat(config, workerId, concurrency, activeJobs.size);
   console.log(
     `🚀 Worker scheduler started. Driver: ${driver.name}. Concurrency: ${concurrency}. Tags: ${config.tags.join(', ') || '(none)'}`,
   );
@@ -102,7 +107,6 @@ export async function startWorkerScheduler(
 
         // Match the ID written by QueueManager.claimNextJob so the server can
         // authorize this machine's request for the claimed job's secrets.
-        const workerId = process.env.WORKER_NAME || 'cli';
         let task: Promise<void>;
         task = (async () => {
           void notifyJobChange(config, job.id);
@@ -139,6 +143,7 @@ export async function startWorkerScheduler(
   }
 
   eventStreamController.abort();
+  clearInterval(heartbeat);
   await Promise.allSettled(activeJobs);
   await eventStream;
   wakeScheduler = null;
@@ -220,6 +225,24 @@ async function notifyJobChange(config: RunnerConfig, jobId: string | number): Pr
     if (!response.ok) debug(`Failed to publish job status event: HTTP ${response.status}`);
   } catch (error) {
     debug('Failed to publish job status event:', error);
+  }
+}
+
+async function notifyWorkerHeartbeat(config: RunnerConfig, workerId: string, concurrency: number, activeJobs: number): Promise<void> {
+  if (!config.workerToken) return;
+  try {
+    await fetch(new URL('/api/workers/heartbeat', config.serverUrl), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.workerToken}`,
+        'Content-Type': 'application/json',
+        'X-Runner-Worker-Id': workerId,
+      },
+      body: JSON.stringify({ workerId, version: RUNNER_VERSION, tags: config.tags, concurrency, activeJobs }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (error) {
+    debug('Failed to publish worker heartbeat:', error);
   }
 }
 

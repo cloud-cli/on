@@ -113,6 +113,20 @@ export class WebhookServer {
       return res.end(JSON.stringify(openApiSpec));
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/workers/heartbeat') {
+      if (!this.isWorker(req)) { res.writeHead(403, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Unauthorized' })); return; }
+      const body = await this.readJson(req, res);
+      if (!body || body.workerId !== req.headers['x-runner-worker-id']) return;
+      await this.queue.updateWorkerPresence({ id: body.workerId, version: String(body.version || 'unknown'), tags: Array.isArray(body.tags) ? body.tags : [], concurrency: Number(body.concurrency || 0), activeJobs: Number(body.activeJobs || 0) });
+      res.writeHead(204).end();
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/api/workers') {
+      if (!(await this.hasScope(req, 'workers:read'))) return this.requireScope(req, res, 'workers:read');
+      res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({ workers: await this.queue.listWorkerPresence() }));
+    }
+
     if (req.method === 'GET' && url.pathname === '/pages/dashboard.html') {
       return this.renderPageComponent(res, 'page-dashboard', dashboardTemplate);
     }
@@ -147,10 +161,10 @@ export class WebhookServer {
       return res.end();
     }
 
-    const settingsPageMatch = url.pathname.match(/^\/settings\/(workflows|secrets|tokens|notifications)$/);
+    const settingsPageMatch = url.pathname.match(/^\/settings\/(workflows|secrets|tokens|notifications|workers)$/);
     if (req.method === 'GET' && settingsPageMatch) {
       if (!this.requireAdmin(req, res)) return;
-      const page = settingsPageMatch[1] as 'workflows' | 'secrets' | 'tokens' | 'notifications';
+      const page = settingsPageMatch[1] as 'workflows' | 'secrets' | 'tokens' | 'notifications' | 'workers';
       return this.renderAppShell(res);
     }
 

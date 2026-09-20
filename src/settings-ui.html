@@ -19,6 +19,7 @@
           <a href="/settings/secrets" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Secrets</a>
           <a href="/settings/tokens" bind-class="page === 'tokens' ? 'bg-gray-800.text-white' : ''" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">API tokens</a>
           <a href="/settings/notifications" bind-class="page === 'notifications' ? 'bg-gray-800.text-white' : ''" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Notifications</a>
+          <a href="/settings/workers" bind-class="page === 'workers' ? 'bg-gray-800.text-white' : ''" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Workers</a>
         </nav>
 
         <template if="page === 'tokens'">
@@ -32,6 +33,14 @@
               {{ notificationsEnabled ? 'Disable notifications' : 'Enable notifications' }}
             </button>
             <p class="mt-3 text-sm text-gray-400" role="status">{{ notificationMessage }}</p>
+          </section>
+        </template>
+
+        <template if="page === 'workers'">
+          <section class="rounded-2xl border border-gray-800 bg-gray-900/80 p-5" aria-labelledby="workers-title">
+            <h2 id="workers-title" class="text-lg font-semibold text-white">Workers</h2>
+            <p class="mt-1 text-sm text-gray-400">Connected runner status, versions, tags, and load.</p>
+            <div class="mt-5 overflow-hidden rounded-xl border border-gray-800"><table class="w-full text-left text-sm"><thead class="bg-gray-950 text-xs uppercase text-gray-500"><tr><th class="px-4 py-3">Worker</th><th class="px-4 py-3">Version</th><th class="px-4 py-3">Tags</th><th class="px-4 py-3">Load</th><th class="px-4 py-3">Last seen</th></tr></thead><tbody><template for="worker of workers"><tr class="border-t border-gray-800"><td class="px-4 py-3 font-mono text-gray-200">{{ worker.workerId }} <span class="ml-2 rounded-full px-2 py-0.5 text-xs" bind-class="worker.online ? 'bg-emerald-500/10.text-emerald-300' : 'bg-gray-800.text-gray-500'">{{ worker.online ? 'online' : 'offline' }}</span></td><td class="px-4 py-3 font-mono text-gray-400">{{ worker.version }}</td><td class="px-4 py-3 text-gray-400">{{ worker.tags.join(', ') }}</td><td class="px-4 py-3 text-gray-400">{{ worker.activeJobs }} / {{ worker.concurrency }}</td><td class="px-4 py-3 text-gray-500">{{ worker.lastSeen }}</td></tr></template></tbody></table><p class="p-5 text-sm text-gray-500" class-hidden="workers.length > 0">No worker heartbeats received yet.</p></div>
           </section>
         </template>
 
@@ -85,7 +94,8 @@
         import { onInit, ref } from '@li3/web';
         export default function () {
           const page = document.body.dataset.page;
-          const keys = ref([]);
+           const keys = ref([]);
+           const workers = ref([]);
           const keyName = ref('');
           const newToken = ref('');
           const error = ref('');
@@ -101,7 +111,8 @@
             { name: 'runs:dispatch', label: 'Dispatch runs', selected: false },
           ]);
           const api = async (url, options = {}) => { const response = await fetch(url, { headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}) }, ...options }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || `Request failed: ${response.status}`); return body; };
-          const load = async () => { keys.value = (await api('/api/api-keys')).keys; };
+           const load = async () => { keys.value = (await api('/api/api-keys')).keys; };
+           const loadWorkers = async () => { workers.value = (await api('/api/workers')).workers; };
           const issueKey = async () => { try { error.value = ''; const result = await api('/api/api-keys', { method: 'POST', body: JSON.stringify({ name: keyName.value, scopes: scopeOptions.value.filter((scope) => scope.selected).map((scope) => scope.name) }) }); newToken.value = result.token; keyName.value = ''; await load(); } catch (reason) { error.value = reason.message; } };
           const revokeKey = async (key) => { if (!confirm(`Revoke ${key.name}?`)) return; try { await api(`/api/api-keys/${key.id}`, { method: 'DELETE' }); await load(); } catch (reason) { error.value = reason.message; } };
           const setKeyName = (event) => { keyName.value = event.target.value; };
@@ -119,8 +130,8 @@
             if (notificationsEnabled.value) { localStorage.setItem('runner-notifications', 'enabled'); notificationMessage.value = 'Notifications enabled.'; }
             else notificationMessage.value = 'Notification permission was not granted.';
           };
-          onInit(() => { if (page === 'tokens') load().catch((reason) => { error.value = reason.message; }); });
-          return { page, keys, keyName, newToken, error, scopeOptions, issueKey, revokeKey, setKeyName, toggleScope, notificationsEnabled, notificationMessage, toggleNotifications };
+          onInit(() => { if (page === 'tokens') load().catch((reason) => { error.value = reason.message; }); if (page === 'workers') loadWorkers().catch((reason) => { error.value = reason.message; }); });
+          return { page, keys, workers, keyName, newToken, error, scopeOptions, issueKey, revokeKey, setKeyName, toggleScope, notificationsEnabled, notificationMessage, toggleNotifications };
         }
       </script>
     </template>
