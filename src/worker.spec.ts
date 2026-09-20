@@ -30,7 +30,7 @@ describe('incremental workflow reports', () => {
         image_tag: '${env.image}:latest',
       },
       steps: [
-        { id: 'first', eval: '({ image: env.image, tag: env.image_tag })' },
+        { id: 'first', eval: '({ image: env.image, tag: env.image_tag, ci: env.CI, job: env.CI_JOB_ID, name: env.CI_JOB_NAME })' },
         { id: 'second', eval: '({ value: 2 })' },
       ],
     };
@@ -65,11 +65,11 @@ describe('incremental workflow reports', () => {
       ['success', 'success'],
     ]);
     expect(reports.at(-1)?.steps.map((step) => step.outputs)).toEqual([
-      { image: 'example', tag: 'example:latest' },
+      { image: 'example', tag: 'example:latest', ci: 'true', job: '1', name: 'Incremental' },
       { value: 2 },
     ]);
     expect(logs).toEqual([
-      { stepId: 'first', content: '[JS EVAL OUTPUT]:\n{\n  "image": "example",\n  "tag": "example:latest"\n}' },
+      { stepId: 'first', content: '[JS EVAL OUTPUT]:\n{\n  "image": "example",\n  "tag": "example:latest",\n  "ci": "true",\n  "job": "1",\n  "name": "Incremental"\n}' },
       { stepId: 'second', content: '[JS EVAL OUTPUT]:\n{\n  "value": 2\n}' },
     ]);
     expect(queue.completeJob).toHaveBeenCalledWith(1, 'success', expect.any(Object));

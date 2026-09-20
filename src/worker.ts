@@ -267,7 +267,12 @@ export async function processJob(p: Processable) {
   // Step Execution Context available in expressions: ${steps.step1.outputs.id}
   const executionContext: JobExecutionContext = {
     inputs,
-    env: { ...config.env },
+    env: {
+      ...config.env,
+      CI: 'true',
+      CI_JOB_ID: String(job.id),
+      CI_JOB_NAME: resolvedWorkflow.name,
+    },
     secrets: secrets.getAll(),
     steps: {},
     logsDir,
@@ -304,6 +309,11 @@ export async function processJob(p: Processable) {
   void notifyJobChange(config, job.id);
   try {
     Object.assign(executionContext.env, await evaluateEnv(resolvedWorkflow.env, executionContext));
+    Object.assign(executionContext.env, {
+      CI: 'true',
+      CI_JOB_ID: String(job.id),
+      CI_JOB_NAME: resolvedWorkflow.name,
+    });
   writeSecretFiles(resolvedWorkflow.secretFiles, secrets, workingDir);
     cacheKey = resolvedWorkflow.cache
       ? String(await SafeExpressionEvaluator.evaluateValue(resolvedWorkflow.cache.key, executionContext))
@@ -543,6 +553,9 @@ async function executeSingleStep(params: {
         ...executionContext.env,
         ...evaluatedStepEnv,
         WORKING_DIR: executionContext.workingDir,
+        CI: 'true',
+        CI_JOB_ID: String(params.jobId),
+        CI_JOB_NAME: executionContext.env.CI_JOB_NAME || step.name || step.id || `step-${stepIndex}`,
       },
     };
 
