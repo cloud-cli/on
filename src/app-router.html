@@ -18,6 +18,7 @@
         if (path === '/settings/secrets') return { component: 'page-secrets', url: '/pages/workflows.html?page=secrets', page: 'secrets' };
         if (path === '/settings/tokens') return { component: 'page-settings', url: '/pages/settings.html?page=tokens', page: 'tokens' };
         if (path === '/settings/notifications') return { component: 'page-settings', url: '/pages/settings.html?page=notifications', page: 'notifications' };
+        if (path === '/settings/workers') return { component: 'page-settings', url: '/pages/settings.html?page=workers', page: 'workers' };
         if (path === '/settings' || path === '/workflows') return { component: 'page-workflows', url: '/pages/workflows.html?page=workflows', page: 'workflows' };
         const editor = path.match(/^\/settings\/workflows\/(new|[a-z0-9-]+)$/);
         if (editor) return { component: 'page-workflow-editor', url: `/pages/workflows.html?page=editor&id=${editor[1]}${url.searchParams.get('revision') ? `&revision=${url.searchParams.get('revision')}` : ''}`, page: 'editor' };
