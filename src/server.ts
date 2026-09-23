@@ -26,6 +26,7 @@ import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from './ty
 import { generateWorkflowManagementHtml } from './workflows-ui.js';
 import { WorkflowRepository } from './workflows.js';
 import { debug } from './debug.js';
+import { OidcClient } from './oidc.js';
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -40,6 +41,7 @@ export class WebhookServer {
   private apiKeys = new ApiKeyRepository();
   private adminToken: string;
   private workerToken: string;
+  private oidc?: OidcClient;
   private events = new EventBroker();
   private workflowsLoaded: Promise<void>;
 
@@ -54,6 +56,7 @@ export class WebhookServer {
     this.push = new PushRepository(options.config);
     this.adminToken = options.adminToken;
     this.workerToken = options.config.workerToken;
+    this.oidc = options.config.oidc ? new OidcClient(options.config.oidc) : undefined;
 
     this.workflowsLoaded = Promise.all([this.workflows.init(), this.secretRepository.init(), this.apiKeys.init()]).then(() => undefined);
 
@@ -85,6 +88,11 @@ export class WebhookServer {
       res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
       return res.end(serviceWorker);
     }
+
+    if (req.method === 'GET' && url.pathname === '/auth/login') return this.handleOidcLogin(req, res, url);
+    if (req.method === 'GET' && url.pathname === '/auth/callback') return this.handleOidcCallback(req, res, url);
+    if (req.method === 'GET' && url.pathname === '/auth/logout') return this.handleOidcLogout(req, res);
+    if (req.method === 'GET' && url.pathname === '/api/auth/session') return this.handleOidcSession(req, res);
 
     if (req.method === 'GET' && url.pathname === '/app-header.html') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -144,8 +152,9 @@ export class WebhookServer {
       return this.renderPageComponent(res, page === 'editor' ? 'page-workflow-editor' : page === 'secrets' ? 'page-secrets' : 'page-workflows', generateWorkflowManagementHtml(page, id, Number.isSafeInteger(revision) && revision > 0 ? revision : undefined));
     }
     if (req.method === 'GET' && url.pathname === '/pages/settings.html') {
-      if (!this.requireAdmin(req, res)) return;
       const page = url.searchParams.get('page') === 'notifications' ? 'notifications' : 'tokens';
+      if (page !== 'tokens' && !this.requireAdmin(req, res)) return;
+      if (page === 'tokens' && !this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie)) return this.requireAdmin(req, res);
       return this.renderPageComponent(res, 'page-settings', generateSettingsHtml(page));
     }
 
@@ -156,22 +165,38 @@ export class WebhookServer {
     }
 
     if (req.method === 'GET' && url.pathname === '/settings') {
-      if (!this.isAdmin(req)) return this.requireAdmin(req, res);
-      res.writeHead(302, { Location: '/settings/workflows' });
+      const location = this.oidc?.userFromCookie(req.headers.cookie) && !this.isAdmin(req) ? '/settings/tokens' : '/settings/workflows';
+      if (location === '/settings/workflows' && !this.isAdmin(req)) return this.requireAdmin(req, res);
+      res.writeHead(302, { Location: location });
       return res.end();
     }
 
     const settingsPageMatch = url.pathname.match(/^\/settings\/(workflows|secrets|tokens|notifications|workers)$/);
     if (req.method === 'GET' && settingsPageMatch) {
-      if (!this.requireAdmin(req, res)) return;
       const page = settingsPageMatch[1] as 'workflows' | 'secrets' | 'tokens' | 'notifications' | 'workers';
+      if (page !== 'tokens' || !this.oidc?.userFromCookie(req.headers.cookie)) {
+        if (!this.requireAdmin(req, res)) return;
+      }
       return this.renderAppShell(res);
     }
 
     if (url.pathname === '/api/api-keys') {
-      if (!this.isAdmin(req)) return this.requireAdmin(req, res);
-      if (req.method === 'GET') return res.end(JSON.stringify({ keys: await this.apiKeys.list() }));
+      if (!this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie)) return this.requireAdmin(req, res);
+      if (req.method === 'GET') {
+        const providerKeys = await this.listOidcTokens(req);
+        if (providerKeys) return res.end(JSON.stringify({ keys: providerKeys }));
+        if (this.oidc?.userFromCookie(req.headers.cookie)) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'OIDC token service unavailable' }));
+        }
+        return res.end(JSON.stringify({ keys: await this.apiKeys.list() }));
+      }
       if (req.method === 'POST') {
+        if (this.oidc?.userFromCookie(req.headers.cookie)) {
+          const providerKey = await this.issueOidcToken(req, res);
+          if (providerKey) return res.end(JSON.stringify(providerKey));
+          return;
+        }
         const body = await this.readJson(req, res);
         try {
           const key = await this.apiKeys.issue(body?.name, body?.scopes || []);
@@ -185,7 +210,11 @@ export class WebhookServer {
     }
     const apiKeyMatch = url.pathname.match(/^\/api\/api-keys\/([^/]+)$/);
     if (apiKeyMatch && req.method === 'DELETE') {
-      if (!this.isAdmin(req)) return this.requireAdmin(req, res);
+      if (!this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie)) return this.requireAdmin(req, res);
+      if (this.oidc?.userFromCookie(req.headers.cookie)) {
+        const providerResponse = await this.revokeOidcToken(req, apiKeyMatch[1]);
+        if (providerResponse) return res.writeHead(providerResponse.status).end();
+      }
       const revoked = await this.apiKeys.revoke(apiKeyMatch[1]);
       res.writeHead(revoked ? 204 : 404).end();
       return;
@@ -509,10 +538,104 @@ export class WebhookServer {
 
   private async hasScope(req: http.IncomingMessage, scope: string): Promise<boolean> {
     if (this.isAdmin(req)) return true;
+    if (scope === 'logs:read' && this.oidc?.userFromCookie(req.headers.cookie)) return true;
     const authorization = req.headers.authorization || '';
     if (!authorization.startsWith('Bearer ')) return false;
+    if (this.oidc && await this.oidc.scopesForToken(authorization.slice(7)).then((scopes) => Boolean(scopes?.includes(scope)))) return true;
     const scopes = await this.apiKeys.scopesForToken(authorization.slice(7));
     return Boolean(scopes?.includes(scope));
+  }
+
+  private async handleOidcLogin(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
+    if (!this.oidc?.enabled) return res.writeHead(404).end();
+    const requestedReturnTo = url.searchParams.get('url') || '/runs';
+    const returnTo = requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//') ? requestedReturnTo : '/runs';
+    try {
+      res.writeHead(302, { Location: await this.oidc.loginUrl(this.oidcRedirectUri(req), returnTo) });
+      return res.end();
+    } catch (error: any) {
+      res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end(`OIDC login is unavailable: ${error.message}`);
+    }
+  }
+
+  private async handleOidcCallback(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
+    if (!this.oidc?.enabled) return res.writeHead(404).end();
+    if (url.searchParams.get('error')) return res.writeHead(401).end('OIDC sign-in was cancelled');
+    const code = url.searchParams.get('code');
+    const state = url.searchParams.get('state');
+    if (!code || !state) return res.writeHead(400).end('Missing OIDC callback parameters');
+    try {
+      const result = await this.oidc.completeLogin(code, state, this.oidcRedirectUri(req));
+      res.writeHead(302, { Location: result.returnTo, 'Set-Cookie': `${result.cookie}${this.isHttps(req) ? '; Secure' : ''}` });
+      return res.end();
+    } catch (error: any) {
+      res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end(`OIDC sign-in failed: ${error.message}`);
+    }
+  }
+
+  private handleOidcLogout(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (!this.oidc) return res.writeHead(404).end();
+    res.writeHead(302, { Location: '/runs', 'Set-Cookie': `${this.oidc.clearCookie(req.headers.cookie)}${this.isHttps(req) ? '; Secure' : ''}` });
+    return res.end();
+  }
+
+  private handleOidcSession(req: http.IncomingMessage, res: http.ServerResponse) {
+    const user = this.oidc?.userFromCookie(req.headers.cookie);
+    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify({ configured: Boolean(this.oidc?.enabled), authenticated: Boolean(user), user }));
+  }
+
+  private oidcRedirectUri(req: http.IncomingMessage) {
+    const protocol = req.headers['x-forwarded-proto'] || 'http';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    return `${protocol}://${host}/auth/callback`;
+  }
+
+  private isHttps(req: http.IncomingMessage) {
+    return (req.headers['x-forwarded-proto'] || '').toString().split(',')[0].trim() === 'https';
+  }
+
+  private async listOidcTokens(req: http.IncomingMessage) {
+    try {
+      const response = await this.oidc?.tokenApiRequest(req.headers.cookie, `/api-tokens/${this.oidcClientId()}`);
+      if (!response || !response.ok) return undefined;
+      const payload = await response.json() as any[] | { tokens?: any[] };
+      const tokens = Array.isArray(payload) ? payload : payload.tokens || [];
+      return tokens.map((token) => ({ id: token.label || token.id, name: token.label || token.name, scopes: token.scopes || [], created_at: token.created_at || token.createdAt || '' }));
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async issueOidcToken(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (!this.oidc?.userFromCookie(req.headers.cookie)) return undefined;
+    const body = await this.readJson(req, res);
+    if (!body) return null;
+    const response = await this.oidc.tokenApiRequest(req.headers.cookie, `/api-tokens/${this.oidcClientId()}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label: body.name, scopes: body.scopes }),
+    });
+    if (!response) return undefined;
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      res.writeHead(response.status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: result.error || 'OIDC token issuance failed' }));
+      return null;
+    }
+    return { ...result, token: result.token || result.access_token, name: result.label || body.name, scopes: result.scopes || body.scopes };
+  }
+
+  private async revokeOidcToken(req: http.IncomingMessage, label: string) {
+    if (!this.oidc?.userFromCookie(req.headers.cookie)) return undefined;
+    const response = await this.oidc.tokenApiRequest(req.headers.cookie, `/api-tokens/${this.oidcClientId()}/${encodeURIComponent(label)}`, { method: 'DELETE' });
+    return response;
+  }
+
+  private oidcClientId() {
+    return this.oidc?.clientId || '';
   }
 
   private async requireScope(req: http.IncomingMessage, res: http.ServerResponse, scope: string): Promise<boolean> {

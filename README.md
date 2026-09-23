@@ -179,13 +179,16 @@ npx @cloud-cli/on [command] [options]
 | `-k` | `--workers`  | `5`                   | `RUNNER_WORKERS`       | Maximum concurrent jobs on this node.            |
 |      |              |                       | `RUNNER_ADMIN_SECRET`  | Admin token to refresh secrets via API           |
 |      |              |                       | `RUNNER_WORKER_SECRET` | Worker token for job events and secret retrieval |
+|      |              |                       | `RUNNER_OIDC_PROVIDER_URL` | OIDC issuer URL, for example `https://auth.api.apphor.de` |
+|      |              |                       | `RUNNER_OIDC_CLIENT_ID` | Registered OIDC client identifier                 |
+|      |              |                       | `RUNNER_OIDC_CLIENT_SECRET` | Registered OIDC client secret                 |
 |      |              |                       | `RUNNER_SERVER_URL`    | Webhook server URL used by workers.              |
 |      |              |                       | `RUNNER_TAGS`          | Comma-separated worker capability tags.          |
 |      |              |                       | `RUNNER_VAPID_PUBLIC_KEY`  | Public key for background Web Push notifications. |
 |      |              |                       | `RUNNER_VAPID_PRIVATE_KEY` | Private key for background Web Push notifications. |
 |      |              |                       | `RUNNER_VAPID_SUBJECT`      | VAPID contact, such as `mailto:admin@example.com`. |
 
-Set `RUNNER_ADMIN_SECRET` only on the HTTP server for dashboard and management APIs. Set the same non-empty `RUNNER_WORKER_SECRET` on the server and every worker to publish job-status refresh events and retrieve job-scoped secrets. The dashboard workflow APIs accept either Bearer authentication or HTTP Basic authentication with username `admin` and the admin secret.
+Set `RUNNER_ADMIN_SECRET` only on the HTTP server for dashboard and management APIs. Set the same non-empty `RUNNER_WORKER_SECRET` on the server and every worker to publish job-status refresh events and retrieve job-scoped secrets. When the three `RUNNER_OIDC_*` values are configured, `/auth/login` enables browser sign-in, authenticated users can read logs, and the API token settings page issues and revokes scoped tokens through the OIDC provider. Register `https://your-runner-host/auth/callback` as the OIDC redirect URI. The dashboard workflow APIs accept either Bearer authentication or HTTP Basic authentication with username `admin` and the admin secret.
 
 ### Secrets
 
@@ -312,12 +315,12 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
    AST evaluation explicitly blocks access to dangerous JS properties (`constructor`, `__proto__`, `prototype`).
 3. **Payload Size Guard:**
    The Ingress server enforces a strict 5MB payload limit to prevent Out-Of-Memory (OOM) denial-of-service attacks.
-4. **Single-operator API authentication:**
-   Workflow validation, publishing, secret management, and job details require `RUNNER_ADMIN_SECRET` over HTTPS. Workers use the separate `RUNNER_WORKER_SECRET` only for lifecycle events and secrets of jobs they have claimed.
+4. **Scoped API authentication:**
+   Workflow validation, publishing, and secret management require `RUNNER_ADMIN_SECRET` over HTTPS. OIDC sessions and provider-issued scoped tokens can read job logs when granted `logs:read`. Workers use the separate `RUNNER_WORKER_SECRET` only for lifecycle events and secrets of jobs they have claimed.
 
 ## systemd Deployment
 
-Install the unit files from `systemd/` and create root-owned environment files in `/etc/on/`: `server.env` for `RUNNER_DATABASE_URL`, `RUNNER_SERVER_URL`, `RUNNER_ADMIN_SECRET`, and `RUNNER_WORKER_SECRET`; `scheduler.env` for `RUNNER_DATABASE_URL`; and `worker.env` for `RUNNER_DATABASE_URL`, `RUNNER_SERVER_URL`, `RUNNER_WORKER_SECRET`, `RUNNER_TAGS`, and `RUNNER_TMP`. Workers receive only `RUNNER_WORKER_SECRET`; the admin secret stays on the HTTP server. The supplied units run as root because the systemd execution driver creates transient system services. Use `systemctl edit` for per-machine overrides.
+Install the unit files from `systemd/` and create root-owned environment files in `/etc/on/`: `server.env` for `RUNNER_DATABASE_URL`, `RUNNER_SERVER_URL`, `RUNNER_ADMIN_SECRET`, `RUNNER_WORKER_SECRET`, and the three `RUNNER_OIDC_*` values; `scheduler.env` for `RUNNER_DATABASE_URL`; and `worker.env` for `RUNNER_DATABASE_URL`, `RUNNER_SERVER_URL`, `RUNNER_WORKER_SECRET`, `RUNNER_TAGS`, and `RUNNER_TMP`. Workers receive only `RUNNER_WORKER_SECRET`; the admin and OIDC secrets stay on the HTTP server. The supplied units run as root because the systemd execution driver creates transient system services. Use `systemctl edit` for per-machine overrides.
 
 Place the server master key in `/etc/on/credentials/on-master-key` with root-only permissions. `runner-server.service` exposes it privately through systemd's credentials directory. Start the primary control plane with `systemctl enable --now runner.target`; enable `runner-worker.service` separately on worker machines. Use `systemctl edit runner-worker.service` for machine-specific labels and paths.
 

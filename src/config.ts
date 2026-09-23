@@ -48,6 +48,15 @@ export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: U
             privateKey: _.RUNNER_VAPID_PRIVATE_KEY,
             subject: _.RUNNER_VAPID_SUBJECT ?? `mailto:admin@localhost`,
           }
+      : undefined),
+    oidc:
+      configFromFile.oidc ??
+      (_.RUNNER_OIDC_PROVIDER_URL && _.RUNNER_OIDC_CLIENT_ID && _.RUNNER_OIDC_CLIENT_SECRET
+        ? {
+            providerUrl: _.RUNNER_OIDC_PROVIDER_URL,
+            clientId: _.RUNNER_OIDC_CLIENT_ID,
+            clientSecret: _.RUNNER_OIDC_CLIENT_SECRET,
+          }
         : undefined),
   };
 }
@@ -69,10 +78,11 @@ Options:
   -c, --config     Path to runner.config.mjs (default: ./runner.config.mjs, env: RUNNER_CONFIG_PATH)
   -d, --database   SQLite Database URL (env: RUNNER_DATABASE_URL)
   -p, --port       Port for Webhook Ingress Server (default: 11235, env: PORT)
-  -k, --workers    Maximum concurrent jobs (default: 5, env: RUNNER_WORKERS)
-                  Worker tags (comma-separated env: RUNNER_TAGS)
-                  Webhook server URL (env: RUNNER_SERVER_URL)
-  -h, --help       Show this help message
+   -k, --workers    Maximum concurrent jobs (default: 5, env: RUNNER_WORKERS)
+                   Worker tags (comma-separated env: RUNNER_TAGS)
+                   Webhook server URL (env: RUNNER_SERVER_URL)
+                   OIDC settings (env: RUNNER_OIDC_PROVIDER_URL, RUNNER_OIDC_CLIENT_ID, RUNNER_OIDC_CLIENT_SECRET)
+   -h, --help       Show this help message
   `);
 }
 

@@ -34,6 +34,12 @@ export interface RunnerConfig {
     privateKey: string;
     subject: string;
   };
+  /** Optional OIDC provider used for browser sign-in and scoped API tokens. */
+  oidc?: {
+    providerUrl: string;
+    clientId: string;
+    clientSecret: string;
+  };
 }
 
 export type UserRunnerConfig = Partial<RunnerConfig>;
