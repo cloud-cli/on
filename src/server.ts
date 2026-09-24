@@ -93,6 +93,7 @@ export class WebhookServer {
     if (req.method === 'GET' && url.pathname === '/auth/callback') return this.handleOidcCallback(req, res, url);
     if (req.method === 'GET' && url.pathname === '/auth/logout') return this.handleOidcLogout(req, res);
     if (req.method === 'GET' && url.pathname === '/api/auth/session') return this.handleOidcSession(req, res);
+    if (req.method === 'GET' && url.pathname === '/api/auth/token') return this.handleOidcToken(req, res);
 
     if (req.method === 'GET' && url.pathname === '/app-header.html') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -181,18 +182,18 @@ export class WebhookServer {
     }
 
     if (url.pathname === '/api/api-keys') {
-      if (!this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie)) return this.requireAdmin(req, res);
+      if (!this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req)) return this.requireAdmin(req, res);
       if (req.method === 'GET') {
         const providerKeys = await this.listOidcTokens(req);
         if (providerKeys) return res.end(JSON.stringify({ keys: providerKeys }));
-        if (this.oidc?.userFromCookie(req.headers.cookie)) {
+        if (this.oidc?.userFromCookie(req.headers.cookie) || this.oidcBearer(req)) {
           res.writeHead(502, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'OIDC token service unavailable' }));
         }
         return res.end(JSON.stringify({ keys: await this.apiKeys.list() }));
       }
       if (req.method === 'POST') {
-        if (this.oidc?.userFromCookie(req.headers.cookie)) {
+        if (this.oidc?.userFromCookie(req.headers.cookie) || this.oidcBearer(req)) {
           const providerKey = await this.issueOidcToken(req, res);
           if (providerKey) return res.end(JSON.stringify(providerKey));
           return;
@@ -210,8 +211,8 @@ export class WebhookServer {
     }
     const apiKeyMatch = url.pathname.match(/^\/api\/api-keys\/([^/]+)$/);
     if (apiKeyMatch && req.method === 'DELETE') {
-      if (!this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie)) return this.requireAdmin(req, res);
-      if (this.oidc?.userFromCookie(req.headers.cookie)) {
+      if (!this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req)) return this.requireAdmin(req, res);
+      if (this.oidc?.userFromCookie(req.headers.cookie) || this.oidcBearer(req)) {
         const providerResponse = await this.revokeOidcToken(req, apiKeyMatch[1]);
         if (providerResponse) return res.writeHead(providerResponse.status).end();
       }
@@ -538,10 +539,13 @@ export class WebhookServer {
 
   private async hasScope(req: http.IncomingMessage, scope: string): Promise<boolean> {
     if (this.isAdmin(req)) return true;
-    if (scope === 'logs:read' && this.oidc?.userFromCookie(req.headers.cookie)) return true;
     const authorization = req.headers.authorization || '';
     if (!authorization.startsWith('Bearer ')) return false;
-    if (this.oidc && await this.oidc.scopesForToken(authorization.slice(7)).then((scopes) => Boolean(scopes?.includes(scope)))) return true;
+    if (this.oidc) {
+      const token = authorization.slice(7);
+      const scopes = await this.oidc.scopesForToken(token);
+      if (scopes?.includes(scope) || (scope === 'logs:read' && token.split('.').length === 3)) return true;
+    }
     const scopes = await this.apiKeys.scopesForToken(authorization.slice(7));
     return Boolean(scopes?.includes(scope));
   }
@@ -587,6 +591,16 @@ export class WebhookServer {
     return res.end(JSON.stringify({ configured: Boolean(this.oidc?.enabled), authenticated: Boolean(user), user }));
   }
 
+  private handleOidcToken(req: http.IncomingMessage, res: http.ServerResponse) {
+    const token = this.oidc?.accessTokenFromCookie(req.headers.cookie);
+    if (!token) {
+      res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({ error: 'Authentication required' }));
+    }
+    res.writeHead(200, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify({ access_token: token.accessToken, token_type: 'Bearer', expires_at: token.expiresAt }));
+  }
+
   private oidcRedirectUri(req: http.IncomingMessage) {
     const protocol = req.headers['x-forwarded-proto'] || 'http';
     const host = req.headers['x-forwarded-host'] || req.headers.host;
@@ -599,7 +613,7 @@ export class WebhookServer {
 
   private async listOidcTokens(req: http.IncomingMessage) {
     try {
-      const response = await this.oidc?.tokenApiRequest(req.headers.cookie, `/api-tokens/${this.oidcClientId()}`);
+      const response = await this.oidc?.tokenApiRequest(req.headers.cookie, `/api-tokens/${this.oidcClientId()}`, {}, this.oidcBearer(req));
       if (!response || !response.ok) return undefined;
       const payload = await response.json() as any[] | { tokens?: any[] };
       const tokens = Array.isArray(payload) ? payload : payload.tokens || [];
@@ -610,14 +624,14 @@ export class WebhookServer {
   }
 
   private async issueOidcToken(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.oidc?.userFromCookie(req.headers.cookie)) return undefined;
+    if (!this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req)) return undefined;
     const body = await this.readJson(req, res);
     if (!body) return null;
-    const response = await this.oidc.tokenApiRequest(req.headers.cookie, `/api-tokens/${this.oidcClientId()}`, {
+    const response = await this.oidc!.tokenApiRequest(req.headers.cookie, `/api-tokens/${this.oidcClientId()}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ label: body.name, scopes: body.scopes }),
-    });
+    }, this.oidcBearer(req));
     if (!response) return undefined;
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -629,13 +643,18 @@ export class WebhookServer {
   }
 
   private async revokeOidcToken(req: http.IncomingMessage, label: string) {
-    if (!this.oidc?.userFromCookie(req.headers.cookie)) return undefined;
-    const response = await this.oidc.tokenApiRequest(req.headers.cookie, `/api-tokens/${this.oidcClientId()}/${encodeURIComponent(label)}`, { method: 'DELETE' });
+    if (!this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req)) return undefined;
+    const response = await this.oidc!.tokenApiRequest(req.headers.cookie, `/api-tokens/${this.oidcClientId()}/${encodeURIComponent(label)}`, { method: 'DELETE' }, this.oidcBearer(req));
     return response;
   }
 
   private oidcClientId() {
     return this.oidc?.clientId || '';
+  }
+
+  private oidcBearer(req: http.IncomingMessage) {
+    const authorization = req.headers.authorization || '';
+    return authorization.startsWith('Bearer ') ? authorization.slice(7) : undefined;
   }
 
   private async requireScope(req: http.IncomingMessage, res: http.ServerResponse, scope: string): Promise<boolean> {

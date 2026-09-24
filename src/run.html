@@ -231,7 +231,8 @@
               <template for="artifact of report.artifacts">
                 <li class="px-4 py-3">
                   <a
-                    attr-href="artifactUrl(artifact)"
+                    href="#"
+                    on-click="downloadArtifact($event, artifact)"
                     class="font-mono text-sm text-indigo-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
                   >{{ artifact }}</a>
                 </li>
@@ -281,7 +282,17 @@
           });
 
           const upper = (value) => String(value || '').toUpperCase();
-          const artifactUrl = (path) => `/api/runs/${report.value.jobId}/artifacts/${encodeURIComponent(path)}`;
+           const artifactUrl = (path) => `/api/runs/${report.value.jobId}/artifacts/${encodeURIComponent(path)}`;
+           const downloadArtifact = async (event, path) => {
+             event.preventDefault();
+             const response = await window.runnerApiFetch(artifactUrl(path));
+             if (!response.ok) return;
+             const link = document.createElement('a');
+             link.href = URL.createObjectURL(await response.blob());
+             link.download = path.split('/').pop() || 'artifact';
+             link.click();
+             URL.revokeObjectURL(link.href);
+           };
           const loadPreviousRuns = async () => {
             if (previousRunsLoaded || !report.value.parentId) return;
             const lineage = [];
@@ -289,7 +300,7 @@
             let parentId = report.value.parentId;
             while (parentId && !visited.has(String(parentId)) && lineage.length < 50) {
               visited.add(String(parentId));
-              const response = await fetch(`/api/runs/${parentId}`, { headers: { accept: 'application/json' } });
+              const response = await window.runnerApiFetch(`/api/runs/${parentId}`, { headers: { accept: 'application/json' } });
               if (!response.ok) throw new Error(`Previous run request failed: ${response.status}`);
               const parent = await response.json();
               lineage.push({ id: parent.jobId, status: parent.status, startedAt: parent.startedAt });
@@ -329,7 +340,7 @@
             aiLoading.value = true;
             aiError.value = '';
             try {
-              const response = await fetch(`/api/runs/${report.value.jobId}/ai-help`, {
+              const response = await window.runnerApiFetch(`/api/runs/${report.value.jobId}/ai-help`, {
                 method: 'POST',
                 headers: { accept: 'application/json', 'content-type': 'application/json' },
                 body: JSON.stringify({ stepId, question, conversation: aiMessages.value }),
@@ -377,7 +388,7 @@
             await requestAiHelp(aiStepId.value, question);
           };
           const restartJob = async () => {
-             const response = await fetch(`/restart/${report.value.jobId}`, {
+             const response = await window.runnerApiFetch(`/restart/${report.value.jobId}`, {
                method: 'POST',
                headers: { 'content-type': 'application/json' },
                body: JSON.stringify({ inputs: report.value.inputs || {} }),
@@ -402,7 +413,7 @@
             const inputs = Object.fromEntries(manualInputs.value.filter((entry) => entry.key.trim()).map((entry) => [entry.key.trim(), entry.value]));
             manualRestartLoading.value = true;
             try {
-              const response = await fetch(`/restart/${report.value.jobId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ inputs }) });
+              const response = await window.runnerApiFetch(`/restart/${report.value.jobId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ inputs }) });
               if (!response.ok) throw new Error(`Restart failed: ${response.status}`);
               const { id } = await response.json();
               location.href = `/runs/${id}`;
@@ -416,7 +427,7 @@
             if (cancelling.value || report.value.status !== 'running') return;
             cancelling.value = true;
             try {
-              const response = await fetch(`/api/jobs/${report.value.jobId}/cancel`, { method: 'POST' });
+              const response = await window.runnerApiFetch(`/api/jobs/${report.value.jobId}/cancel`, { method: 'POST' });
               if (!response.ok) throw new Error(`Cancel failed: ${response.status}`);
               await refreshRun();
             } catch (error) {
@@ -433,7 +444,7 @@
             refreshing = true;
 
             try {
-              const response = await fetch(`/api/runs/${jobId}`, {
+              const response = await window.runnerApiFetch(`/api/runs/${jobId}`, {
                 headers: { accept: 'application/json' },
               });
               if (!response.ok) throw new Error(`Run refresh failed: ${response.status}`);
@@ -502,7 +513,7 @@
             clearInterval(clockTimer);
           });
 
-           return { report, previousRuns, manualRestartOpen, manualRestartLoading, manualInputs, aiMessages, aiStepId, aiQuestion, aiError, aiLoading, inputsJson, originalInputsJson, timing, upper, artifactUrl, stepLog, askAi, askFollowup, restartJob, openManualRestart, closeManualRestart, addManualInput, removeManualInput, setManualKey, setManualValue, restartWithInputs, cancelJob, cancelling };
+           return { report, previousRuns, manualRestartOpen, manualRestartLoading, manualInputs, aiMessages, aiStepId, aiQuestion, aiError, aiLoading, inputsJson, originalInputsJson, timing, upper, artifactUrl, downloadArtifact, stepLog, askAi, askFollowup, restartJob, openManualRestart, closeManualRestart, addManualInput, removeManualInput, setManualKey, setManualValue, restartWithInputs, cancelJob, cancelling };
         }
       </script>
     </template>

@@ -29,6 +29,7 @@ interface LoginState {
 interface Session {
   user: OidcUser;
   accessToken: string;
+  accessTokenExpiresAt: number;
   expiresAt: number;
 }
 
@@ -90,7 +91,7 @@ export class OidcClient {
       }),
     });
     if (!response.ok) throw new Error(`OIDC token exchange failed: ${response.status}`);
-    const tokens = (await response.json()) as { access_token?: string };
+    const tokens = (await response.json()) as { access_token?: string; expires_in?: number };
     if (!tokens.access_token) throw new Error('OIDC token response did not include an access token');
 
     const userResponse = await fetch(metadata.userinfo_endpoint, {
@@ -102,7 +103,13 @@ export class OidcClient {
     if (!user.id) throw new Error('OIDC userinfo response did not include a user id');
 
     const sessionToken = randomUrlSafe(32);
-    this.sessions.set(sessionToken, { user, accessToken: tokens.access_token, expiresAt: Date.now() + SESSION_TTL_MS });
+    const now = Date.now();
+    this.sessions.set(sessionToken, {
+      user,
+      accessToken: tokens.access_token,
+      accessTokenExpiresAt: now + Math.max(60, Number(tokens.expires_in || 900)) * 1000,
+      expiresAt: now + SESSION_TTL_MS,
+    });
     this.prune();
     return {
       returnTo: loginState.returnTo,
@@ -113,6 +120,12 @@ export class OidcClient {
   userFromCookie(cookieHeader: string | undefined): OidcUser | undefined {
     const session = this.sessionFromCookie(cookieHeader);
     return session?.user;
+  }
+
+  accessTokenFromCookie(cookieHeader: string | undefined) {
+    const session = this.sessionFromCookie(cookieHeader);
+    if (!session || session.accessTokenExpiresAt <= Date.now()) return undefined;
+    return { accessToken: session.accessToken, expiresAt: session.accessTokenExpiresAt };
   }
 
   async scopesForToken(token: string): Promise<string[] | null> {
@@ -134,11 +147,12 @@ export class OidcClient {
     }
   }
 
-  async tokenApiRequest(cookieHeader: string | undefined, path: string, init: RequestInit = {}) {
+  async tokenApiRequest(cookieHeader: string | undefined, path: string, init: RequestInit = {}, accessToken?: string) {
     const session = this.sessionFromCookie(cookieHeader);
-    if (!session) return undefined;
+    const bearer = accessToken || session?.accessToken;
+    if (!bearer) return undefined;
     const headers = new Headers(init.headers);
-    headers.set('authorization', `Bearer ${session.accessToken}`);
+    headers.set('authorization', `Bearer ${bearer}`);
     headers.set('x-auth-audience', this.config.clientId);
     return fetch(new URL(path, this.config.providerUrl.replace(/\/$/, '') + '/'), { ...init, headers });
   }

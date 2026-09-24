@@ -188,7 +188,7 @@ npx @cloud-cli/on [command] [options]
 |      |              |                       | `RUNNER_VAPID_PRIVATE_KEY` | Private key for background Web Push notifications. |
 |      |              |                       | `RUNNER_VAPID_SUBJECT`      | VAPID contact, such as `mailto:admin@example.com`. |
 
-Set `RUNNER_ADMIN_SECRET` only on the HTTP server for dashboard and management APIs. Set the same non-empty `RUNNER_WORKER_SECRET` on the server and every worker to publish job-status refresh events and retrieve job-scoped secrets. When the three `RUNNER_OIDC_*` values are configured, `/auth/login` enables browser sign-in, authenticated users can read logs, and the API token settings page issues and revokes scoped tokens through the OIDC provider. Register `https://your-runner-host/auth/callback` as the OIDC redirect URI. The dashboard workflow APIs accept either Bearer authentication or HTTP Basic authentication with username `admin` and the admin secret.
+Set `RUNNER_ADMIN_SECRET` only on the HTTP server for dashboard and management APIs. Set the same non-empty `RUNNER_WORKER_SECRET` on the server and every worker to publish job-status refresh events and retrieve job-scoped secrets. When the three `RUNNER_OIDC_*` values are configured, `/auth/login` enables browser sign-in, the browser uses the same bearer-token API path as external consumers, authenticated users can read logs, and the API token settings page issues and revokes scoped tokens through the OIDC provider. Register `https://your-runner-host/auth/callback` as the OIDC redirect URI. The dashboard workflow APIs accept either Bearer authentication or HTTP Basic authentication with username `admin` and the admin secret.
 
 ### Secrets
 

@@ -110,10 +110,10 @@
             { name: 'runs:control', label: 'Control runs', selected: false },
             { name: 'runs:dispatch', label: 'Dispatch runs', selected: false },
           ]);
-          const api = async (url, options = {}) => { const response = await fetch(url, { headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}) }, ...options }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || `Request failed: ${response.status}`); return body; };
+           const api = async (url, options = {}) => { const response = await window.runnerApiFetch(url, { headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}) }, ...options }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || `Request failed: ${response.status}`); return body; };
            const load = async () => { keys.value = (await api('/api/api-keys')).keys; };
            const loadWorkers = async () => { workers.value = (await api('/api/workers')).workers; };
-          const issueKey = async () => { try { error.value = ''; const result = await api('/api/api-keys', { method: 'POST', body: JSON.stringify({ name: keyName.value, scopes: scopeOptions.value.filter((scope) => scope.selected).map((scope) => scope.name) }) }); newToken.value = result.token; keyName.value = ''; await load(); } catch (reason) { error.value = reason.message; } };
+           const issueKey = async () => { try { error.value = ''; const result = await api('/api/api-keys', { method: 'POST', body: JSON.stringify({ name: keyName.value, scopes: scopeOptions.value.filter((scope) => scope.selected).map((scope) => scope.name) }) }); newToken.value = result.token; window.runnerApiFetch.setToken(result.token); keyName.value = ''; await load(); } catch (reason) { error.value = reason.message; } };
           const revokeKey = async (key) => { if (!confirm(`Revoke ${key.name}?`)) return; try { await api(`/api/api-keys/${key.id}`, { method: 'DELETE' }); await load(); } catch (reason) { error.value = reason.message; } };
           const setKeyName = (event) => { keyName.value = event.target.value; };
           const toggleScope = (scope) => { scope.selected = !scope.selected; };

@@ -130,7 +130,7 @@ describe('run view', () => {
     const html = renderRunHtml(unsafe);
     expect(html).not.toContain('<script state>');
     expect(html).toContain("bind-title=\"report.workflowName\"");
-    expect(html).toContain('fetch(`/api/runs/${jobId}`');
+    expect(html).toContain('runnerApiFetch(`/api/runs/${jobId}`');
     expect(html).toContain('lucide-icon');
     expect(html).toContain('Workflow source YAML');
     expect(html).toContain('Get AI help for failed step');
@@ -144,14 +144,14 @@ describe('run view', () => {
     expect(html).toContain('Artifacts');
     expect(html).toContain('Thinking through the failed step');
     expect(html).toContain('marked.parse(content)');
-    expect(html).toContain('artifactUrl(artifact)');
+    expect(html).toContain('downloadArtifact($event, artifact)');
     expect(html).toContain('https://sodium.static.apphor.de/code-block.html');
     expect(html).toContain('bind-source="inputsJson"');
     expect(html).toContain("'circle-check'");
     expect(html).toContain('worker: {{ report.workerId }}');
     expect(html).toContain("new EventSource('/api/events')");
     expect(html).toContain("addEventListener('jobs.changed', handleJobChange)");
-    expect(html).toContain('fetch(`/api/runs/${jobId}`');
+    expect(html).toContain('runnerApiFetch(`/api/runs/${jobId}`');
     expect(html).toContain('now.value = Date.now()');
     expect(html).toContain('href="/manifest.webmanifest"');
     expect(html).toContain("navigator.serviceWorker.register('/service-worker.js')");

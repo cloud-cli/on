@@ -280,7 +280,7 @@
           const enablePushNotifications = async () => {
             try {
               if (!notificationsSupported.value) return;
-              const response = await fetch('/api/push/public-key', { headers: { accept: 'application/json' } });
+              const response = await window.runnerApiFetch('/api/push/public-key', { headers: { accept: 'application/json' } });
               if (!response.ok) return;
               const { publicKey } = await response.json();
               pushConfigured.value = true;
@@ -291,7 +291,7 @@
                   userVisibleOnly: true,
                   applicationServerKey: urlBase64ToUint8Array(publicKey),
                 }));
-              const saveResponse = await fetch('/api/push/subscriptions', {
+              const saveResponse = await window.runnerApiFetch('/api/push/subscriptions', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify(subscription),
@@ -306,7 +306,7 @@
               const registration = await navigator.serviceWorker.ready;
               const subscription = await registration.pushManager.getSubscription();
               if (!subscription) return;
-              await fetch('/api/push/subscriptions', {
+              await window.runnerApiFetch('/api/push/subscriptions', {
                 method: 'DELETE',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({ endpoint: subscription.endpoint }),
@@ -340,7 +340,7 @@
                 afterId === null
                   ? `/api/jobs?limit=100${filterQuery}`
                   : `/api/jobs?afterId=${afterId}&limit=100${filterQuery}`;
-              const response = await fetch(url, { headers: { accept: 'application/json' } });
+              const response = await window.runnerApiFetch(url, { headers: { accept: 'application/json' } });
               if (!response.ok) throw new Error(`Dashboard refresh failed: ${response.status}`);
 
               const data = await response.json();
@@ -376,7 +376,7 @@
             try {
               const beforeId = Math.min(...jobs.value.map((job) => Number(job.id)));
               const filterQuery = activeFilter.value ? `&filter=${encodeURIComponent(activeFilter.value)}` : '';
-              const response = await fetch(`/api/jobs?beforeId=${beforeId}${filterQuery}`, {
+              const response = await window.runnerApiFetch(`/api/jobs?beforeId=${beforeId}${filterQuery}`, {
                 headers: { accept: 'application/json' },
               });
               if (!response.ok) throw new Error(`Loading older jobs failed: ${response.status}`);

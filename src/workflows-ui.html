@@ -489,7 +489,7 @@
           };
 
           const api = async (url, options = {}) => {
-            const response = await fetch(url, {
+            const response = await window.runnerApiFetch(url, {
               headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}) },
               ...options,
             });
@@ -771,7 +771,7 @@
              aiError.value = '';
              aiDiffHtml.value = '';
              try {
-               const response = await fetch('/api/ai/workflow-help', {
+            const response = await window.runnerApiFetch('/api/ai/workflow-help', {
                  method: 'POST',
                  headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
                  body: JSON.stringify({ sourceYaml: source.value, request: aiRequest.value }),
