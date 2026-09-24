@@ -1,7 +1,6 @@
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { setUrl } from './db-client.js';
-import { RunnerConfig, UserRunnerConfig } from './types.js';
+import type { RunnerConfig, UserRunnerConfig } from './types.js';
 import { parseArgs } from 'node:util';
 
 export async function loadConfig(values): Promise<RunnerConfig | null> {
@@ -20,7 +19,11 @@ export async function loadConfig(values): Promise<RunnerConfig | null> {
 
   const config = resolveConfig(configFromFile, configFromCli);
 
-  setUrl(config.database);
+  if (!config.database) {
+    console.error('DATABASE_URL is required. Set DATABASE_URL or pass --database.');
+    return null;
+  }
+  process.env.DATABASE_URL = config.database;
 
   return config;
 }
@@ -33,7 +36,7 @@ export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: U
     port,
     adminToken: configFromFile.adminToken ?? _.RUNNER_ADMIN_SECRET ?? '',
     workerToken: configFromFile.workerToken ?? _.RUNNER_WORKER_SECRET ?? '',
-    database: configFromFile.database ?? configFromCli.database ?? _.RUNNER_DATABASE_URL ?? '',
+    database: configFromFile.database ?? configFromCli.database ?? _.DATABASE_URL ?? '',
     workers: Number(configFromFile.workers ?? configFromCli.workers ?? _.RUNNER_WORKERS ?? 5),
     serverUrl: configFromFile.serverUrl ?? _.RUNNER_SERVER_URL ?? `http://127.0.0.1:${port}`,
     tags: configuredTags.map((tag) => tag.trim()).filter(Boolean),
@@ -76,13 +79,13 @@ Commands:
 
 Options:
   -c, --config     Path to runner.config.mjs (default: ./runner.config.mjs, env: RUNNER_CONFIG_PATH)
-  -d, --database   SQLite Database URL (env: RUNNER_DATABASE_URL)
+   -d, --database   Node.js database module URL (env: DATABASE_URL)
   -p, --port       Port for Webhook Ingress Server (default: 11235, env: PORT)
    -k, --workers    Maximum concurrent jobs (default: 5, env: RUNNER_WORKERS)
-                   Worker tags (comma-separated env: RUNNER_TAGS)
-                   Webhook server URL (env: RUNNER_SERVER_URL)
-                   OIDC settings (env: RUNNER_OIDC_PROVIDER_URL, RUNNER_OIDC_CLIENT_ID, RUNNER_OIDC_CLIENT_SECRET)
-   -h, --help       Show this help message
+                    Worker tags (comma-separated env: RUNNER_TAGS)
+                    Webhook server URL (env: RUNNER_SERVER_URL)
+                    OIDC settings (env: RUNNER_OIDC_PROVIDER_URL, RUNNER_OIDC_CLIENT_ID, RUNNER_OIDC_CLIENT_SECRET)
+    -h, --help       Show this help message
   `);
 }
 

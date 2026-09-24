@@ -1,12 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setUrl } from './db-client.js';
 import { QueueManager } from './queue.js';
+
+vi.mock('./db-client.js', () => {
+  const query = (method: string, statement: string, data?: unknown[]) =>
+    fetch('http://database.test/query', {
+      method: 'POST',
+      body: JSON.stringify({ s: statement, d: data, m: method }),
+    }).then((response) => response.json());
+  return { default: { get: query.bind(null, 'get'), run: query.bind(null, 'run'), all: query.bind(null, 'all'), exec: query.bind(null, 'exec') } };
+});
 
 describe('QueueManager.listJobs', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('optionally requests jobs between inclusive and exclusive ID cursors', async () => {
-    setUrl('http://database.test');
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => [],
@@ -24,7 +31,6 @@ describe('QueueManager.listJobs', () => {
   });
 
   it('filters shallow trigger fields with glob syntax', async () => {
-    setUrl('http://database.test');
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -36,7 +42,6 @@ describe('QueueManager.listJobs', () => {
   });
 
   it('searches serialized trigger inputs when no field is specified', async () => {
-    setUrl('http://database.test');
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -52,7 +57,6 @@ describe('QueueManager.claimNextJob', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('atomically claims only jobs whose required tags are all supported', async () => {
-    setUrl('http://database.test');
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => null,
@@ -73,7 +77,6 @@ describe('QueueManager.restartJob', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('copies the job definition and payload into a clean pending attempt', async () => {
-    setUrl('http://database.test');
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({

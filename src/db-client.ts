@@ -1,55 +1,21 @@
-let baseURL = process.env.DATABASE_URL;
-let pragmas: string[] = [];
+const databaseUrl = process.env.DATABASE_URL;
 
-async function query(
-  method: 'get' | 'run' | 'all' | 'exec',
-  statement: string,
-  data?: Array<string | number | null>,
-  pragma = pragmas,
-) {
-  let req;
-  let error;
-  let retries = 1;
-  let max = 3;
+if (!databaseUrl) throw new Error('DATABASE_URL is required');
 
-  while (retries < max) {
-    try {
-      req = await fetch(new URL('/query', baseURL), {
-        method: 'POST',
-        body: JSON.stringify({
-          s: statement,
-          d: data,
-          m: method,
-          p: pragma,
-        }),
-      });
+const loaded = await import(databaseUrl);
+const db = loaded.default || loaded;
 
-      if (req.ok) {
-        return await req.json();
-      }
-
-      await new Promise((r) => setTimeout(r, retries++ * 1000));
-    } catch (e) {
-      error = e;
-    }
-  }
-
-  throw new Error(error || (await req.text()));
+if (!db || typeof db.get !== 'function' || typeof db.run !== 'function' || typeof db.all !== 'function' || typeof db.exec !== 'function') {
+  throw new Error(`Database module ${databaseUrl} does not expose get, run, all, and exec`);
 }
 
-export const get = query.bind(null, 'get');
-export const run = query.bind(null, 'run');
-export const all = query.bind(null, 'all');
-export const exec = query.bind(null, 'exec');
+export const get = db.get.bind(db);
+export const run = db.run.bind(db);
+export const all = db.all.bind(db);
+export const exec = db.exec.bind(db);
+export const pragma = typeof db.pragma === 'function' ? db.pragma.bind(db) : () => undefined;
+export const transaction = typeof db.transaction === 'function' ? db.transaction.bind(db) : undefined;
+export const schema = typeof db.schema === 'function' ? db.schema.bind(db) : undefined;
+export const clone = typeof db.clone === 'function' ? db.clone.bind(db) : undefined;
 
-export function pragma(p) {
-  if (Array.isArray(p) && p.every((s) => typeof s === 'string')) {
-    pragmas = p;
-  }
-}
-
-export default { query, get, run, all, exec, pragma };
-
-export function setUrl(u) {
-  baseURL = u;
-}
+export default db;

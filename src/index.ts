@@ -1,12 +1,6 @@
 #!/usr/bin/env node
 
 import { loadFromArgs, printHelp } from './config.js';
-import { QueueManager } from './queue.js';
-import { SecretStore } from './secrets.js';
-import { WebhookServer } from './server.js';
-import { startWorkers } from './worker.js';
-import { WorkflowRepository } from './workflows.js';
-import { WorkflowScheduler } from './scheduler.js';
 import { installTimestampedConsole } from './logger.js';
 
 export { GitHubStatusPlugin } from './plugins/github-status.plugin.js';
@@ -17,8 +11,18 @@ async function main() {
   const { config, command } = await loadFromArgs();
 
   if (!config) {
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
+
+  const [{ QueueManager }, { SecretStore }, { WebhookServer }, { startWorkers }, { WorkflowRepository }, { WorkflowScheduler }] = await Promise.all([
+    import('./queue.js'),
+    import('./secrets.js'),
+    import('./server.js'),
+    import('./worker.js'),
+    import('./workflows.js'),
+    import('./scheduler.js'),
+  ]);
 
   const secrets = new SecretStore();
   const queue = new QueueManager(process.env.WORKER_NAME || 'cli');
@@ -58,4 +62,7 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

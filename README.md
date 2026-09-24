@@ -174,7 +174,7 @@ npx @cloud-cli/on [command] [options]
 | ---- | ------------ | --------------------- | ---------------------- | ------------------------------------------------ |
 | `-h` | `--help`     | —                     | -                      | Prints CLI help message and exits.               |
 | `-c` | `--config`   | `./runner.config.mjs` | `RUNNER_CONFIG_FILE`   | Path to JavaScript configuration file.           |
-| `-d` | `--database` | -                     | `RUNNER_DATABASE_URL`  | SQLite database file path or HTTP URL.           |
+| `-d` | `--database` | -                     | `DATABASE_URL`        | Node.js ES module URL exporting the database API. |
 | `-p` | `--port`     | `11235`               | `PORT`                 | Port for the Ingress HTTP server.                |
 | `-k` | `--workers`  | `5`                   | `RUNNER_WORKERS`       | Maximum concurrent jobs on this node.            |
 |      |              |                       | `RUNNER_ADMIN_SECRET`  | Admin token to refresh secrets via API           |
@@ -320,7 +320,7 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
 
 ## systemd Deployment
 
-Install the unit files from `systemd/` and create root-owned environment files in `/etc/on/`: `server.env` for `RUNNER_DATABASE_URL`, `RUNNER_SERVER_URL`, `RUNNER_ADMIN_SECRET`, `RUNNER_WORKER_SECRET`, and the three `RUNNER_OIDC_*` values; `scheduler.env` for `RUNNER_DATABASE_URL`; and `worker.env` for `RUNNER_DATABASE_URL`, `RUNNER_SERVER_URL`, `RUNNER_WORKER_SECRET`, `RUNNER_TAGS`, and `RUNNER_TMP`. Workers receive only `RUNNER_WORKER_SECRET`; the admin and OIDC secrets stay on the HTTP server. The supplied units run as root because the systemd execution driver creates transient system services. Use `systemctl edit` for per-machine overrides.
+Install the unit files from `systemd/` and create root-owned environment files in `/etc/on/`: `server.env` for `DATABASE_URL`, `RUNNER_SERVER_URL`, `RUNNER_ADMIN_SECRET`, `RUNNER_WORKER_SECRET`, and the three `RUNNER_OIDC_*` values; `scheduler.env` for `DATABASE_URL`; and `worker.env` for `DATABASE_URL`, `RUNNER_SERVER_URL`, `RUNNER_WORKER_SECRET`, `RUNNER_TAGS`, and `RUNNER_TMP`. Workers receive only `RUNNER_WORKER_SECRET`; the admin and OIDC secrets stay on the HTTP server. The supplied units run as root because the systemd execution driver creates transient system services. Use `systemctl edit` for per-machine overrides.
 
 Place the server master key in `/etc/on/credentials/on-master-key` with root-only permissions. `runner-server.service` exposes it privately through systemd's credentials directory. Start the primary control plane with `systemctl enable --now runner.target`; enable `runner-worker.service` separately on worker machines. Use `systemctl edit runner-worker.service` for machine-specific labels and paths.
 

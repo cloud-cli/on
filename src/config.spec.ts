@@ -16,6 +16,13 @@ describe('OIDC configuration', () => {
     });
   });
 
+  it('uses DATABASE_URL for the database module and CLI values take precedence', () => {
+    vi.stubEnv('DATABASE_URL', 'file:///env/database.mjs');
+
+    expect(resolveConfig({}, {}).database).toBe('file:///env/database.mjs');
+    expect(resolveConfig({}, { database: 'file:///cli/database.mjs' }).database).toBe('file:///cli/database.mjs');
+  });
+
   it('prefers file OIDC settings over environment variables', () => {
     vi.stubEnv('RUNNER_OIDC_PROVIDER_URL', 'https://env.test');
     vi.stubEnv('RUNNER_OIDC_CLIENT_ID', 'env-client');

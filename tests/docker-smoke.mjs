@@ -28,7 +28,8 @@ await new Promise((resolve) => database.listen(dbPort, '127.0.0.1', resolve));
 const container = spawn('docker', [
   'run', '--rm', '--name', containerName, '--network', 'host',
   '-e', 'RUNNER_ADMIN_SECRET=e2e-admin-secret',
-  '-e', `RUNNER_DATABASE_URL=http://127.0.0.1:${dbPort}`,
+  '-e', 'DATABASE_URL=file:///home/app/e2e-db.mjs',
+  '-e', `DATABASE_HTTP_URL=http://127.0.0.1:${dbPort}`,
   '-e', `PORT=${appPort}`,
   '-e', `RUNNER_SERVER_URL=http://127.0.0.1:${appPort}`,
   image, 'dist/on.js', 'start-server',
