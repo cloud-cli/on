@@ -32,6 +32,9 @@ export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: U
   const _ = process.env;
   const port = Number(configFromFile.port || configFromCli.port || _.PORT || 11235);
   const configuredTags = configFromFile.tags ?? (_.RUNNER_TAGS ? _.RUNNER_TAGS.split(',') : []);
+  const oidcProviderUrl = _.RUNNER_OIDC_PROVIDER_URL ?? _.AUTH_PROVIDER;
+  const oidcClientId = _.RUNNER_OIDC_CLIENT_ID ?? _.OIDC_CLIENT_ID;
+  const oidcClientSecret = _.RUNNER_OIDC_CLIENT_SECRET ?? _.OIDC_CLIENT_SECRET;
   return {
     port,
     adminToken: configFromFile.adminToken ?? _.RUNNER_ADMIN_SECRET ?? '',
@@ -54,11 +57,11 @@ export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: U
       : undefined),
     oidc:
       configFromFile.oidc ??
-      (_.RUNNER_OIDC_PROVIDER_URL && _.RUNNER_OIDC_CLIENT_ID && _.RUNNER_OIDC_CLIENT_SECRET
+      (oidcProviderUrl && oidcClientId && oidcClientSecret
         ? {
-            providerUrl: _.RUNNER_OIDC_PROVIDER_URL,
-            clientId: _.RUNNER_OIDC_CLIENT_ID,
-            clientSecret: _.RUNNER_OIDC_CLIENT_SECRET,
+            providerUrl: oidcProviderUrl,
+            clientId: oidcClientId,
+            clientSecret: oidcClientSecret,
           }
         : undefined),
   };

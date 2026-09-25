@@ -31,4 +31,16 @@ describe('OIDC configuration', () => {
 
     expect(resolveConfig({ oidc }, {}).oidc).toEqual(oidc);
   });
+
+  it('accepts the short OIDC environment variable names', () => {
+    vi.stubEnv('AUTH_PROVIDER', 'https://auth.test');
+    vi.stubEnv('OIDC_CLIENT_ID', 'runner');
+    vi.stubEnv('OIDC_CLIENT_SECRET', 'secret');
+
+    expect(resolveConfig({}, {}).oidc).toEqual({
+      providerUrl: 'https://auth.test',
+      clientId: 'runner',
+      clientSecret: 'secret',
+    });
+  });
 });

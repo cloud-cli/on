@@ -6,12 +6,6 @@ export interface OidcConfig {
   clientSecret: string;
 }
 
-interface OidcMetadata {
-  authorization_endpoint: string;
-  token_endpoint: string;
-  userinfo_endpoint: string;
-}
-
 export interface OidcUser {
   id: string;
   name?: string;
@@ -38,7 +32,7 @@ const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const SESSION_COOKIE = 'runner_oidc_session';
 
 export class OidcClient {
-  private metadata?: OidcMetadata;
+  private providerClientPromise?: Promise<any>;
   private readonly states = new Map<string, LoginState>();
   private readonly sessions = new Map<string, Session>();
 
@@ -53,22 +47,14 @@ export class OidcClient {
   }
 
   async loginUrl(redirectUri: string, returnTo: string): Promise<string> {
-    const metadata = await this.getMetadata();
+    const provider = await this.providerClient();
     const state = randomUrlSafe(32);
-    const verifier = randomUrlSafe(48);
+    const authorization = provider.createAuthorizationRequest({ redirectUri });
+    const verifier = authorization.codeVerifier;
     this.states.set(state, { verifier, returnTo, expiresAt: Date.now() + STATE_TTL_MS });
     this.prune();
-    const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
-    const url = new URL(metadata.authorization_endpoint);
-    url.search = new URLSearchParams({
-      response_type: 'code',
-      client_id: this.config.clientId,
-      redirect_uri: redirectUri,
-      state,
-      code_challenge: challenge,
-      code_challenge_method: 'S256',
-      scope: 'openid profile email',
-    }).toString();
+    const url = new URL(authorization.url);
+    url.searchParams.set('state', state);
     return url.toString();
   }
 
@@ -77,28 +63,15 @@ export class OidcClient {
     this.states.delete(state);
     if (!loginState || loginState.expiresAt <= Date.now()) throw new Error('OIDC login state is invalid or expired');
 
-    const metadata = await this.getMetadata();
-    const response = await fetch(metadata.token_endpoint, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        client_id: this.config.clientId,
-        client_secret: this.config.clientSecret,
-        redirect_uri: redirectUri,
-        code_verifier: loginState.verifier,
-      }),
-    });
-    if (!response.ok) throw new Error(`OIDC token exchange failed: ${response.status}`);
-    const tokens = (await response.json()) as { access_token?: string; expires_in?: number };
+    const provider = await this.providerClient();
+    const tokens = await provider.exchangeCode({
+      code,
+      codeVerifier: loginState.verifier,
+      redirectUri,
+      clientSecret: this.config.clientSecret,
+    }) as { access_token?: string; expires_in?: number };
     if (!tokens.access_token) throw new Error('OIDC token response did not include an access token');
-
-    const userResponse = await fetch(metadata.userinfo_endpoint, {
-      headers: { authorization: `Bearer ${tokens.access_token}`, 'x-auth-audience': this.config.clientId },
-    });
-    if (!userResponse.ok) throw new Error(`OIDC userinfo request failed: ${userResponse.status}`);
-    const userInfo = (await userResponse.json()) as OidcUser & { sub?: string };
+    const userInfo = await provider.getProfile(tokens.access_token) as OidcUser & { sub?: string };
     const user = { ...userInfo, id: userInfo.id || userInfo.sub || '' };
     if (!user.id) throw new Error('OIDC userinfo response did not include a user id');
 
@@ -130,16 +103,7 @@ export class OidcClient {
 
   async scopesForToken(token: string): Promise<string[] | null> {
     try {
-      const response = await fetch(new URL('/oauth/introspect', this.config.providerUrl.replace(/\/$/, '') + '/'), {
-        method: 'POST',
-        headers: {
-          authorization: `Basic ${Buffer.from(`${this.config.clientId}:${this.config.clientSecret}`).toString('base64')}`,
-          'content-type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({ token, token_type_hint: 'access_token' }),
-      });
-      if (!response.ok) return null;
-      const result = (await response.json()) as { active?: boolean; scope?: string | string[]; scopes?: string[] };
+      const result = await (await this.providerClient()).introspectToken(token) as { active?: boolean; scope?: string | string[]; scopes?: string[] };
       if (!result.active) return null;
       return result.scopes || (Array.isArray(result.scope) ? result.scope : result.scope?.split(/\s+/).filter(Boolean) || []);
     } catch {
@@ -181,12 +145,17 @@ export class OidcClient {
       .find(([name]) => name === SESSION_COOKIE)?.[1];
   }
 
-  private async getMetadata(): Promise<OidcMetadata> {
-    if (this.metadata) return this.metadata;
-    const response = await fetch(new URL('/.well-known/openid-configuration', `${this.config.providerUrl.replace(/\/$/, '')}/`));
-    if (!response.ok) throw new Error(`OIDC discovery failed: ${response.status}`);
-    this.metadata = (await response.json()) as OidcMetadata;
-    return this.metadata;
+  private async providerClient() {
+    if (!this.providerClientPromise) {
+      this.providerClientPromise = fetch(new URL('/node.mjs', `${this.config.providerUrl.replace(/\/$/, '')}/`))
+        .then(async (response) => {
+          if (!response.ok) throw new Error(`OIDC client module failed: ${response.status}`);
+          const source = await response.text();
+          const module = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+          return module.createAuthClient({ issuer: this.config.providerUrl, clientId: this.config.clientId, clientSecret: this.config.clientSecret });
+        });
+    }
+    return this.providerClientPromise;
   }
 
   private prune() {

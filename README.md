@@ -182,6 +182,7 @@ npx @cloud-cli/on [command] [options]
 |      |              |                       | `RUNNER_OIDC_PROVIDER_URL` | OIDC issuer URL, for example `https://auth.api.apphor.de` |
 |      |              |                       | `RUNNER_OIDC_CLIENT_ID` | Registered OIDC client identifier                 |
 |      |              |                       | `RUNNER_OIDC_CLIENT_SECRET` | Registered OIDC client secret                 |
+|      |              |                       | `AUTH_PROVIDER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Short aliases for the OIDC settings above. |
 |      |              |                       | `RUNNER_SERVER_URL`    | Webhook server URL used by workers.              |
 |      |              |                       | `RUNNER_TAGS`          | Comma-separated worker capability tags.          |
 |      |              |                       | `RUNNER_VAPID_PUBLIC_KEY`  | Public key for background Web Push notifications. |

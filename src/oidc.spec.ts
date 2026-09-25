@@ -7,15 +7,18 @@ describe('OIDC client', () => {
   it('performs PKCE login and creates a session from userinfo', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith('/.well-known/openid-configuration')) {
-        return new Response(JSON.stringify({
-          authorization_endpoint: 'https://auth.test/authorize',
-          token_endpoint: 'https://auth.test/token',
-          userinfo_endpoint: 'https://auth.test/userinfo',
-        }), { status: 200 });
-      }
-      if (url.endsWith('/token')) return new Response(JSON.stringify({ access_token: 'access-token' }), { status: 200 });
-      if (url.endsWith('/userinfo')) return new Response(JSON.stringify({ id: 'user-1', name: 'Ada' }), { status: 200 });
+      if (url.endsWith('/node.mjs')) return new Response(`
+        export function createAuthClient() {
+          return {
+            createAuthorizationRequest({ redirectUri }) {
+              return { url: 'https://auth.test/authorize?response_type=code&code_challenge_method=S256&redirect_uri=' + encodeURIComponent(redirectUri), codeVerifier: 'verifier' };
+            },
+            async exchangeCode() { return { access_token: 'access-token', expires_in: 900 }; },
+            async getProfile() { return { id: 'user-1', name: 'Ada' }; },
+            async introspectToken() { return { active: true, scope: 'logs:read runs:dispatch' }; },
+          };
+        }
+      `, { status: 200 });
       throw new Error(`Unexpected request: ${url}`);
     });
     const client = new OidcClient({ providerUrl: 'https://auth.test', clientId: 'runner', clientSecret: 'secret' });
@@ -28,11 +31,11 @@ describe('OIDC client', () => {
     expect(result.returnTo).toBe('/runs/42');
     expect(result.cookie).toContain('runner_oidc_session=');
     expect(client.userFromCookie(result.cookie)).toEqual({ id: 'user-1', name: 'Ada' });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('returns scopes from provider token introspection', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ active: true, scope: 'logs:read runs:dispatch' }), { status: 200 }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(`export function createAuthClient() { return { introspectToken: async () => ({ active: true, scope: 'logs:read runs:dispatch' }) }; }`, { status: 200 }));
     const client = new OidcClient({ providerUrl: 'https://auth.test', clientId: 'runner', clientSecret: 'secret' });
     await expect(client.scopesForToken('token')).resolves.toEqual(['logs:read', 'runs:dispatch']);
   });
