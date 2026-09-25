@@ -14,7 +14,7 @@ describe('workflow help', () => {
     expect(html).toContain('On this page');
     expect(html).toContain('href="#tutorials"');
     expect(html).toContain('<app-header title="Workflow Documentation"');
-    expect(html).toContain('https://cdn.li3.dev/@li3/');
+    expect(html).toContain('https://at-li3.static.apphor.de/');
     expect(html).toContain('back="/runs"');
     expect(html).not.toContain('onclick="history.back()"');
   });

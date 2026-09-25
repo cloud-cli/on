@@ -7,7 +7,7 @@ describe('settings UI', () => {
     const html = generateSettingsHtml();
     const source = html + settingsSetup;
 
-    expect(source).toContain('https://cdn.li3.dev/@li3/');
+    expect(source).toContain('https://at-li3.static.apphor.de/');
     expect(source).toContain('https://cdn.tailwindcss.com');
     expect(source).toContain('max-w-6xl');
     expect(source).toContain('/api/api-keys');
