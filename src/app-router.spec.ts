@@ -8,5 +8,6 @@ describe('SPA router', () => {
     expect(routerSetup).toContain("path === '/settings' || path === '/workflows'");
     expect(routerSetup).toContain("path.match(/^\\/workflows\\/(new|[a-z0-9-]+)$/)");
     expect(routerSetup).toContain('if (target.pathname === window.location.pathname && target.hash) return;');
+    expect(routerSetup).toContain("target.pathname === '/settings' || target.pathname.startsWith('/settings/')");
   });
 });

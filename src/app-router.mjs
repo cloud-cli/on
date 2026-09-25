@@ -41,6 +41,7 @@ export default function () {
     if (!anchor || anchor.target || anchor.hasAttribute('download')) return;
     const target = new URL(anchor.href, window.location.href);
     if (target.origin !== window.location.origin || !target.pathname.startsWith('/') || target.pathname.startsWith('/auth/')) return;
+    if (target.pathname === '/settings' || target.pathname.startsWith('/settings/') || target.pathname === '/workflows' || target.pathname.startsWith('/workflows/')) return;
     if (target.pathname.startsWith('/api/') || target.pathname.startsWith('/webhooks/')) return;
     if (target.pathname === window.location.pathname && target.hash) return;
     event.preventDefault();
