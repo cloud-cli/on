@@ -113,19 +113,19 @@ export class WebhookServer {
       res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
       return res.end(appRouterSetup);
     }
-    if (req.method === 'GET' && url.pathname === '/dashboard.mjs') {
+    if (req.method === 'GET' && (url.pathname === '/dashboard.mjs' || url.pathname === '/pages/dashboard.mjs')) {
       res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
       return res.end(dashboardSetup);
     }
-    if (req.method === 'GET' && url.pathname === '/run.mjs') {
+    if (req.method === 'GET' && (url.pathname === '/run.mjs' || url.pathname === '/pages/run.mjs')) {
       res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
       return res.end(runSetup);
     }
-    if (req.method === 'GET' && url.pathname === '/settings-ui.mjs') {
+    if (req.method === 'GET' && (url.pathname === '/settings-ui.mjs' || url.pathname === '/pages/settings-ui.mjs')) {
       res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
       return res.end(settingsSetup);
     }
-    if (req.method === 'GET' && url.pathname === '/workflows-ui.mjs') {
+    if (req.method === 'GET' && (url.pathname === '/workflows-ui.mjs' || url.pathname === '/pages/workflows-ui.mjs')) {
       res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
       return res.end(workflowsSetup);
     }
