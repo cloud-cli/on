@@ -202,7 +202,8 @@
       </main>
 
       <script setup>
-        import { onDestroy, onInit, ref } from '@li3/web';
+         import { onDestroy, onInit, ref } from '@li3/web';
+         import { apiFetch } from '/api-client.mjs';
 
         export default function setup() {
           const jobs = ref([]);
@@ -280,7 +281,7 @@
           const enablePushNotifications = async () => {
             try {
               if (!notificationsSupported.value) return;
-              const response = await window.runnerApiFetch('/api/push/public-key', { headers: { accept: 'application/json' } });
+              const response = await apiFetch('/api/push/public-key', { headers: { accept: 'application/json' } });
               if (!response.ok) return;
               const { publicKey } = await response.json();
               pushConfigured.value = true;
@@ -291,7 +292,7 @@
                   userVisibleOnly: true,
                   applicationServerKey: urlBase64ToUint8Array(publicKey),
                 }));
-              const saveResponse = await window.runnerApiFetch('/api/push/subscriptions', {
+              const saveResponse = await apiFetch('/api/push/subscriptions', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify(subscription),
@@ -306,7 +307,7 @@
               const registration = await navigator.serviceWorker.ready;
               const subscription = await registration.pushManager.getSubscription();
               if (!subscription) return;
-              await window.runnerApiFetch('/api/push/subscriptions', {
+              await apiFetch('/api/push/subscriptions', {
                 method: 'DELETE',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({ endpoint: subscription.endpoint }),
@@ -340,7 +341,7 @@
                 afterId === null
                   ? `/api/jobs?limit=100${filterQuery}`
                   : `/api/jobs?afterId=${afterId}&limit=100${filterQuery}`;
-              const response = await window.runnerApiFetch(url, { headers: { accept: 'application/json' } });
+              const response = await apiFetch(url, { headers: { accept: 'application/json' } });
               if (!response.ok) throw new Error(`Dashboard refresh failed: ${response.status}`);
 
               const data = await response.json();
@@ -376,7 +377,7 @@
             try {
               const beforeId = Math.min(...jobs.value.map((job) => Number(job.id)));
               const filterQuery = activeFilter.value ? `&filter=${encodeURIComponent(activeFilter.value)}` : '';
-              const response = await window.runnerApiFetch(`/api/jobs?beforeId=${beforeId}${filterQuery}`, {
+              const response = await apiFetch(`/api/jobs?beforeId=${beforeId}${filterQuery}`, {
                 headers: { accept: 'application/json' },
               });
               if (!response.ok) throw new Error(`Loading older jobs failed: ${response.status}`);

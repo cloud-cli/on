@@ -244,8 +244,9 @@
 
       <script setup>
          import { computed, onDestroy, onInit, ref } from '@li3/web';
-         import { AnsiUp } from 'ansi_up';
-         import { marked } from 'marked';
+          import { AnsiUp } from 'ansi_up';
+          import { marked } from 'marked';
+           import { apiFetch } from '/api-client.mjs';
 
         export default function setup() {
           const jobId = window.location.pathname.split('/').filter(Boolean).pop() || '';
@@ -285,7 +286,7 @@
            const artifactUrl = (path) => `/api/runs/${report.value.jobId}/artifacts/${encodeURIComponent(path)}`;
            const downloadArtifact = async (event, path) => {
              event.preventDefault();
-             const response = await window.runnerApiFetch(artifactUrl(path));
+              const response = await apiFetch(artifactUrl(path));
              if (!response.ok) return;
              const link = document.createElement('a');
              link.href = URL.createObjectURL(await response.blob());
@@ -300,7 +301,7 @@
             let parentId = report.value.parentId;
             while (parentId && !visited.has(String(parentId)) && lineage.length < 50) {
               visited.add(String(parentId));
-              const response = await window.runnerApiFetch(`/api/runs/${parentId}`, { headers: { accept: 'application/json' } });
+               const response = await apiFetch(`/api/runs/${parentId}`, { headers: { accept: 'application/json' } });
               if (!response.ok) throw new Error(`Previous run request failed: ${response.status}`);
               const parent = await response.json();
               lineage.push({ id: parent.jobId, status: parent.status, startedAt: parent.startedAt });
@@ -340,7 +341,7 @@
             aiLoading.value = true;
             aiError.value = '';
             try {
-              const response = await window.runnerApiFetch(`/api/runs/${report.value.jobId}/ai-help`, {
+               const response = await apiFetch(`/api/runs/${report.value.jobId}/ai-help`, {
                 method: 'POST',
                 headers: { accept: 'application/json', 'content-type': 'application/json' },
                 body: JSON.stringify({ stepId, question, conversation: aiMessages.value }),
@@ -388,7 +389,7 @@
             await requestAiHelp(aiStepId.value, question);
           };
           const restartJob = async () => {
-             const response = await window.runnerApiFetch(`/restart/${report.value.jobId}`, {
+              const response = await apiFetch(`/restart/${report.value.jobId}`, {
                method: 'POST',
                headers: { 'content-type': 'application/json' },
                body: JSON.stringify({ inputs: report.value.inputs || {} }),
@@ -413,7 +414,7 @@
             const inputs = Object.fromEntries(manualInputs.value.filter((entry) => entry.key.trim()).map((entry) => [entry.key.trim(), entry.value]));
             manualRestartLoading.value = true;
             try {
-              const response = await window.runnerApiFetch(`/restart/${report.value.jobId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ inputs }) });
+               const response = await apiFetch(`/restart/${report.value.jobId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ inputs }) });
               if (!response.ok) throw new Error(`Restart failed: ${response.status}`);
               const { id } = await response.json();
               location.href = `/runs/${id}`;
@@ -427,7 +428,7 @@
             if (cancelling.value || report.value.status !== 'running') return;
             cancelling.value = true;
             try {
-              const response = await window.runnerApiFetch(`/api/jobs/${report.value.jobId}/cancel`, { method: 'POST' });
+               const response = await apiFetch(`/api/jobs/${report.value.jobId}/cancel`, { method: 'POST' });
               if (!response.ok) throw new Error(`Cancel failed: ${response.status}`);
               await refreshRun();
             } catch (error) {
@@ -444,7 +445,7 @@
             refreshing = true;
 
             try {
-              const response = await window.runnerApiFetch(`/api/runs/${jobId}`, {
+               const response = await apiFetch(`/api/runs/${jobId}`, {
                 headers: { accept: 'application/json' },
               });
               if (!response.ok) throw new Error(`Run refresh failed: ${response.status}`);

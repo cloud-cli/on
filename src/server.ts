@@ -27,6 +27,7 @@ import { generateWorkflowManagementHtml } from './workflows-ui.js';
 import { WorkflowRepository } from './workflows.js';
 import { debug } from './debug.js';
 import { OidcClient } from './oidc.js';
+import apiClientSource from './api-client.mjs?raw';
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -94,6 +95,10 @@ export class WebhookServer {
     if (req.method === 'GET' && url.pathname === '/auth/logout') return this.handleOidcLogout(req, res);
     if (req.method === 'GET' && url.pathname === '/api/auth/session') return this.handleOidcSession(req, res);
     if (req.method === 'GET' && url.pathname === '/api/auth/token') return this.handleOidcToken(req, res);
+    if (req.method === 'GET' && url.pathname === '/api-client.mjs') {
+      res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
+      return res.end(apiClientSource);
+    }
 
     if (req.method === 'GET' && url.pathname === '/app-header.html') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
