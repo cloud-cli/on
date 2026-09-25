@@ -247,7 +247,7 @@
          import { computed, onDestroy, onInit, ref } from '@li3/web';
           import { AnsiUp } from 'ansi_up';
           import { marked } from 'marked';
-           import { apiFetch } from '/api-client.mjs';
+           import { apiFetch } from './api-client.mjs';
 
         export default function setup() {
           const jobId = window.location.pathname.split('/').filter(Boolean).pop() || '';
