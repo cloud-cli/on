@@ -30,6 +30,10 @@ import { OidcClient } from './oidc.js';
 import apiClientSource from './api-client.mjs?raw';
 import appHeaderSetup from './app-header.mjs?raw';
 import appRouterSetup from './app-router.mjs?raw';
+import dashboardSetup from './dashboard.mjs?raw';
+import runSetup from './run.mjs?raw';
+import settingsSetup from './settings-ui.mjs?raw';
+import workflowsSetup from './workflows-ui.mjs?raw';
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -108,6 +112,22 @@ export class WebhookServer {
     if (req.method === 'GET' && url.pathname === '/app-router.mjs') {
       res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
       return res.end(appRouterSetup);
+    }
+    if (req.method === 'GET' && url.pathname === '/dashboard.mjs') {
+      res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
+      return res.end(dashboardSetup);
+    }
+    if (req.method === 'GET' && url.pathname === '/run.mjs') {
+      res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
+      return res.end(runSetup);
+    }
+    if (req.method === 'GET' && url.pathname === '/settings-ui.mjs') {
+      res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
+      return res.end(settingsSetup);
+    }
+    if (req.method === 'GET' && url.pathname === '/workflows-ui.mjs') {
+      res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
+      return res.end(workflowsSetup);
     }
 
     if (req.method === 'GET' && url.pathname === '/app-header.html') {
