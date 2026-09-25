@@ -5,8 +5,18 @@ const rawFetch = window.fetch.bind(window);
 
 async function loadToken() {
   if (token && expiresAt > Date.now() + 30_000) return token;
+  const hadToken = Boolean(token);
   const response = await rawFetch('/api/auth/token', { headers: { accept: 'application/json' } });
-  if (!response.ok) return '';
+  if (!response.ok) {
+    if (hadToken) {
+      token = '';
+      expiresAt = 0;
+      sessionStorage.removeItem('runner-api-token');
+      const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      window.location.assign(`/auth/login?url=${encodeURIComponent(returnTo)}`);
+    }
+    return '';
+  }
   const data = await response.json();
   token = data.access_token || '';
   expiresAt = Number(data.expires_at || 0);

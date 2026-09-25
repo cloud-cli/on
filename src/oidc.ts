@@ -34,7 +34,6 @@ const SESSION_COOKIE = 'runner_oidc_session';
 
 export class OidcClient {
   private providerClientPromise?: Promise<any>;
-  private readonly states = new Map<string, LoginState>();
   private readonly sessions = new Map<string, Session>();
 
   constructor(config: OidcConfig) {
@@ -53,19 +52,16 @@ export class OidcClient {
 
   async loginUrl(redirectUri: string, returnTo: string): Promise<string> {
     const provider = await this.providerClient();
-    const state = randomUrlSafe(32);
     const authorization = provider.createAuthorizationRequest({ redirectUri });
     const verifier = authorization.codeVerifier;
-    this.states.set(state, { verifier, returnTo, expiresAt: Date.now() + STATE_TTL_MS });
-    this.prune();
+    const state = this.signState({ verifier, returnTo, expiresAt: Date.now() + STATE_TTL_MS });
     const url = new URL(authorization.url);
     url.searchParams.set('state', state);
     return url.toString();
   }
 
   async completeLogin(code: string, state: string, redirectUri: string): Promise<{ returnTo: string; cookie: string }> {
-    const loginState = this.states.get(state);
-    this.states.delete(state);
+    const loginState = this.parseState(state);
     if (!loginState || loginState.expiresAt <= Date.now()) throw new Error('OIDC login state is invalid or expired');
 
     const provider = await this.providerClient();
@@ -175,8 +171,24 @@ export class OidcClient {
 
   private prune() {
     const now = Date.now();
-    for (const [key, state] of this.states) if (state.expiresAt <= now) this.states.delete(key);
     for (const [key, session] of this.sessions) if (session.expiresAt <= now) this.sessions.delete(key);
+  }
+
+  private signState(state: LoginState) {
+    const payload = Buffer.from(JSON.stringify({ ...state, nonce: randomUrlSafe(16) })).toString('base64url');
+    const signature = crypto.createHmac('sha256', this.config.clientSecret).update(payload).digest('base64url');
+    return `${payload}.${signature}`;
+  }
+
+  private parseState(value: string): LoginState {
+    const [payload, signature] = value.split('.');
+    if (!payload || !signature) throw new Error('OIDC login state is invalid or expired');
+    const expected = crypto.createHmac('sha256', this.config.clientSecret).update(payload).digest('base64url');
+    const valid = signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+    if (!valid) throw new Error('OIDC login state is invalid or expired');
+    const state = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as LoginState;
+    if (!state.verifier || !state.returnTo || state.expiresAt <= Date.now()) throw new Error('OIDC login state is invalid or expired');
+    return state;
   }
 }
 
