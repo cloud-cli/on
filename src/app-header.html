@@ -15,7 +15,9 @@
     </div>
     <div class="flex items-center gap-2">
       <template if="authConfigured && !authenticated">
-        <a class="text-xs text-indigo-300 hover:text-white" href="/auth/login">Sign in</a>
+        <a class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-500/50 text-indigo-200 no-underline outline-none hover:border-indigo-400 hover:bg-indigo-500/10 hover:text-white focus-visible:ring-2 focus-visible:ring-indigo-400/60" href="/auth/login" aria-label="Sign in" title="Sign in">
+          <lucide-icon icon="log-in" size="16"></lucide-icon>
+        </a>
       </template>
       <template if="authenticated">
         <span class="hidden text-xs text-gray-400 sm:inline">{{ userName }}</span>
@@ -24,10 +26,12 @@
       <a class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-700 text-indigo-200 no-underline outline-none hover:border-indigo-500 hover:bg-gray-900 hover:text-white focus-visible:ring-2 focus-visible:ring-indigo-400/60" href="/help" aria-label="Help" title="Help">
         <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.6 9a2.5 2.5 0 1 1 4.2 1.8c-1.2 1-1.8 1.4-1.8 2.7"></path><path d="M12 17h.01"></path></svg>
       </a>
-      <a class="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-gray-700 text-indigo-200 no-underline outline-none hover:border-indigo-500 hover:bg-gray-900 hover:text-white focus-visible:ring-2 focus-visible:ring-indigo-400/60" href="/settings" aria-label="Settings" title="Settings">
-        <template if="userPhoto"><img attr-src="userPhoto" alt="" class="h-full w-full object-cover" /></template>
-        <template if="!userPhoto"><lucide-icon icon="circle-user-round" size="16"></lucide-icon></template>
-      </a>
+      <template if="authenticated">
+        <a class="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-gray-700 text-indigo-200 no-underline outline-none hover:border-indigo-500 hover:bg-gray-900 hover:text-white focus-visible:ring-2 focus-visible:ring-indigo-400/60" href="/settings" aria-label="Settings" title="Settings">
+          <template if="userPhoto"><img attr-src="userPhoto" alt="" class="h-full w-full object-cover" /></template>
+          <template if="!userPhoto"><lucide-icon icon="circle-user-round" size="16"></lucide-icon></template>
+        </a>
+      </template>
     </div>
   </header>
   <script setup src="./app-header.mjs"></script>
