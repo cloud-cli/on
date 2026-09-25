@@ -28,6 +28,8 @@ import { WorkflowRepository } from './workflows.js';
 import { debug } from './debug.js';
 import { OidcClient } from './oidc.js';
 import apiClientSource from './api-client.mjs?raw';
+import appHeaderSetup from './app-header.mjs?raw';
+import appRouterSetup from './app-router.mjs?raw';
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -98,6 +100,14 @@ export class WebhookServer {
     if (req.method === 'GET' && url.pathname === '/api-client.mjs') {
       res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
       return res.end(apiClientSource);
+    }
+    if (req.method === 'GET' && url.pathname === '/app-header.mjs') {
+      res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
+      return res.end(appHeaderSetup);
+    }
+    if (req.method === 'GET' && url.pathname === '/app-router.mjs') {
+      res.writeHead(200, { 'Cache-Control': 'no-cache', 'Content-Type': 'text/javascript; charset=utf-8' });
+      return res.end(appRouterSetup);
     }
 
     if (req.method === 'GET' && url.pathname === '/app-header.html') {
