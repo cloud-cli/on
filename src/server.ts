@@ -27,6 +27,7 @@ import { generateWorkflowManagementHtml } from './workflows-ui.js';
 import { WorkflowRepository } from './workflows.js';
 import { debug } from './debug.js';
 import { OidcClient } from './oidc.js';
+import { OidcUserRepository } from './oidc-user-repository.js';
 import apiClientSource from './api-client.mjs?raw';
 import appHeaderSetup from './app-header.mjs?raw';
 import appRouterSetup from './app-router.mjs?raw';
@@ -49,6 +50,7 @@ export class WebhookServer {
   private adminToken: string;
   private workerToken: string;
   private oidc?: OidcClient;
+  private oidcUsers = new OidcUserRepository();
   private events = new EventBroker();
   private workflowsLoaded: Promise<void>;
 
@@ -65,7 +67,7 @@ export class WebhookServer {
     this.workerToken = options.config.workerToken;
     this.oidc = options.config.oidc ? new OidcClient(options.config.oidc) : undefined;
 
-    this.workflowsLoaded = Promise.all([this.workflows.init(), this.secretRepository.init(), this.apiKeys.init()]).then(() => undefined);
+    this.workflowsLoaded = Promise.all([this.workflows.init(), this.secretRepository.init(), this.apiKeys.init(), this.oidcUsers.init()]).then(() => undefined);
 
     this.registerPreprocessor(new GitHubPreprocessor());
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
@@ -607,7 +609,7 @@ export class WebhookServer {
   }
 
   private isAdmin(req: http.IncomingMessage): boolean {
-    return this.matchesToken(req, this.adminToken, true);
+    return this.oidc?.roleFromCookie(req.headers.cookie) === 'admin';
   }
 
   private isWorker(req: http.IncomingMessage): boolean {
@@ -648,6 +650,11 @@ export class WebhookServer {
     if (!code || !state) return res.writeHead(400).end('Missing OIDC callback parameters');
     try {
       const result = await this.oidc.completeLogin(code, state, this.oidcRedirectUri(req));
+      const user = this.oidc.userFromCookie(result.cookie);
+      if (user) {
+        await this.oidcUsers.upsert(user);
+        this.oidc.setRole(result.cookie, await this.oidcUsers.role(user.id));
+      }
       res.writeHead(302, { Location: result.returnTo, 'Set-Cookie': `${result.cookie}${this.isHttps(req) ? '; Secure' : ''}` });
       return res.end();
     } catch (error: any) {
@@ -736,7 +743,7 @@ export class WebhookServer {
 
   private async requireScope(req: http.IncomingMessage, res: http.ServerResponse, scope: string): Promise<boolean> {
     if (await this.hasScope(req, scope)) return true;
-    res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8', 'WWW-Authenticate': 'Basic realm="Runner"' });
+    res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ error: `Missing scope: ${scope}` }));
     return false;
   }
@@ -762,9 +769,15 @@ export class WebhookServer {
 
   private requireAdmin(req: http.IncomingMessage, res: http.ServerResponse): boolean {
     if (this.isAdmin(req)) return true;
+    const path = (req.url || '/').split('?')[0];
+    if (req.method === 'GET' && !path.startsWith('/api/')) {
+      const returnTo = encodeURIComponent(req.url || '/settings');
+      res.writeHead(302, { Location: `/auth/login?url=${returnTo}` });
+      res.end();
+      return false;
+    }
     res.writeHead(401, {
       'Content-Type': 'application/json; charset=utf-8',
-      'WWW-Authenticate': 'Basic realm="Runner"',
     });
     res.end(JSON.stringify({ error: 'Unauthorized' }));
     return false;
@@ -858,13 +871,13 @@ export class WebhookServer {
   }
 
   private async handleSecretList(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.requireAdmin(req, res)) return;
+    if (!(await this.requireScope(req, res, 'secrets:read'))) return;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ secrets: await this.secretRepository.names() }));
   }
 
   private async handleSecretSave(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
-    if (!this.requireAdmin(req, res)) return;
+    if (!(await this.requireScope(req, res, 'secrets:write'))) return;
     const body = await this.readJson(req, res);
     if (!body || typeof body.value !== 'string') {
       if (!res.headersSent)
@@ -881,7 +894,7 @@ export class WebhookServer {
   }
 
   private async handleSecretDelete(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
-    if (!this.requireAdmin(req, res)) return;
+    if (!(await this.requireScope(req, res, 'secrets:write'))) return;
     if (!(await this.secretRepository.delete(name))) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Secret not found' }));
@@ -907,10 +920,7 @@ export class WebhookServer {
    * Handles Zero-Downtime Secret Reload
    */
   private async handleSecretReload(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.isAdmin(req)) {
-      res.writeHead(403, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'Unauthorized' }));
-    }
+    if (!(await this.requireScope(req, res, 'secrets:write'))) return;
 
     // Trigger in-memory secret reload
     this.secrets.reload();

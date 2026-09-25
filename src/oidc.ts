@@ -22,6 +22,7 @@ interface LoginState {
 
 interface Session {
   user: OidcUser;
+  role?: 'user' | 'admin';
   accessToken: string;
   accessTokenExpiresAt: number;
   expiresAt: number;
@@ -97,6 +98,16 @@ export class OidcClient {
   userFromCookie(cookieHeader: string | undefined): OidcUser | undefined {
     const session = this.sessionFromCookie(cookieHeader);
     return session?.user;
+  }
+
+  setRole(cookieHeader: string, role: 'user' | 'admin') {
+    const token = this.cookieToken(cookieHeader);
+    const session = token ? this.sessions.get(token) : undefined;
+    if (session) session.role = role;
+  }
+
+  roleFromCookie(cookieHeader: string | undefined) {
+    return this.sessionFromCookie(cookieHeader)?.role;
   }
 
   accessTokenFromCookie(cookieHeader: string | undefined) {

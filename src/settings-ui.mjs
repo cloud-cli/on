@@ -17,7 +17,10 @@
             { name: 'logs:read', label: 'Read logs', selected: false },
             { name: 'artifacts:read', label: 'Read artifacts', selected: false },
             { name: 'runs:control', label: 'Control runs', selected: false },
-            { name: 'runs:dispatch', label: 'Dispatch runs', selected: false },
+             { name: 'runs:dispatch', label: 'Dispatch runs', selected: false },
+             { name: 'workers:read', label: 'Read workers', selected: false },
+             { name: 'secrets:read', label: 'Read secret names', selected: false },
+             { name: 'secrets:write', label: 'Manage secrets', selected: false },
           ]);
            const api = async (url, options = {}) => { const response = await apiFetch(url, { headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}) }, ...options }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error || `Request failed: ${response.status}`); return body; };
            const load = async () => { keys.value = (await api('/api/api-keys')).keys; };

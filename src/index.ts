@@ -8,21 +8,31 @@ export { createWorkflowPlugin, registerWorkflowPlugin } from './plugins/workflow
 
 async function main() {
   installTimestampedConsole();
-  const { config, command } = await loadFromArgs();
+  const { config, command, subject } = await loadFromArgs();
 
   if (!config) {
     process.exitCode = 1;
     return;
   }
 
-  const [{ QueueManager }, { SecretStore }, { WebhookServer }, { startWorkers }, { WorkflowRepository }, { WorkflowScheduler }] = await Promise.all([
+  const [{ QueueManager }, { SecretStore }, { WebhookServer }, { startWorkers }, { WorkflowRepository }, { WorkflowScheduler }, { OidcUserRepository }] = await Promise.all([
     import('./queue.js'),
     import('./secrets.js'),
     import('./server.js'),
     import('./worker.js'),
     import('./workflows.js'),
     import('./scheduler.js'),
+    import('./oidc-user-repository.js'),
   ]);
+
+  if (command === 'promote-admin') {
+    if (!subject) throw new Error('Usage: on promote-admin --subject <oidc-subject>');
+    const users = new OidcUserRepository();
+    await users.init();
+    if (!await users.promote(subject)) throw new Error(`OIDC user not found: ${subject}`);
+    console.log(`Promoted OIDC user ${subject} to admin.`);
+    return;
+  }
 
   const secrets = new SecretStore();
   const queue = new QueueManager(process.env.WORKER_NAME || 'cli');

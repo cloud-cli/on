@@ -79,6 +79,7 @@ Commands:
     start-server    Runs Webhook Ingress Server only (API Gateway mode)
     start-scheduler Runs cron and solar workflow triggers
     start-workers   Runs event-driven workers (Scalable Worker mode)
+    promote-admin   Promote an existing OIDC user (requires --subject)
 
 Options:
   -c, --config     Path to runner.config.mjs (default: ./runner.config.mjs, env: RUNNER_CONFIG_PATH)
@@ -92,7 +93,7 @@ Options:
   `);
 }
 
-export async function loadFromArgs(): Promise<{ config: RunnerConfig | null; command: string }> {
+export async function loadFromArgs(): Promise<{ config: RunnerConfig | null; command: string; subject?: string }> {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
@@ -100,6 +101,7 @@ export async function loadFromArgs(): Promise<{ config: RunnerConfig | null; com
       database: { type: 'string', short: 'd' },
       port: { type: 'string', short: 'p' },
       workers: { type: 'string', short: 'k' },
+      subject: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -114,5 +116,6 @@ export async function loadFromArgs(): Promise<{ config: RunnerConfig | null; com
   return {
     config,
     command: positionals[0] || 'start',
+    subject: values.subject,
   };
 }

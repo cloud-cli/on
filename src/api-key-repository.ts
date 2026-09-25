@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import db from './db-client.js';
 
-export const API_KEY_SCOPES = ['workflows:read', 'workflows:write', 'logs:read', 'artifacts:read', 'runs:control', 'runs:dispatch', 'workers:read'] as const;
+export const API_KEY_SCOPES = ['workflows:read', 'workflows:write', 'logs:read', 'artifacts:read', 'runs:control', 'runs:dispatch', 'workers:read', 'secrets:read', 'secrets:write'] as const;
 export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
 
 export class ApiKeyRepository {
