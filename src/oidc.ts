@@ -36,7 +36,11 @@ export class OidcClient {
   private readonly states = new Map<string, LoginState>();
   private readonly sessions = new Map<string, Session>();
 
-  constructor(private readonly config: OidcConfig) {}
+  constructor(config: OidcConfig) {
+    this.config = { ...config, providerUrl: normalizeIssuer(config.providerUrl) };
+  }
+
+  private readonly config: OidcConfig;
 
   get enabled() {
     return Boolean(this.config.providerUrl && this.config.clientId && this.config.clientSecret);
@@ -167,4 +171,8 @@ export class OidcClient {
 
 function randomUrlSafe(bytes: number) {
   return crypto.randomBytes(bytes).toString('base64url');
+}
+
+function normalizeIssuer(value: string) {
+  return value.replace(/\/api\/?$/, '').replace(/\/$/, '');
 }
