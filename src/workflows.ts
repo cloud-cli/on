@@ -163,6 +163,15 @@ export class WorkflowRepository {
     return row ? JSON.parse(row.normalized_json) : null;
   }
 
+  async latestRevision(workflowId: string): Promise<{ revision: number; definition: WorkflowDefinition } | null> {
+    const row = await db.get(
+      `SELECT revision, normalized_json FROM workflow_revisions
+       WHERE workflow_id = ? ORDER BY revision DESC LIMIT 1`,
+      [workflowId],
+    );
+    return row ? { revision: Number(row.revision), definition: JSON.parse(row.normalized_json) } : null;
+  }
+
   async getRevisionSnapshot(workflowId: string, revision: number): Promise<StoredWorkflow | null> {
     const row = await db.get(
       `SELECT w.id, w.enabled, r.source_yaml, r.normalized_json

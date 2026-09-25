@@ -27,6 +27,8 @@ steps:
 
 Save it, validate it, and publish it. Only published and enabled workflows receive webhook or scheduled events.
 
+To test without changing the schedule or publishing first, save the draft and select **Run now** in the workflow editor. The editor queues the latest saved draft revision immediately; a worker must still be running.
+
 The `generic` provider accepts a JSON request body as `inputs`. For example:
 
 ```bash
@@ -374,10 +376,13 @@ GET  /api/workflows
 GET  /api/workflows/:id
 PUT  /api/workflows/:id
 POST /api/workflows/:id/publish
+POST /api/workflows/:id/run
 DELETE /api/workflows/:id
 ```
 
 Only published workflows with `enabled: true` are matched for incoming triggers. Saving a workflow creates a new immutable revision. Existing jobs continue to use the revision recorded when they were created.
+
+`POST /api/workflows/:id/run` requires `workflows:write` and queues the latest saved revision directly. Send `{}` as the JSON body, or provide manual inputs as `{ "inputs": { "name": "value" } }`. Direct runs may execute draft revisions and do not require the scheduler.
 
 ## Explanation
 

@@ -48,6 +48,9 @@ describe('workflow management UI', () => {
     expect(source).not.toContain('<iframe');
     expect(source).toContain('focus-visible:ring-2');
     expect(source).toContain('Publish');
+    expect(source).toContain('/api/workflows/');
+    expect(source).toContain('Run workflow now');
+    expect(source).toContain('runNow');
     expect(source).toContain('/api/secrets/');
     expect(source).toContain('type="password"');
     expect(source).toContain('type="file"');

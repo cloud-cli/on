@@ -167,9 +167,9 @@
                     <lucide-icon icon="save" size="16"></lucide-icon>
                     <span class="hidden sm:inline">Save draft</span>
                   </button>
-                  <button
-                    type="button"
-                    aria-label="Publish workflow"
+                   <button
+                     type="button"
+                     aria-label="Publish workflow"
                     title="Publish workflow"
                      on-click="publish()"
                      bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"
@@ -177,8 +177,19 @@
                   >
                     <lucide-icon icon="rocket" size="16"></lucide-icon>
                     <span class="hidden sm:inline">Publish</span>
-                  </button>
-                  <button
+                   </button>
+                   <button
+                     type="button"
+                     aria-label="Run workflow now"
+                     title="Run saved workflow draft now"
+                     on-click="runNow()"
+                     bind-disabled="busy || !selectedId || source !== savedSource || !validation.valid"
+                     class="inline-flex items-center gap-2 rounded-lg border border-sky-500/50 px-3 py-2.5 text-sm font-medium text-sky-300 transition hover:bg-sky-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                   >
+                     <lucide-icon icon="play" size="16"></lucide-icon>
+                     <span class="hidden sm:inline">Run now</span>
+                   </button>
+                   <button
                     type="button"
                     aria-label="Delete workflow"
                     title="Delete workflow"

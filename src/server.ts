@@ -307,6 +307,8 @@ export class WebhookServer {
 
     const dispatchMatch = url.pathname.match(/^\/api\/dispatch\/([a-z0-9-]+)$/);
     if (req.method === 'POST' && dispatchMatch) return this.handleDispatch(req, res, dispatchMatch[1]);
+    const workflowRunMatch = url.pathname.match(/^\/api\/workflows\/([a-z0-9-]+)\/run$/);
+    if (req.method === 'POST' && workflowRunMatch) return this.handleWorkflowRun(req, res, workflowRunMatch[1]);
     const waitMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/wait$/);
     if (req.method === 'GET' && waitMatch) return this.handleJobWait(waitMatch[1], url.searchParams.get('timeout'), res);
 
@@ -424,6 +426,46 @@ export class WebhookServer {
     const jobs = await this.matchWorkflows(provider, body, await this.workflows.published(), await this.currentSecrets());
     res.writeHead(202, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ jobs: jobs.map((id) => ({ id, provider })) }));
+  }
+
+  private async handleWorkflowRun(req: http.IncomingMessage, res: http.ServerResponse, workflowId: string) {
+    if (!(await this.requireScope(req, res, 'workflows:write'))) return;
+    const body = await this.readJson(req, res);
+    if (body === null && res.headersSent) return;
+    if (body !== null && (typeof body !== 'object' || Array.isArray(body))) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Request body must be an object' }));
+    }
+
+    await this.workflowsLoaded;
+    const latest = await this.workflows.latestRevision(workflowId);
+    if (!latest) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Workflow not found' }));
+    }
+
+    const suppliedInputs = body?.inputs;
+    if (suppliedInputs !== undefined && (typeof suppliedInputs !== 'object' || suppliedInputs === null || Array.isArray(suppliedInputs))) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'inputs must be an object' }));
+    }
+    const inputs = { ...(suppliedInputs || {}), trigger: { type: 'manual', source: 'editor' } };
+    const jobs: number[] = [];
+    for (const variant of expandMatrix(latest.definition)) {
+      const requiredTags = await resolveMatrixTags(variant.tags, variant.matrixContext, inputs);
+      const jobId = await this.queue.enqueue(
+        workflowId,
+        latest.revision,
+        { inputs, matrix: variant.matrixContext },
+        requiredTags,
+        '',
+      );
+      if (jobId) jobs.push(jobId);
+      this.events.publish('jobs.available', { tags: requiredTags });
+    }
+
+    res.writeHead(202, { 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify({ workflowId, revision: latest.revision, jobs }));
   }
 
   private async handleJobWait(jobId: string, timeoutParam: string | null, res: http.ServerResponse) {

@@ -156,7 +156,7 @@
               showNotice(`Saved ${workflow.id} as draft revision ${workflow.revision}.`);
               if (!initialId) history.replaceState(null, '', `/workflows/${workflow.id}`);
             });
-          const publish = () =>
+           const publish = () =>
             run(async () => {
               const id = workflowId.value.trim() || selectedId.value;
               if (!id) throw new Error('Save a workflow before publishing it.');
@@ -164,8 +164,19 @@
                selectedId.value = workflow.id;
                revision.value = workflow.revision;
                showNotice(`Published ${workflow.id} revision ${workflow.revision}.`);
-            });
-          const remove = () =>
+             });
+           const runNow = () =>
+             run(async () => {
+               const id = workflowId.value.trim() || selectedId.value;
+               if (!id) throw new Error('Save the workflow before running it.');
+               if (source.value !== savedSource.value) throw new Error('Save the latest draft before running it.');
+               const result = await api(`/api/workflows/${id}/run`, {
+                 method: 'POST',
+                 body: JSON.stringify({}),
+               });
+               showNotice(`Queued ${result.jobs.length} job${result.jobs.length === 1 ? '' : 's'} from revision ${result.revision}.`);
+             });
+           const remove = () =>
             run(async () => {
               const id = workflowId.value.trim() || selectedId.value;
               if (!id || !confirm(`Delete ${id} and all of its revisions?`)) return;
@@ -416,8 +427,9 @@
             busy,
             validate,
             save,
-            publish,
-            remove,
+             publish,
+             runNow,
+             remove,
             saveSecret,
             removeSecret,
             setSource,

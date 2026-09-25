@@ -7,6 +7,7 @@ describe('OpenAPI specification', () => {
     expect(spec.paths['/api']).toHaveProperty('get');
     expect(spec.paths['/api/jobs']).toHaveProperty('get');
     expect(spec.paths['/api/workflows/{workflowId}']).toHaveProperty('put');
+    expect(spec.paths['/api/workflows/{workflowId}/run']).toHaveProperty('post');
     expect(spec.paths['/api/runs/{jobId}/artifacts/{path}']).toHaveProperty('get');
     expect(spec.paths['/webhooks/{provider}']).toHaveProperty('post');
   });

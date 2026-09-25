@@ -98,7 +98,7 @@ steps:
       npx --yes semantic-release@24 -b main --no-ci
 ```
 
-Store the YAML as a draft and publish it through the authenticated API. Only published revisions can receive webhooks or scheduled runs:
+Store the YAML as a draft and publish it through the authenticated API. Only published revisions can receive webhooks or scheduled runs. For an immediate test from the editor, save the draft and use **Run now**; this queues the latest saved draft revision without changing the schedule or publishing it:
 
 ```bash
 curl -u admin:"$RUNNER_ADMIN_SECRET" -X POST http://localhost:11235/api/workflows/validate \
@@ -296,6 +296,7 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
 | **`POST`**                 | `/api/workflows/validate`                        | Authenticated YAML validation without persistence.                                               |
 | **`GET`, `PUT`, `DELETE`** | `/api/workflows/:id`                             | Authenticated revisioned workflow read, draft save, and deletion.                                |
 | **`POST`**                 | `/api/workflows/:id/publish`                     | Authenticated publication of the latest draft revision.                                          |
+| **`POST`**                 | `/api/workflows/:id/run`                         | Authenticated immediate run of the latest saved draft revision.                                  |
 | **`GET`, `PUT`, `DELETE`** | `/api/secrets`, `/api/secrets/:name`             | Authenticated encrypted secret-name and write-only value management.                             |
 
 ### Dashboard Features

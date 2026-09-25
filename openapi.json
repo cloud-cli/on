@@ -71,6 +71,16 @@
         "responses": { "202": { "description": "Jobs queued", "content": { "application/json": { "schema": { "type": "object" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } }
       }
     },
+    "/api/workflows/{workflowId}/run": {
+      "post": {
+        "tags": ["jobs"],
+        "summary": "Run the latest saved workflow revision immediately",
+        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
+        "parameters": [{ "name": "workflowId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "202": { "description": "Jobs queued" }, "400": { "$ref": "#/components/responses/ValidationError" }, "404": { "$ref": "#/components/responses/NotFound" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      }
+    },
     "/api/jobs/{jobId}/wait": {
       "get": {
         "tags": ["jobs"],
