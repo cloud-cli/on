@@ -183,7 +183,13 @@ export class WebhookServer {
       return this.renderPageComponent(res, 'page-help', renderHelpHtml(false), true);
     }
     if (req.method === 'GET' && url.pathname === '/pages/workflows.html') {
-      if (!this.requireAdmin(req, res)) return;
+      if (!this.isAdmin(req)) {
+        if (this.oidc?.userFromCookie(req.headers.cookie)) {
+          res.writeHead(302, { Location: '/settings/tokens' });
+          return res.end();
+        }
+        if (!this.requireAdmin(req, res)) return;
+      }
       const page = url.searchParams.get('page') === 'secrets' ? 'secrets' : url.searchParams.get('page') === 'editor' ? 'editor' : 'workflows';
       const id = url.searchParams.get('id') || '';
       const revision = Number(url.searchParams.get('revision'));
@@ -197,7 +203,13 @@ export class WebhookServer {
     }
 
     if (req.method === 'GET' && url.pathname === '/workflows') {
-      if (!this.requireAdmin(req, res)) return;
+      if (!this.isAdmin(req)) {
+        if (this.oidc?.userFromCookie(req.headers.cookie)) {
+          res.writeHead(302, { Location: '/settings/tokens' });
+          return res.end();
+        }
+        if (!this.requireAdmin(req, res)) return;
+      }
       res.writeHead(302, { Location: '/settings/workflows' });
       return res.end();
     }
@@ -213,7 +225,13 @@ export class WebhookServer {
     if (req.method === 'GET' && settingsPageMatch) {
       const page = settingsPageMatch[1] as 'workflows' | 'secrets' | 'tokens' | 'notifications' | 'workers';
       if (page !== 'tokens' || !this.oidc?.userFromCookie(req.headers.cookie)) {
-        if (!this.requireAdmin(req, res)) return;
+        if (!this.isAdmin(req)) {
+          if (this.oidc?.userFromCookie(req.headers.cookie)) {
+            res.writeHead(302, { Location: '/settings/tokens' });
+            return res.end();
+          }
+          if (!this.requireAdmin(req, res)) return;
+        }
       }
       return this.renderAppShell(res);
     }
@@ -223,10 +241,6 @@ export class WebhookServer {
       if (req.method === 'GET') {
         const providerKeys = await this.listOidcTokens(req);
         if (providerKeys) return res.end(JSON.stringify({ keys: providerKeys }));
-        if (this.oidc?.userFromCookie(req.headers.cookie) || this.oidcBearer(req)) {
-          res.writeHead(502, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'OIDC token service unavailable' }));
-        }
         return res.end(JSON.stringify({ keys: await this.apiKeys.list() }));
       }
       if (req.method === 'POST') {
