@@ -31,7 +31,7 @@ describe('dashboard', () => {
     const jobs = toDashboardJobs([row]);
     const html = generateDashboardHtml(jobs, true);
     expect(html).not.toContain('<script state>');
-    expect(html).toContain('<script setup src="./dashboard.mjs"></script>');
+    expect(html).toContain('<script setup src="/dashboard.mjs"></script>');
     expect(dashboardSetup).toContain('void refreshJobs()');
     expect(dashboardSetup).toContain("new URLSearchParams(window.location.search).get('search')");
     expect(dashboardSetup).toContain('history.pushState(null');
