@@ -196,7 +196,8 @@ export class WebhookServer {
       return this.renderPageComponent(res, page === 'editor' ? 'page-workflow-editor' : page === 'secrets' ? 'page-secrets' : 'page-workflows', generateWorkflowManagementHtml(page, id, Number.isSafeInteger(revision) && revision > 0 ? revision : undefined));
     }
     if (req.method === 'GET' && url.pathname === '/pages/settings.html') {
-      const page = url.searchParams.get('page') === 'notifications' ? 'notifications' : 'tokens';
+      const rawPage = url.searchParams.get('page');
+      const page = rawPage === 'notifications' ? 'notifications' : rawPage === 'workers' ? 'workers' : 'tokens';
       if (page !== 'tokens' && !this.requireAdmin(req, res)) return;
       if (page === 'tokens' && !this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie)) return this.requireAdmin(req, res);
       return this.renderPageComponent(res, 'page-settings', generateSettingsHtml(page));

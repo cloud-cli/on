@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateSettingsHtml } from './settings-ui.js';
 import settingsSetup from './settings-ui.mjs?raw';
+import serverSetup from './server.ts?raw';
 
 describe('settings UI', () => {
   it('bootstraps the li3 application and API key controls', () => {
@@ -19,5 +20,10 @@ describe('settings UI', () => {
     expect(source).not.toContain('Authenticated as the human administrator.');
     expect(source).toContain('peer-checked:bg-indigo-500');
     expect(source).toContain('peer-focus-visible:ring-2');
+  });
+
+  it('renders the workers settings tab instead of falling back to tokens', () => {
+    expect(generateSettingsHtml('workers')).toContain('data-page="workers"');
+    expect(serverSetup).toContain("rawPage === 'workers' ? 'workers' : 'tokens'");
   });
 });
