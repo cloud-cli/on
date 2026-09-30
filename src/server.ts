@@ -35,6 +35,7 @@ import dashboardSetup from './dashboard.mjs?raw';
 import runSetup from './run.mjs?raw';
 import settingsSetup from './settings-ui.mjs?raw';
 import workflowsSetup from './workflows-ui.mjs?raw';
+import { uiConceptPage } from './ui-concept.js';
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -82,6 +83,15 @@ export class WebhookServer {
       req.url || '/',
       `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers['x-forwarded-host'] || req.headers.host}`,
     );
+
+    if (req.method === 'GET' && url.pathname === '/preview') {
+      res.writeHead(200, {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'text/html; charset=utf-8',
+        'X-Robots-Tag': 'noindex, nofollow',
+      });
+      return res.end(uiConceptPage);
+    }
 
     if (req.method === 'GET' && url.pathname === '/manifest.webmanifest') {
       res.writeHead(200, { 'Cache-Control': 'public, max-age=3600', 'Content-Type': 'application/manifest+json' });
