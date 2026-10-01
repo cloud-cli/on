@@ -55,4 +55,9 @@ describe('SPA router', () => {
     expect(routerSetup).toContain('path.match(/^\\/settings\\/workflows\\/(new|[a-z0-9-]+)$/)');
     expect(routerSetup).toContain('path.match(/^\\/workflows\\/(new|[a-z0-9-]+)$/)');
   });
+
+  it('shows a not-found view rather than falling back to the dashboard for unknown routes', () => {
+    expect(routerSetup).toContain("component: 'page-not-found', page: 'not-found'");
+    expect(routerSetup).toContain("if (current.page === 'not-found')");
+  });
 });

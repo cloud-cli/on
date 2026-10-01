@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { URL } from 'node:url';
+import { isProtectedUiRoute, safeReturnUrl } from './safe-return-url.js';
 import { dashboardTemplate, generateDashboardHtml, toDashboardJobs } from './dashboard.js';
 import { EventBroker } from './events.js';
 import { GitHubPreprocessor } from './preprocessors/github.js';
@@ -83,6 +84,25 @@ export class WebhookServer {
       req.url || '/',
       `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers['x-forwarded-host'] || req.headers.host}`,
     );
+
+    // Global OIDC authentication check for browser UI routes.
+    // Exempt routes have their own authorization logic (API, static, auth flow, route-specific controls).
+    const method = (req.method || 'GET').toUpperCase();
+    const requiresUiAuthentication = isProtectedUiRoute(url.pathname, method);
+
+    // If OIDC is disabled and this is a protected browser UI route, return 503.
+    if (requiresUiAuthentication) {
+      if (!this.oidc?.enabled) {
+        return res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }).end('OIDC is disabled');
+      }
+
+      const user = this.oidc?.userFromCookie(req.headers.cookie);
+      if (!user) {
+        const returnTo = encodeURIComponent(safeReturnUrl(url.pathname + url.search));
+        res.writeHead(302, { Location: `/auth/login?url=${returnTo}` });
+        return res.end();
+      }
+    }
 
     if (req.method === 'GET' && url.pathname === '/preview') {
       res.writeHead(200, {
@@ -655,11 +675,11 @@ export class WebhookServer {
   }
 
   private async handleOidcLogin(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
-    if (!this.oidc?.enabled) return res.writeHead(404).end();
     const requestedReturnTo = url.searchParams.get('url') || '/runs';
-    const returnTo = requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//') ? requestedReturnTo : '/runs';
+    const sanitizedReturnTo = safeReturnUrl(requestedReturnTo);
+    if (!this.oidc?.enabled) return res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }).end('OIDC is disabled');
     try {
-      res.writeHead(302, { Location: await this.oidc.loginUrl(this.oidcRedirectUri(req), returnTo) });
+      res.writeHead(302, { Location: await this.oidc.loginUrl(this.oidcRedirectUri(req), sanitizedReturnTo) });
       return res.end();
     } catch (error: any) {
       res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -680,7 +700,9 @@ export class WebhookServer {
         await this.oidcUsers.upsert(user);
         this.oidc.setRole(result.cookie, await this.oidcUsers.role(user.id));
       }
-      res.writeHead(302, { Location: result.returnTo, 'Set-Cookie': `${result.cookie}${this.isHttps(req) ? '; Secure' : ''}` });
+      // Validate return target again before redirecting
+      const safeReturnTo = safeReturnUrl(result.returnTo);
+      res.writeHead(302, { Location: safeReturnTo, 'Set-Cookie': `${result.cookie}${this.isHttps(req) ? '; Secure' : ''}` });
       return res.end();
     } catch (error: any) {
       res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -796,6 +818,11 @@ export class WebhookServer {
     if (this.isAdmin(req)) return true;
     const path = (req.url || '/').split('?')[0];
     if (req.method === 'GET' && !path.startsWith('/api/')) {
+      if (this.oidc?.userFromCookie(req.headers.cookie)) {
+        res.writeHead(302, { Location: '/settings/tokens' });
+        res.end();
+        return false;
+      }
       const returnTo = encodeURIComponent(req.url || '/settings');
       res.writeHead(302, { Location: `/auth/login?url=${returnTo}` });
       res.end();
