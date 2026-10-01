@@ -7,9 +7,17 @@ describe('PWA assets', () => {
       start_url: '/runs',
       scope: '/',
       display: 'standalone',
-      icons: [{ src: '/app-icon.svg', sizes: 'any', type: 'image/svg+xml' }],
+      name: 'Flow',
+      short_name: 'Flow',
+      background_color: '#263d32',
+      theme_color: '#263d32',
+      icons: [{ src: '/app-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
     });
     expect(appIcon).toContain('<svg');
+    expect(appIcon).toContain('fill="#263d32"');
+    expect(appIcon).toContain('fill="#c8e6a8"');
+    expect(appIcon).toContain('M112 185 400 118');
+    expect(appIcon).not.toContain('terminal');
   });
 
   it('opens the related run when a notification is selected', () => {

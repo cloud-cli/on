@@ -4,7 +4,7 @@ A lightweight, interactive design prototype for Flow's CI dashboard. Built with 
 
 ## Preview
 
-The Flow application serves this concept at **`/preview`**. Once deployed, open `https://flow.api.apphor.de/preview`. The route is public and read-only: it displays sample data and its controls only change local prototype state.
+The Flow application serves this concept at **`/preview`**. Once deployed, open `https://flow.api.apphor.de/preview` after signing in. The route displays sample data; its controls only change local prototype state.
 
 For standalone development from the repository root:
 
