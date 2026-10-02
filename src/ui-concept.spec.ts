@@ -5,6 +5,8 @@ describe("public UI concept preview", () => {
   it("embeds its styles and interactive prototype without separate asset requests", () => {
     expect(uiConceptPage).toContain("<title>Runs · Flow</title>");
     expect(uiConceptPage).toContain("function runsPage() {");
+    expect(uiConceptPage).toContain("/preview-live.mjs");
+    expect(uiConceptPage).toContain('get("demo") === "1"');
     expect(uiConceptPage).not.toContain('href="./style.css"');
     expect(uiConceptPage).not.toContain('src="./app.js"');
     expect(uiConceptPage).toContain("Interactive concept");
@@ -18,7 +20,9 @@ describe("public UI concept preview", () => {
     );
 
     expect(page).toContain("<style>body { color: green; }</style>");
-    expect(page).toContain("<script>document.body.dataset.ready = 'true';</script></body>");
+    expect(page).toContain("document.body.dataset.ready = 'true';");
+    expect(page).toContain('void import("/preview-live.mjs")');
+    expect(page).toContain("</script></body>");
     expect(page).not.toContain('href="./style.css"');
     expect(page).not.toContain('src="./app.js"');
   });

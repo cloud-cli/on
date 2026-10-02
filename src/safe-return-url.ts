@@ -105,6 +105,7 @@ export function isExemptFromGlobalOidcAuth(pathname: string, method: string): bo
     '/pages/workflows-ui.mjs',
     '/app-header.html',
     '/app-router.html',
+    '/preview-live.mjs',
   ];
   if (staticRoutes.includes(pathname)) {
     return true;

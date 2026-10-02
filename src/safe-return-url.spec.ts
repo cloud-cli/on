@@ -85,6 +85,7 @@ describe('isExemptFromGlobalOidcAuth', () => {
     expect(isExemptFromGlobalOidcAuth('/pages/workflows-ui.mjs', 'GET')).toBe(true);
     expect(isExemptFromGlobalOidcAuth('/app-header.html', 'GET')).toBe(true);
     expect(isExemptFromGlobalOidcAuth('/app-router.html', 'GET')).toBe(true);
+    expect(isExemptFromGlobalOidcAuth('/preview-live.mjs', 'GET')).toBe(true);
   });
 
   it('exempts route-specific controls', () => {
