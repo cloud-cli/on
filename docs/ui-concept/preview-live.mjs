@@ -521,7 +521,7 @@ export function mountLivePreview() {
       await loadWorkflows();
     }
     setBreadcrumbs("workflows");
-    main.innerHTML = `${pageHeading("Workflows", "Workflow definitions from Flow.", runWorkflowButton())}${state.errors.workflows ? `<div class="empty-state">${icon("lock")}<h3>Workflows unavailable</h3><p>${escape(permissionMessage(state.errors.workflows, "workflows:read"))}</p><button class="button" data-action="retry-workflows">Retry</button></div>` : `<div class="cards">${state.workflows.map((workflow, index) => `<article class="workflow-card"><div class="card-heading">${icon("workflow")}<h2>${escape(workflow.name || workflow.id)}</h2><span class="status ${workflow.status === "published" ? "success" : "pending"}">${escape(workflow.status || (workflow.enabled ? "Enabled" : "Disabled"))}</span></div><p class="card-description">${escape(workflow.id)} · revision ${escape(workflow.revision || "—")}</p><div class="card-details"><span class="tag">${workflow.enabled ? "Enabled" : "Disabled"}</span></div><div class="card-footer"><a class="text-button" href="#/runs?workflow=${encodeURIComponent(workflow.id)}">View runs ${icon("arrow")}</a><a class="button" href="/settings/workflows/${encodeURIComponent(workflow.id)}" target="_top">Edit workflow ${icon("arrow")}</a><button class="button" data-action="workflow-source" data-value="${index}">${icon("code")}Source</button></div></article>`).join("") || '<div class="empty-state"><h3>No workflows</h3><p>Flow has no workflow definitions to show.</p></div>'}</div>`}`;
+    main.innerHTML = `${pageHeading("Workflows", "Workflow definitions from Flow.", runWorkflowButton())}${state.errors.workflows ? `<div class="empty-state">${icon("lock")}<h3>Workflows unavailable</h3><p>${escape(permissionMessage(state.errors.workflows, "workflows:read"))}</p><button class="button" data-action="retry-workflows">Retry</button></div>` : `<div class="cards">${state.workflows.map((workflow, index) => `<article class="workflow-card"><div class="card-heading">${icon("workflow")}<h2>${escape(workflow.name || workflow.id)}</h2><span class="status ${workflow.status === "published" ? "success" : "pending"}">${escape(workflow.status || (workflow.enabled ? "Enabled" : "Disabled"))}</span></div><p class="card-description">${escape(workflow.id)} · revision ${escape(workflow.revision || "—")}</p><div class="card-details"><span class="tag">${workflow.enabled ? "Enabled" : "Disabled"}</span></div><div class="card-footer"><a class="text-button" href="#/runs?workflow=${encodeURIComponent(workflow.id)}">View runs ${icon("arrow")}</a><a class="button" href="/settings/workflows/${encodeURIComponent(workflow.id)}" target="_top">Edit workflow ${icon("arrow")}</a><button class="button" data-action="workflow-source" data-value="${index}">${icon("code")}Source</button><template if="workflow.revision > 1"><button class="button small" data-action="workflow-revision" data-value="${index}" data-dir="-1">Prev rev</button><button class="button small" data-action="workflow-revision" data-value="${index}" data-dir="1">Next rev</button></template></div></article>`).join("") || '<div class="empty-state"><h3>No workflows</h3><p>Flow has no workflow definitions to show.</p></div>'}</div>`}`;
   };
 
   const liveWorkersPage = async () => {
@@ -816,6 +816,15 @@ export function mountLivePreview() {
       }
       return true;
     }
+    if (name === "workflow-revision") {
+      const workflow = state.workflows[Number(value)];
+      if (!workflow) return true;
+      const dir = Number(button.dataset.dir);
+      const targetRev = (workflow.revision || 1) + dir;
+      if (targetRev < 1) return true;
+      loadRevisionDiff(workflow.id, targetRev);
+      return true;
+    }
     if (name === "rerun" && state.run) {
       if (state.mutating) {
         return true;
@@ -1015,3 +1024,28 @@ export function mountLivePreview() {
     void render();
   });
 }
+
+const loadRevisionDiff = async (workflowId, revision) => {
+  try {
+    const current = await apiJson(`/api/workflows/${workflowId}?revision=${revision}`);
+    const previous = revision > 1 ? await apiJson(`/api/workflows/${workflowId}?revision=${revision - 1}`) : null;
+    const sourceDiff = renderRevisionDiff(previous?.sourceYaml ?? null, current.sourceYaml);
+    openDialog(
+      `Workflow ${current.name || current.id}`,
+      `<p class="dialog-description">${current.name || current.id} — Revision ${current.revision}</p><div class="source-view"><pre>${sourceDiff}</pre></div><div class="dialog-footer"><button class="button" data-action="close-dialog">Close</button></div>`,
+    );
+  } catch (error) {
+    showToast(`Failed to load revision diff: ${error.message}`);
+  }
+};
+
+const renderRevisionDiff = (previousSource, currentSource) => {
+  if (previousSource === null) return `<span class="text-emerald-300">+ ${escape(currentSource)}</span>\n`;
+  return diffLines(previousSource, currentSource).map((part) => {
+    const className = part.added ? 'text-emerald-300 bg-emerald-500/10' : part.removed ? 'text-rose-300 bg-rose-500/10' : 'text-gray-300';
+    const prefix = part.added ? '+ ' : part.removed ? '- ' : '  ';
+    return part.value.split('\n').filter((line, index, lines) => index < lines.length - 1 || line).map((line) => `<span class="block ${className}">${prefix}${escape(line)}</span>`).join('');
+  }).join('');
+};
+
+const route = () => {
