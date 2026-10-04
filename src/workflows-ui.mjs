@@ -3,12 +3,14 @@
           import { diffLines } from 'diff';
 
         export default function () {
-          const page = document.body.dataset.page;
-           const params = new URLSearchParams(window.location.search);
-           const initialId = params.get('id') || '';
-           const initialRevision = params.get('revision') ? Number(params.get('revision')) : null;
-          const readOnly = Boolean(initialRevision);
-          const workflows = ref([]);
+           const page = document.body.dataset.page;
+            const params = new URLSearchParams(window.location.search);
+            const workflowPath = window.location.pathname.match(/^\/(?:settings\/)?workflows\/(new|[a-z0-9-]+)$/);
+            const pathWorkflowId = workflowPath && workflowPath[1] !== "new" ? workflowPath[1] : "";
+            const initialId = params.get("id") || pathWorkflowId;
+            const initialRevision = params.get("revision") ? Number(params.get("revision")) : null;
+            const readOnly = Boolean(initialRevision);
+            const workflows = ref([]);
           const secrets = ref([]);
           const source = ref('');
           const validation = ref({ valid: true });

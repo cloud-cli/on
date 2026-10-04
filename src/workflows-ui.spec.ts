@@ -73,8 +73,12 @@ describe("workflow management UI", () => {
     expect(source).toContain('aria-label="Saved secrets"');
     expect(source).toContain('aria-label="Edit secret {{ name }}"');
     expect(source).toContain('data-page="editor"');
-    expect(source).toContain("const initialId = params.get('id') || ''");
-    expect(source).toContain("const initialRevision = params.get('revision') ? Number(params.get('revision')) : null");
+    expect(source).toContain("window.location.pathname.match");
+    expect(source).toMatch(/workflowPath\[1\] !== ['"]new['"]/);
+    expect(source).toMatch(/const initialId = params\.get\(["']id["']\) \|\| pathWorkflowId/);
+    expect(source).toMatch(
+      /const initialRevision = params\.get\(["']revision["']\) \? Number\(params\.get\(["']revision["']\)\) : null/,
+    );
   });
 
   it("keeps the secret form structurally inside its disclosure panel", () => {
