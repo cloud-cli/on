@@ -537,7 +537,7 @@ export function mountLivePreview() {
       await loadSecrets();
     }
     setBreadcrumbs("settings");
-    main.innerHTML = `${pageHeading("Settings", "Preferences and secret names from Flow.")}<section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${localStorage.getItem("flow-concept-compact") === "true" ? "checked" : ""}/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${state.wrap ? "checked" : ""}/></label></section><section class="settings-section"><h2>${icon("lock")} Secret names</h2><p class="settings-note">Values are never requested or displayed in this preview.</p>${state.errors.secrets ? `<p class="settings-note">${escape(permissionMessage(state.errors.secrets, "secrets:read"))}</p><button class="button" data-action="retry-secrets">Retry</button>` : state.secrets.map((name) => `<div class="setting-row"><strong class="mono">${escape(name)}</strong><span class="secret-value" aria-label="Secret value hidden">••••••••••••</span></div>`).join("") || '<p class="settings-note">No secret names are configured.</p>'}</section><section class="settings-section"><h2>Workflow editing</h2><p class="settings-note">Create and edit workflow definitions.</p><form id="new-workflow-form"><label class="form-field"><span>Workflow name</span><input id="new-workflow-name" type="text" placeholder="e.g. build-docker-image" required/></label><label class="form-field"><span>Workflow ID</span><input id="new-workflow-id" type="text" placeholder="derived-from-name" required/></label><label class="form-field"><span>Enabled</span><input type="checkbox" id="new-workflow-enabled" checked/></label><div class="form-field"><span>YAML source</span><textarea id="new-workflow-source" rows="8" placeholder="name: build-docker-image\nruns-on: [main-server, docker]\n\nsteps:\n  - name: Checkout repository\n    run: git checkout \"$COMMIT\"\n  - name: Install dependencies\n    run: pnpm install --frozen-lockfile\n  - name: Run tests\n    run: pnpm test\n  - name: Build and push\n    run: pnpm publish"></textarea></label></div><div class="form-footer"><button type="submit" class="button primary">${icon("plus")}Create workflow</button><button type="button" class="button" data-action="close-dialog">Cancel</button></div></form><a class="button secondary" href="/settings/workflows" target="_top">Open full workflow settings ${icon("arrow")}</a></section>`;
+    main.innerHTML = `${pageHeading("Settings", "Preferences and secret names from Flow.")}<section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${localStorage.getItem("flow-concept-compact") === "true" ? "checked" : ""}/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${state.wrap ? "checked" : ""}/></label></section><section class="settings-section"><h2>${icon("lock")} Secret names</h2><p class="settings-note">Values are never requested or displayed in this preview.</p>${state.errors.secrets ? `<p class="settings-note">${escape(permissionMessage(state.errors.secrets, "secrets:read"))}</p><button class="button" data-action="retry-secrets">Retry</button>` : state.secrets.map((name) => `<div class="setting-row"><strong class="mono">${escape(name)}</strong><span class="secret-value" aria-label="Secret value hidden">••••••••••••</span></div>`).join("") || '<p class="settings-note">No secret names are configured.</p>'}</section><section class="settings-section"><h2>Workflow editing</h2><p class="settings-note">Create and edit workflow definitions.</p><form id="new-workflow-form"><label class="form-field"><span>Workflow name</span><input id="new-workflow-name" type="text" placeholder="e.g. build-docker-image" required/></label><label class="form-field"><span>Workflow ID</span><input id="new-workflow-id" type="text" placeholder="derived-from-name" required/></label><label class="form-field"><span>Enabled</span><input type="checkbox" id="new-workflow-enabled" checked/></label><div class="form-field"><span>YAML source</span><textarea id="new-workflow-source" rows="8" placeholder="name: build-docker-image\nruns-on: [main-server, docker]\n\nsteps:\n  - name: Checkout repository\n    run: git checkout \"$COMMIT\"\n  - name: Install dependencies\n    run: pnpm install --frozen-lockfile\n  - name: Run tests\n    run: pnpm test\n  - name: Build and push\n    run: pnpm publish"></textarea></label></div><div class="form-footer"><button type="button" class="button" data-action="validate-workflow">Validate workflow</button><button type="submit" class="button primary">${icon("plus")}Create workflow</button><button type="button" class="button" data-action="close-dialog">Cancel</button></div></form><a class="button secondary" href="/settings/workflows" target="_top">Open full workflow settings ${icon("arrow")}</a></section>`;
   };
 
   const showNotFound = () => {
@@ -814,6 +814,25 @@ export function mountLivePreview() {
           `<p class="dialog-description">Revision ${escape(workflow.revision || "—")} · ${escape(workflow.status || "")}</p><div class="source-view"><pre>${escape(workflow.sourceYaml || "Workflow source unavailable.")}</pre></div><div class="dialog-footer"><button class="button" data-action="close-dialog">Close</button></div>`,
         );
       }
+      return true;
+    }
+    if (name === "validate-workflow") {
+      const source = document.getElementById("new-workflow-source")?.value.trim();
+      if (!source) {
+        showToast("Please enter workflow source YAML first.");
+        return true;
+      }
+      apiJson(`/api/workflows/validate`, {
+        method: "POST",
+        body: JSON.stringify({ sourceYaml: source }),
+      })
+        .then((result) => {
+          const status = result.valid ? "passed" : "failed";
+          showToast(`Validation ${status}: ${result.error || ''}`);
+        })
+        .catch((error) => {
+          showToast(`Validation failed: ${error.message}`);
+        });
       return true;
     }
     if (name === "workflow-revision") {
