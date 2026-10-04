@@ -16,6 +16,7 @@ describe("app header", () => {
 
   it("links to the preview from the header", () => {
     expect(headerTemplate).toContain('href="/preview"');
+    expect(headerTemplate).toContain('target="_top"');
     expect(headerTemplate).toMatch(/>\s*Preview\s*<\/a\s*>/);
   });
 });

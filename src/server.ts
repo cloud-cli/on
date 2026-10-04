@@ -219,13 +219,7 @@ export class WebhookServer {
       return this.renderPageComponent(res, 'page-help', renderHelpHtml(false), true);
     }
     if (req.method === 'GET' && url.pathname === '/pages/workflows.html') {
-      if (!this.isAdmin(req)) {
-        if (this.oidc?.userFromCookie(req.headers.cookie)) {
-          res.writeHead(302, { Location: '/settings/tokens' });
-          return res.end();
-        }
-        if (!this.requireAdmin(req, res)) return;
-      }
+      if (!this.requireAuthenticatedUser(req, res)) return;
       const page = url.searchParams.get('page') === 'secrets' ? 'secrets' : url.searchParams.get('page') === 'editor' ? 'editor' : 'workflows';
       const id = url.searchParams.get('id') || '';
       const revision = Number(url.searchParams.get('revision'));
@@ -240,35 +234,26 @@ export class WebhookServer {
     }
 
     if (req.method === 'GET' && url.pathname === '/workflows') {
-      if (!this.isAdmin(req)) {
-        if (this.oidc?.userFromCookie(req.headers.cookie)) {
-          res.writeHead(302, { Location: '/settings/tokens' });
-          return res.end();
-        }
-        if (!this.requireAdmin(req, res)) return;
-      }
+      if (!this.requireAuthenticatedUser(req, res)) return;
       res.writeHead(302, { Location: '/settings/workflows' });
       return res.end();
     }
 
     if (req.method === 'GET' && url.pathname === '/settings') {
-      const location = this.oidc?.userFromCookie(req.headers.cookie) && !this.isAdmin(req) ? '/settings/tokens' : '/settings/workflows';
-      if (location === '/settings/workflows' && !this.isAdmin(req)) return this.requireAdmin(req, res);
-      res.writeHead(302, { Location: location });
+      if (!this.requireAuthenticatedUser(req, res)) return;
+      res.writeHead(302, { Location: '/settings/workflows' });
       return res.end();
     }
 
     const settingsPageMatch = url.pathname.match(/^\/settings\/(workflows|secrets|tokens|notifications|workers)$/);
     if (req.method === 'GET' && settingsPageMatch) {
       const page = settingsPageMatch[1] as 'workflows' | 'secrets' | 'tokens' | 'notifications' | 'workers';
-      if (page !== 'tokens' || !this.oidc?.userFromCookie(req.headers.cookie)) {
-        if (!this.isAdmin(req)) {
-          if (this.oidc?.userFromCookie(req.headers.cookie)) {
-            res.writeHead(302, { Location: '/settings/tokens' });
-            return res.end();
-          }
-          if (!this.requireAdmin(req, res)) return;
-        }
+      if (page === 'workflows' || page === 'secrets') {
+        if (!this.requireAuthenticatedUser(req, res)) return;
+      } else if (page === 'tokens') {
+        if (!this.oidc?.userFromCookie(req.headers.cookie) && !this.isAdmin(req)) return this.requireAdmin(req, res);
+      } else if (!this.requireAdmin(req, res)) {
+        return;
       }
       return this.renderAppShell(res);
     }
@@ -311,7 +296,7 @@ export class WebhookServer {
 
     const settingsEditorMatch = url.pathname.match(/^\/settings\/workflows\/(new|[a-z0-9-]+)$/);
     if (req.method === 'GET' && settingsEditorMatch) {
-      if (!this.requireAdmin(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) return;
       const workflowId = settingsEditorMatch[1] === 'new' ? '' : settingsEditorMatch[1];
       const revisionParam = url.searchParams.get('revision');
       const parsedRevision = revisionParam === null ? undefined : Number(revisionParam);
@@ -321,7 +306,7 @@ export class WebhookServer {
 
     const workflowEditorMatch = url.pathname.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
     if (req.method === 'GET' && workflowEditorMatch) {
-      if (!this.requireAdmin(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) return;
       const workflowId = workflowEditorMatch[1] === 'new' ? '' : workflowEditorMatch[1];
       const target = workflowId ? `/settings/workflows/${workflowId}` : '/settings/workflows/new';
       res.writeHead(302, { Location: `${target}${url.search}` });
@@ -482,7 +467,7 @@ export class WebhookServer {
   }
 
   private async handleWorkflowRun(req: http.IncomingMessage, res: http.ServerResponse, workflowId: string) {
-    if (!(await this.requireScope(req, res, 'workflows:write'))) return;
+    if (!this.requireAuthenticatedUser(req, res)) return;
     const body = await this.readJson(req, res);
     if (body === null && res.headersSent) return;
     if (body !== null && (typeof body !== 'object' || Array.isArray(body))) {
@@ -680,6 +665,14 @@ export class WebhookServer {
     return Boolean(scopes?.includes(scope));
   }
 
+  private requireAuthenticatedUser(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+    // Temporary legacy settings policy: any valid OIDC session can manage workflows and secrets.
+    if (this.oidc?.userFromCookie(req.headers.cookie)) return true;
+    res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'Authentication required' }));
+    return false;
+  }
+
   private async handleOidcLogin(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
     const requestedReturnTo = url.searchParams.get('url') || '/runs';
     const sanitizedReturnTo = safeReturnUrl(requestedReturnTo);
@@ -854,7 +847,7 @@ export class WebhookServer {
   }
 
   private async handleWorkflowValidation(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!(await this.requireScope(req, res, 'workflows:write'))) return;
+    if (!this.requireAuthenticatedUser(req, res)) return;
     const body = await this.readJson(req, res);
     if (!body) return;
     try {
@@ -868,14 +861,14 @@ export class WebhookServer {
   }
 
   private async handleWorkflowList(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!(await this.requireScope(req, res, 'workflows:read'))) return;
+    if (!this.requireAuthenticatedUser(req, res)) return;
     await this.workflowsLoaded;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ workflows: await this.workflows.list() }));
   }
 
   private async handleWorkflowGet(req: http.IncomingMessage, res: http.ServerResponse, id: string, revisionParam: string | null = null) {
-    if (!(await this.requireScope(req, res, 'workflows:read'))) return;
+    if (!this.requireAuthenticatedUser(req, res)) return;
     const revision = revisionParam === null ? undefined : Number(revisionParam);
     const workflow = revision !== undefined && Number.isSafeInteger(revision) && revision > 0
       ? await this.workflows.getRevisionSnapshot(id, revision)
@@ -889,7 +882,7 @@ export class WebhookServer {
   }
 
   private async handleWorkflowSave(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
-    if (!(await this.requireScope(req, res, 'workflows:write'))) return;
+    if (!this.requireAuthenticatedUser(req, res)) return;
     const body = await this.readJson(req, res);
     if (!body || typeof body.sourceYaml !== 'string') {
       if (!res.headersSent)
@@ -909,7 +902,7 @@ export class WebhookServer {
   }
 
   private async handleWorkflowDelete(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
-    if (!(await this.requireScope(req, res, 'workflows:write'))) return;
+    if (!this.requireAuthenticatedUser(req, res)) return;
     if (!(await this.workflows.delete(id))) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Workflow not found' }));
@@ -918,7 +911,7 @@ export class WebhookServer {
   }
 
   private async handleWorkflowPublish(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
-    if (!(await this.requireScope(req, res, 'workflows:write'))) return;
+    if (!this.requireAuthenticatedUser(req, res)) return;
     const workflow = await this.workflows.publish(id);
     if (!workflow) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -929,13 +922,13 @@ export class WebhookServer {
   }
 
   private async handleSecretList(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!(await this.requireScope(req, res, 'secrets:read'))) return;
+    if (!this.requireAuthenticatedUser(req, res)) return;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ secrets: await this.secretRepository.names() }));
   }
 
   private async handleSecretSave(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
-    if (!(await this.requireScope(req, res, 'secrets:write'))) return;
+    if (!this.requireAuthenticatedUser(req, res)) return;
     const body = await this.readJson(req, res);
     if (!body || typeof body.value !== 'string') {
       if (!res.headersSent)
@@ -952,7 +945,7 @@ export class WebhookServer {
   }
 
   private async handleSecretDelete(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
-    if (!(await this.requireScope(req, res, 'secrets:write'))) return;
+    if (!this.requireAuthenticatedUser(req, res)) return;
     if (!(await this.secretRepository.delete(name))) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Secret not found' }));
@@ -1218,7 +1211,7 @@ export class WebhookServer {
   }
 
   private async handleWorkflowAiHelp(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!(await this.requireScope(req, res, 'workflows:write'))) return;
+    if (!this.requireAuthenticatedUser(req, res)) return;
     const body = await this.readJson(req, res);
     const request = typeof body?.request === 'string' ? body.request.trim() : '';
     const sourceYaml = typeof body?.sourceYaml === 'string' ? body.sourceYaml : '';

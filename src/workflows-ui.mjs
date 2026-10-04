@@ -1,7 +1,6 @@
 
          import { onDestroy, onInit, ref, templateRef } from '@li3/web';
-         import { apiFetch } from '@app/api-client.mjs';
-         import { diffLines } from 'diff';
+          import { diffLines } from 'diff';
 
         export default function () {
           const page = document.body.dataset.page;
@@ -46,30 +45,41 @@
           const helpLoading = ref(false);
           let validationTimer;
 
-          const showNotice = (message, error = false) => {
-            notice.value = message;
-            noticeError.value = error;
-          };
+           const showNotice = (message, error = false) => {
+             notice.value = message;
+             noticeError.value = error;
+           };
 
-          const api = async (url, options = {}) => {
-             const response = await apiFetch(url, {
-              headers: { accept: 'application/json', ...(options.body ? { 'content-type': 'application/json' } : {}) },
-              ...options,
-            });
-            const body = response.status === 204 ? null : await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(body.error || `Request failed: ${response.status}`);
-            return body;
-          };
+           const redirectToLogin = () => {
+             const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+             window.location.assign(`/auth/login?url=${encodeURIComponent(returnTo)}`);
+           };
 
-          const derivedId = () =>
-            source.value
-              .match(/^\s*(?:id:\s*([^\n]+)|name:\s*([^\n]+))/m)
-              ?.slice(1)
-              .find(Boolean)
-              ?.trim()
-              .toLowerCase()
-              .replace(/[^a-z0-9]/g, '-')
-              .replace(/(^-|-$)/g, '') || '';
+           const api = async (url, options = {}) => {
+             const response = await fetch(url, {
+               ...options,
+               credentials: "same-origin",
+               headers: {
+                 accept: "application/json",
+                 ...(options.body ? { "content-type": "application/json" } : {}),
+                 ...(options.headers || {}),
+               },
+             });
+             if (response.status === 401) redirectToLogin();
+             const body = response.status === 204 ? null : await response.json().catch(() => ({}));
+             if (!response.ok) throw new Error(body.error || `Request failed: ${response.status}`);
+             return body;
+           };
+
+           const derivedId = () =>
+             source.value
+               .match(/^\s*(?:id:\s*([^\n]+)|name:\s*([^\n]+))/m)
+               ?.slice(1)
+               .find(Boolean)
+               ?.trim()
+               .toLowerCase()
+               .replace(/[^a-z0-9]/g, "-")
+               .replace(/(^-|-$)/g, "") || "";
 
           const run = async (action) => {
             if (busy.value) return;
@@ -115,47 +125,48 @@
            };
 
            const validate = (ms = 1000) => {
-             if (page !== 'editor') return;
+             if (page !== "editor") return;
 
              clearTimeout(validationTimer);
              validationTimer = setTimeout(() => {
-               validation.value = { ...validation.value, running: true, error: '' };
+               validation.value = { ...validation.value, running: true, error: "" };
                void validateSource()
                  .then((result) => {
                    validation.value = { ...result, running: false };
                  })
                  .catch((error) => {
                    validation.value = { valid: false, running: false, error: error.message };
-                   
                  });
              }, ms);
            };
 
-          const save = () =>
-            run(async () => {
-              const id = workflowId.value.trim() || derivedId();
-              if (!id) throw new Error('Set an ID or add a workflow name first.');
-              if (
-                initialId &&
-                id === selectedId.value &&
-                source.value === savedSource.value &&
-                enabled.value === savedEnabled.value
-              ) {
-                showNotice('No changes to save.');
-                return;
-              }
-              const workflow = await api(`/api/workflows/${id}`, {
-                method: 'PUT',
-                body: JSON.stringify({ sourceYaml: source.value, enabled: enabled.value }),
-              });
-              selectedId.value = workflow.id;
-              workflowId.value = workflow.id;
-              savedSource.value = source.value;
+           const save = () =>
+             run(async () => {
+               const id = (workflowId.value.trim() || derivedId()).toLowerCase();
+               if (!id) throw new Error("Set an ID or add a workflow name first.");
+               if (!/^[a-z0-9-]+$/.test(id))
+                 throw new Error("Workflow IDs can contain lowercase letters, numbers, and hyphens only.");
+               if (
+                 initialId &&
+                 id === selectedId.value &&
+                 source.value === savedSource.value &&
+                 enabled.value === savedEnabled.value
+               ) {
+                 showNotice("No changes to save.");
+                 return;
+               }
+               const workflow = await api(`/api/workflows/${id}`, {
+                 method: "PUT",
+                 body: JSON.stringify({ sourceYaml: source.value, enabled: enabled.value }),
+               });
+               selectedId.value = workflow.id;
+               workflowId.value = workflow.id;
+               savedSource.value = source.value;
                savedEnabled.value = enabled.value;
                revision.value = workflow.revision;
-              showNotice(`Saved ${workflow.id} as draft revision ${workflow.revision}.`);
-              if (!initialId) history.replaceState(null, '', `/workflows/${workflow.id}`);
-            });
+               showNotice(`Saved ${workflow.id} as draft revision ${workflow.revision}.`);
+               if (!initialId) history.replaceState(null, "", `/workflows/${workflow.id}`);
+             });
            const publish = () =>
             run(async () => {
               const id = workflowId.value.trim() || selectedId.value;
@@ -177,45 +188,55 @@
                showNotice(`Queued ${result.jobs.length} job${result.jobs.length === 1 ? '' : 's'} from revision ${result.revision}.`);
              });
            const remove = () =>
-            run(async () => {
-              const id = workflowId.value.trim() || selectedId.value;
-              if (!id || !confirm(`Delete ${id} and all of its revisions?`)) return;
-              await api(`/api/workflows/${id}`, { method: 'DELETE' });
-              window.location.href = '/workflows';
-            });
+             run(async () => {
+               const id = workflowId.value.trim() || selectedId.value;
+               if (!id || !confirm(`Delete ${id} and all of its revisions?`)) return;
+               await api(`/api/workflows/${id}`, { method: "DELETE" });
+               window.location.href = "/workflows";
+             });
            const saveSecret = () =>
              run(async () => {
-               const name = secretName.value.trim();
-               if (!name || (fileMode.value ? !secretFileData.value : !secretValue.value)) throw new Error(fileMode.value ? 'Choose a file first.' : 'Set a secret value first.');
+               const name = secretName.value.trim().toUpperCase();
+               if (!/^[A-Z][A-Z0-9_]*$/.test(name))
+                 throw new Error(
+                   "Secret names must start with a letter and contain only letters, numbers, and underscores.",
+                 );
+               secretName.value = name;
+               if (!name || (fileMode.value ? !secretFileData.value : !secretValue.value))
+                 throw new Error(fileMode.value ? "Choose a file first." : "Set a secret value first.");
                await api(`/api/secrets/${name}`, {
-                 method: 'PUT',
-                 body: JSON.stringify(fileMode.value ? { value: secretFileData.value, encoding: 'base64', originalName: secretFileName.value } : { value: secretValue.value, encoding: 'utf8' }),
+                 method: "PUT",
+                 body: JSON.stringify(
+                   fileMode.value
+                     ? { value: secretFileData.value, encoding: "base64", originalName: secretFileName.value }
+                     : { value: secretValue.value, encoding: "utf8" },
+                 ),
                });
-               secretValue.value = '';
-               secretFileName.value = '';
-               secretFileData.value = '';
+               secretValue.value = "";
+               secretFileName.value = "";
+               secretFileData.value = "";
                fileMode.value = false;
-               if (secretFileInput.value) secretFileInput.value.value = '';
+               if (secretFileInput.value) secretFileInput.value.value = "";
                if (secretForm.value) secretForm.value.open = false;
-              await loadSecrets();
-              showNotice(`Saved ${name}.`);
-            });
-           const removeSecret = (requestedName = '') =>
-             run(async () => {
-               const name = requestedName || secretName.value.trim();
-               if (!name || !confirm(`Delete ${name}?`)) return;
-               await api(`/api/secrets/${name}`, { method: 'DELETE' });
-               if (secretName.value.trim() === name) {
-                 secretName.value = '';
-                 secretValue.value = '';
-                 secretFileName.value = '';
-                 secretFileData.value = '';
-                 fileMode.value = false;
-                 if (secretFileInput.value) secretFileInput.value.value = '';
-               }
-              await loadSecrets();
-              showNotice(`Deleted ${name}.`);
-            });
+               await loadSecrets();
+               showNotice(`Saved ${name}.`);
+             });
+            const removeSecret = (requestedName = "") =>
+              run(async () => {
+                const name = (requestedName || secretName.value.trim()).toUpperCase();
+                if (!name || !confirm(`Delete ${name}?`)) return;
+                await api(`/api/secrets/${name}`, { method: "DELETE" });
+                 if (secretName.value.trim().toUpperCase() === name) {
+                  secretName.value = "";
+                  secretValue.value = "";
+                  secretFileName.value = "";
+                  secretFileData.value = "";
+                  fileMode.value = false;
+                  if (secretFileInput.value) secretFileInput.value.value = "";
+                }
+                await loadSecrets();
+                showNotice(`Deleted ${name}.`);
+              });
           const setSource = (value) => {
             source.value = value;
             validate();
@@ -342,34 +363,42 @@
            const requestAiHelp = async () => {
              if (!aiRequest.value.trim() || aiLoading.value) return;
              aiLoading.value = true;
-             aiError.value = '';
-             aiDiffHtml.value = '';
+             aiError.value = "";
+             aiDiffHtml.value = "";
              try {
-              const response = await apiFetch('/api/ai/workflow-help', {
-                 method: 'POST',
-                 headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
+               const response = await fetch("/api/ai/workflow-help", {
+                 method: "POST",
+                 credentials: "same-origin",
+                 headers: { accept: "text/event-stream", "content-type": "application/json" },
                  body: JSON.stringify({ sourceYaml: source.value, request: aiRequest.value }),
                });
-               if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.error || `AI help failed: ${response.status}`); }
+               if (response.status === 401) redirectToLogin();
+               if (!response.ok) {
+                 const error = await response.json().catch(() => ({}));
+                 throw new Error(error.error || `AI help failed: ${response.status}`);
+               }
                const reader = response.body.getReader();
                const decoder = new TextDecoder();
-               let buffer = '';
-               let suggestion = '';
+               let buffer = "";
+               let suggestion = "";
                while (true) {
                  const chunk = await reader.read();
                  if (chunk.done) break;
                  buffer += decoder.decode(chunk.value, { stream: true });
-                 const events = buffer.split('\n\n');
-                 buffer = events.pop() || '';
+                 const events = buffer.split("\n\n");
+                 buffer = events.pop() || "";
                  for (const event of events) {
-                   const line = event.split('\n').find((value) => value.startsWith('data: '));
+                   const line = event.split("\n").find((value) => value.startsWith("data: "));
                    if (!line) continue;
                    const data = JSON.parse(line.slice(6));
                    if (data.error) throw new Error(data.error);
                    if (data.delta) suggestion += data.delta;
                  }
                }
-               suggestion = suggestion.replace(/^```(?:yaml|yml)?\s*/i, '').replace(/\s*```$/i, '').trim();
+               suggestion = suggestion
+                 .replace(/^```(?:yaml|yml)?\s*/i, "")
+                 .replace(/\s*```$/i, "")
+                 .trim();
                if (!source.value.trim()) {
                  source.value = suggestion;
                  aiDialogOpen.value = false;

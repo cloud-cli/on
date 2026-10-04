@@ -75,7 +75,7 @@
       "post": {
         "tags": ["jobs"],
         "summary": "Run the latest saved workflow revision immediately",
-        "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
+        "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "name": "workflowId", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
         "responses": { "202": { "description": "Jobs queued" }, "400": { "$ref": "#/components/responses/ValidationError" }, "404": { "$ref": "#/components/responses/NotFound" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
@@ -135,14 +135,45 @@
       "post": {
         "tags": ["workflows"],
         "summary": "Validate workflow YAML",
+        "security": [{ "oidcSessionCookie": [] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowSource" } } } },
         "responses": { "200": { "description": "Valid workflow definitions", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationResult" } } } }, "422": { "$ref": "#/components/responses/ValidationError" } }
+      }
+    },
+    "/api/ai/workflow-help": {
+      "post": {
+        "tags": ["workflows"],
+        "summary": "Get a workflow YAML suggestion",
+        "security": [{ "oidcSessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["request"],
+                "properties": {
+                  "request": { "type": "string" },
+                  "sourceYaml": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Workflow YAML suggestion stream", "content": { "text/event-stream": { "schema": { "type": "string" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "502": { "description": "AI provider failure" },
+          "503": { "description": "AI help is not configured" }
+        }
       }
     },
     "/api/workflows": {
       "get": {
         "tags": ["workflows"],
         "summary": "List workflows",
+        "security": [{ "oidcSessionCookie": [] }],
         "responses": { "200": { "description": "Workflow list", "content": { "application/json": { "schema": { "type": "object", "properties": { "workflows": { "type": "array", "items": { "$ref": "#/components/schemas/Workflow" } } } } } } } }
       }
     },
@@ -150,12 +181,14 @@
       "get": {
         "tags": ["workflows"],
         "summary": "Get a workflow or historical revision",
+        "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }, { "$ref": "#/components/parameters/Revision" }],
         "responses": { "200": { "description": "Workflow definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
       },
       "put": {
         "tags": ["workflows"],
         "summary": "Save a workflow draft",
+        "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowSave" } } } },
         "responses": { "200": { "description": "Draft saved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } } }, "422": { "$ref": "#/components/responses/ValidationError" } }
@@ -163,6 +196,7 @@
       "delete": {
         "tags": ["workflows"],
         "summary": "Delete a workflow and its revisions",
+        "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
         "responses": { "204": { "description": "Workflow deleted" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
@@ -171,6 +205,7 @@
       "post": {
         "tags": ["workflows"],
         "summary": "Publish the latest workflow revision",
+        "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
         "responses": { "200": { "description": "Workflow published", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
@@ -179,6 +214,7 @@
       "get": {
         "tags": ["secrets"],
         "summary": "List secret names",
+        "security": [{ "oidcSessionCookie": [] }],
         "responses": { "200": { "description": "Secret names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecretNames" } } } } }
       }
     },
@@ -186,6 +222,7 @@
       "put": {
         "tags": ["secrets"],
         "summary": "Create or replace an encrypted secret",
+        "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "$ref": "#/components/parameters/SecretName" }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecretValue" } } } },
         "responses": { "204": { "description": "Secret saved" } }
@@ -193,6 +230,7 @@
       "delete": {
         "tags": ["secrets"],
         "summary": "Delete a secret",
+        "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "$ref": "#/components/parameters/SecretName" }],
         "responses": { "204": { "description": "Secret deleted" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
@@ -266,6 +304,7 @@
     "securitySchemes": {
       "bearerAuth": { "type": "http", "scheme": "bearer" },
       "basicAuth": { "type": "http", "scheme": "basic" },
+      "oidcSessionCookie": { "type": "apiKey", "in": "cookie", "name": "runner_oidc_session" },
       "workerBearerAuth": { "type": "http", "scheme": "bearer", "description": "RUNNER_WORKER_SECRET" }
     },
     "parameters": {
