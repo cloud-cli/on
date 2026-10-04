@@ -521,7 +521,7 @@ export function mountLivePreview() {
       await loadWorkflows();
     }
     setBreadcrumbs("workflows");
-    main.innerHTML = `${pageHeading("Workflows", "Workflow definitions from Flow.", runWorkflowButton())}${state.errors.workflows ? `<div class="empty-state">${icon("lock")}<h3>Workflows unavailable</h3><p>${escape(permissionMessage(state.errors.workflows, "workflows:read"))}</p><button class="button" data-action="retry-workflows">Retry</button></div>` : `<div class="cards">${state.workflows.map((workflow, index) => `<article class="workflow-card"><div class="card-heading">${icon("workflow")}<h2>${escape(workflow.name || workflow.id)}</h2><span class="status ${workflow.status === "published" ? "success" : "pending"}">${escape(workflow.status || (workflow.enabled ? "Enabled" : "Disabled"))}</span></div><p class="card-description">${escape(workflow.id)} · revision ${escape(workflow.revision || "—")}</p><div class="card-details"><span class="tag">${workflow.enabled ? "Enabled" : "Disabled"}</span></div><div class="card-footer"><a class="text-button" href="#/runs?workflow=${encodeURIComponent(workflow.id)}">View runs ${icon("arrow")}</a><a class="button" href="/settings/workflows/${encodeURIComponent(workflow.id)}" target="_top">Edit workflow ${icon("arrow")}</a><button class="button" data-action="workflow-source" data-value="${index}">${icon("code")}Source</button><template if="workflow.revision > 1"><button class="button small" data-action="workflow-revision" data-value="${index}" data-dir="-1">Prev rev</button><button class="button small" data-action="workflow-revision" data-value="${index}" data-dir="1">Next rev</button></template></div></article>`).join("") || '<div class="empty-state"><h3>No workflows</h3><p>Flow has no workflow definitions to show.</p></div>'}</div>`}`;
+    main.innerHTML = `${pageHeading("Workflows", "Workflow definitions from Flow.", runWorkflowButton())}${state.errors.workflows ? `<div class="empty-state">${icon("lock")}<h3>Workflows unavailable</h3><p>${escape(permissionMessage(state.errors.workflows, "workflows:read"))}</p><button class="button" data-action="retry-workflows">Retry</button></div>` : `<div class="cards">${state.workflows.map((workflow, index) => `<article class="workflow-card"><div class="card-heading">${icon("workflow")}<h2>${escape(workflow.name || workflow.id)}</h2><span class="status ${workflow.status === "published" ? "success" : "pending"}">${escape(workflow.status || (workflow.enabled ? "Enabled" : "Disabled"))}</span></div><p class="card-description">${escape(workflow.id)} · revision ${escape(workflow.revision || "—")}</p><div class="card-details"><span class="tag">${workflow.enabled ? "Enabled" : "Disabled"}</span></div><div class="card-footer"><a class="text-button" href="#/runs?workflow=${encodeURIComponent(workflow.id)}">View runs ${icon("arrow")}</a><a class="button" href="/settings/workflows/${encodeURIComponent(workflow.id)}" target="_top">Edit workflow ${icon("arrow")}</a><button class="button" data-action="workflow-source" data-value="${index}">${icon("code")}Source</button><template if="workflow.revision > 1"><button class="button small" data-action="workflow-revision" data-value="${index}" data-dir="-1">Prev rev</button><button class="button small" data-action="workflow-revision" data-value="${index}" data-dir="1">Next rev</button></template><template if="!workflow.published"><button class="button small success" data-action="workflow-publish" data-value="${index}">Publish ${icon("rocket")}</button></template></div></article>`).join("") || '<div class="empty-state"><h3>No workflows</h3><p>Flow has no workflow definitions to show.</p></div>'}</div>`}`;
   };
 
   const liveWorkersPage = async () => {
@@ -842,6 +842,22 @@ export function mountLivePreview() {
       const targetRev = (workflow.revision || 1) + dir;
       if (targetRev < 1) return true;
       loadRevisionDiff(workflow.id, targetRev);
+      return true;
+    }
+    if (name === "workflow-publish") {
+      const workflow = state.workflows[Number(value)];
+      if (!workflow) return true;
+      if (!window.confirm(`Publish workflow ${workflow.name || workflow.id}? This will make it available for runs.`)) return true;
+      apiJson(`/api/workflows/${workflow.id}/publish`, { method: "POST" })
+        .then((result) => {
+          showToast(`Published ${result.id || workflow.id} revision ${result.revision}.`);
+          state.workflowsLoaded = false;
+          void loadWorkflows();
+          render();
+        })
+        .catch((error) => {
+          showToast(`Publish failed: ${error.message}`);
+        });
       return true;
     }
     if (name === "rerun" && state.run) {
