@@ -59,14 +59,6 @@ const badge = (status) =>
 export function mountLivePreview() {
   const main = document.querySelector("#main");
   const dialog = document.querySelector("#dialog");
-  const conceptBadge = document.querySelector(".demo-label");
-  if (conceptBadge) {
-    conceptBadge.innerHTML = "<span></span>Live Flow data";
-  }
-  const footerBadge = document.querySelector(".page-footer span:last-child");
-  if (footerBadge) {
-    footerBadge.textContent = "Live Flow data";
-  }
   const state = {
     jobs: [],
     workflows: [],
@@ -83,6 +75,7 @@ export function mountLivePreview() {
     status: "all",
     workflow: "all",
     worker: "all",
+    workflowFilter: "all",
     page: 1,
     run: null,
     mutating: false,
@@ -357,7 +350,7 @@ export function mountLivePreview() {
 
   const renderRuns = () => {
     setBreadcrumbs("runs");
-    main.innerHTML = `${pageHeading("Runs", "Live CI/CD activity from Flow.", runWorkflowButton())}${state.loadingJobs && !state.jobs.length ? '<div class="empty-state"><p>Loading Flow runs…</p></div>' : summary()}<section aria-labelledby="recent-runs"><div class="section-heading"><h2 id="recent-runs">Recent runs <span class="count">${state.jobs.length}</span></h2><span>${icon("clock")}Live Flow data</span></div><div class="filters"><label class="search-box">${icon("search")}<span class="sr-only">Search runs</span><input id="run-search" type="search" value="${escape(state.search)}" placeholder="Search runs, workflows, or workers…" autocomplete="off"/><kbd aria-hidden="true">/</kbd></label><select id="workflow-filter" class="select-filter" aria-label="Filter by workflow"><option value="all">All workflows</option>${state.workflows.map((workflow) => `<option value="${escape(workflow.id)}" ${state.workflow === workflow.id ? "selected" : ""}>${escape(workflow.name)}</option>`).join("")}</select><select id="worker-filter" class="select-filter" aria-label="Filter by worker"><option value="all">All workers</option><option value="queued" ${state.worker === "queued" ? "selected" : ""}>Queued</option>${[...new Set(state.jobs.map((job) => job.workerId).filter(Boolean))].map((worker) => `<option value="${escape(worker)}" ${state.worker === worker ? "selected" : ""}>${escape(worker)}</option>`).join("")}</select></div><div id="run-results"></div></section>`;
+    main.innerHTML = `${pageHeading("Runs", "Runs", runWorkflowButton())}${state.loadingJobs && !state.jobs.length ? '<div class="empty-state"><p>Loading runs…</p></div>' : ''}<section aria-labelledby="recent-runs"><div class="section-heading"><h2 id="recent-runs">Recent runs <span class="count">${state.jobs.length}</span></h2></div><div class="filters"><label class="search-box">${icon("search")}<span class="sr-only">Search runs</span><input id="run-search" type="search" value="${escape(state.search)}" placeholder="Search runs, workflows, or workers…" autocomplete="off"/><kbd aria-hidden="true">/</kbd></label><select id="workflow-filter" class="select-filter" aria-label="Filter by workflow"><option value="all">All workflows</option>${state.workflows.map((workflow) => `<option value="${escape(workflow.id)}" ${state.workflow === workflow.id ? "selected" : ""}>${escape(workflow.name)}</option>`).join("")}</select><select id="worker-filter" class="select-filter" aria-label="Filter by worker"><option value="all">All workers</option><option value="queued" ${state.worker === "queued" ? "selected" : ""}>Queued</option>${[...new Set(state.jobs.map((job) => job.workerId).filter(Boolean))].map((worker) => `<option value="${escape(worker)}" ${state.worker === worker ? "selected" : ""}>${escape(worker)}</option>`).join("")}</select></div><div id="run-results"></div></section>`;
     renderRunsTable();
   };
 
@@ -521,7 +514,57 @@ export function mountLivePreview() {
       await loadWorkflows();
     }
     setBreadcrumbs("workflows");
-    main.innerHTML = `${pageHeading("Workflows", "Workflow definitions from Flow.", runWorkflowButton())}${state.errors.workflows ? `<div class="empty-state">${icon("lock")}<h3>Workflows unavailable</h3><p>${escape(permissionMessage(state.errors.workflows, "workflows:read"))}</p><button class="button" data-action="retry-workflows">Retry</button></div>` : `<div class="cards">${state.workflows.map((workflow, index) => `<article class="workflow-card"><div class="card-heading">${icon("workflow")}<h2>${escape(workflow.name || workflow.id)}</h2><span class="status ${workflow.status === "published" ? "success" : "pending"}">${escape(workflow.status || (workflow.enabled ? "Enabled" : "Disabled"))}</span></div><p class="card-description">${escape(workflow.id)} · revision ${escape(workflow.revision || "—")}</p><div class="card-details"><span class="tag">${workflow.enabled ? "Enabled" : "Disabled"}</span></div><div class="card-footer"><a class="text-button" href="#/runs?workflow=${encodeURIComponent(workflow.id)}">View runs ${icon("arrow")}</a><a class="button" href="/settings/workflows/${encodeURIComponent(workflow.id)}" target="_top">Edit workflow ${icon("arrow")}</a><button class="button" data-action="workflow-source" data-value="${index}">${icon("code")}Source</button><template if="workflow.revision > 1"><button class="button small" data-action="workflow-revision" data-value="${index}" data-dir="-1">Prev rev</button><button class="button small" data-action="workflow-revision" data-value="${index}" data-dir="1">Next rev</button></template><template if="!workflow.published"><button class="button small success" data-action="workflow-publish" data-value="${index}">Publish ${icon("rocket")}</button></template></div></article>`).join("") || '<div class="empty-state"><h3>No workflows</h3><p>Flow has no workflow definitions to show.</p></div>'}</div>`}`;
+    // Group workflows by status for tabbed display
+    const publishedWorkflows = state.workflows.filter((w) => w.status === "published" || (w.enabled && !w.status));
+    const draftWorkflows = state.workflows.filter((w) => !w.status && !w.enabled);
+    const otherWorkflows = state.workflows.filter((w) => w.status && w.status !== "published" && (w.enabled || !w.enabled));
+    
+    const tabs = [
+      { id: "published", label: "Published", filter: (w) => w.status === "published" },
+      { id: "enabled", label: "Enabled", filter: (w) => w.enabled && (!w.status || !["published"].includes(w.status)) },
+      { id: "draft", label: "Drafts", filter: (w) => !w.enabled && !w.status },
+      { id: "other", label: "Other", filter: (w) => w.status && w.status !== "published" && (!w.enabled || w.status === "archived") },
+    ];
+    
+    const tabButtons = tabs.map((tab) => `
+      <button class="status-tab ${state.workflowFilter === tab.id ? "active" : ""}" data-action="workflow-status-tab" data-value="${tab.id}">${tab.label}${tab.label === state.workflowFilter ? ' <span class="tag">✓</span>' : ''}</button>
+    `).join("");
+    
+    const renderWorkflowList = (workflows) => {
+      if (!workflows.length) return '<div class="empty-state"><h3>No workflows</h3><p>Flow has no workflow definitions to show.</p></div>';
+      return `<div class="workflow-list">${workflows.map((workflow, index) => `
+        <div class="workflow-item">
+          <div class="workflow-header">
+            <span class="workflow-icon">${icon("workflow")}</span>
+            <span class="workflow-name">${escape(workflow.name || workflow.id)}</span>
+            <span class="workflow-status ${workflow.status === "published" ? "success" : workflow.enabled ? "enabled" : "disabled"}">${escape(workflow.status || (workflow.enabled ? "Enabled" : "Disabled"))}</span>
+          </div>
+          <div class="workflow-meta">
+            <span>Revision ${escape(workflow.revision || "—")}</span>
+            <span class="workflow-id mono">${escape(workflow.id)}</span>
+          </div>
+          <div class="workflow-actions">
+            <a class="text-button" href="#/runs?workflow=${encodeURIComponent(workflow.id)}">View runs ${icon("arrow")}</a>
+            <a class="button" href="/settings/workflows/${encodeURIComponent(workflow.id)}" target="_top">Edit ${icon("arrow")}</a>
+            <button class="button" data-action="workflow-source" data-value="${index}">${icon("code")}Source</button>
+            <template if="workflow.revision > 1"><button class="button small" data-action="workflow-revision" data-value="${index}" data-dir="-1">Prev rev</button><button class="button small" data-action="workflow-revision" data-value="${index}" data-dir="1">Next rev</button></template>
+            <template if="!workflow.published"><button class="button small success" data-action="workflow-publish" data-value="${index}">Publish ${icon("rocket")}</button></template>
+          </div>
+        </div>
+      `).join("")}</div>`;
+    };
+    
+    const filteredWorkflows = tabs.map((tab) => state.workflows.filter(tab.filter)).filter((w) => w.length > 0);
+    
+    const hasMultipleTabs = tabs.length > 1 && filteredWorkflows.some((w) => w.length > 0);
+    
+    const tabSection = hasMultipleTabs ? `
+      <div class="status-tabs">${tabButtons}</div>
+      <div class="workflow-content">${filteredWorkflows.map((w, i) => renderWorkflowList(w).replace('<div class="workflow-list">', `<div class="workflow-list workflow-list-${i}">`).replace("</div>", `</div><!-- workflow-list-${i} -->`)).join("")}</div>` : '';
+    
+    const emptyState = state.workflows.length ? '' : '<div class="empty-state"><h3>No workflows</h3><p>Flow has no workflow definitions to show.</p></div>';
+    
+    main.innerHTML = `${pageHeading("Workflows", "Workflow definitions from Flow.", runWorkflowButton())}${state.errors.workflows ? `<div class="empty-state">${icon("lock")}<h3>Workflows unavailable</h3><p>${escape(permissionMessage(state.errors.workflows, "workflows:read"))}</p><button class="button" data-action="retry-workflows">Retry</button></div>` : tabSection || emptyState}`;
   };
 
   const liveWorkersPage = async () => {
@@ -714,6 +757,11 @@ export function mountLivePreview() {
       state.workflowsLoaded = false;
       state.errors.workflows = null;
       await liveWorkflowsPage();
+      return true;
+    }
+    if (name === "workflow-status-tab") {
+      state.workflowFilter = value;
+      render();
       return true;
     }
     if (name === "retry-workers") {
@@ -1117,7 +1165,7 @@ export function mountLivePreview() {
   if (["all", "running", "failed", "success"].includes(initialQuery.get("status"))) {
     state.status = initialQuery.get("status");
   }
-  main.innerHTML = `${pageHeading("Runs", "Live CI/CD activity from Flow.")}<div class="empty-state">${icon("clock")}<p>Loading live Flow data…</p></div>`;
+  main.innerHTML = `${pageHeading("Runs", "Runs")}<div class="empty-state">${icon("clock")}<p>Loading runs…</p></div>`;
   setupEvents();
   void Promise.all([loadWorkflows(), loadJobs()]).then(() => {
     state.jobsLoaded = true;

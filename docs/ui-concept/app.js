@@ -204,7 +204,7 @@ function summary() {
   const median = sorted.length
     ? Math.round((sorted[Math.floor((sorted.length - 1) / 2)] + sorted[Math.floor(sorted.length / 2)]) / 2)
     : 0;
-  return `<section class="overview" aria-label="Run summary for sample data">
+  return `<section class="overview" aria-label="Run summary for REMOVED">
     <div class="metric"><div class="metric-label">${icon("runs")}Total runs</div><div class="metric-bottom"><span class="metric-value">${jobs.length}</span><span class="metric-note">in this sample</span><div class="tiny-bars" aria-hidden="true">${[11, 17, 13, 22, 16, 20, 25, 18, 24, 21].map((height) => `<i style="height:${height}px"></i>`).join("")}</div></div></div>
     <div class="metric"><div class="metric-label">${icon("check")}Pass rate</div><div class="metric-bottom"><span class="metric-value">${Math.round((passing.length / complete.length) * 100)}<small>%</small></span><span class="metric-note"><span>${passing.length}</span> / ${complete.length} completed</span></div></div>
     <div class="metric"><div class="metric-label">${icon("clock")}Median duration</div><div class="metric-bottom"><span class="metric-value">${duration(median)}</span></div></div>
@@ -471,7 +471,7 @@ function workersPage() {
     )
     .join(
       "",
-    )}</div><p class="settings-note" style="margin-top:22px">Jobs are assigned to workers with matching labels. Capacity and health shown here are sample data.</p>`;
+    )}</div>`;
 }
 function getPreference(key) {
   try {
@@ -481,7 +481,7 @@ function getPreference(key) {
   }
 }
 function settingsPage() {
-  main.innerHTML = `<div class="page-heading"><div><h1>Settings</h1><p class="subtitle">The essentials for your workspace.</p></div></div><section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${getPreference("compact") ? "checked" : ""}/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${state.wrap ? "checked" : ""}/></label></section><section class="settings-section"><h2>${icon("lock")} Secrets</h2><p class="settings-note">Available to workflows. Values are never displayed in the dashboard.</p>${["NPM_TOKEN", "REGISTRY_PASSWORD", "DEPLOY_KEY"].map((name) => `<div class="setting-row"><div><strong class="mono">${name}</strong><p>Workspace secret · Example</p></div><span class="secret-value" aria-label="Value hidden">••••••••••••</span></div>`).join("")}</section><section class="settings-section"><h2>About this concept</h2><p class="settings-note">An interactive design prototype based on Flow’s job list and run details. Runs, logs, workers, and secret names are sample data. Run controls update this browser session. Display preferences are saved on this device.</p><div class="setting-row"><span class="settings-note">Explore without setup.</span><button class="button" data-action="shortcuts">${icon("keyboard")}Keyboard shortcuts</button></div></section>`;
+  main.innerHTML = `<div class="page-heading"><div><h1>Settings</h1><p class="subtitle">The essentials for your workspace.</p></div></div><section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${getPreference("compact") ? "checked" : ""}/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${state.wrap ? "checked" : ""}/></label></section><section class="settings-section"><h2>${icon("lock")} Secrets</h2><p class="settings-note">Available to workflows. Values are never displayed in the dashboard.</p>${["NPM_TOKEN", "REGISTRY_PASSWORD", "DEPLOY_KEY"].map((name) => `<div class="setting-row"><div><strong class="mono">${name}</strong><p>Workspace secret · Example</p></div><span class="secret-value" aria-label="Value hidden">••••••••••••</span></div>`).join("")}</section><section class="settings-section"><h2>About this concept</h2><p class="settings-note">An interactive design prototype based on Flow’s job list and run details. Runs, logs, workers, and secret names are REMOVED. Run controls update this browser session. Display preferences are saved on this device.</p><div class="setting-row"><span class="settings-note">Explore without setup.</span><button class="button" data-action="shortcuts">${icon("keyboard")}Keyboard shortcuts</button></div></section>`;
 }
 function openDialog(title, body) {
   dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">${title}</h2><button class="icon-button" data-action="close-dialog" aria-label="Close dialog">${icon("close")}</button></div>${body}`;
