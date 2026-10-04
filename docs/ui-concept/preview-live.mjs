@@ -537,7 +537,7 @@ export function mountLivePreview() {
       await loadSecrets();
     }
     setBreadcrumbs("settings");
-    main.innerHTML = `${pageHeading("Settings", "Preferences and secret names from Flow.")}<section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${localStorage.getItem("flow-concept-compact") === "true" ? "checked" : ""}/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${state.wrap ? "checked" : ""}/></label></section><section class="settings-section"><h2>${icon("lock")} Secret names</h2><p class="settings-note">Values are never requested or displayed in this preview.</p>${state.errors.secrets ? `<p class="settings-note">${escape(permissionMessage(state.errors.secrets, "secrets:read"))}</p><button class="button" data-action="retry-secrets">Retry</button>` : state.secrets.map((name) => `<div class="setting-row"><strong class="mono">${escape(name)}</strong><span class="secret-value" aria-label="Secret value hidden">••••••••••••</span></div>`).join("") || '<p class="settings-note">No secret names are configured.</p>'}</section><section class="settings-section"><h2>Workflow editing</h2><p class="settings-note">Create and edit workflow definitions.</p><form id="new-workflow-form"><label class="form-field"><span>Workflow name</span><input id="new-workflow-name" type="text" placeholder="e.g. build-docker-image" required/></label><label class="form-field"><span>Workflow ID</span><input id="new-workflow-id" type="text" placeholder="derived-from-name" required/></label><label class="form-field"><span>Enabled</span><input type="checkbox" id="new-workflow-enabled" checked/></label><div class="form-field"><span>YAML source</span><textarea id="new-workflow-source" rows="8" placeholder="name: build-docker-image\nruns-on: [main-server, docker]\n\nsteps:\n  - name: Checkout repository\n    run: git checkout \"$COMMIT\"\n  - name: Install dependencies\n    run: pnpm install --frozen-lockfile\n  - name: Run tests\n    run: pnpm test\n  - name: Build and push\n    run: pnpm publish"></textarea></label></div><div class="form-footer"><button type="button" class="button" data-action="validate-workflow">Validate workflow</button><button type="submit" class="button primary">${icon("plus")}Create workflow</button><button type="button" class="button" data-action="close-dialog">Cancel</button></div></form><a class="button secondary" href="/settings/workflows" target="_top">Open full workflow settings ${icon("arrow")}</a></section>`;
+    main.innerHTML = `${pageHeading("Settings", "Preferences and secret names from Flow.")}<section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${localStorage.getItem("flow-concept-compact") === "true" ? "checked" : ""}/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${state.wrap ? "checked" : ""}/></label></section><section class="settings-section"><h2>${icon("lock")} Secret names</h2><p class="settings-note">Values are never requested or displayed in this preview.</p>${state.errors.secrets ? `<p class="settings-note">${escape(permissionMessage(state.errors.secrets, "secrets:read"))}</p><button class="button" data-action="retry-secrets">Retry</button>` : state.secrets.map((name) => `<div class="setting-row"><strong class="mono">${escape(name)}</strong><span class="secret-value" aria-label="Secret value hidden">••••••••••••</span><button class="button tiny danger" data-action="remove-secret" data-value="${name}">Remove</button></div>`).join("") || '<p class="settings-note">No secret names are configured.</p>'}<template if="!state.errors.secrets && state.secrets.length < 5"><div class="setting-row"><button class="button tiny" data-action="add-secret">Add secret</button></div></template></section><section class="settings-section"><h2>Workflow editing</h2><p class="settings-note">Create and edit workflow definitions.</p><form id="new-workflow-form"><label class="form-field"><span>Workflow name</span><input id="new-workflow-name" type="text" placeholder="e.g. build-docker-image" required/></label><label class="form-field"><span>Workflow ID</span><input id="new-workflow-id" type="text" placeholder="derived-from-name" required/></label><label class="form-field"><span>Enabled</span><input type="checkbox" id="new-workflow-enabled" checked/></label><div class="form-field"><span>YAML source</span><textarea id="new-workflow-source" rows="8" placeholder="name: build-docker-image\nruns-on: [main-server, docker]\n\nsteps:\n  - name: Checkout repository\n    run: git checkout \"$COMMIT\"\n  - name: Install dependencies\n    run: pnpm install --frozen-lockfile\n  - name: Run tests\n    run: pnpm test\n  - name: Build and push\n    run: pnpm publish"></textarea></label></div><div class="form-footer"><button type="button" class="button" data-action="validate-workflow">Validate workflow</button><button type="submit" class="button primary">${icon("plus")}Create workflow</button><button type="button" class="button" data-action="close-dialog">Cancel</button></div></form><a class="button secondary" href="/settings/workflows" target="_top">Open full workflow settings ${icon("arrow")}</a></section>`;
   };
 
   const showNotFound = () => {
@@ -726,6 +726,41 @@ export function mountLivePreview() {
       state.secretsLoaded = false;
       state.errors.secrets = null;
       await liveSettingsPage();
+      return true;
+    }
+    if (name === "add-secret") {
+      const name = prompt("Enter secret name (uppercase letters, numbers, underscores):");
+      if (!name) return true;
+      if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
+        showToast("Secret name must start with a letter and contain only letters, numbers, and underscores.");
+        return true;
+      }
+      try {
+        await apiJson(`/api/secrets/${name}`, {
+          method: "PUT",
+          body: JSON.stringify({ value: "", encoding: "utf8" }),
+        });
+        showToast(`Secret ${name} added.`);
+        state.secretsLoaded = false;
+        void loadWorkflows(); // This will also reload secrets
+        render();
+      } catch (error) {
+        showToast(`Failed to add secret: ${error.message}`);
+      }
+      return true;
+    }
+    if (name === "remove-secret") {
+      const name = value;
+      if (!confirm(`Delete secret ${name}?`)) return true;
+      try {
+        await apiJson(`/api/secrets/${name}`, { method: "DELETE" });
+        showToast(`Secret ${name} removed.`);
+        state.secretsLoaded = false;
+        void loadWorkflows(); // This will also reload secrets
+        render();
+      } catch (error) {
+        showToast(`Failed to remove secret: ${error.message}`);
+      }
       return true;
     }
     if (name === "status-filter") {
