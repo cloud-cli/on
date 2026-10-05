@@ -184,3 +184,108 @@ describe("workflow and secret settings authentication", () => {
     expect(server.renderPageComponent).toHaveBeenCalledOnce();
   });
 });
+
+describe("admin user-management authorization", () => {
+  const makeResponse = () => ({
+    writeHead: vi.fn().mockReturnThis(),
+    end: vi.fn(),
+  });
+
+  const makeServer = ({
+    isAdmin = false,
+    authenticated = false,
+    users = [] as any[],
+    roleResult = "updated" as string,
+  } = {}) => {
+    const server: any = {
+      isAdmin: vi.fn(() => isAdmin),
+      oidc: {
+        userFromCookie: vi.fn(() => (authenticated ? { id: "caller-subject" } : undefined)),
+        setRoleForUser: vi.fn(),
+      },
+      workflowsLoaded: Promise.resolve(),
+      oidcUsers: {
+        list: vi.fn(async () => users),
+        setRole: vi.fn(async () => roleResult),
+      },
+      readJson: vi.fn(async () => ({ role: "user" })),
+    };
+    server.requireAdminSession = (request: unknown, response: unknown) =>
+      (WebhookServer.prototype as any).requireAdminSession.call(server, request, response);
+    return server;
+  };
+
+  it("lists users only for an admin OIDC session (bearer tokens do not grant access)", async () => {
+    const server = makeServer({ authenticated: true, isAdmin: false });
+    const response = makeResponse();
+    const request = {
+      method: "GET",
+      url: "/api/users",
+      headers: { host: "flow.test", cookie: "runner_oidc_session=user", authorization: "Bearer scoped-token" },
+    };
+
+    await (WebhookServer.prototype as any).handleRequest.call(server, request, response);
+
+    expect(response.writeHead).toHaveBeenCalledWith(403, { "Content-Type": "application/json; charset=utf-8" });
+    expect(server.oidcUsers.list).not.toHaveBeenCalled();
+  });
+
+  it("lists roster data for admins only", async () => {
+    const users = [{ id: "user-1", name: "Example", email: "example@example.test", role: "user" }];
+    const server = makeServer({ authenticated: true, isAdmin: true, users });
+    const response = makeResponse();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      {
+        method: "GET",
+        url: "/api/users",
+        headers: { host: "flow.test", cookie: "runner_oidc_session=admin" },
+      },
+      response,
+    );
+
+    expect(response.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({ "Cache-Control": "no-store" }));
+    expect(response.end).toHaveBeenCalledWith(JSON.stringify({ users }));
+  });
+
+  it("rejects demotion of the last administrator and does not alter active sessions", async () => {
+    const server = makeServer({ authenticated: true, isAdmin: true, roleResult: "last-admin" });
+    const response = makeResponse();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      {
+        method: "PUT",
+        url: "/api/users/target-subject/role",
+        headers: { host: "flow.test", cookie: "runner_oidc_session=admin" },
+      },
+      response,
+    );
+
+    expect(server.oidcUsers.setRole).toHaveBeenCalledWith("target-subject", "user");
+    expect(response.writeHead).toHaveBeenCalledWith(409, { "Content-Type": "application/json; charset=utf-8" });
+    expect(server.oidc.setRoleForUser).not.toHaveBeenCalled();
+  });
+
+  it("propagates a successful role change to sessions for the target subject", async () => {
+    const server = makeServer({ authenticated: true, isAdmin: true, roleResult: "updated" });
+    const response = makeResponse();
+    server.oidcUsers.list.mockResolvedValue([{ id: "target-subject", name: "Target", role: "user" }]);
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      {
+        method: "PUT",
+        url: "/api/users/target-subject/role",
+        headers: { host: "flow.test", cookie: "runner_oidc_session=admin" },
+      },
+      response,
+    );
+
+    expect(server.oidc.setRoleForUser).toHaveBeenCalledWith("target-subject", "user");
+    expect(response.end).toHaveBeenCalledWith(
+      JSON.stringify({ user: { id: "target-subject", name: "Target", role: "user" } }),
+    );
+  });
+});

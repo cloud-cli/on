@@ -11,6 +11,7 @@
     { "name": "discovery" },
     { "name": "jobs" },
     { "name": "workflows" },
+    { "name": "users" },
     { "name": "secrets" },
     { "name": "events" },
     { "name": "webhooks" },
@@ -22,27 +23,47 @@
         "tags": ["discovery"],
         "summary": "Get this OpenAPI specification",
         "security": [],
-        "responses": { "200": { "description": "OpenAPI JSON document", "content": { "application/json": { "schema": { "type": "object" } } } } }
+        "responses": {
+          "200": {
+            "description": "OpenAPI JSON document",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          }
+        }
       }
     },
     "/api/api-keys": {
       "get": {
         "tags": ["discovery"],
         "summary": "List active API keys",
-        "responses": { "200": { "description": "API key metadata", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiKeyList" } } } } }
+        "responses": {
+          "200": {
+            "description": "API key metadata",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiKeyList" } } }
+          }
+        }
       },
       "post": {
         "tags": ["discovery"],
         "summary": "Issue a scoped API key",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiKeyIssue" } } } },
-        "responses": { "201": { "description": "Key metadata and one-time token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiKeyCreated" } } } } }
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiKeyIssue" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Key metadata and one-time token",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiKeyCreated" } } }
+          }
+        }
       }
     },
     "/api/api-keys/{keyId}": {
       "delete": {
         "tags": ["discovery"],
         "summary": "Revoke an API key",
-        "parameters": [{ "name": "keyId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "parameters": [
+          { "name": "keyId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
         "responses": { "204": { "description": "Key revoked" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
@@ -51,14 +72,19 @@
         "tags": ["jobs"],
         "summary": "List jobs",
         "security": [],
-      "parameters": [
+        "parameters": [
           { "$ref": "#/components/parameters/AfterId" },
           { "$ref": "#/components/parameters/BeforeId" },
           { "$ref": "#/components/parameters/Limit" },
           { "$ref": "#/components/parameters/Filter" },
           { "$ref": "#/components/parameters/WorkflowFilter" }
         ],
-        "responses": { "200": { "description": "Dashboard job list", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobList" } } } } }
+        "responses": {
+          "200": {
+            "description": "Dashboard job list",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobList" } } }
+          }
+        }
       }
     },
     "/api/dispatch/{trigger}": {
@@ -68,7 +94,13 @@
         "security": [{ "bearerAuth": [] }, { "basicAuth": [] }],
         "parameters": [{ "name": "trigger", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
-        "responses": { "202": { "description": "Jobs queued", "content": { "application/json": { "schema": { "type": "object" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+        "responses": {
+          "202": {
+            "description": "Jobs queued",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
       }
     },
     "/api/workflows/{workflowId}/run": {
@@ -78,15 +110,33 @@
         "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "name": "workflowId", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
-        "responses": { "202": { "description": "Jobs queued" }, "400": { "$ref": "#/components/responses/ValidationError" }, "404": { "$ref": "#/components/responses/NotFound" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+        "responses": {
+          "202": { "description": "Jobs queued" },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
       }
     },
     "/api/jobs/{jobId}/wait": {
       "get": {
         "tags": ["jobs"],
         "summary": "Wait for a job to reach a terminal state",
-        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "name": "timeout", "in": "query", "schema": { "type": "integer", "minimum": 0, "maximum": 120000, "default": 30000 } }],
-        "responses": { "200": { "description": "Latest job state", "content": { "application/json": { "schema": { "type": "object" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "parameters": [
+          { "$ref": "#/components/parameters/JobId" },
+          {
+            "name": "timeout",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 0, "maximum": 120000, "default": 30000 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest job state",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
       }
     },
     "/api/jobs/{jobId}/cancel": {
@@ -94,7 +144,14 @@
         "tags": ["jobs"],
         "summary": "Cancel an active job",
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
-        "responses": { "200": { "description": "Job cancelled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobStatus" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } }
+        "responses": {
+          "200": {
+            "description": "Job cancelled",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobStatus" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
       }
     },
     "/api/jobs/{jobId}/secrets": {
@@ -103,7 +160,13 @@
         "summary": "Get secrets for an assigned worker job",
         "security": [{ "workerBearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "$ref": "#/components/parameters/WorkerId" }],
-        "responses": { "200": { "description": "Decrypted job secrets", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Secrets" } } } }, "403": { "$ref": "#/components/responses/Forbidden" } }
+        "responses": {
+          "200": {
+            "description": "Decrypted job secrets",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Secrets" } } }
+          },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
       }
     },
     "/api/runs/{jobId}": {
@@ -111,15 +174,30 @@
         "tags": ["jobs"],
         "summary": "Get a run view",
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
-        "responses": { "200": { "description": "Run details", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RunView" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": {
+          "200": {
+            "description": "Run details",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RunView" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
       }
     },
     "/api/runs/{jobId}/artifacts/{path}": {
       "get": {
         "tags": ["jobs"],
         "summary": "Download an artifact",
-        "parameters": [{ "$ref": "#/components/parameters/JobId" }, { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Artifact bytes", "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "parameters": [
+          { "$ref": "#/components/parameters/JobId" },
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artifact bytes",
+            "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
       }
     },
     "/api/runs/{jobId}/ai-help": {
@@ -127,8 +205,25 @@
         "tags": ["jobs"],
         "summary": "Ask AI to diagnose a failed step",
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["stepId"], "properties": { "stepId": { "type": "string" } } } } } },
-        "responses": { "200": { "description": "AI diagnosis", "content": { "application/json": { "schema": { "type": "object", "properties": { "answer": { "type": "string" } } } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "502": { "description": "AI provider failure" }, "503": { "description": "AI help is not configured" } }
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "required": ["stepId"], "properties": { "stepId": { "type": "string" } } }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "AI diagnosis",
+            "content": {
+              "application/json": { "schema": { "type": "object", "properties": { "answer": { "type": "string" } } } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "502": { "description": "AI provider failure" },
+          "503": { "description": "AI help is not configured" }
+        }
       }
     },
     "/api/workflows/validate": {
@@ -136,8 +231,17 @@
         "tags": ["workflows"],
         "summary": "Validate workflow YAML",
         "security": [{ "oidcSessionCookie": [] }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowSource" } } } },
-        "responses": { "200": { "description": "Valid workflow definitions", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationResult" } } } }, "422": { "$ref": "#/components/responses/ValidationError" } }
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowSource" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Valid workflow definitions",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationResult" } } }
+          },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
       }
     },
     "/api/ai/workflow-help": {
@@ -161,7 +265,10 @@
           }
         },
         "responses": {
-          "200": { "description": "Workflow YAML suggestion stream", "content": { "text/event-stream": { "schema": { "type": "string" } } } },
+          "200": {
+            "description": "Workflow YAML suggestion stream",
+            "content": { "text/event-stream": { "schema": { "type": "string" } } }
+          },
           "400": { "$ref": "#/components/responses/ValidationError" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "502": { "description": "AI provider failure" },
@@ -174,7 +281,61 @@
         "tags": ["workflows"],
         "summary": "List workflows",
         "security": [{ "oidcSessionCookie": [] }],
-        "responses": { "200": { "description": "Workflow list", "content": { "application/json": { "schema": { "type": "object", "properties": { "workflows": { "type": "array", "items": { "$ref": "#/components/schemas/Workflow" } } } } } } } }
+        "responses": {
+          "200": {
+            "description": "Workflow list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "workflows": { "type": "array", "items": { "$ref": "#/components/schemas/Workflow" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "tags": ["users"],
+        "summary": "List registered OIDC users",
+        "description": "Administrator OIDC sessions only. Bearer and basic credentials are not accepted.",
+        "security": [{ "oidcAdminSession": [] }],
+        "responses": {
+          "200": {
+            "description": "User roster",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserList" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/users/{subject}/role": {
+      "put": {
+        "tags": ["users"],
+        "summary": "Change a user's OIDC role",
+        "description": "Administrator OIDC sessions only. The final administrator cannot be demoted.",
+        "security": [{ "oidcAdminSession": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/UserSubject" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserRoleUpdate" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Role updated",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserRoleResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
       }
     },
     "/api/workflows/{workflowId}": {
@@ -182,23 +343,44 @@
         "tags": ["workflows"],
         "summary": "Get a workflow or historical revision",
         "security": [{ "oidcSessionCookie": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }, { "$ref": "#/components/parameters/Revision" }],
-        "responses": { "200": { "description": "Workflow definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "parameters": [
+          { "$ref": "#/components/parameters/WorkflowId" },
+          { "$ref": "#/components/parameters/Revision" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workflow definition",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
       },
       "put": {
         "tags": ["workflows"],
         "summary": "Save a workflow draft",
         "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowSave" } } } },
-        "responses": { "200": { "description": "Draft saved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } } }, "422": { "$ref": "#/components/responses/ValidationError" } }
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowSave" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Draft saved",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } }
+          },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
       },
       "delete": {
         "tags": ["workflows"],
         "summary": "Delete a workflow and its revisions",
         "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
-        "responses": { "204": { "description": "Workflow deleted" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": {
+          "204": { "description": "Workflow deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
       }
     },
     "/api/workflows/{workflowId}/publish": {
@@ -207,7 +389,13 @@
         "summary": "Publish the latest workflow revision",
         "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
-        "responses": { "200": { "description": "Workflow published", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": {
+          "200": {
+            "description": "Workflow published",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
       }
     },
     "/api/secrets": {
@@ -215,7 +403,12 @@
         "tags": ["secrets"],
         "summary": "List secret names",
         "security": [{ "oidcSessionCookie": [] }],
-        "responses": { "200": { "description": "Secret names", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecretNames" } } } } }
+        "responses": {
+          "200": {
+            "description": "Secret names",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecretNames" } } }
+          }
+        }
       }
     },
     "/api/secrets/{name}": {
@@ -224,7 +417,10 @@
         "summary": "Create or replace an encrypted secret",
         "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "$ref": "#/components/parameters/SecretName" }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecretValue" } } } },
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SecretValue" } } }
+        },
         "responses": { "204": { "description": "Secret saved" } }
       },
       "delete": {
@@ -232,7 +428,10 @@
         "summary": "Delete a secret",
         "security": [{ "oidcSessionCookie": [] }],
         "parameters": [{ "$ref": "#/components/parameters/SecretName" }],
-        "responses": { "204": { "description": "Secret deleted" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": {
+          "204": { "description": "Secret deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
       }
     },
     "/api/events": {
@@ -240,7 +439,12 @@
         "tags": ["events"],
         "summary": "Subscribe to runner events",
         "security": [],
-        "responses": { "200": { "description": "Server-sent event stream", "content": { "text/event-stream": { "schema": { "type": "string" } } } } }
+        "responses": {
+          "200": {
+            "description": "Server-sent event stream",
+            "content": { "text/event-stream": { "schema": { "type": "string" } } }
+          }
+        }
       },
       "post": {
         "tags": ["events"],
@@ -255,7 +459,16 @@
         "tags": ["notifications"],
         "summary": "Get the Web Push public key",
         "security": [],
-        "responses": { "200": { "description": "VAPID public key", "content": { "application/json": { "schema": { "type": "object", "properties": { "publicKey": { "type": "string" } } } } } } }
+        "responses": {
+          "200": {
+            "description": "VAPID public key",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "publicKey": { "type": "string" } } }
+              }
+            }
+          }
+        }
       }
     },
     "/api/push/subscriptions": {
@@ -270,7 +483,18 @@
         "tags": ["notifications"],
         "summary": "Remove a Web Push subscription",
         "security": [],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["endpoint"], "properties": { "endpoint": { "type": "string", "format": "uri" } } } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["endpoint"],
+                "properties": { "endpoint": { "type": "string", "format": "uri" } }
+              }
+            }
+          }
+        },
         "responses": { "204": { "description": "Subscription removed" } }
       }
     },
@@ -281,7 +505,11 @@
         "security": [],
         "parameters": [{ "name": "provider", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
-        "responses": { "202": { "description": "Webhook accepted" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" } }
+        "responses": {
+          "202": { "description": "Webhook accepted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" }
+        }
       }
     },
     "/restart/{jobId}": {
@@ -289,14 +517,25 @@
         "tags": ["jobs"],
         "summary": "Create a new run from the active workflow revision",
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
-        "responses": { "201": { "description": "New job created", "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "integer" } } } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": {
+          "201": {
+            "description": "New job created",
+            "content": {
+              "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "integer" } } } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
       }
     },
     "/admin/reload-secrets": {
       "post": {
         "tags": ["secrets"],
         "summary": "Reload legacy in-memory secrets",
-        "responses": { "200": { "description": "Secrets reloaded" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+        "responses": {
+          "200": { "description": "Secrets reloaded" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
       }
     }
   },
@@ -305,19 +544,54 @@
       "bearerAuth": { "type": "http", "scheme": "bearer" },
       "basicAuth": { "type": "http", "scheme": "basic" },
       "oidcSessionCookie": { "type": "apiKey", "in": "cookie", "name": "runner_oidc_session" },
+      "oidcAdminSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "runner_oidc_session",
+        "description": "Requires an authenticated OIDC session with administrator role."
+      },
       "workerBearerAuth": { "type": "http", "scheme": "bearer", "description": "RUNNER_WORKER_SECRET" }
     },
     "parameters": {
       "JobId": { "name": "jobId", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } },
-      "WorkflowId": { "name": "workflowId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[a-z0-9-]+$" } },
-      "Revision": { "name": "revision", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1 } },
-      "SecretName": { "name": "name", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" } },
+      "WorkflowId": {
+        "name": "workflowId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "pattern": "^[a-z0-9-]+$" }
+      },
+      "UserSubject": {
+        "name": "subject",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "Revision": {
+        "name": "revision",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1 }
+      },
+      "SecretName": {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
+      },
       "WorkerId": { "name": "X-Runner-Worker-Id", "in": "header", "required": true, "schema": { "type": "string" } },
       "AfterId": { "name": "afterId", "in": "query", "schema": { "type": "integer", "minimum": 0 } },
       "BeforeId": { "name": "beforeId", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
-      "Limit": { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 50 } },
-      "Filter": { "name": "filter", "in": "query", "schema": { "type": "string", "maxLength": 200 } }
-      ,"WorkflowFilter": { "name": "workflowId", "in": "query", "schema": { "type": "string", "pattern": "^[a-z0-9-]+$" } }
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 50 }
+      },
+      "Filter": { "name": "filter", "in": "query", "schema": { "type": "string", "maxLength": 200 } },
+      "WorkflowFilter": {
+        "name": "workflowId",
+        "in": "query",
+        "schema": { "type": "string", "pattern": "^[a-z0-9-]+$" }
+      }
     },
     "responses": {
       "Unauthorized": { "description": "Unauthorized" },
@@ -328,21 +602,141 @@
       "PayloadTooLarge": { "description": "Payload too large" }
     },
     "schemas": {
-      "Job": { "type": "object", "properties": { "id": { "type": "integer" }, "workflowId": { "type": "string" }, "status": { "type": "string" }, "workerId": { "type": ["string", "null"] }, "createdAt": { "type": "string" }, "updatedAt": { "type": "string" } } },
-      "JobList": { "type": "object", "required": ["jobs", "hasMore"], "properties": { "jobs": { "type": "array", "items": { "$ref": "#/components/schemas/Job" } }, "hasMore": { "type": "boolean" } } },
+      "Job": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "workflowId": { "type": "string" },
+          "status": { "type": "string" },
+          "workerId": { "type": ["string", "null"] },
+          "createdAt": { "type": "string" },
+          "updatedAt": { "type": "string" }
+        }
+      },
+      "JobList": {
+        "type": "object",
+        "required": ["jobs", "hasMore"],
+        "properties": {
+          "jobs": { "type": "array", "items": { "$ref": "#/components/schemas/Job" } },
+          "hasMore": { "type": "boolean" }
+        }
+      },
       "JobStatus": { "type": "object", "properties": { "id": { "type": "integer" }, "status": { "type": "string" } } },
       "JobEvent": { "type": "object", "properties": { "jobId": { "type": "integer" } } },
-      "Workflow": { "type": "object", "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "sourceYaml": { "type": "string" }, "revision": { "type": "integer" }, "status": { "type": "string" }, "enabled": { "type": "boolean" } } },
-      "WorkflowSource": { "type": "object", "required": ["sourceYaml"], "properties": { "sourceYaml": { "type": "string" } } },
-      "WorkflowSave": { "allOf": [{ "$ref": "#/components/schemas/WorkflowSource" }, { "type": "object", "properties": { "enabled": { "type": "boolean" } } }] },
-      "ValidationResult": { "type": "object", "properties": { "valid": { "type": "boolean" }, "workflows": { "type": "array", "items": { "type": "object" } } } },
-      "SecretNames": { "type": "object", "properties": { "secrets": { "type": "array", "items": { "type": "string" } } } },
-      "SecretValue": { "type": "object", "required": ["value"], "properties": { "value": { "type": "string", "format": "password" } } },
-      "Secrets": { "type": "object", "properties": { "secrets": { "type": "object", "additionalProperties": { "type": "string" } } } },
-      "RunView": { "type": "object", "properties": { "jobId": { "type": "string" }, "workflowName": { "type": "string" }, "status": { "type": "string" }, "inputs": { "type": "object" }, "steps": { "type": "array", "items": { "type": "object" } }, "artifacts": { "type": "array", "items": { "type": "string" } }, "canViewLogs": { "type": "boolean" } } },
-      "ApiKeyIssue": { "type": "object", "required": ["name", "scopes"], "properties": { "name": { "type": "string" }, "scopes": { "type": "array", "items": { "type": "string", "enum": ["workflows:read", "workflows:write", "logs:read", "artifacts:read", "runs:control", "runs:dispatch"] } } } },
-      "ApiKeyCreated": { "allOf": [{ "$ref": "#/components/schemas/ApiKeyIssue" }, { "type": "object", "required": ["id", "token"], "properties": { "id": { "type": "string", "format": "uuid" }, "token": { "type": "string" } } }] },
-      "ApiKeyList": { "type": "object", "properties": { "keys": { "type": "array", "items": { "$ref": "#/components/schemas/ApiKeyCreated" } } } }
+      "Workflow": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "sourceYaml": { "type": "string" },
+          "revision": { "type": "integer" },
+          "status": { "type": "string" },
+          "enabled": { "type": "boolean" }
+        }
+      },
+      "User": {
+        "type": "object",
+        "required": ["id", "role"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string", "nullable": true },
+          "email": { "type": "string", "format": "email", "nullable": true },
+          "role": { "type": "string", "enum": ["user", "admin"] }
+        }
+      },
+      "UserList": {
+        "type": "object",
+        "required": ["users"],
+        "properties": { "users": { "type": "array", "items": { "$ref": "#/components/schemas/User" } } }
+      },
+      "UserRoleUpdate": {
+        "type": "object",
+        "required": ["role"],
+        "properties": { "role": { "type": "string", "enum": ["user", "admin"] } }
+      },
+      "UserRoleResponse": {
+        "type": "object",
+        "required": ["user"],
+        "properties": { "user": { "$ref": "#/components/schemas/User" } }
+      },
+      "WorkflowSource": {
+        "type": "object",
+        "required": ["sourceYaml"],
+        "properties": { "sourceYaml": { "type": "string" } }
+      },
+      "WorkflowSave": {
+        "allOf": [
+          { "$ref": "#/components/schemas/WorkflowSource" },
+          { "type": "object", "properties": { "enabled": { "type": "boolean" } } }
+        ]
+      },
+      "ValidationResult": {
+        "type": "object",
+        "properties": {
+          "valid": { "type": "boolean" },
+          "workflows": { "type": "array", "items": { "type": "object" } }
+        }
+      },
+      "SecretNames": {
+        "type": "object",
+        "properties": { "secrets": { "type": "array", "items": { "type": "string" } } }
+      },
+      "SecretValue": {
+        "type": "object",
+        "required": ["value"],
+        "properties": { "value": { "type": "string", "format": "password" } }
+      },
+      "Secrets": {
+        "type": "object",
+        "properties": { "secrets": { "type": "object", "additionalProperties": { "type": "string" } } }
+      },
+      "RunView": {
+        "type": "object",
+        "properties": {
+          "jobId": { "type": "string" },
+          "workflowName": { "type": "string" },
+          "status": { "type": "string" },
+          "inputs": { "type": "object" },
+          "steps": { "type": "array", "items": { "type": "object" } },
+          "artifacts": { "type": "array", "items": { "type": "string" } },
+          "canViewLogs": { "type": "boolean" }
+        }
+      },
+      "ApiKeyIssue": {
+        "type": "object",
+        "required": ["name", "scopes"],
+        "properties": {
+          "name": { "type": "string" },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "workflows:read",
+                "workflows:write",
+                "logs:read",
+                "artifacts:read",
+                "runs:control",
+                "runs:dispatch"
+              ]
+            }
+          }
+        }
+      },
+      "ApiKeyCreated": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ApiKeyIssue" },
+          {
+            "type": "object",
+            "required": ["id", "token"],
+            "properties": { "id": { "type": "string", "format": "uuid" }, "token": { "type": "string" } }
+          }
+        ]
+      },
+      "ApiKeyList": {
+        "type": "object",
+        "properties": { "keys": { "type": "array", "items": { "$ref": "#/components/schemas/ApiKeyCreated" } } }
+      }
     }
   }
 }
