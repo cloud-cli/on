@@ -1,4 +1,4 @@
-import { URL } from 'node:url';
+import { URL } from "node:url";
 
 /**
  * Safely normalize a return URL for use in OIDC authentication flows.
@@ -14,50 +14,50 @@ import { URL } from 'node:url';
  */
 export function safeReturnUrl(requestedReturnTo: string): string {
   // Remove fragment first to prevent injection via fragment identifiers.
-  const withoutFragment = requestedReturnTo.split('#')[0];
+  const withoutFragment = requestedReturnTo.split("#")[0];
 
   // ---- Pre-URL-parse validation (the URL parser can sanitize/alter input) ----
   // Reject protocol-relative URLs (starting with //).
-  if (withoutFragment.startsWith('//')) return '/runs';
+  if (withoutFragment.startsWith("//")) return "/runs";
 
   // Reject backslash-based authority.
-  if (withoutFragment.includes('\\')) return '/runs';
+  if (withoutFragment.includes("\\")) return "/runs";
 
   // Reject full URLs with schemes (containing ://).
-  if (withoutFragment.includes('://')) return '/runs';
+  if (withoutFragment.includes("://")) return "/runs";
 
   // Reject CR/LF injection.
-  if (withoutFragment.includes('\r') || withoutFragment.includes('\n')) return '/runs';
+  if (withoutFragment.includes("\r") || withoutFragment.includes("\n")) return "/runs";
 
   // Reject paths that do not start with '/' (must be same-origin relative paths).
   // The URL parser will auto-prefix '/' so we check the raw input.
-  if (!withoutFragment.startsWith('/')) return '/runs';
+  if (!withoutFragment.startsWith("/")) return "/runs";
 
   let path: string;
   let search: string; // includes leading ?, raw query params
 
   try {
-    const parsed = new URL(withoutFragment, 'http://localhost');
+    const parsed = new URL(withoutFragment, "http://localhost");
     path = parsed.pathname;
     search = parsed.search; // includes leading ?, raw query params
   } catch {
     // Fall back to simple string handling if parsing fails.
-    const qIdx = withoutFragment.indexOf('?');
+    const qIdx = withoutFragment.indexOf("?");
     if (qIdx >= 0) {
       path = withoutFragment.substring(0, qIdx);
       search = withoutFragment.substring(qIdx); // includes leading ?
     } else {
       path = withoutFragment;
-      search = '';
+      search = "";
     }
   }
 
   // Reject empty path.
-  if (!path) return '/runs';
+  if (!path) return "/runs";
 
   // Reconstruct path + query, preserving the raw query string.
   // The caller should apply encodeURIComponent when using this as a query param value.
-  return path + (search ? search : '');
+  return path + (search ? search : "");
 }
 
 /**
@@ -78,47 +78,48 @@ export function isExemptFromGlobalOidcAuth(pathname: string, method: string): bo
   const httpMethod = method.toUpperCase();
 
   // Exempt OIDC auth routes themselves (sign-in, callback, logout)
-  if (pathname === '/auth/login' || pathname === '/auth/callback' || pathname === '/auth/logout') {
+  if (pathname === "/auth/login" || pathname === "/auth/callback" || pathname === "/auth/logout") {
     return true;
   }
 
   // Exempt API endpoints: /api exactly and /api/*
-  if (pathname === '/api' || pathname.startsWith('/api/')) {
+  if (pathname === "/api" || pathname.startsWith("/api/")) {
     return true;
   }
 
   // Exempt static module/template routes
   const staticRoutes = [
-    '/manifest.webmanifest',
-    '/app-icon.svg',
-    '/service-worker.js',
-    '/api-client.mjs',
-    '/app-header.mjs',
-    '/app-router.mjs',
-    '/dashboard.mjs',
-    '/run.mjs',
-    '/settings-ui.mjs',
-    '/workflows-ui.mjs',
-    '/pages/dashboard.mjs',
-    '/pages/run.mjs',
-    '/pages/settings-ui.mjs',
-    '/pages/workflows-ui.mjs',
-    '/app-header.html',
-    '/app-router.html',
-    '/preview-live.mjs',
+    "/manifest.webmanifest",
+    "/app-icon.svg",
+    "/service-worker.js",
+    "/api-client.mjs",
+    "/app-header.mjs",
+    "/app-router.mjs",
+    "/dashboard.mjs",
+    "/run.mjs",
+    "/settings-ui.mjs",
+    "/workflows-ui.mjs",
+    "/pages/dashboard.mjs",
+    "/pages/run.mjs",
+    "/pages/settings-ui.mjs",
+    "/pages/workflows-ui.mjs",
+    "/app-header.html",
+    "/app-router.html",
+    "/preview-live.mjs",
+    "/timezone-format.mjs",
   ];
   if (staticRoutes.includes(pathname)) {
     return true;
   }
 
   // Exempt route-specific controls
-  if (pathname.startsWith('/restart/') || pathname.startsWith('/webhooks/') || pathname === '/admin/reload-secrets') {
+  if (pathname.startsWith("/restart/") || pathname.startsWith("/webhooks/") || pathname === "/admin/reload-secrets") {
     return true;
   }
 
   // Exempt POST/OPTIONS/API/service requests from global auth check
   // (only GET/HEAD are subject to browser document auth)
-  if (httpMethod !== 'GET' && httpMethod !== 'HEAD') {
+  if (httpMethod !== "GET" && httpMethod !== "HEAD") {
     return true;
   }
 
@@ -128,20 +129,20 @@ export function isExemptFromGlobalOidcAuth(pathname: string, method: string): bo
 /** True only for known browser-document routes that should require an OIDC session. */
 export function isProtectedUiRoute(pathname: string, method: string): boolean {
   const httpMethod = method.toUpperCase();
-  if ((httpMethod !== 'GET' && httpMethod !== 'HEAD') || isExemptFromGlobalOidcAuth(pathname, httpMethod)) {
+  if ((httpMethod !== "GET" && httpMethod !== "HEAD") || isExemptFromGlobalOidcAuth(pathname, httpMethod)) {
     return false;
   }
 
   return (
-    pathname === '/' ||
-    pathname === '/runs' ||
+    pathname === "/" ||
+    pathname === "/runs" ||
     /^\/runs\/\d+$/.test(pathname) ||
-    pathname === '/preview' ||
-    pathname === '/help' ||
-    pathname === '/settings' ||
+    pathname === "/preview" ||
+    pathname === "/help" ||
+    pathname === "/settings" ||
     /^\/settings\/(workflows|secrets|tokens|notifications|workers)$/.test(pathname) ||
     /^\/settings\/workflows\/(new|[a-z0-9-]+)$/.test(pathname) ||
-    pathname === '/workflows' ||
+    pathname === "/workflows" ||
     /^\/workflows\/(new|[a-z0-9-]+)$/.test(pathname) ||
     /^\/pages\/(dashboard|run|help|workflows|settings)\.html$/.test(pathname)
   );

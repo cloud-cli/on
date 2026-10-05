@@ -39,6 +39,7 @@ import settingsSetup from "./settings-ui.mjs?raw";
 import workflowsSetup from "./workflows-ui.mjs?raw";
 import { uiConceptPage } from "./ui-concept.js";
 import previewLiveSource from "../docs/ui-concept/preview-live.mjs?raw";
+import timezoneFormatSource from "../docs/ui-concept/timezone-format.mjs?raw";
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -135,6 +136,11 @@ export class WebhookServer {
     if (req.method === "GET" && url.pathname === "/preview-live.mjs") {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(previewLiveSource);
+    }
+
+    if (req.method === "GET" && url.pathname === "/timezone-format.mjs") {
+      res.writeHead(200, { "Cache-Control": "public, max-age=3600", "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(timezoneFormatSource);
     }
 
     if (req.method === "GET" && url.pathname === "/service-worker.js") {
