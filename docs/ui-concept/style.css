@@ -15,12 +15,7 @@
   --blue: #4a66a0;
   --blue-bg: #e8eef6;
   --amber: #845e1c;
-  font-family:
-    "DM Sans",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--ink);
   font-size: 15px;
   font-synthesis: none;
@@ -1348,6 +1343,100 @@ kbd {
   display: flex;
   justify-content: space-between;
 }
+.status-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  margin: 20px 0 0;
+}
+.status-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 12px;
+  color: #727b6e;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+.status-tab:hover,
+.status-tab.active {
+  color: #334334;
+}
+.status-tab.active {
+  border-bottom-color: #718a62;
+}
+.status-tab .count {
+  min-width: 18px;
+  text-align: center;
+}
+.workflow-list {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+  background: #fff;
+}
+.workflow-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 16px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.workflow-item:last-child {
+  border-bottom: 0;
+}
+.workflow-header,
+.workflow-meta,
+.workflow-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.workflow-header {
+  grid-column: 1;
+}
+.workflow-icon svg {
+  width: 17px;
+  height: 17px;
+  color: #7e9468;
+}
+.workflow-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workflow-status {
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: #f2f4ee;
+  color: #68745d;
+  font-size: 11px;
+  text-transform: capitalize;
+}
+.workflow-status.success {
+  background: #edf5e8;
+  color: #4d7040;
+}
+.workflow-meta {
+  grid-column: 1;
+  padding-left: 27px;
+  color: #7e8874;
+  font-size: 11px;
+}
+.workflow-actions {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.workflow-actions .button {
+  padding: 6px 9px;
+  font-size: 11px;
+}
 .settings-section {
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -1758,7 +1847,7 @@ kbd {
     display: none;
   }
   .demo-label {
-    font-size: 8px;
+    display: none;
   }
   .breadcrumbs {
     gap: 7px;
@@ -1777,6 +1866,23 @@ kbd {
   .subtitle {
     font-size: 13px;
     max-width: 210px;
+  }
+  .workflow-item {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .workflow-header,
+  .workflow-meta,
+  .workflow-actions {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .workflow-meta {
+    padding-left: 27px;
+  }
+  .workflow-actions {
+    justify-content: flex-start;
+    padding-left: 27px;
   }
   .button {
     font-size: 13px;

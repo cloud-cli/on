@@ -40,11 +40,13 @@ const paths = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>',
 };
 const icon = (name) =>
-  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.runs}</svg>`;
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${
+    paths[name] || paths.runs
+  }</svg>`;
 const escape = (value) =>
   String(value).replace(
     /[&<>"']/g,
-    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character],
+    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character])
   );
 const labels = {
   success: "Passed",
@@ -167,7 +169,7 @@ function updateFilterUrl() {
   window.history.replaceState(
     null,
     "",
-    `${window.location.pathname}${window.location.search}#/runs${params.size ? `?${params}` : ""}`,
+    `${window.location.pathname}${window.location.search}#/runs${params.size ? `?${params}` : ""}`
   );
 }
 function readFilters() {
@@ -188,37 +190,53 @@ function navigation(page) {
   ]
     .map(
       ([id, title, symbol]) =>
-        `<a href="#/${id}" class="nav-item ${id === page ? "active" : ""}" ${id === page ? 'aria-current="page"' : ""} aria-label="${title}">${icon(symbol)}<span class="nav-label">${title}</span>${id === "runs" ? `<span class="nav-count">${jobs.filter((job) => ["running", "pending"].includes(job.status)).length}</span>` : ""}</a>`,
+        `<a href="#/${id}" class="nav-item ${id === page ? "active" : ""}" ${
+          id === page ? 'aria-current="page"' : ""
+        } aria-label="${title}">${icon(symbol)}<span class="nav-label">${title}</span>${
+          id === "runs"
+            ? `<span class="nav-count">${
+                jobs.filter((job) => ["running", "pending"].includes(job.status)).length
+              }</span>`
+            : ""
+        }</a>`
     )
     .join("");
   const title = page[0].toUpperCase() + page.slice(1);
   const job = currentJob();
-  document.querySelector("#breadcrumbs").innerHTML =
-    `<a href="#/runs">Apphor</a><span class="divider">/</span>${job ? `<a href="#/runs">Runs</a><span class="divider">/</span><strong class="mono">#${job.id}</strong>` : `<strong>${title}</strong>`}`;
+  document.querySelector("#breadcrumbs").innerHTML = job
+    ? `<a href="#/runs">Runs</a><span class="divider">/</span><strong class="mono">#${job.id}</strong>`
+    : `<strong>${title}</strong>`;
   document.title = `${job ? `Run #${job.id}` : title} · Flow`;
 }
-function summary() {
-  const complete = jobs.filter((job) => ["success", "failed"].includes(job.status));
-  const passing = complete.filter((job) => job.status === "success");
-  const sorted = complete.map((job) => job.seconds).sort((a, b) => a - b);
-  const median = sorted.length
-    ? Math.round((sorted[Math.floor((sorted.length - 1) / 2)] + sorted[Math.floor(sorted.length / 2)]) / 2)
-    : 0;
-  return `<section class="overview" aria-label="Run summary for REMOVED">
-    <div class="metric"><div class="metric-label">${icon("runs")}Total runs</div><div class="metric-bottom"><span class="metric-value">${jobs.length}</span><span class="metric-note">in this sample</span><div class="tiny-bars" aria-hidden="true">${[11, 17, 13, 22, 16, 20, 25, 18, 24, 21].map((height) => `<i style="height:${height}px"></i>`).join("")}</div></div></div>
-    <div class="metric"><div class="metric-label">${icon("check")}Pass rate</div><div class="metric-bottom"><span class="metric-value">${Math.round((passing.length / complete.length) * 100)}<small>%</small></span><span class="metric-note"><span>${passing.length}</span> / ${complete.length} completed</span></div></div>
-    <div class="metric"><div class="metric-label">${icon("clock")}Median duration</div><div class="metric-bottom"><span class="metric-value">${duration(median)}</span></div></div>
-    <div class="metric"><div class="metric-label">${icon("running")}In progress</div><div class="metric-bottom"><span class="metric-value">${jobs.filter((job) => job.status === "running").length}</span><span class="metric-note">${jobs.filter((job) => job.status === "pending").length} queued</span></div></div>
-  </section>`;
-}
 function runsPage() {
-  main.innerHTML = `<div class="page-heading"><div><h1>Runs</h1><p class="subtitle">Every change, from commit to complete.</p></div><button class="button primary" data-action="new-run">${icon("plus")}Run workflow</button></div>
-    ${summary()}<section aria-labelledby="recent-runs"><div class="section-heading"><h2 id="recent-runs">Recent runs <span class="count">${jobs.length}</span></h2><span>${icon("clock")}Sample activity · Today</span></div>
-    <div class="filters"><label class="search-box">${icon("search")}<span class="sr-only">Search runs</span><input id="run-search" type="search" value="${escape(state.search)}" placeholder="Search runs, commits, or repositories…" autocomplete="off"/><kbd aria-hidden="true">/</kbd></label>
-    <select id="workflow-filter" class="select-filter" aria-label="Filter by workflow"><option value="all">All workflows</option>${workflows.map((workflow) => `<option value="${workflow.id}" ${state.workflow === workflow.id ? "selected" : ""}>${workflow.name}</option>`).join("")}</select>
-    <select id="branch-filter" class="select-filter" aria-label="Filter by branch"><option value="all">All branches</option><option value="main" ${state.branch === "main" ? "selected" : ""}>main</option><option value="feature" ${state.branch === "feature" ? "selected" : ""}>Feature branches</option></select></div>
+  main.innerHTML = `<div class="page-heading"><div><h1>Runs</h1><p class="subtitle">Every change, from commit to complete.</p></div><button class="button primary" data-action="new-run">${icon(
+    "plus"
+  )}Run workflow</button></div>
+    <section aria-labelledby="recent-runs"><div class="section-heading"><h2 id="recent-runs">Runs <span class="count">${
+      jobs.length
+    }</span></h2></div>
+    <div class="filters"><label class="search-box">${icon(
+      "search"
+    )}<span class="sr-only">Search runs</span><input id="run-search" type="search" value="${escape(
+    state.search
+  )}" placeholder="Search runs, commits, or repositories…" autocomplete="off"/><kbd aria-hidden="true">/</kbd></label>
+    <select id="workflow-filter" class="select-filter" aria-label="Filter by workflow"><option value="all">All workflows</option>${workflows
+      .map(
+        (workflow) =>
+          `<option value="${workflow.id}" ${state.workflow === workflow.id ? "selected" : ""}>${workflow.name}</option>`
+      )
+      .join("")}</select>
+    <select id="branch-filter" class="select-filter" aria-label="Filter by branch"><option value="all">All branches</option><option value="main" ${
+      state.branch === "main" ? "selected" : ""
+    }>main</option><option value="feature" ${
+    state.branch === "feature" ? "selected" : ""
+  }>Feature branches</option></select></div>
     <div id="run-results"></div></section>
-    <div class="attention-strip">${icon("alert")}<p><strong>${jobs.filter((job) => job.status === "failed").length} failed runs</strong><span>A little attention goes a long way.</span></p><button class="text-button" data-action="filter-failed">Review failures ${icon("arrow")}</button></div>`;
+    <div class="attention-strip">${icon("alert")}<p><strong>${
+    jobs.filter((job) => job.status === "failed").length
+  } failed runs</strong><span>A little attention goes a long way.</span></p><button class="text-button" data-action="filter-failed">Review failures ${icon(
+    "arrow"
+  )}</button></div>`;
   renderResults();
 }
 function filteredJobs(includeStatus = true) {
@@ -242,20 +260,68 @@ function renderResults() {
   const pages = Math.max(1, Math.ceil(filtered.length / 8));
   state.page = Math.min(pages, state.page);
   const visible = filtered.slice((state.page - 1) * 8, state.page * 8);
-  document.querySelector("#run-results").innerHTML =
-    `<div class="filter-tabs" role="group" aria-label="Filter by run status">${[
-      ["all", "All runs"],
-      ["running", "In progress"],
-      ["failed", "Failed"],
-      ["success", "Passed"],
-    ]
-      .map(
-        ([value, label]) =>
-          `<button class="filter-tab ${state.status === value ? "active" : ""}" data-action="status-filter" data-value="${value}" aria-pressed="${state.status === value}">${label}<span class="count">${all.filter((job) => value === "all" || (value === "running" ? ["pending", "running"].includes(job.status) : job.status === value)).length}</span></button>`,
-      )
-      .join("")}</div>
-    ${visible.length ? `<table class="run-table"><caption class="sr-only">Workflow runs, newest first</caption><thead><tr><th scope="col">Workflow / commit</th><th scope="col">Status</th><th scope="col">Branch</th><th scope="col">Duration</th><th scope="col">Started</th></tr></thead><tbody>${visible.map((job) => `<tr><td><a class="run-link" href="#/runs/${job.id}" aria-label="Run ${job.id}: ${escape(job.workflow.name)}, ${labels[job.status]}">${statusIcon(job.status)}<span class="run-copy"><span class="run-title">${job.workflow.name}</span><span class="run-subtitle"><span class="mono">#${job.id}</span><span class="separator">·</span><span>cloud-cli/${job.repo}</span><span class="separator">·</span><span class="mono">${job.commit}</span></span></span></a></td><td>${badge(job.status)}</td><td><span class="branch">${icon("branch")}${escape(job.branch)}</span></td><td><span class="mono duration">${duration(job.seconds)}</span></td><td>${job.time}</td></tr>`).join("")}</tbody></table>` : `<div class="empty-state">${icon("search")}<h3>No runs found</h3><p>Try a different search or clear your filters.</p><button class="button" data-action="clear-filters">Clear filters</button></div>`}
-    <div class="table-footer"><span role="status">${filtered.length ? `${(state.page - 1) * 8 + 1}–${Math.min(state.page * 8, filtered.length)} of ${filtered.length} runs` : "0 runs"}</span><div class="pagination"><button class="button" data-action="prev-page" ${state.page === 1 ? "disabled" : ""}>${icon("back")}Previous</button><span>${state.page} / ${pages}</span><button class="button" data-action="next-page" ${state.page === pages ? "disabled" : ""}>Next${icon("arrow")}</button></div></div><div class="table-hint">${icon("info")}Open a run to explore its steps, logs, and execution history.</div>`;
+  document.querySelector(
+    "#run-results"
+  ).innerHTML = `<div class="filter-tabs" role="group" aria-label="Filter by run status">${[
+    ["all", "All runs"],
+    ["running", "In progress"],
+    ["failed", "Failed"],
+    ["success", "Passed"],
+  ]
+    .map(
+      ([value, label]) =>
+        `<button class="filter-tab ${
+          state.status === value ? "active" : ""
+        }" data-action="status-filter" data-value="${value}" aria-pressed="${
+          state.status === value
+        }">${label}<span class="count">${
+          all.filter(
+            (job) =>
+              value === "all" ||
+              (value === "running" ? ["pending", "running"].includes(job.status) : job.status === value)
+          ).length
+        }</span></button>`
+    )
+    .join("")}</div>
+    ${
+      visible.length
+        ? `<table class="run-table"><caption class="sr-only">Workflow runs, newest first</caption><thead><tr><th scope="col">Workflow / commit</th><th scope="col">Status</th><th scope="col">Branch</th><th scope="col">Duration</th><th scope="col">Started</th></tr></thead><tbody>${visible
+            .map(
+              (job) =>
+                `<tr><td><a class="run-link" href="#/runs/${job.id}" aria-label="Run ${job.id}: ${escape(
+                  job.workflow.name
+                )}, ${labels[job.status]}">${statusIcon(job.status)}<span class="run-copy"><span class="run-title">${
+                  job.workflow.name
+                }</span><span class="run-subtitle"><span class="mono">#${
+                  job.id
+                }</span><span class="separator">·</span><span>cloud-cli/${
+                  job.repo
+                }</span><span class="separator">·</span><span class="mono">${
+                  job.commit
+                }</span></span></span></a></td><td>${badge(job.status)}</td><td><span class="branch">${icon(
+                  "branch"
+                )}${escape(job.branch)}</span></td><td><span class="mono duration">${duration(
+                  job.seconds
+                )}</span></td><td>${job.time}</td></tr>`
+            )
+            .join("")}</tbody></table>`
+        : `<div class="empty-state">${icon(
+            "search"
+          )}<h3>No runs found</h3><p>Try a different search or clear your filters.</p><button class="button" data-action="clear-filters">Clear filters</button></div>`
+    }
+    <div class="table-footer"><span role="status">${
+      filtered.length
+        ? `${(state.page - 1) * 8 + 1}–${Math.min(state.page * 8, filtered.length)} of ${filtered.length} runs`
+        : "0 runs"
+    }</span><div class="pagination"><button class="button" data-action="prev-page" ${
+    state.page === 1 ? "disabled" : ""
+  }>${icon("back")}Previous</button><span>${
+    state.page
+  } / ${pages}</span><button class="button" data-action="next-page" ${
+    state.page === pages ? "disabled" : ""
+  }>Next${icon("arrow")}</button></div></div><div class="table-hint">${icon(
+    "info"
+  )}Open a run to explore its steps, logs, and execution history.</div>`;
 }
 function stepsFor(job) {
   return job.workflow.steps.map((name, index) => {
@@ -283,12 +349,32 @@ function detailPage(job) {
   if (state.step === null) {
     state.step = Math.max(
       0,
-      steps.findIndex((step) => ["failed", "running"].includes(step.status)),
+      steps.findIndex((step) => ["failed", "running"].includes(step.status))
     );
   }
   const active = ["running", "pending"].includes(job.status);
-  main.innerHTML = `<a href="#/runs" class="back-link">${icon("back")}All runs</a><div class="page-heading run-heading"><div><h1>${statusIcon(job.status)}${job.workflow.name}</h1><p class="subtitle"><span class="mono">#${job.id}</span><span>·</span><span>${escape(job.message)}</span></p></div><div class="heading-actions"><button class="button" data-action="download-logs">${icon("download")}Download logs</button><button class="button ${active ? "danger" : "primary"}" data-action="${active ? "cancel-run" : "rerun"}">${icon(active ? "stop" : "refresh")}${active ? "Cancel run" : "Re-run workflow"}</button></div></div>
-    <section class="detail-meta" aria-label="Run metadata"><div><span class="meta-label">STATUS</span><span class="meta-value">${badge(job.status)}</span></div><div><span class="meta-label">REPOSITORY / BRANCH</span><span class="meta-value">${icon("branch")}${escape(job.branch)}</span></div><div><span class="meta-label">COMMIT</span><span class="meta-value mono">${icon("commit")}${job.commit}</span></div><div><span class="meta-label">DURATION</span><span class="meta-value">${icon("clock")}${duration(job.seconds)}</span></div><div><span class="meta-label">WORKER</span><span class="meta-value">${icon("server")}${job.worker || "Awaiting worker"}${job.worker ? '<span class="tag">linux · x64</span>' : ""}</span></div></section>
+  main.innerHTML = `<a href="#/runs" class="back-link">${icon(
+    "back"
+  )}All runs</a><div class="page-heading run-heading"><div><h1>${statusIcon(job.status)}${
+    job.workflow.name
+  }</h1><p class="subtitle"><span class="mono">#${job.id}</span><span>·</span><span>${escape(
+    job.message
+  )}</span></p></div><div class="heading-actions"><button class="button" data-action="download-logs">${icon(
+    "download"
+  )}Download logs</button><button class="button ${active ? "danger" : "primary"}" data-action="${
+    active ? "cancel-run" : "rerun"
+  }">${icon(active ? "stop" : "refresh")}${active ? "Cancel run" : "Re-run workflow"}</button></div></div>
+    <section class="detail-meta" aria-label="Run metadata"><div><span class="meta-label">STATUS</span><span class="meta-value">${badge(
+      job.status
+    )}</span></div><div><span class="meta-label">REPOSITORY / BRANCH</span><span class="meta-value">${icon(
+    "branch"
+  )}${escape(job.branch)}</span></div><div><span class="meta-label">COMMIT</span><span class="meta-value mono">${icon(
+    "commit"
+  )}${job.commit}</span></div><div><span class="meta-label">DURATION</span><span class="meta-value">${icon(
+    "clock"
+  )}${duration(job.seconds)}</span></div><div><span class="meta-label">WORKER</span><span class="meta-value">${icon(
+    "server"
+  )}${job.worker || "Awaiting worker"}${job.worker ? '<span class="tag">linux · x64</span>' : ""}</span></div></section>
     <div class="detail-tabs" role="group" aria-label="Run detail views">${[
       ["logs", "Logs & steps", "terminal"],
       ["inputs", "Inputs", "code"],
@@ -297,7 +383,11 @@ function detailPage(job) {
     ]
       .map(
         ([value, title, symbol]) =>
-          `<button data-action="detail-tab" data-value="${value}" class="${state.detailTab === value ? "active" : ""}" aria-pressed="${state.detailTab === value}">${icon(symbol)}${title}${value === "history" ? `<span class="count">${job.attempt}</span>` : ""}</button>`,
+          `<button data-action="detail-tab" data-value="${value}" class="${
+            state.detailTab === value ? "active" : ""
+          }" aria-pressed="${state.detailTab === value}">${icon(symbol)}${title}${
+            value === "history" ? `<span class="count">${job.attempt}</span>` : ""
+          }</button>`
       )
       .join("")}</div>
     <div id="detail-content"></div>`;
@@ -306,14 +396,38 @@ function detailPage(job) {
 function renderDetailContent(job) {
   const content = document.querySelector("#detail-content");
   if (state.detailTab === "inputs") {
-    content.innerHTML = `<section class="source-view"><h3>Trigger inputs <span class="tag">${job.parent ? "manual restart" : "push event"}</span></h3><pre>${escape(JSON.stringify({ repository: `cloud-cli/${job.repo}`, ref: `refs/heads/${job.branch}`, commit: job.commit, workflow: job.workflow.id, triggered_by: job.parent ? "user:jamie" : "webhook:github" }, null, 2))}</pre></section><section class="source-view" style="margin-top:20px"><h3>Workflow source · revision 12</h3><pre>${escape(workflowSource(job.workflow))}</pre></section>`;
+    content.innerHTML = `<section class="source-view"><h3>Trigger inputs <span class="tag">${
+      job.parent ? "manual restart" : "push event"
+    }</span></h3><pre>${escape(
+      JSON.stringify(
+        {
+          repository: `cloud-cli/${job.repo}`,
+          ref: `refs/heads/${job.branch}`,
+          commit: job.commit,
+          workflow: job.workflow.id,
+          triggered_by: job.parent ? "user:jamie" : "webhook:github",
+        },
+        null,
+        2
+      )
+    )}</pre></section><section class="source-view" style="margin-top:20px"><h3>Workflow source · revision 12</h3><pre>${escape(
+      workflowSource(job.workflow)
+    )}</pre></section>`;
     return;
   }
   if (state.detailTab === "artifacts") {
     content.innerHTML =
       job.status === "success"
-        ? `<section class="settings-section"><h2>Run artifacts <span class="count">1</span></h2><div class="setting-row"><div><strong>${icon("box")} build-manifest.json</strong><p>Sample build metadata · JSON</p></div><button class="button" data-action="artifact">${icon("download")}Download</button></div></section>`
-        : `<div class="empty-state">${icon("box")}<h3>No artifacts yet</h3><p>${activeStatus(job) ? "Artifacts appear here when the run completes." : "This run did not produce any artifacts."}</p></div>`;
+        ? `<section class="settings-section"><h2>Run artifacts <span class="count">1</span></h2><div class="setting-row"><div><strong>${icon(
+            "box"
+          )} build-manifest.json</strong><p>Sample build metadata · JSON</p></div><button class="button" data-action="artifact">${icon(
+            "download"
+          )}Download</button></div></section>`
+        : `<div class="empty-state">${icon("box")}<h3>No artifacts yet</h3><p>${
+            activeStatus(job)
+              ? "Artifacts appear here when the run completes."
+              : "This run did not produce any artifacts."
+          }</p></div>`;
     return;
   }
   if (state.detailTab === "history") {
@@ -323,15 +437,65 @@ function renderDetailContent(job) {
       history.push(current);
       current = jobs.find((candidate) => candidate.id === current.parent);
     }
-    content.innerHTML = `<section class="settings-section"><h2>Execution history</h2>${history.map((entry) => `<div class="setting-row"><div><strong><a href="#/runs/${entry.id}">Run #${entry.id} · Attempt ${entry.attempt}</a></strong><p>${entry.parent ? `Re-run of #${entry.parent} · Triggered by Jamie` : "Original run · Triggered by GitHub"} · ${entry.time}</p></div>${badge(entry.status)}</div>`).join("")}</section>`;
+    content.innerHTML = `<section class="settings-section"><h2>Execution history</h2>${history
+      .map(
+        (entry) =>
+          `<div class="setting-row"><div><strong><a href="#/runs/${entry.id}">Run #${entry.id} · Attempt ${
+            entry.attempt
+          }</a></strong><p>${
+            entry.parent ? `Re-run of #${entry.parent} · Triggered by Jamie` : "Original run · Triggered by GitHub"
+          } · ${entry.time}</p></div>${badge(entry.status)}</div>`
+      )
+      .join("")}</section>`;
     return;
   }
   const steps = stepsFor(job);
   const selected = steps[state.step];
-  content.innerHTML = `${job.status === "failed" ? `<div class="failure-banner">${icon("alert")}<div><strong>Run tests failed with exit code 1</strong><p>One test failed. The remaining steps were skipped.</p></div><button class="text-button" data-action="jump-error">Jump to error ${icon("arrow")}</button></div>` : ""}
-    <section class="execution" aria-label="Execution steps and logs"><aside class="steps-panel" aria-label="Execution steps"><div class="steps-heading"><span>Execution steps</span><span class="mono">${steps.filter((step) => step.status === "success").length} / ${steps.length}</span></div>${steps.map((step) => `<button class="step-button ${state.step === step.index ? "active" : ""}" data-action="step" data-value="${step.index}" aria-pressed="${state.step === step.index}" aria-label="${step.name}, ${labels[step.status]}">${statusIcon(step.status)}<span>${step.name}</span><span class="mono">${duration(step.seconds)}</span></button>`).join("")}<div class="step-count">${icon("clock")}Total duration ${duration(job.seconds)}</div></aside>
-    <div class="log-panel"><div class="log-heading"><h3>${selected.name}<small>${selected.status === "failed" ? "exit code 1" : labels[selected.status]}</small></h3><div class="log-actions"><button class="icon-button" data-action="wrap" aria-label="Wrap log lines" aria-pressed="${state.wrap}" title="Wrap log lines">${icon("wrap")}</button><button class="icon-button" data-action="copy-log" aria-label="Copy step log" title="Copy step log">${icon("copy")}</button></div></div><label class="log-search">${icon("search")}<span class="sr-only">Search step log</span><input id="log-search" type="search" placeholder="Find in this step…" value="${escape(state.logQuery)}"/><span id="log-matches"></span></label><div class="log-lines ${state.wrap ? "wrap" : ""}" id="log-lines" tabindex="0" aria-label="Step log output"></div><div class="log-bottom"><span>${selected.status === "failed" ? "Process exited with code 1" : activeStatus(job) ? "Sample execution output" : "End of step output"}</span><span class="mono">UTF-8</span></div></div></section>
-    <div class="detail-bottom"><span>${icon("lock")}Logs are visible to workspace members.</span><span>cloud-cli/${job.repo}<span>·</span>Workflow revision 12<span>·</span>Attempt ${job.attempt}</span></div>`;
+  content.innerHTML = `${
+    job.status === "failed"
+      ? `<div class="failure-banner">${icon(
+          "alert"
+        )}<div><strong>Run tests failed with exit code 1</strong><p>One test failed. The remaining steps were skipped.</p></div><button class="text-button" data-action="jump-error">Jump to error ${icon(
+          "arrow"
+        )}</button></div>`
+      : ""
+  }
+    <section class="execution" aria-label="Execution steps and logs"><aside class="steps-panel" aria-label="Execution steps"><div class="steps-heading"><span>Execution steps</span><span class="mono">${
+      steps.filter((step) => step.status === "success").length
+    } / ${steps.length}</span></div>${steps
+    .map(
+      (step) =>
+        `<button class="step-button ${state.step === step.index ? "active" : ""}" data-action="step" data-value="${
+          step.index
+        }" aria-pressed="${state.step === step.index}" aria-label="${step.name}, ${labels[step.status]}">${statusIcon(
+          step.status
+        )}<span>${step.name}</span><span class="mono">${duration(step.seconds)}</span></button>`
+    )
+    .join("")}<div class="step-count">${icon("clock")}Total duration ${duration(job.seconds)}</div></aside>
+    <div class="log-panel"><div class="log-heading"><h3>${selected.name}<small>${
+    selected.status === "failed" ? "exit code 1" : labels[selected.status]
+  }</small></h3><div class="log-actions"><button class="icon-button" data-action="wrap" aria-label="Wrap log lines" aria-pressed="${
+    state.wrap
+  }" title="Wrap log lines">${icon(
+    "wrap"
+  )}</button><button class="icon-button" data-action="copy-log" aria-label="Copy step log" title="Copy step log">${icon(
+    "copy"
+  )}</button></div></div><label class="log-search">${icon(
+    "search"
+  )}<span class="sr-only">Search step log</span><input id="log-search" type="search" placeholder="Find in this step…" value="${escape(
+    state.logQuery
+  )}"/><span id="log-matches"></span></label><div class="log-lines ${
+    state.wrap ? "wrap" : ""
+  }" id="log-lines" tabindex="0" aria-label="Step log output"></div><div class="log-bottom"><span>${
+    selected.status === "failed"
+      ? "Process exited with code 1"
+      : activeStatus(job)
+      ? "Sample execution output"
+      : "End of step output"
+  }</span><span class="mono">UTF-8</span></div></div></section>
+    <div class="detail-bottom"><span>${icon("lock")}Logs are visible to workspace members.</span><span>cloud-cli/${
+    job.repo
+  }<span>·</span>Workflow revision 12<span>·</span>Attempt ${job.attempt}</span></div>`;
   renderLogs(job);
 }
 function activeStatus(job) {
@@ -391,41 +555,39 @@ function logsFor(job, index) {
           "✓ Repository ready.",
         ]
       : index === 1
-        ? [
-            "$ pnpm install --frozen-lockfile",
-            "Lockfile is up to date, resolution step is skipped",
-            "Progress: resolved 248, reused 248, downloaded 0, added 248",
-            "",
-            "✓ Dependencies installed from cache.",
-            "Done in 2.4s.",
-          ]
-        : index === 2
-          ? [
-              "$ pnpm test",
-              " RUN  v4.1.11 /workspace",
-              "",
-              " ✓ src/config.spec.ts (8 tests)",
-              " ✓ src/queue.spec.ts (12 tests)",
-              " ✓ src/worker.spec.ts (6 tests)",
-              "",
-              " Test Files  3 passed (3)",
-              "      Tests  26 passed (26)",
-              "",
-              "✓ All tests passed.",
-            ]
-          : [
-              `$ ${job.workflow.id === "build-docker-image" ? "docker build --tag app:latest ." : "pnpm build"}`,
-              "#1 Loading build configuration",
-              "#1 DONE 0.1s",
-              "#2 Resolving dependencies",
-              "#2 CACHED",
-              "#3 Compiling source files",
-              "#3 DONE 1.3s",
-              "#4 Creating production bundle",
-              ...(step.status === "running"
-                ? ["#4 Building…"]
-                : ["#4 DONE 0.8s", "", "✓ Step completed successfully."]),
-            ];
+      ? [
+          "$ pnpm install --frozen-lockfile",
+          "Lockfile is up to date, resolution step is skipped",
+          "Progress: resolved 248, reused 248, downloaded 0, added 248",
+          "",
+          "✓ Dependencies installed from cache.",
+          "Done in 2.4s.",
+        ]
+      : index === 2
+      ? [
+          "$ pnpm test",
+          " RUN  v4.1.11 /workspace",
+          "",
+          " ✓ src/config.spec.ts (8 tests)",
+          " ✓ src/queue.spec.ts (12 tests)",
+          " ✓ src/worker.spec.ts (6 tests)",
+          "",
+          " Test Files  3 passed (3)",
+          "      Tests  26 passed (26)",
+          "",
+          "✓ All tests passed.",
+        ]
+      : [
+          `$ ${job.workflow.id === "build-docker-image" ? "docker build --tag app:latest ." : "pnpm build"}`,
+          "#1 Loading build configuration",
+          "#1 DONE 0.1s",
+          "#2 Resolving dependencies",
+          "#2 CACHED",
+          "#3 Compiling source files",
+          "#3 DONE 1.3s",
+          "#4 Creating production bundle",
+          ...(step.status === "running" ? ["#4 Building…"] : ["#4 DONE 0.8s", "", "✓ Step completed successfully."]),
+        ];
   if (step.status === "cancelled") {
     logs.push("Run cancelled by Jamie.");
   }
@@ -441,37 +603,81 @@ function renderLogs(job) {
       const position = query ? line.text.toLowerCase().indexOf(query) : -1;
       if (position >= 0) {
         matches++;
-        text = `${escape(line.text.slice(0, position))}<mark>${escape(line.text.slice(position, position + query.length))}</mark>${escape(line.text.slice(position + query.length))}`;
+        text = `${escape(line.text.slice(0, position))}<mark>${escape(
+          line.text.slice(position, position + query.length)
+        )}</mark>${escape(line.text.slice(position + query.length))}`;
       }
-      return `<div class="log-line ${line.type}" ${line.type === "error" ? 'data-error="true"' : ""}><span class="line-number">${index + 1}</span><span class="log-time">12:04:${String(16 + Math.floor(index / 3)).padStart(2, "0")}</span><span class="line-text">${text || " "}</span></div>`;
+      return `<div class="log-line ${line.type}" ${
+        line.type === "error" ? 'data-error="true"' : ""
+      }><span class="line-number">${index + 1}</span><span class="log-time">12:04:${String(
+        16 + Math.floor(index / 3)
+      ).padStart(2, "0")}</span><span class="line-text">${text || " "}</span></div>`;
     })
     .join("");
   document.querySelector("#log-matches").textContent = query ? `${matches} matching lines` : "";
 }
 function workflowSource(workflow) {
-  return `name: ${workflow.name}\nruns-on: [${workflow.labels.join(", ")}]\n\n# Illustrative workflow definition\nsteps:\n${workflow.steps.map((name, index) => `  - name: ${name}\n    run: ${['git checkout "$COMMIT"', "pnpm install --frozen-lockfile", "pnpm test", "pnpm build", 'echo "Release complete"'][index]}`).join("\n")}`;
+  return `name: ${workflow.name}\nruns-on: [${workflow.labels.join(
+    ", "
+  )}]\n\n# Illustrative workflow definition\nsteps:\n${workflow.steps
+    .map(
+      (name, index) =>
+        `  - name: ${name}\n    run: ${
+          [
+            'git checkout "$COMMIT"',
+            "pnpm install --frozen-lockfile",
+            "pnpm test",
+            "pnpm build",
+            'echo "Release complete"',
+          ][index]
+        }`
+    )
+    .join("\n")}`;
 }
 function workflowsPage() {
-  main.innerHTML = `<div class="page-heading"><div><h1>Workflows</h1><p class="subtitle">Your delivery process, clearly defined.</p></div><button class="button primary" data-action="new-run">${icon("plus")}Run workflow</button></div><div class="cards">${workflows.map((workflow, index) => `<article class="workflow-card"><div class="card-heading">${icon("workflow")}<h2>${workflow.name}</h2><span class="tag">Enabled</span></div><p class="card-description">${workflow.description}</p><div class="card-details">${workflow.labels.map((label) => `<span class="tag mono">${label}</span>`).join("")}<span class="tag">${workflow.steps.length} steps</span></div><div class="card-footer"><a class="text-button" href="#/runs?workflow=${workflow.id}">View runs ${icon("arrow")}</a><button class="button" data-action="workflow-source" data-value="${index}">${icon("code")}View source</button></div></article>`).join("")}</div>`;
+  main.innerHTML = `<div class="page-heading"><div><h1>Workflows</h1><p class="subtitle">Your delivery process, clearly defined.</p></div><button class="button primary" data-action="new-run">${icon(
+    "plus"
+  )}Run workflow</button></div><div class="cards">${workflows
+    .map(
+      (workflow, index) =>
+        `<article class="workflow-card"><div class="card-heading">${icon("workflow")}<h2>${
+          workflow.name
+        }</h2><span class="tag">Enabled</span></div><p class="card-description">${
+          workflow.description
+        }</p><div class="card-details">${workflow.labels
+          .map((label) => `<span class="tag mono">${label}</span>`)
+          .join("")}<span class="tag">${
+          workflow.steps.length
+        } steps</span></div><div class="card-footer"><a class="text-button" href="#/runs?workflow=${
+          workflow.id
+        }">View runs ${icon(
+          "arrow"
+        )}</a><button class="button" data-action="workflow-source" data-value="${index}">${icon(
+          "code"
+        )}View source</button></div></article>`
+    )
+    .join("")}</div>`;
 }
 function workersPage() {
-  main.innerHTML = `<div class="page-heading"><div><h1>Workers</h1><p class="subtitle">A clear view of your execution capacity.</p></div><span class="status success">${icon("check")}3 operational</span></div><div class="cards">${[
+  main.innerHTML = `<div class="page-heading"><div><h1>Workers</h1><p class="subtitle">A clear view of your execution capacity.</p></div><span class="status success">${icon(
+    "check"
+  )}3 operational</span></div><div class="cards">${[
     ["alpha", "main-server, docker", 36, 42, "1 / 4"],
     ["bravo", "node, linux", 12, 28, "0 / 4"],
     ["charlie", "docker, linux", 8, 21, "0 / 2"],
   ]
     .map(
       ([name, tags, cpu, memory, slots]) =>
-        `<article class="worker-card"><div class="card-heading">${icon("server")}<h2>${name}</h2><span class="status success">Online</span></div><p class="card-description">Linux x64 · systemd runner</p><div class="card-details">${tags
+        `<article class="worker-card"><div class="card-heading">${icon(
+          "server"
+        )}<h2>${name}</h2><span class="status success">Online</span></div><p class="card-description">Linux x64 · systemd runner</p><div class="card-details">${tags
           .split(", ")
           .map((tag) => `<span class="tag mono">${tag}</span>`)
           .join(
-            "",
-          )}</div><div class="worker-stats"><div><span class="meta-label">CPU <span>${cpu}%</span></span><div class="progress-track"><div class="progress-fill" style="width:${cpu}%"></div></div></div><div><span class="meta-label">Memory <span>${memory}%</span></span><div class="progress-track"><div class="progress-fill" style="width:${memory}%"></div></div></div></div><div class="card-footer"><span class="settings-note">${slots} slots in use</span><span class="settings-note">Sample snapshot</span></div></article>`,
+            ""
+          )}</div><div class="worker-stats"><div><span class="meta-label">CPU <span>${cpu}%</span></span><div class="progress-track"><div class="progress-fill" style="width:${cpu}%"></div></div></div><div><span class="meta-label">Memory <span>${memory}%</span></span><div class="progress-track"><div class="progress-fill" style="width:${memory}%"></div></div></div></div><div class="card-footer"><span class="settings-note">${slots} slots in use</span><span class="settings-note">Sample snapshot</span></div></article>`
     )
-    .join(
-      "",
-    )}</div>`;
+    .join("")}</div>`;
 }
 function getPreference(key) {
   try {
@@ -481,10 +687,31 @@ function getPreference(key) {
   }
 }
 function settingsPage() {
-  main.innerHTML = `<div class="page-heading"><div><h1>Settings</h1><p class="subtitle">The essentials for your workspace.</p></div></div><section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${getPreference("compact") ? "checked" : ""}/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${state.wrap ? "checked" : ""}/></label></section><section class="settings-section"><h2>${icon("lock")} Secrets</h2><p class="settings-note">Available to workflows. Values are never displayed in the dashboard.</p>${["NPM_TOKEN", "REGISTRY_PASSWORD", "DEPLOY_KEY"].map((name) => `<div class="setting-row"><div><strong class="mono">${name}</strong><p>Workspace secret · Example</p></div><span class="secret-value" aria-label="Value hidden">••••••••••••</span></div>`).join("")}</section><section class="settings-section"><h2>About this concept</h2><p class="settings-note">An interactive design prototype based on Flow’s job list and run details. Runs, logs, workers, and secret names are REMOVED. Run controls update this browser session. Display preferences are saved on this device.</p><div class="setting-row"><span class="settings-note">Explore without setup.</span><button class="button" data-action="shortcuts">${icon("keyboard")}Keyboard shortcuts</button></div></section>`;
+  main.innerHTML = `<div class="page-heading"><div><h1>Settings</h1><p class="subtitle">The essentials for your workspace.</p></div></div><section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${
+    getPreference("compact") ? "checked" : ""
+  }/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${
+    state.wrap ? "checked" : ""
+  }/></label></section><section class="settings-section"><h2>${icon(
+    "lock"
+  )} Secrets</h2><p class="settings-note">Available to workflows. Values are never displayed in the dashboard.</p>${[
+    "NPM_TOKEN",
+    "REGISTRY_PASSWORD",
+    "DEPLOY_KEY",
+  ]
+    .map(
+      (name) =>
+        `<div class="setting-row"><div><strong class="mono">${name}</strong><p>Workspace secret · Example</p></div><span class="secret-value" aria-label="Value hidden">••••••••••••</span></div>`
+    )
+    .join(
+      ""
+    )}</section><section class="settings-section"><h2>About</h2><p class="settings-note">An interactive design prototype based on Flow’s job list and run details. Run controls update this browser session. Display preferences are saved on this device.</p><div class="setting-row"><span class="settings-note">Explore without setup.</span><button class="button" data-action="shortcuts">${icon(
+    "keyboard"
+  )}Keyboard shortcuts</button></div></section>`;
 }
 function openDialog(title, body) {
-  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">${title}</h2><button class="icon-button" data-action="close-dialog" aria-label="Close dialog">${icon("close")}</button></div>${body}`;
+  dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">${title}</h2><button class="icon-button" data-action="close-dialog" aria-label="Close dialog">${icon(
+    "close"
+  )}</button></div>${body}`;
   if (!dialog.open) {
     dialog.showModal();
   }
@@ -492,7 +719,13 @@ function openDialog(title, body) {
 function newRunDialog() {
   openDialog(
     "Run a workflow",
-    `<p class="dialog-description">Choose what to run. We’ll take it from here.</p><form id="new-run-form"><label class="form-field"><span>Workflow</span><select name="workflow">${workflows.map((workflow) => `<option value="${workflow.id}">${workflow.name}</option>`).join("")}</select></label><label class="form-field"><span>Branch</span><input name="branch" value="main" required maxlength="100" pattern="[a-zA-Z0-9._\\x2f\\x2d]+"/></label><p class="dialog-note">Prototype mode: creates a sample queued run in this session.</p><div class="dialog-footer"><button class="button" type="button" data-action="close-dialog">Cancel</button><button class="button primary" type="submit">${icon("runs")}Run workflow</button></div></form>`,
+    `<p class="dialog-description">Choose what to run. We’ll take it from here.</p><form id="new-run-form"><label class="form-field"><span>Workflow</span><select name="workflow">${workflows
+      .map((workflow) => `<option value="${workflow.id}">${workflow.name}</option>`)
+      .join(
+        ""
+      )}</select></label><label class="form-field"><span>Branch</span><input name="branch" value="main" required maxlength="100" pattern="[a-zA-Z0-9._\\x2f\\x2d]+"/></label><p class="dialog-note">Prototype mode: creates a sample queued run in this session.</p><div class="dialog-footer"><button class="button" type="button" data-action="close-dialog">Cancel</button><button class="button primary" type="submit">${icon(
+      "runs"
+    )}Run workflow</button></div></form>`
   );
 }
 function createRun(original, workflow, branch) {
@@ -548,7 +781,9 @@ function render() {
   } else if (page === "settings") {
     settingsPage();
   } else {
-    main.innerHTML = `<div class="empty-state">${icon("search")}<h1>Run not found</h1><p>This run is not part of the sample workspace.</p><a class="button" href="#/runs">Back to runs</a></div>`;
+    main.innerHTML = `<div class="empty-state">${icon(
+      "search"
+    )}<h1>Run not found</h1><p>This run is not part of the sample workspace.</p><a class="button" href="#/runs">Back to runs</a></div>`;
   }
   if (changed) {
     window.scrollTo(0, 0);
@@ -615,7 +850,7 @@ document.addEventListener("click", async (event) => {
       await navigator.clipboard.writeText(
         logsFor(job, state.step)
           .map((line) => line.text)
-          .join("\n"),
+          .join("\n")
       );
       toast("Step log copied.");
     } catch {
@@ -630,16 +865,16 @@ document.addEventListener("click", async (event) => {
           (name, index) =>
             `=== ${name} ===\n${logsFor(job, index)
               .map((line) => line.text)
-              .join("\n")}`,
+              .join("\n")}`
         )
-        .join("\n\n"),
+        .join("\n\n")
     );
     toast("Run log downloaded.");
   }
   if (action === "artifact") {
     download(
       `run-${job.id}-build-manifest.json`,
-      JSON.stringify({ sample: true, run: job.id, commit: job.commit, workflow: job.workflow.id }, null, 2),
+      JSON.stringify({ sample: true, run: job.id, commit: job.commit, workflow: job.workflow.id }, null, 2)
     );
   }
   if (action === "rerun") {
@@ -656,7 +891,9 @@ document.addEventListener("click", async (event) => {
     const workflow = workflows[Number(value)];
     openDialog(
       workflow.name,
-      `<p class="dialog-description">Illustrative YAML · revision 12</p><div class="source-view"><pre>${escape(workflowSource(workflow))}</pre></div><div class="dialog-footer"><button class="button" data-action="close-dialog">Close</button></div>`,
+      `<p class="dialog-description">Illustrative YAML · revision 12</p><div class="source-view"><pre>${escape(
+        workflowSource(workflow)
+      )}</pre></div><div class="dialog-footer"><button class="button" data-action="close-dialog">Close</button></div>`
     );
   }
   if (action === "preferences") {
@@ -665,7 +902,7 @@ document.addEventListener("click", async (event) => {
   if (action === "shortcuts") {
     openDialog(
       "A few useful shortcuts",
-      `<p class="dialog-description">Less clicking. More getting things done.</p><div class="shortcut-row"><span>Search runs</span><kbd>/</kbd></div><div class="shortcut-row"><span>Run a workflow</span><kbd>N</kbd></div><div class="shortcut-row"><span>Show shortcuts</span><kbd>?</kbd></div><div class="shortcut-row"><span>Close dialog</span><kbd>Esc</kbd></div><div class="dialog-footer"><button class="button primary" data-action="close-dialog">Got it</button></div>`,
+      `<p class="dialog-description">Less clicking. More getting things done.</p><div class="shortcut-row"><span>Search runs</span><kbd>/</kbd></div><div class="shortcut-row"><span>Run a workflow</span><kbd>N</kbd></div><div class="shortcut-row"><span>Show shortcuts</span><kbd>?</kbd></div><div class="shortcut-row"><span>Close dialog</span><kbd>Esc</kbd></div><div class="dialog-footer"><button class="button primary" data-action="close-dialog">Got it</button></div>`
     );
   }
 });
@@ -709,7 +946,7 @@ document.addEventListener("submit", (event) => {
     createRun(
       null,
       workflows.find((workflow) => workflow.id === event.target.elements.workflow.value),
-      event.target.elements.branch.value.trim(),
+      event.target.elements.branch.value.trim()
     );
   }
 });
