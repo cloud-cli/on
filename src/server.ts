@@ -29,6 +29,7 @@ import { WorkflowRepository } from "./workflows.js";
 import { debug } from "./debug.js";
 import { OidcClient } from "./oidc.js";
 import { OidcUserRepository } from "./oidc-user-repository.js";
+import { UserPreferencesRepository } from "./user-preferences.js";
 import apiClientSource from "./api-client.mjs?raw";
 import appHeaderSetup from "./app-header.mjs?raw";
 import appRouterSetup from "./app-router.mjs?raw";
@@ -54,6 +55,7 @@ export class WebhookServer {
   private workerToken: string;
   private oidc?: OidcClient;
   private oidcUsers = new OidcUserRepository();
+  private userPreferences = new UserPreferencesRepository();
   private events = new EventBroker();
   private workflowsLoaded: Promise<void>;
 
@@ -75,6 +77,7 @@ export class WebhookServer {
       this.secretRepository.init(),
       this.apiKeys.init(),
       this.oidcUsers.init(),
+      this.userPreferences.init(),
     ]).then(() => undefined);
 
     this.registerPreprocessor(new GitHubPreprocessor());
@@ -280,6 +283,36 @@ export class WebhookServer {
         return;
       }
       return this.renderAppShell(res);
+    }
+
+    if (url.pathname === "/api/preferences" && req.method === "GET") {
+      if (!this.requireAuthenticatedUser(req, res)) return;
+      const user = this.oidc?.userFromCookie(req.headers.cookie);
+      if (!user) return;
+      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ timezone: await this.userPreferences.getTimezone(user.id) }));
+    }
+
+    if (url.pathname === "/api/preferences" && req.method === "PUT") {
+      if (!this.requireAuthenticatedUser(req, res)) return;
+      const user = this.oidc?.userFromCookie(req.headers.cookie);
+      if (!user) return;
+      const body = await this.readJson(req, res);
+      if (!body || res.headersSent) return;
+      const timezone = typeof body.timezone === "string" ? body.timezone.trim() : "";
+      if (!timezone || timezone.length > 100) {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        return res.end(JSON.stringify({ error: "timezone must be a valid IANA timezone" }));
+      }
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        return res.end(JSON.stringify({ error: "timezone must be a valid IANA timezone" }));
+      }
+      await this.userPreferences.setTimezone(user.id, timezone);
+      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ timezone }));
     }
 
     if (req.method === "GET" && url.pathname === "/api/users") {

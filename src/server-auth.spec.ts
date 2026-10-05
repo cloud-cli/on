@@ -289,3 +289,54 @@ describe("admin user-management authorization", () => {
     );
   });
 });
+
+describe("per-user UI timezone preference", () => {
+  const makeResponse = () => ({ writeHead: vi.fn().mockReturnThis(), end: vi.fn() });
+
+  const makeServer = (timezone: string) => ({
+    requireAuthenticatedUser: vi.fn(() => true),
+    oidc: { userFromCookie: vi.fn(() => ({ id: "timezone-user" })) },
+    userPreferences: {
+      getTimezone: vi.fn(async () => timezone),
+      setTimezone: vi.fn(async () => undefined),
+    },
+    readJson: vi.fn(async () => ({ timezone })),
+  });
+
+  it("returns the saved timezone for the authenticated user", async () => {
+    const server = makeServer("America/Los_Angeles");
+    const response = makeResponse();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      { method: "GET", url: "/api/preferences", headers: { host: "flow.test", cookie: "session" } },
+      response,
+    );
+
+    expect(server.userPreferences.getTimezone).toHaveBeenCalledWith("timezone-user");
+    expect(response.end).toHaveBeenCalledWith(JSON.stringify({ timezone: "America/Los_Angeles" }));
+  });
+
+  it("persists valid IANA timezones and rejects invalid ones", async () => {
+    const server = makeServer("America/Los_Angeles");
+    const response = makeResponse();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      { method: "PUT", url: "/api/preferences", headers: { host: "flow.test", cookie: "session" } },
+      response,
+    );
+
+    expect(server.userPreferences.setTimezone).toHaveBeenCalledWith("timezone-user", "America/Los_Angeles");
+    expect(response.end).toHaveBeenCalledWith(JSON.stringify({ timezone: "America/Los_Angeles" }));
+
+    server.readJson.mockResolvedValue({ timezone: "Not/A_Real_Timezone" });
+    const invalidResponse = makeResponse();
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      { method: "PUT", url: "/api/preferences", headers: { host: "flow.test", cookie: "session" } },
+      invalidResponse,
+    );
+    expect(invalidResponse.writeHead).toHaveBeenCalledWith(400, { "Content-Type": "application/json; charset=utf-8" });
+  });
+});
