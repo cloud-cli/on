@@ -1315,6 +1315,7 @@ export class WebhookServer {
       definition?.steps,
       canViewLogs,
       snapshot?.sourceYaml,
+      definition?.name,
     );
 
     if (format === "json") {

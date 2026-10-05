@@ -1,6 +1,6 @@
-import runTemplate from './run.html?raw';
+import runTemplate from "./run.html?raw";
 export { runTemplate };
-import type { JobPayload, JobRecord, StepReport, WorkflowExecutionReport, WorkflowStep } from './types.js';
+import type { JobPayload, JobRecord, StepReport, WorkflowExecutionReport, WorkflowStep } from "./types.js";
 
 const SENSITIVE_KEY =
   /(?:^|[_-])auth(?:entication)?(?:$|[_-])|access[_-]?key|api[_-]?key|authorization|cookie|credential|passphrase|password|private[_-]?key|secret|session(?:id)?|signing[_-]?key|token/i;
@@ -13,7 +13,7 @@ export interface RunView {
   workflowSourceYaml?: string;
   parentId: string;
   workflowName: string;
-  status: WorkflowExecutionReport['status'];
+  status: WorkflowExecutionReport["status"];
   durationMs: number;
   startedAt: string;
   finishedAt?: string;
@@ -30,9 +30,12 @@ export function buildRunView(
   steps: WorkflowStep[] = [],
   canViewLogs = true,
   workflowSourceYaml?: string,
+  canonicalWorkflowName?: string,
 ): RunView {
   const payload = JSON.parse(job.payload) as JobPayload;
-  const report = job.report ? (JSON.parse(job.report) as WorkflowExecutionReport) : buildPendingReport(job, payload, steps);
+  const report = job.report
+    ? (JSON.parse(job.report) as WorkflowExecutionReport)
+    : buildPendingReport(job, payload, steps);
   const status = job.status;
 
   return {
@@ -41,15 +44,15 @@ export function buildRunView(
     workflowId: job.workflow_id,
     workflowRevision: Number(job.workflow_revision),
     workflowSourceYaml: canViewLogs ? workflowSourceYaml : undefined,
-    parentId: String(report.parentId || job.parentId || ''),
-    workflowName: redact(report.workflowName),
+    parentId: String(report.parentId || job.parentId || ""),
+    workflowName: redact(canonicalWorkflowName || report.workflowName || "Unknown workflow"),
     status,
-    durationMs: status === 'running' ? Math.max(0, Date.now() - Date.parse(report.startedAt)) : report.durationMs,
+    durationMs: status === "running" ? Math.max(0, Date.now() - Date.parse(report.startedAt)) : report.durationMs,
     startedAt: report.startedAt,
     finishedAt: report.finishedAt,
     inputs: sanitizeValue(report.inputs || {}, redact) as Record<string, unknown>,
     steps: (report.steps || []).map((step) => {
-      const savedLog = Object.hasOwn(logs, step.id) && typeof logs[step.id] === 'string' ? logs[step.id] : '';
+      const savedLog = Object.hasOwn(logs, step.id) && typeof logs[step.id] === "string" ? logs[step.id] : "";
       return {
         id: step.id,
         name: redact(step.name),
@@ -61,9 +64,9 @@ export function buildRunView(
         error: step.error ? redact(step.error) : undefined,
         outputs: sanitizeValue(step.outputs || {}, redact) as Record<string, any>,
         logContent:
-          !canViewLogs || step.status === 'running' || step.status === 'pending'
-            ? ''
-            : redact(savedLog || step.logContent || ''),
+          !canViewLogs || step.status === "running" || step.status === "pending"
+            ? ""
+            : redact(savedLog || step.logContent || ""),
       };
     }),
     artifacts: (report.artifacts || []).map(redact),
@@ -75,35 +78,39 @@ export function renderRunHtml(report: RunView): string {
   return runTemplate;
 }
 
-function buildPendingReport(job: JobRecord & Record<string, any>, payload: JobPayload, steps: WorkflowStep[]): WorkflowExecutionReport {
+function buildPendingReport(
+  job: JobRecord & Record<string, any>,
+  payload: JobPayload,
+  steps: WorkflowStep[],
+): WorkflowExecutionReport {
   const startedAt = job.started_at || job.created_at;
 
   return {
     jobId: String(job.id),
-    parentId: String(job.parentId || ''),
+    parentId: String(job.parentId || ""),
     workflowName: job.workflow_id,
     status: job.status,
-    durationMs: job.status === 'running' ? Math.max(0, Date.now() - Date.parse(startedAt)) : 0,
+    durationMs: job.status === "running" ? Math.max(0, Date.now() - Date.parse(startedAt)) : 0,
     startedAt,
     inputs: payload.inputs || {},
     environment: {},
     steps: steps.map((step, index) => ({
       id: step.id || `step-${index}`,
       name: step.name || step.id || `step-${index}`,
-      status: 'pending',
+      status: "pending",
       durationMs: 0,
       outputs: {},
-      logContent: '',
+      logContent: "",
     })),
     artifacts: [],
-    rerunToken: '',
+    rerunToken: "",
   };
 }
 
 function sanitizeValue(value: unknown, redact: (value: string) => string): unknown {
-  if (typeof value === 'string') return redact(value);
+  if (typeof value === "string") return redact(value);
   if (Array.isArray(value)) return value.map((entry) => sanitizeValue(entry, redact));
-  if (!value || typeof value !== 'object') return value;
+  if (!value || typeof value !== "object") return value;
 
   return Object.fromEntries(
     Object.entries(value)
