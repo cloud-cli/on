@@ -31,6 +31,12 @@ describe('OIDC client', () => {
     expect(result.returnTo).toBe('/runs/42');
     expect(result.cookie).toContain('runner_oidc_session=');
     expect(client.userFromCookie(result.cookie)).toEqual({ id: 'user-1', name: 'Ada' });
+    client.setRole(result.cookie, 'admin');
+    expect(client.roleFromCookie(result.cookie)).toBe('admin');
+    client.setRoleForUser('user-1', 'user');
+    expect(client.roleFromCookie(result.cookie)).toBe('user');
+    client.setRoleForUser('another-user', 'admin');
+    expect(client.roleFromCookie(result.cookie)).toBe('user');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
