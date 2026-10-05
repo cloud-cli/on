@@ -7,6 +7,10 @@ describe("public UI concept preview", () => {
   it("serves a syntactically valid live preview module", () => {
     const source = previewLiveSource.replace("export function mountLivePreview", "function mountLivePreview");
     expect(() => new Script(source)).not.toThrow();
+    expect(previewLiveSource).not.toContain("setInterval");
+    expect(previewLiveSource).not.toContain("of ${filtered.length} runs");
+    expect(previewLiveSource).toContain('data-action="prev-page"');
+    expect(previewLiveSource).toContain('data-action="next-page"');
   });
 
   it("embeds its styles and interactive prototype without separate asset requests", () => {

@@ -88,7 +88,6 @@ export function mountLivePreview() {
   };
   let apiClient;
   let events;
-  let pollTimer;
   let previousRoute = "";
   let jobsLoadPromise;
   let refreshJobsAfterCurrentLoad = false;
@@ -392,15 +391,9 @@ export function mountLivePreview() {
                 : '<button class="button" data-action="clear-filters">Clear filters</button>'
             }</div>`
       }
-      <div class="table-footer"><span role="status">${
-        filtered.length
-          ? `${(state.page - 1) * 8 + 1}–${Math.min(state.page * 8, filtered.length)} of ${filtered.length} runs`
-          : "0 runs"
-      }</span><div class="pagination"><button class="button" data-action="prev-page" ${
-      state.page === 1 ? "disabled" : ""
-    }>${icon("back")}Previous</button><span>${
-      state.page
-    } / ${pages}</span><button class="button" data-action="next-page" ${
+      <div class="table-footer"><div class="pagination"><button class="button" data-action="prev-page" ${
+        state.page === 1 ? "disabled" : ""
+      }>${icon("back")}Previous</button><button class="button" data-action="next-page" ${
       state.page === pages && !state.hasMore ? "disabled" : ""
     }>Next${icon("arrow")}</button></div></div>${
       state.hasMore ? '<div class="table-hint">Older Flow runs are available.</div>' : ""
@@ -411,9 +404,7 @@ export function mountLivePreview() {
     setBreadcrumbs("runs");
     main.innerHTML = `${pageHeading("Runs", "", runWorkflowButton())}${
       state.loadingJobs && !state.jobs.length ? '<div class="empty-state"><p>Loading runs…</p></div>' : ""
-    }<section aria-labelledby="recent-runs"><div class="section-heading"><h2 id="recent-runs">Recent runs <span class="count">${
-      state.jobs.length
-    }</span></h2></div><div class="filters"><label class="search-box">${icon(
+    }<section aria-labelledby="recent-runs"><div class="section-heading"><h2 id="recent-runs">Recent runs</h2></div><div class="filters"><label class="search-box">${icon(
       "search"
     )}<span class="sr-only">Search runs</span><input id="run-search" type="search" value="${escape(
       state.search
@@ -1443,14 +1434,6 @@ export function mountLivePreview() {
     events.onerror = () => {
       /* EventSource retries transient disconnects automatically. */
     };
-    pollTimer = window.setInterval(() => {
-      state.jobsLoaded = false;
-      void loadJobs().then(() => {
-        if (route().path === "/runs") {
-          renderRuns();
-        }
-      });
-    }, 60_000);
   };
 
   document.addEventListener("click", async (event) => {
@@ -1528,7 +1511,6 @@ export function mountLivePreview() {
   });
   window.addEventListener("beforeunload", () => {
     events?.close();
-    window.clearInterval(pollTimer);
   });
   document.querySelectorAll("[data-icon]").forEach((node) => {
     node.innerHTML = icon(node.dataset.icon);
