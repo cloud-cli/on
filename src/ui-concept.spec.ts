@@ -50,4 +50,24 @@ describe("public UI concept preview", () => {
     expect(tailwind).toContain("--color-flow-muted: #505b52");
     expect(tailwind).toContain('--font-sans: "DM Sans"');
   });
+
+  it("uses Tailwind utilities for the shared preview shell and responsive navigation", () => {
+    const markup = readFileSync(new URL("../docs/ui-concept/index.html", import.meta.url), "utf8");
+    const demo = readFileSync(new URL("../docs/ui-concept/app.js", import.meta.url), "utf8");
+    const styles = readFileSync(new URL("../docs/ui-concept/style.css", import.meta.url), "utf8");
+
+    expect(markup).toContain("fixed inset-y-0 left-0");
+    expect(markup).toContain("max-[600px]:bottom-0");
+    expect(markup).toContain("ml-56 flex min-h-screen");
+    expect(markup).toContain("brand-mark mr-[10px]");
+    expect(markup).toContain("workspace mx-[2px] my-[38px]");
+    expect(markup).toContain("profile flex w-full");
+    expect(demo).toContain("max-[900px]:justify-center");
+    expect(demo).toContain("max-[900px]:hidden max-[600px]:block");
+    expect(previewLiveSource).toContain("max-[600px]:flex-col");
+    expect(previewLiveSource).toContain("max-[900px]:justify-center");
+    expect(styles).not.toMatch(
+      /\.(?:sidebar|brand|brand-mark|workspace|workspace-icon|workspace-label|nav-caption|nav-item|nav-count|sidebar-bottom|runner-health|health-dot|profile|avatar|breadcrumbs|app-shell|topbar|topbar-right)\b[^\n]*\{/,
+    );
+  });
 });

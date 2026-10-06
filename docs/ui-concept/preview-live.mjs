@@ -42,7 +42,7 @@ const icon = (name) =>
 const escape = (value) =>
   String(value ?? "").replace(
     /[&<>"']/g,
-    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character])
+    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character],
   );
 const labels = {
   success: "Passed",
@@ -186,23 +186,23 @@ export function mountLivePreview() {
     ]
       .map(
         ([id, title, name]) =>
-          `<a href="#/${id}" class="nav-item ${page === id ? "active" : ""}" ${
+          `<a href="#/${id}" class="nav-item flex items-center gap-[10px] rounded-md px-[14px] py-3 text-xs font-medium text-flow-muted hover:bg-flow-subtle max-[900px]:justify-center max-[900px]:px-[10px] max-[900px]:py-[13px] max-[600px]:flex-1 max-[600px]:flex-col max-[600px]:gap-1 max-[600px]:rounded-none max-[600px]:px-[6px] max-[600px]:pt-[9px] max-[600px]:pb-[6px] max-[600px]:text-[10px] ${page === id ? "active bg-[#e8efdf] text-[#344d29] max-[600px]:bg-transparent max-[600px]:text-[#41602f]" : ""}" ${
             page === id ? 'aria-current="page"' : ""
-          }>${icon(name)}<span class="nav-label">${title}</span>${
+          }>${icon(name).replace("<svg ", '<svg class="h-[17px] w-[17px] shrink-0 max-[600px]:h-[18px] max-[600px]:w-[18px]" ')}<span class="nav-label max-[900px]:hidden max-[600px]:block">${title}</span>${
             id === "runs"
-              ? `<span class="nav-count">${
+              ? `<span class="nav-count ml-auto rounded bg-[#e2e8dc] px-1.5 py-0.5 text-[13px] max-[900px]:hidden">${
                   state.jobs.filter((job) => ["running", "pending"].includes(job.status)).length
                 }</span>`
               : ""
-          }</a>`
+          }</a>`,
       )
       .join("");
     document.querySelector("#breadcrumbs").innerHTML = `${
       jobId
-        ? `<a href="#/runs">Runs</a><span class="divider">/</span><strong class="mono">#${escape(
-            currentJobId
+        ? `<a class="hover:text-flow-foreground" href="#/runs">Runs</a><span class="text-flow-border">/</span><strong class="mono font-medium text-[#434b40]">#${escape(
+            currentJobId,
           )}</strong>`
-        : `<strong>${escape(page[0].toUpperCase() + page.slice(1))}</strong>`
+        : `<strong class="font-medium text-[#434b40]">${escape(page[0].toUpperCase() + page.slice(1))}</strong>`
     }`;
     document.title = `${jobId ? `Run #${currentJobId}` : page[0].toUpperCase() + page.slice(1)} · Flow`;
   };
@@ -356,9 +356,9 @@ export function mountLivePreview() {
             state.jobs.filter(
               (job) =>
                 value === "all" ||
-                (value === "running" ? ["pending", "running"].includes(job.status) : job.status === value)
+                (value === "running" ? ["pending", "running"].includes(job.status) : job.status === value),
             ).length
-          }</span></button>`
+          }</span></button>`,
       )
       .join("")}</div>
       ${
@@ -367,20 +367,20 @@ export function mountLivePreview() {
               .map(
                 (job) =>
                   `<tr><td><a class="run-link" href="#/runs/${encodeURIComponent(job.id)}" aria-label="Run ${escape(
-                    job.id
+                    job.id,
                   )}: ${escape(workflowName(job.workflowId))}, ${escape(
-                    labels[job.status] || job.status
+                    labels[job.status] || job.status,
                   )}">${statusIcon(job.status)}<span class="run-copy"><span class="run-title">${escape(
-                    workflowName(job.workflowId)
+                    workflowName(job.workflowId),
                   )}</span><span class="run-subtitle"><span class="mono">#${escape(
-                    job.id
+                    job.id,
                   )}</span><span class="separator">·</span><span class="mono">${escape(
-                    job.workflowId
+                    job.workflowId,
                   )}</span></span></span></a></td><td>${badge(job.status)}</td><td><span class="branch">${icon(
-                    "server"
+                    "server",
                   )}${escape(job.workerId || "Queued")}</span></td><td>${escape(
-                    formatDate(job.updatedAt)
-                  )}</td><td>${escape(formatDate(job.createdAt))}</td></tr>`
+                    formatDate(job.updatedAt),
+                  )}</td><td>${escape(formatDate(job.createdAt))}</td></tr>`,
               )
               .join("")}</tbody></table>`
           : `<div class="empty-state">${icon("search")}<h3>${
@@ -394,8 +394,8 @@ export function mountLivePreview() {
       <div class="table-footer"><div class="pagination"><button class="button" data-action="prev-page" ${
         state.page === 1 ? "disabled" : ""
       }>${icon("back")}Previous</button><button class="button" data-action="next-page" ${
-      state.page === pages && !state.hasMore ? "disabled" : ""
-    }>Next${icon("arrow")}</button></div></div>`;
+        state.page === pages && !state.hasMore ? "disabled" : ""
+      }>Next${icon("arrow")}</button></div></div>`;
   };
 
   const renderRuns = () => {
@@ -403,24 +403,24 @@ export function mountLivePreview() {
     main.innerHTML = `${pageHeading("Runs", "", runWorkflowButton())}${
       state.loadingJobs && !state.jobs.length ? '<div class="empty-state"><p>Loading runs…</p></div>' : ""
     }<section aria-labelledby="recent-runs"><div class="section-heading"><h2 id="recent-runs">Recent runs</h2></div><div class="filters"><label class="search-box">${icon(
-      "search"
+      "search",
     )}<span class="sr-only">Search runs</span><input id="run-search" type="search" value="${escape(
-      state.search
+      state.search,
     )}" placeholder="Search runs, workflows, or workers…" autocomplete="off"/><kbd aria-hidden="true">/</kbd></label><select id="workflow-filter" class="select-filter" aria-label="Filter by workflow"><option value="all">All workflows</option>${state.workflows
       .map(
         (workflow) =>
           `<option value="${escape(workflow.id)}" ${state.workflow === workflow.id ? "selected" : ""}>${escape(
-            workflow.name
-          )}</option>`
+            workflow.name,
+          )}</option>`,
       )
       .join(
-        ""
+        "",
       )}</select><select id="worker-filter" class="select-filter" aria-label="Filter by worker"><option value="all">All workers</option><option value="queued" ${
       state.worker === "queued" ? "selected" : ""
     }>Queued</option>${[...new Set(state.jobs.map((job) => job.workerId).filter(Boolean))]
       .map(
         (worker) =>
-          `<option value="${escape(worker)}" ${state.worker === worker ? "selected" : ""}>${escape(worker)}</option>`
+          `<option value="${escape(worker)}" ${state.worker === worker ? "selected" : ""}>${escape(worker)}</option>`,
       )
       .join("")}</select></div><div id="run-results"></div></section>`;
     renderRunsTable();
@@ -432,43 +432,43 @@ export function mountLivePreview() {
     const failedStep = (run.steps || []).find((step) => step.status === "failed");
     main.innerHTML = `<a href="#/runs" class="back-link">${icon("back")}All runs</a>
       <div class="page-heading run-heading"><div><h1>${iconForStatus(run.status)}${escape(
-      run.workflowName || workflowName(run.workflowId)
-    )}</h1><p class="subtitle"><span class="mono">#${escape(run.jobId)}</span><span>·</span><span>${escape(
-      inputs.full_name || inputs.repo || run.workflowId || "Workflow run"
-    )}</span></p></div>
+        run.workflowName || workflowName(run.workflowId),
+      )}</h1><p class="subtitle"><span class="mono">#${escape(run.jobId)}</span><span>·</span><span>${escape(
+        inputs.full_name || inputs.repo || run.workflowId || "Workflow run",
+      )}</span></p></div>
       <div class="heading-actions">${
         run.canViewLogs
           ? `<button class="button" data-action="download-logs">${icon("download")}Download logs</button>`
           : ""
       }<button class="button ${["running", "pending"].includes(run.status) ? "danger" : "primary"}" data-action="${
-      ["running", "pending"].includes(run.status) ? "cancel" : "rerun"
-    }" ${state.mutating ? "disabled" : ""}>${icon(["running", "pending"].includes(run.status) ? "stop" : "refresh")}${
-      ["running", "pending"].includes(run.status) ? "Cancel run" : "Re-run workflow"
-    }</button></div></div>
+        ["running", "pending"].includes(run.status) ? "cancel" : "rerun"
+      }" ${state.mutating ? "disabled" : ""}>${icon(["running", "pending"].includes(run.status) ? "stop" : "refresh")}${
+        ["running", "pending"].includes(run.status) ? "Cancel run" : "Re-run workflow"
+      }</button></div></div>
       ${
         failedStep
           ? `<div class="failure-banner">${icon("alert")}<div><strong>${escape(failedStep.name || "Step")} failed${
               failedStep.exitCode !== undefined ? ` with exit code ${escape(failedStep.exitCode)}` : ""
             }</strong><p>${escape(
-              failedStep.error || "See the failed step output."
+              failedStep.error || "See the failed step output.",
             )}</p></div><button class="text-button" data-action="jump-error">Jump to error ${icon(
-              "arrow"
+              "arrow",
             )}</button></div>`
           : ""
       }
       <section class="detail-meta" aria-label="Run metadata"><div><span class="meta-label">STATUS</span><span class="meta-value">${badge(
-        run.status
+        run.status,
       )}</span></div><div><span class="meta-label">BRANCH</span><span class="meta-value">${icon("branch")}${escape(
-      inputs.branch || inputs.ref?.replace(/^refs\/heads\//, "") || "—"
-    )}</span></div><div><span class="meta-label">COMMIT</span><span class="meta-value mono">${icon("commit")}${escape(
-      (inputs.commit_sha || inputs.commit || "—").slice(0, 8)
-    )}</span></div><div><span class="meta-label">DURATION</span><span class="meta-value">${icon(
-      "clock"
-    )}${formatDuration(
-      run.durationMs
-    )}</span></div><div><span class="meta-label">WORKER</span><span class="meta-value">${icon("server")}${escape(
-      run.workerId || "Queued"
-    )}</span></div></section>
+        inputs.branch || inputs.ref?.replace(/^refs\/heads\//, "") || "—",
+      )}</span></div><div><span class="meta-label">COMMIT</span><span class="meta-value mono">${icon("commit")}${escape(
+        (inputs.commit_sha || inputs.commit || "—").slice(0, 8),
+      )}</span></div><div><span class="meta-label">DURATION</span><span class="meta-value">${icon(
+        "clock",
+      )}${formatDuration(
+        run.durationMs,
+      )}</span></div><div><span class="meta-label">WORKER</span><span class="meta-value">${icon("server")}${escape(
+        run.workerId || "Queued",
+      )}</span></div></section>
       <div class="detail-tabs" role="group" aria-label="Run detail views">${[
         ["logs", "Logs & steps", "terminal"],
         ["inputs", "Inputs", "code"],
@@ -479,7 +479,7 @@ export function mountLivePreview() {
           ([value, title, symbol]) =>
             `<button data-action="detail-tab" data-value="${value}" class="${
               state.detailTab === value ? "active" : ""
-            }" aria-pressed="${state.detailTab === value}">${icon(symbol)}${title}</button>`
+            }" aria-pressed="${state.detailTab === value}">${icon(symbol)}${title}</button>`,
         )
         .join("")}</div>
       <div id="detail-content"></div>`;
@@ -500,7 +500,7 @@ export function mountLivePreview() {
     } catch (error) {
       state.errors.run = error;
       main.innerHTML = `<div class="empty-state">${icon("alert")}<h1>Run unavailable</h1><p>${escape(
-        error.message
+        error.message,
       )}</p><a class="button" href="#/runs">Back to runs</a></div>`;
     }
   };
@@ -516,8 +516,8 @@ export function mountLivePreview() {
         try {
           const workflow = await apiJson(
             `/api/workflows/${encodeURIComponent(run.workflowId)}?revision=${encodeURIComponent(
-              run.workflowRevision || ""
-            )}`
+              run.workflowRevision || "",
+            )}`,
           );
           source = workflow.sourceYaml || "";
         } catch {
@@ -525,11 +525,11 @@ export function mountLivePreview() {
         }
       }
       content.innerHTML = `<section class="source-view"><h3>Trigger inputs</h3><pre>${escape(
-        JSON.stringify(run.inputs || {}, null, 2)
+        JSON.stringify(run.inputs || {}, null, 2),
       )}</pre></section>${
         source
           ? `<section class="source-view" style="margin-top:16px"><h3>Workflow source · revision ${escape(
-              run.workflowRevision || "—"
+              run.workflowRevision || "—",
             )}</h3><pre>${escape(source)}</pre></section>`
           : '<p class="settings-note" style="margin-top:14px">Workflow source is unavailable for this run.</p>'
       }`;
@@ -544,12 +544,12 @@ export function mountLivePreview() {
             .map(
               (path, index) =>
                 `<div class="setting-row"><div><strong class="mono">${escape(
-                  path.split("/").pop() || path
+                  path.split("/").pop() || path,
                 )}</strong><p>${escape(
-                  path
+                  path,
                 )}</p></div><button class="button" data-action="download-artifact" data-value="${index}">${icon(
-                  "download"
-                )}Download</button></div>`
+                  "download",
+                )}Download</button></div>`,
             )
             .join("")}</section>`
         : '<div class="empty-state"><h3>No artifacts</h3><p>This run did not publish any artifacts.</p></div>';
@@ -563,10 +563,10 @@ export function mountLivePreview() {
               .map(
                 (entry) =>
                   `<div class="setting-row"><div><strong><a href="#/runs/${encodeURIComponent(
-                    entry.jobId
+                    entry.jobId,
                   )}">Run #${escape(entry.jobId)}</a></strong><p>${escape(
-                    entry.workflowName || entry.workflowId || "Workflow"
-                  )} · ${formatDate(entry.startedAt)}</p></div>${badge(entry.status)}</div>`
+                    entry.workflowName || entry.workflowId || "Workflow",
+                  )} · ${formatDate(entry.startedAt)}</p></div>${badge(entry.status)}</div>`,
               )
               .join("")}</section>`
           : '<div class="empty-state"><h3>No previous attempts</h3><p>This run has no parent run linked to it.</p></div>';
@@ -586,17 +586,17 @@ export function mountLivePreview() {
           `<button class="step-button ${
             state.step === index ? "active" : ""
           }" data-action="step" data-value="${index}" aria-pressed="${state.step === index}" aria-label="${escape(
-            step.name
+            step.name,
           )}, ${escape(labels[step.status] || step.status)}">${iconForStatus(step.status)}<span>${escape(
-            step.name
-          )}</span><span class="mono">${formatDuration(step.durationMs)}</span></button>`
+            step.name,
+          )}</span><span class="mono">${formatDuration(step.durationMs)}</span></button>`,
       )
       .join("");
     if (!run.canViewLogs) {
       content.innerHTML = `<section class="execution" aria-label="Execution steps and logs"><aside class="steps-panel" aria-label="Execution steps"><div class="steps-heading"><span>Execution steps</span><span class="mono">${
         steps.filter((step) => step.status === "success").length
       } / ${steps.length}</span></div>${stepButtons}</aside><div class="log-panel"><div class="empty-state">${icon(
-        "lock"
+        "lock",
       )}<h3>Logs require permission</h3><p>Your account needs <span class="mono">logs:read</span> to view step output.</p></div></div></section>`;
       return;
     }
@@ -608,10 +608,10 @@ export function mountLivePreview() {
           `<button class="step-button ${
             state.step === index ? "active" : ""
           }" data-action="step" data-value="${index}" aria-pressed="${state.step === index}" aria-label="${escape(
-            step.name
+            step.name,
           )}, ${escape(labels[step.status] || step.status)}">${iconForStatus(step.status)}<span>${escape(
-            step.name
-          )}</span><span class="mono">${formatDuration(step.durationMs)}</span></button>`
+            step.name,
+          )}</span><span class="mono">${formatDuration(step.durationMs)}</span></button>`,
       )
       .join("")}</aside><div class="log-panel"><div class="log-heading"><h3>${escape(selected.name)}<small>${
       selected.exitCode !== undefined
@@ -620,19 +620,19 @@ export function mountLivePreview() {
     }</small></h3><div class="log-actions"><button class="icon-button" data-action="wrap" aria-label="Wrap log lines" aria-pressed="${
       state.wrap
     }">${icon("wrap")}</button><button class="icon-button" data-action="copy-log" aria-label="Copy step log">${icon(
-      "copy"
+      "copy",
     )}</button></div></div><label class="log-search">${icon(
-      "search"
+      "search",
     )}<span class="sr-only">Search step log</span><input id="log-search" type="search" placeholder="Find in this step…" value="${escape(
-      state.logSearch
+      state.logSearch,
     )}"/><span id="log-matches"></span></label><div class="log-lines ${
       state.wrap ? "wrap" : ""
     }" id="log-lines" tabindex="0" aria-label="Step log output"></div><div class="log-bottom"><span>${
       selected.status === "failed"
         ? "Step failed"
         : selected.status === "running"
-        ? "Step is running"
-        : "End of step output"
+          ? "Step is running"
+          : "End of step output"
     }</span><span class="mono">UTF-8</span></div></div></section>`;
     renderLog(selected.logContent || "");
   };
@@ -669,14 +669,14 @@ export function mountLivePreview() {
         if (start >= 0) {
           matches++;
           content = `${escape(line.slice(0, start))}<mark>${escape(
-            line.slice(start, start + query.length)
+            line.slice(start, start + query.length),
           )}</mark>${escape(line.slice(start + query.length))}`;
         }
         const type = /\b(error|failed|fatal)\b/i.test(line)
           ? "error"
           : /\b(success|passed|done)\b/i.test(line)
-          ? "pass"
-          : "";
+            ? "pass"
+            : "";
         return `<div class="log-line ${type}"><span class="line-number">${
           index + 1
         }</span><span class="line-text">${content}</span></div>`;
@@ -741,8 +741,8 @@ export function mountLivePreview() {
       openDialog(
         `Workflow ${current.name || current.id}`,
         `<p class="dialog-description">${escape(current.name || current.id)} — Revision ${escape(
-          current.revision
-        )}</p><div class="source-view"><pre>${sourceDiff}</pre></div><div class="dialog-footer"><button class="button" data-action="close-dialog">Close</button></div>`
+          current.revision,
+        )}</p><div class="source-view"><pre>${sourceDiff}</pre></div><div class="dialog-footer"><button class="button" data-action="close-dialog">Close</button></div>`,
       );
     } catch (error) {
       showToast(`Failed to load revision diff: ${error.message}`);
@@ -776,23 +776,23 @@ export function mountLivePreview() {
       .map((workflow) => {
         const index = state.workflows.indexOf(workflow);
         return `<div class="workflow-item"><div class="workflow-header"><span class="workflow-icon">${icon(
-          "workflow"
+          "workflow",
         )}</span><span class="workflow-name">${escape(
-          workflow.name || workflow.id
+          workflow.name || workflow.id,
         )}</span><span class="workflow-status ${
           workflow.status === "published" ? "success" : workflow.status === "archived" ? "disabled" : "enabled"
         }">${escape(workflow.status)}</span></div><div class="workflow-meta"><span>Revision ${escape(
-          workflow.revision || "—"
+          workflow.revision || "—",
         )}</span><span class="workflow-id mono">${escape(
-          workflow.id
+          workflow.id,
         )}</span></div><div class="workflow-actions"><a class="text-button" href="#/runs?workflow=${encodeURIComponent(
-          workflow.id
+          workflow.id,
         )}">View runs ${icon("arrow")}</a><a class="button" href="/settings/workflows/${encodeURIComponent(
-          workflow.id
+          workflow.id,
         )}" target="_top">Edit ${icon(
-          "arrow"
+          "arrow",
         )}</a><button class="button" data-action="workflow-source" data-value="${index}">${icon(
-          "code"
+          "code",
         )}Source</button>${
           workflow.revision > 1
             ? `<button class="button small" data-action="workflow-revision" data-value="${index}" data-dir="-1">Previous revision</button>`
@@ -800,7 +800,7 @@ export function mountLivePreview() {
         }${
           workflow.status !== "published"
             ? `<button class="button small success" data-action="workflow-publish" data-value="${index}">Publish ${icon(
-                "rocket"
+                "rocket",
               )}</button>`
             : ""
         }</div></div>`;
@@ -816,7 +816,7 @@ export function mountLivePreview() {
     main.innerHTML = `${pageHeading("Workflows", "Workflow definitions", runWorkflowButton())}${
       state.errors.workflows
         ? `<div class="empty-state">${icon("lock")}<h3>Workflows unavailable</h3><p>${escape(
-            permissionMessage(state.errors.workflows, "workflows:read")
+            permissionMessage(state.errors.workflows, "workflows:read"),
           )}</p><button class="button" data-action="retry-workflows">Retry</button></div>`
         : `<div class="status-tabs" role="group" aria-label="Filter workflows by status">${tabButtons}</div><div class="workflow-list">${content}</div>`
     }`;
@@ -830,14 +830,14 @@ export function mountLivePreview() {
     main.innerHTML = `${pageHeading("Workers", "Live runner presence from Flow.")}${
       state.errors.workers
         ? `<div class="empty-state">${icon("lock")}<h3>Worker status unavailable</h3><p>${escape(
-            permissionMessage(state.errors.workers, "workers:read")
+            permissionMessage(state.errors.workers, "workers:read"),
           )}</p><button class="button" data-action="retry-workers">Retry</button></div>`
         : `<div class="cards">${
             state.workers
               .map(
                 (worker) =>
                   `<article class="worker-card"><div class="card-heading">${icon("server")}<h2>${escape(
-                    worker.workerId || "Unknown worker"
+                    worker.workerId || "Unknown worker",
                   )}</h2><span class="status ${worker.online ? "success" : "cancelled"}">${
                     worker.online ? "Online" : "Offline"
                   }</span></div><div class="card-details">${
@@ -845,14 +845,14 @@ export function mountLivePreview() {
                       .map((tag) => `<span class="tag mono">${escape(tag)}</span>`)
                       .join("") || '<span class="settings-note">No labels</span>'
                   }</div><div class="worker-stats"><div><span class="meta-label">Active jobs</span><strong>${escape(
-                    worker.activeJobs ?? 0
+                    worker.activeJobs ?? 0,
                   )}</strong></div><div><span class="meta-label">Concurrency</span><strong>${escape(
-                    worker.concurrency ?? "—"
+                    worker.concurrency ?? "—",
                   )}</strong></div></div><div class="card-footer"><span class="settings-note">${
                     worker.version ? `Runner ${escape(worker.version)}` : "Runner version unavailable"
                   }</span><span class="settings-note">Seen ${escape(
-                    formatDate(worker.lastSeen)
-                  )}</span></div></article>`
+                    formatDate(worker.lastSeen),
+                  )}</span></div></article>`,
               )
               .join("") ||
             '<div class="empty-state"><h3>No workers reported</h3><p>Flow has no worker-presence records.</p></div>'
@@ -867,24 +867,24 @@ export function mountLivePreview() {
     setBreadcrumbs("settings");
     main.innerHTML = `${pageHeading(
       "Settings",
-      "Preferences and secret names from Flow."
+      "Preferences and secret names from Flow.",
     )}<section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${
       localStorage.getItem("flow-concept-compact") === "true" ? "checked" : ""
     }/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${
       state.wrap ? "checked" : ""
     }/></label></section><section class="settings-section"><h2>${icon(
-      "lock"
+      "lock",
     )} Secret names</h2><p class="settings-note">Values are never requested or displayed in this preview.</p>${
       state.errors.secrets
         ? `<p class="settings-note">${escape(
-            permissionMessage(state.errors.secrets, "secrets:read")
+            permissionMessage(state.errors.secrets, "secrets:read"),
           )}</p><button class="button" data-action="retry-secrets">Retry</button>`
         : state.secrets
             .map(
               (name) =>
                 `<div class="setting-row"><strong class="mono">${escape(
-                  name
-                )}</strong><span class="secret-value" aria-label="Secret value hidden">••••••••••••</span><button class="button tiny danger" data-action="remove-secret" data-value="${name}">Remove</button></div>`
+                  name,
+                )}</strong><span class="secret-value" aria-label="Secret value hidden">••••••••••••</span><button class="button tiny danger" data-action="remove-secret" data-value="${name}">Remove</button></div>`,
             )
             .join("") || '<p class="settings-note">No secret names are configured.</p>'
     }${
@@ -892,9 +892,9 @@ export function mountLivePreview() {
         ? '<div class="setting-row"><button class="button tiny" data-action="add-secret">Add secret</button></div>'
         : ""
     }</section><section class="settings-section"><h2>Workflow editing</h2><p class="settings-note">Create and edit workflow definitions.</p><form id="new-workflow-form"><label class="form-field"><span>Workflow name</span><input id="new-workflow-name" type="text" placeholder="e.g. build-docker-image" required/></label><label class="form-field"><span>Workflow ID</span><input id="new-workflow-id" type="text" placeholder="derived-from-name" required/></label><label class="form-field"><span>Enabled</span><input type="checkbox" id="new-workflow-enabled" checked/></label><div class="form-field"><span>YAML source</span><textarea id="new-workflow-source" rows="8" placeholder="name: build-docker-image\nruns-on: [main-server, docker]\n\nsteps:\n  - name: Checkout repository\n    run: git checkout '$COMMIT'\n  - name: Install dependencies\n    run: pnpm install --frozen-lockfile\n  - name: Run tests\n    run: pnpm test\n  - name: Build and push\n    run: pnpm publish"></textarea></label></div><div class="form-footer"><button type="button" class="button" data-action="validate-workflow">Validate workflow</button><button type="button" class="button" data-action="run-now">Run now</button><button type="submit" class="button primary">${icon(
-      "plus"
+      "plus",
     )}Create workflow</button><button type="button" class="button" data-action="close-dialog">Cancel</button></div></form><a class="button secondary" href="/settings/workflows" target="_top">Open full workflow settings ${icon(
-      "arrow"
+      "arrow",
     )}</a></section>`;
   };
 
@@ -905,9 +905,9 @@ export function mountLivePreview() {
 
   const openDialog = (title, content) => {
     dialog.innerHTML = `<div class="dialog-heading"><h2 id="dialog-title">${escape(
-      title
+      title,
     )}</h2><button class="icon-button" data-action="close-dialog" aria-label="Close dialog">${icon(
-      "close"
+      "close",
     )}</button></div>${content}`;
     if (!dialog.open) {
       dialog.showModal();
@@ -928,14 +928,14 @@ export function mountLivePreview() {
         .map(
           (workflow) =>
             `<option value="${escape(workflow.id)}" ${workflow.enabled === false ? "disabled" : ""}>${escape(
-              workflow.name || workflow.id
-            )}${workflow.enabled === false ? " (disabled)" : ""}</option>`
+              workflow.name || workflow.id,
+            )}${workflow.enabled === false ? " (disabled)" : ""}</option>`,
         )
         .join(
-          ""
+          "",
         )}</select></label><label class="form-field"><span>Inputs (JSON object)</span><textarea id="dispatch-inputs" rows="6">{}</textarea></label><p class="dialog-note">Running a workflow requires write permission and creates real job(s).</p><div class="dialog-footer"><button class="button" data-action="close-dialog">Cancel</button><button class="button primary" data-action="dispatch-confirm">${icon(
-        "runs"
-      )}Review and run</button></div>`
+        "runs",
+      )}Review and run</button></div>`,
     );
   };
 
@@ -1234,10 +1234,10 @@ export function mountLivePreview() {
         openDialog(
           workflow.name || workflow.id,
           `<p class="dialog-description">Revision ${escape(workflow.revision || "—")} · ${escape(
-            workflow.status || ""
+            workflow.status || "",
           )}</p><div class="source-view"><pre>${escape(
-            workflow.sourceYaml || "Workflow source unavailable."
-          )}</pre></div><div class="dialog-footer"><button class="button" data-action="close-dialog">Close</button></div>`
+            workflow.sourceYaml || "Workflow source unavailable.",
+          )}</pre></div><div class="dialog-footer"><button class="button" data-action="close-dialog">Close</button></div>`,
         );
       }
       return true;
@@ -1295,7 +1295,7 @@ export function mountLivePreview() {
           showToast(
             `Queued ${result.jobs?.length || 0} job${result.jobs?.length === 1 ? "" : "s"} from revision ${
               result.revision
-            }.`
+            }.`,
           );
         } catch (error) {
           showToast(`Failed to run workflow: ${error.message}`);
@@ -1346,7 +1346,7 @@ export function mountLivePreview() {
         !window.confirm(
           `Re-run ${
             state.run.workflowName || state.run.workflowId || "this workflow"
-          }? This creates a new job from the active workflow revision.`
+          }? This creates a new job from the active workflow revision.`,
         )
       ) {
         state.mutating = false;

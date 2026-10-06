@@ -5,7 +5,7 @@ Each item is a separate change: run focused tests, inspect desktop/mobile screen
 ## Tasks
 
 - [x] Add a `/preview`-aware Tailwind v4 build/source/theme pipeline while retaining existing styling so the preview remains visually unchanged.
-- [ ] Migrate the `/preview` shell/sidebar/topbar styles from custom CSS to Tailwind utilities and remove the corresponding CSS rules.
+- [x] Migrate the `/preview` shell/sidebar/topbar styles from custom CSS to Tailwind utilities and remove the corresponding CSS rules.
 - [ ] Migrate Runs list/detail/step-viewer styles from custom CSS to Tailwind utilities; preserve the concept step log viewer and status navigation.
 - [ ] Migrate Workflows and Settings/Workers/Secrets styles from custom CSS to Tailwind utilities; remove the custom stylesheet when all app pages are migrated.
 - [ ] Runs: remove breadcrumbs/page-title/user/shortcut chrome; keep run list and status navigation; forward API filter qualifiers such as `repo:octocat` and `owner:cloud-cli`; remove only “Older Flow runs are available.”
