@@ -209,34 +209,28 @@ function navigation(page) {
   document.title = `${job ? `Run #${job.id}` : title} · Flow`;
 }
 function runsPage() {
-  main.innerHTML = `<div class="page-heading"><div><h1>Runs</h1><p class="subtitle">Every change, from commit to complete.</p></div><button class="button primary" data-action="new-run">${icon(
+  main.innerHTML = `<div class="page-heading"><div><h1 class="text-2xl font-semibold">Runs</h1><p class="text-flow-foreground text-sm">Every change, from commit to complete.</p></div><button class="button primary" data-action="new-run">${icon(
     "plus",
   )}Run workflow</button></div>
-    <section aria-labelledby="recent-runs"><div class="section-heading"><h2 id="recent-runs">Runs <span class="count">${
+    <section aria-labelledby="recent-runs"><div class="section-heading"><h2 id="recent-runs" class="text-sm font-medium">Runs <span class="count">${
       jobs.length
     }</span></h2></div>
-    <div class="filters"><label class="search-box">${icon(
-      "search",
-    )}<span class="sr-only">Search runs</span><input id="run-search" type="search" value="${escape(
+    <div class="filters flex flex-col gap-3 sm:flex-row sm:gap-4 md:gap-6"><label class="search-box flex-1 sm:w-[300px] border rounded-md px-3 py-1.5 text-sm bg-white focusWithin:border-flow-primary focusWithin:ring[2]"><span class="sr-only">Search runs</span><input id="run-search" type="search" value="${escape(
       state.search,
     )}" placeholder="Search runs, commits, or repositories…" autocomplete="off"/><kbd aria-hidden="true">/</kbd></label>
-    <select id="workflow-filter" class="select-filter" aria-label="Filter by workflow"><option value="all">All workflows</option>${workflows
+    <select id="workflow-filter" class="select-filter sm:w-[170px] border rounded-md px-3 py-1.5 text-sm bg-white appearance-none cursor-pointer"><option value="all">All workflows</option>${workflows
       .map(
         (workflow) =>
           `<option value="${workflow.id}" ${state.workflow === workflow.id ? "selected" : ""}>${workflow.name}</option>`,
       )
       .join("")}</select>
-    <select id="branch-filter" class="select-filter" aria-label="Filter by branch"><option value="all">All branches</option><option value="main" ${
+    <select id="branch-filter" class="select-filter sm:w-[170px] border rounded-md px-3 py-1.5 text-sm bg-white appearance-none cursor-pointer"><option value="all">All branches</option><option value="main" ${
       state.branch === "main" ? "selected" : ""
     }>main</option><option value="feature" ${
       state.branch === "feature" ? "selected" : ""
     }>Feature branches</option></select></div>
     <div id="run-results"></div></section>
-    <div class="attention-strip">${icon("alert")}<p><strong>${
-      jobs.filter((job) => job.status === "failed").length
-    } failed runs</strong><span>A little attention goes a long way.</span></p><button class="text-button" data-action="filter-failed">Review failures ${icon(
-      "arrow",
-    )}</button></div>`;
+    <div class="attention-strip border rounded px-4 py-2 flex items-center gap-2 text-sm ${jobs.filter((job) => job.status === "failed").length > 0 ? 'bg-flow-red-bg' : ''}"><span class="flow-icon">!</span><p><strong>${jobs.filter((job) => job.status === "failed").length} failed runs</strong><span>A little attention goes a long way.</span></p></div>`;
   renderResults();
 }
 function filteredJobs(includeStatus = true) {
