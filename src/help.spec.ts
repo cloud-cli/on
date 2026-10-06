@@ -17,6 +17,10 @@ describe('workflow help', () => {
     expect(html).toContain('https://at-li3.static.apphor.de/');
     expect(html).toContain('back="/runs"');
     expect(html).not.toContain('onclick="history.back()"');
+    expect(html).not.toMatch(/<style\b/i);
+    expect(html).toContain('grid-cols-1');
+    expect(html).toContain('bg-gray-950');
+    expect(html).toContain('overflow-x-auto rounded-xl border');
   });
 
   it('supports an embedded view without global navigation', () => {
@@ -25,5 +29,6 @@ describe('workflow help', () => {
     expect(html).toContain('Workflow Documentation');
     expect(html).not.toContain('On this page');
     expect(html).not.toContain('Back to jobs');
+    expect(html).not.toMatch(/<style\b/i);
   });
 });

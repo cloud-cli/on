@@ -1,5 +1,5 @@
-import template from './settings-ui.html?raw';
+import template from "./settings-ui.html?raw";
 
-export function generateSettingsHtml(page: 'tokens' | 'notifications' | 'workers' = 'tokens'): string {
-  return template.replace('__SETTINGS_PAGE__', page);
+export function generateSettingsHtml(page: "tokens" | "notifications" | "workers" | "timezone" = "tokens"): string {
+  return template.replace("__SETTINGS_PAGE__", page);
 }

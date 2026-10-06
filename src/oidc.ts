@@ -46,6 +46,10 @@ export class OidcClient {
     return Boolean(this.config.providerUrl && this.config.clientId && this.config.clientSecret);
   }
 
+  get providerUrl() {
+    return this.config.providerUrl;
+  }
+
   get clientId() {
     return this.config.clientId;
   }

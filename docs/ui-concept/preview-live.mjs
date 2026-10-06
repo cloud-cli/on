@@ -395,9 +395,7 @@ export function mountLivePreview() {
         state.page === 1 ? "disabled" : ""
       }>${icon("back")}Previous</button><button class="button" data-action="next-page" ${
       state.page === pages && !state.hasMore ? "disabled" : ""
-    }>Next${icon("arrow")}</button></div></div>${
-      state.hasMore ? '<div class="table-hint">Older Flow runs are available.</div>' : ""
-    }`;
+    }>Next${icon("arrow")}</button></div></div>`;
   };
 
   const renderRuns = () => {

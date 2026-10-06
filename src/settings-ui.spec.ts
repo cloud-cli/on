@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { generateSettingsHtml } from "./settings-ui.js";
 import settingsSetup from "./settings-ui.mjs?raw";
 import serverSetup from "./server.ts?raw";
+import { generateWorkflowManagementHtml } from "./workflows-ui.js";
 
 describe("settings UI", () => {
   it("provides token, notifications, and worker settings without a duplicate workflows link", () => {
@@ -11,6 +12,7 @@ describe("settings UI", () => {
     expect(source).toContain("workflows:write");
     expect(source).toContain("Notifications");
     expect(source).toContain("Workers");
+    expect(source).toContain('href="/settings/workers"');
     expect(source).not.toContain('href="/settings/workflows"');
     expect(source).toContain("bg-white");
     expect(source).not.toContain("bg-gray-950");
@@ -25,6 +27,10 @@ describe("settings UI", () => {
     expect(settingsSetup).toContain('new Date(text.includes("T") ? text : `${text.replace(" ", "T")}Z`)');
     expect(html).toContain("formatTimestamp(worker.lastSeen)");
     expect(html).toContain("formatTimestamp(key.created_at)");
+    expect(html).toContain('title="{{ worker.workerId }}"');
+    const secrets = generateWorkflowManagementHtml("secrets");
+    expect(secrets).toContain("grid-cols-[minmax(0,1fr)_2rem]");
+    expect(secrets).toContain("grid-cols-[2rem_minmax(0,1fr)_auto_1rem]");
   });
 
   it("shows the user roster and protects role changes with confirmation and 403 handling", () => {
@@ -38,6 +44,7 @@ describe("settings UI", () => {
 
   it("keeps the workers settings route", () => {
     expect(generateSettingsHtml("workers")).toContain('data-page="workers"');
-    expect(serverSetup).toMatch(/rawPage\s*===\s*["']workers["']\s*\?\s*["']workers["']\s*:\s*["']tokens["']/);
+    expect(serverSetup).toContain('rawPage === "workers"');
+    expect(serverSetup).toContain("generateSettingsHtml(page)");
   });
 });

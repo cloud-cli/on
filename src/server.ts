@@ -265,7 +265,14 @@ export class WebhookServer {
     }
     if (req.method === "GET" && url.pathname === "/pages/settings.html") {
       const rawPage = url.searchParams.get("page");
-      const page = rawPage === "notifications" ? "notifications" : rawPage === "workers" ? "workers" : "tokens";
+      const page =
+        rawPage === "notifications"
+          ? "notifications"
+          : rawPage === "workers"
+            ? "workers"
+            : rawPage === "timezone"
+              ? "timezone"
+              : "tokens";
       if (page !== "tokens" && !this.requireAdmin(req, res)) return;
       if (page === "tokens" && !this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie))
         return this.requireAdmin(req, res);
@@ -274,20 +281,25 @@ export class WebhookServer {
 
     if (req.method === "GET" && url.pathname === "/workflows") {
       if (!this.requireAuthenticatedUser(req, res)) return;
-      res.writeHead(302, { Location: "/settings/workflows" });
-      return res.end();
+      return this.renderAppShell(res);
     }
 
     if (req.method === "GET" && url.pathname === "/settings") {
       if (!this.requireAuthenticatedUser(req, res)) return;
-      res.writeHead(302, { Location: "/settings/workflows" });
+      return this.renderAppShell(res);
+    }
+
+    if (req.method === "GET" && /^\/settings\/workflows(?:\/|$)/.test(url.pathname)) {
+      if (!this.requireAuthenticatedUser(req, res)) return;
+      const destination = url.pathname.replace(/^\/settings\/workflows/, "/workflows") + url.search;
+      res.writeHead(302, { Location: destination });
       return res.end();
     }
 
-    const settingsPageMatch = url.pathname.match(/^\/settings\/(workflows|secrets|tokens|notifications|workers)$/);
+    const settingsPageMatch = url.pathname.match(/^\/settings\/(secrets|tokens|notifications|workers)$/);
     if (req.method === "GET" && settingsPageMatch) {
-      const page = settingsPageMatch[1] as "workflows" | "secrets" | "tokens" | "notifications" | "workers";
-      if (page === "workflows" || page === "secrets") {
+      const page = settingsPageMatch[1] as "secrets" | "tokens" | "notifications" | "workers";
+      if (page === "secrets") {
         if (!this.requireAuthenticatedUser(req, res)) return;
       } else if (page === "tokens") {
         if (!this.oidc?.userFromCookie(req.headers.cookie) && !this.isAdmin(req)) return this.requireAdmin(req, res);
@@ -403,26 +415,10 @@ export class WebhookServer {
       return;
     }
 
-    const settingsEditorMatch = url.pathname.match(/^\/settings\/workflows\/(new|[a-z0-9-]+)$/);
-    if (req.method === "GET" && settingsEditorMatch) {
-      if (!this.requireAuthenticatedUser(req, res)) return;
-      const workflowId = settingsEditorMatch[1] === "new" ? "" : settingsEditorMatch[1];
-      const revisionParam = url.searchParams.get("revision");
-      const parsedRevision = revisionParam === null ? undefined : Number(revisionParam);
-      const revision =
-        parsedRevision !== undefined && Number.isSafeInteger(parsedRevision) && parsedRevision > 0
-          ? parsedRevision
-          : undefined;
-      return this.renderAppShell(res);
-    }
-
     const workflowEditorMatch = url.pathname.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
     if (req.method === "GET" && workflowEditorMatch) {
       if (!this.requireAuthenticatedUser(req, res)) return;
-      const workflowId = workflowEditorMatch[1] === "new" ? "" : workflowEditorMatch[1];
-      const target = workflowId ? `/settings/workflows/${workflowId}` : "/settings/workflows/new";
-      res.writeHead(302, { Location: `${target}${url.search}` });
-      return res.end();
+      return this.renderAppShell(res);
     }
 
     if (req.method === "GET" && url.pathname === "/api/jobs") {
@@ -863,8 +859,16 @@ export class WebhookServer {
 
   private handleOidcSession(req: http.IncomingMessage, res: http.ServerResponse) {
     const user = this.oidc?.userFromCookie(req.headers.cookie);
+    const role = this.oidc?.roleFromCookie(req.headers.cookie) ?? user?.role;
     res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-    return res.end(JSON.stringify({ configured: Boolean(this.oidc?.enabled), authenticated: Boolean(user), user }));
+    return res.end(
+      JSON.stringify({
+        configured: Boolean(this.oidc?.enabled),
+        authenticated: Boolean(user),
+        user: user && { ...user, role },
+        providerUrl: this.oidc?.providerUrl,
+      }),
+    );
   }
 
   private handleOidcToken(req: http.IncomingMessage, res: http.ServerResponse) {

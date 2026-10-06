@@ -74,12 +74,21 @@
                 class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-flow-accent text-sm font-semibold text-flow-foreground"
                 >{{ userInitial }}</span
               >
-              <span class="min-w-0"
-                ><span class="block truncate text-sm font-medium">{{ user.name || user.email }}</span
-                ><template if="user.name && user.email"
-                  ><span class="block truncate text-xs text-flow-secondary">{{ user.email }}</span></template
-                ></span
+              <a
+                attr-href="oidcProviderUrl ? oidcProviderUrl + '/me' : null"
+                target="_blank"
+                rel="noopener"
+                class="min-w-0 flex-1 text-flow-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary"
+                aria-label="Open profile at identity provider in a new tab"
               >
+                <span class="block truncate text-sm font-medium">{{ user.name || user.email }}</span>
+                <span class="block truncate text-xs text-flow-secondary">{{ user.email }}</span>
+                <span
+                  class="mt-1 inline-block rounded-full bg-flow-sidebar px-2 py-0.5 text-[10px] font-medium text-flow-secondary"
+                  >{{ user.role }}</span
+                >
+                <lucide-icon icon="external-link" size="13" class="ml-1 inline-block align-middle"></lucide-icon>
+              </a>
             </div>
           </template>
         </aside>

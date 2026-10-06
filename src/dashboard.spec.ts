@@ -49,13 +49,15 @@ describe("dashboard", () => {
     expect(html).toContain('on-input="setFilter($event)"');
     expect(html).toContain("All workflows");
     expect(dashboardSetup).toContain("encodeURIComponent(activeFilter.value)");
+    expect(dashboardSetup).toContain("/^[A-Za-z0-9_-]+:.+$/.test(activeFilter.value)");
     expect(dashboardSetup).toContain("if (searchInProgress && !isSearch) return");
     expect(dashboardSetup).toContain("generation !== refreshGeneration");
     expect(html).toContain("Filter runs by status");
     expect(dashboardSetup).toContain('new EventSource("/api/events")');
     expect(dashboardSetup).toContain("/api/push/public-key");
     expect(html).toContain("https://sodium.static.apphor.de/lucide-icon.html");
-    expect(html).toContain("Runs</h1>");
+    expect(html).not.toContain("Runs</h1>");
+    expect(html).not.toContain("Activity</p>");
     expect(html).not.toContain("lastUpdated");
     expect(html).toContain("workflowName(job.workflowId)");
     expect(html).toContain("job.updatedAt");
@@ -69,7 +71,7 @@ describe("dashboard", () => {
     expect(dashboardSetup).toContain('load("/api/workers", "workers"');
     expect(dashboardSetup).toContain("setInterval(refreshJobs, 60000)");
     expect(html).toContain('href="/manifest.webmanifest"');
-    expect(dashboardSetup).toContain("register('/service-worker.js')");
+    expect(dashboardSetup).toContain('register("/service-worker.js")');
     expect(dashboardSetup).toContain("Notification.requestPermission()");
     expect(dashboardSetup).toContain("registration.showNotification(");
     expect(dashboardSetup).toContain("!terminalStatuses.has(previousStatus) && terminalStatuses.has(job.status)");

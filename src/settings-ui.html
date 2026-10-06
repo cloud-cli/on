@@ -161,23 +161,25 @@
               <table class="w-full text-left text-sm">
                 <thead class="bg-flow-background text-xs uppercase text-flow-muted">
                   <tr>
-                    <th class="px-4 py-3">Worker</th>
-                    <th class="px-4 py-3">Version</th>
-                    <th class="px-4 py-3">Tags</th>
-                    <th class="px-4 py-3">Load</th>
-                    <th class="px-4 py-3">Last seen</th>
+                    <th class="w-1/5 px-4 py-3">Worker</th>
+                    <th class="w-1/6 px-4 py-3">Version</th>
+                    <th class="w-1/5 px-4 py-3">Tags</th>
+                    <th class="w-1/6 px-4 py-3">Load</th>
+                    <th class="w-[27%] px-4 py-3">Last seen</th>
                   </tr>
                 </thead>
                 <tbody>
                   <template for="worker of workers"
                     ><tr class="border-t border-flow-border">
-                      <td class="px-4 py-3 font-mono">
+                      <td class="max-w-0 truncate px-4 py-3 font-mono" title="{{ worker.workerId }}">
                         {{ worker.workerId }} · {{ worker.online ? 'online' : 'offline' }}
                       </td>
-                      <td class="px-4 py-3">{{ worker.version }}</td>
-                      <td class="px-4 py-3">{{ worker.tags.join(', ') }}</td>
-                      <td class="px-4 py-3">{{ worker.activeJobs }} / {{ worker.concurrency }}</td>
-                      <td class="px-4 py-3">{{ formatTimestamp(worker.lastSeen) }}</td>
+                      <td class="truncate px-4 py-3">{{ worker.version }}</td>
+                      <td class="truncate px-4 py-3" title="{{ worker.tags.join(', ') }}">
+                        {{ worker.tags.join(', ') }}
+                      </td>
+                      <td class="whitespace-nowrap px-4 py-3">{{ worker.activeJobs }} / {{ worker.concurrency }}</td>
+                      <td class="whitespace-nowrap px-4 py-3">{{ formatTimestamp(worker.lastSeen) }}</td>
                     </tr></template
                   >
                 </tbody>

@@ -18,19 +18,10 @@
   <body class="bg-flow-background text-flow-foreground min-h-screen p-4 md:p-6 font-sans">
     <template app>
       <main class="mx-auto max-w-6xl space-y-6 py-6">
-        <header class="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p class="text-sm text-flow-secondary">Activity</p>
-            <h1 class="text-3xl font-semibold tracking-tight">Runs</h1>
-          </div>
-          <template if="refreshError"
-            ><span class="rounded-full bg-rose-50 px-3 py-1 text-sm text-rose-700"
-              >Could not refresh runs</span
-            ></template
-          >
-        </header>
-
         <section class="space-y-4 rounded-2xl border border-flow-border bg-white p-4 md:p-5">
+          <template if="refreshError"
+            ><p role="status" class="text-sm text-rose-700">Could not refresh runs</p></template
+          >
           <form class="grid gap-3 md:grid-cols-[minmax(12rem,1fr)_12rem_12rem_auto]" on-submit.prevent="applyFilter()">
             <label class="sr-only" for="job-filter">Search runs</label>
             <input

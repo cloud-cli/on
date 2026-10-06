@@ -26,6 +26,12 @@ describe("Flow application shell", () => {
     expect(shellSetup).toContain('fetch("/api/auth/session"');
     expect(shellSetup).toContain("session?.authenticated || !session.user");
     expect(html).toContain("user.name || user.email");
+    expect(html).toContain("{{ user.email }}");
+    expect(html).toContain("{{ user.role }}");
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener"');
+    expect(html).toContain("oidcProviderUrl");
+    expect(html).toContain('icon="external-link"');
     expect(html).toContain('if="userAuthenticated"');
   });
 });

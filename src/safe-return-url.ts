@@ -140,8 +140,7 @@ export function isProtectedUiRoute(pathname: string, method: string): boolean {
     pathname === "/preview" ||
     pathname === "/help" ||
     pathname === "/settings" ||
-    /^\/settings\/(workflows|secrets|tokens|notifications|workers)$/.test(pathname) ||
-    /^\/settings\/workflows\/(new|[a-z0-9-]+)$/.test(pathname) ||
+    /^\/settings\/(secrets|tokens|notifications|workers|timezone)$/.test(pathname) ||
     pathname === "/workflows" ||
     /^\/workflows\/(new|[a-z0-9-]+)$/.test(pathname) ||
     /^\/pages\/(dashboard|run|help|workflows|settings)\.html$/.test(pathname)

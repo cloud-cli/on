@@ -2,7 +2,8 @@ import { onDestroy, onInit, ref } from "@li3/web";
 
 export default function setup() {
   const activeSection = ref("runs");
-  const user = ref({ name: "", email: "" });
+  const user = ref({ name: "", email: "", role: "" });
+  const oidcProviderUrl = ref("");
   const userAuthenticated = ref(false);
   const userInitial = ref("U");
 
@@ -27,6 +28,7 @@ export default function setup() {
       .then((session) => {
         if (!session?.authenticated || !session.user) return;
         user.value = session.user;
+        oidcProviderUrl.value = session.providerUrl || "";
         userAuthenticated.value = true;
         userInitial.value = String(session.user.name || session.user.email || "U")
           .trim()
@@ -38,5 +40,5 @@ export default function setup() {
 
   onDestroy(() => window.removeEventListener("popstate", syncSection));
 
-  return { activeSection, user, userAuthenticated, userInitial, setActive };
+  return { activeSection, user, userAuthenticated, userInitial, oidcProviderUrl, setActive };
 }

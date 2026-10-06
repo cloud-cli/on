@@ -17,21 +17,6 @@
         }
       }
     </script>
-    <style>
-      body[data-page="list"] .editor-panel {
-        display: none;
-      }
-      body[data-page="workflows"] .editor-panel,
-      body[data-page="workflows"] .secrets-panel,
-      body[data-page="secrets"] .workflow-list,
-      body[data-page="secrets"] .editor-panel {
-        display: none;
-      }
-      body[data-page="editor"] .workflow-list,
-      body[data-page="editor"] .secrets-panel {
-        display: none;
-      }
-    </style>
   </head>
   <body data-page="__WORKFLOW_PAGE__" class="min-h-screen bg-flow-background p-4 text-flow-foreground font-sans md:p-6">
     <link rel="stylesheet" href="/on.css" />
@@ -50,32 +35,22 @@
             back-label="Back to dashboard"
           ></app-header
         ></template>
-        <template if="page !== 'secrets'"
-          ><app-header
-            title="Workflow control room"
-            subtitle="Draft, validate, and publish revisioned YAML definitions"
-            back="/runs"
-            back-label="Back to dashboard"
-          ></app-header
-        ></template>
         <nav
           class="flex flex-wrap gap-1 rounded-xl border border-flow-border bg-flow-card p-1"
           aria-label="Settings navigation"
         >
-          <a
-            href="/settings/workflows"
-            class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
-            bind-class="page === 'workflows' || page === 'editor' ? 'bg-flow-sidebar.text-flow-foreground' : ''"
-            >Workflows</a
-          >
           <a
             href="/settings/secrets"
             class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
             bind-class="page === 'secrets' ? 'bg-flow-sidebar.text-flow-foreground' : ''"
             >Secrets</a
           >
-          <a href="/settings/tokens" class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar">API tokens</a>
-          <a href="/settings/notifications" class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
+          <a href="/settings/tokens" class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
+            >API tokens</a
+          >
+          <a
+            href="/settings/notifications"
+            class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
             >Notifications</a
           >
         </nav>
@@ -94,6 +69,7 @@
         <section id="workflow-layout" class="space-y-5">
           <nav
             class="workflow-list rounded-2xl border border-flow-border bg-flow-card p-4 shadow-sm shadow-flow-foreground/5"
+            class-hidden="page === 'secrets' || page === 'editor'"
             aria-labelledby="workflow-list-title"
           >
             <div class="mb-4 flex items-end justify-between gap-3 border-b border-flow-border pb-4">
@@ -109,31 +85,30 @@
                 New workflow
               </a>
             </div>
-            <ul class="grid gap-2" aria-label="Workflow definitions">
+            <ul class="divide-y divide-flow-border" aria-label="Workflow definitions">
               <template for="workflow of workflows">
-                <li>
+                <li class="flex min-h-14 items-center gap-3 px-2 py-2">
                   <a
                     attr-href="'/workflows/' + workflow.id"
-                    class="group flex min-h-16 items-center gap-3 rounded-xl border border-flow-border bg-flow-panel px-3.5 py-3 text-left text-sm text-flow-secondary outline-none transition hover:border-flow-primary/50 hover:bg-flow-primary/10 focus-visible:border-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                    class="min-w-0 flex-1 text-left text-sm text-flow-secondary outline-none hover:text-flow-primary focus-visible:rounded focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                   >
-                    <span
-                      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-flow-sidebar text-flow-secondary transition group-hover:bg-flow-primary/15 group-hover:text-flow-primary"
-                    >
-                      <lucide-icon icon="workflow" size="17"></lucide-icon>
+                    <span class="flex min-w-0 items-center gap-3">
+                      <span class="truncate text-base font-semibold text-flow-foreground">{{ workflow.name }}</span>
+                      <span class="shrink-0 font-mono text-xs text-flow-secondary">v{{ workflow.revision }}</span>
                     </span>
-                    <span class="min-w-0 flex-1">
-                      <span class="block truncate text-base font-semibold text-flow-foreground">{{ workflow.name }}</span>
-                    </span>
-                    <span
-                      class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide"
-                      bind-class="workflow.status === 'published' ? 'border-flow-success/30 bg-flow-success/10 text-flow-success' : workflow.status === 'archived' ? 'border-flow-border bg-flow-sidebar text-flow-secondary' : 'border-flow-warning/40 bg-flow-warning/10 text-flow-warning'"
-                      >{{ workflow.status }}</span
-                    >
-                    <lucide-icon
-                      icon="arrow-up-right"
-                      size="16"
-                      class="shrink-0 text-flow-secondary transition group-hover:text-flow-primary"
-                    ></lucide-icon>
+                  </a>
+                  <span
+                    class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide"
+                    bind-class="workflow.status === 'published' ? 'border-flow-success/30 bg-flow-success/10 text-flow-success' : workflow.status === 'archived' ? 'border-flow-border bg-flow-sidebar text-flow-secondary' : 'border-flow-warning/40 bg-flow-warning/10 text-flow-warning'"
+                    >{{ workflow.status }}</span
+                  >
+                  <a
+                    attr-href="'/workflows/' + workflow.id"
+                    attr-aria-label="'Edit ' + workflow.name"
+                    class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-flow-secondary outline-none hover:bg-flow-sidebar hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                  >
+                    <span class="sr-only">Edit {{ workflow.name }}</span>
+                    <lucide-icon icon="pencil" size="16" aria-hidden="true"></lucide-icon>
                   </a>
                 </li>
               </template>
@@ -150,6 +125,7 @@
 
           <section
             class="editor-panel overflow-hidden rounded-2xl border border-flow-border bg-flow-card shadow-sm shadow-flow-foreground/5"
+            class-hidden="page === 'list' || page === 'workflows' || page === 'secrets'"
           >
             <div class="border-b border-flow-border px-4 pt-3 sm:px-5">
               <a
@@ -308,7 +284,10 @@
         </section>
 
         <template if="aiDialogOpen">
-          <div class="fixed inset-0 z-50 flex items-center justify-center bg-flow-foreground/70 p-4" role="presentation">
+          <div
+            class="fixed inset-0 z-50 flex items-center justify-center bg-flow-foreground/70 p-4"
+            role="presentation"
+          >
             <div
               class="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-flow-border bg-flow-panel shadow-2xl"
               role="dialog"
@@ -342,7 +321,9 @@
                 <p class="mt-2 text-xs text-flow-error" class-hidden="!aiError">{{ aiError }}</p>
                 <template if="aiDiffHtml">
                   <div class="mt-4">
-                    <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-flow-secondary">Suggested changes</p>
+                    <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-flow-secondary">
+                      Suggested changes
+                    </p>
                     <pre
                       class="max-h-[36rem] overflow-auto rounded-xl border border-flow-border bg-flow-foreground p-4 font-mono text-xs leading-6"
                       bind-innerhtml="aiDiffHtml"
@@ -385,7 +366,10 @@
         </template>
 
         <template if="revisionDialogOpen">
-          <div class="fixed inset-0 z-50 flex items-center justify-center bg-flow-foreground/70 p-4" role="presentation">
+          <div
+            class="fixed inset-0 z-50 flex items-center justify-center bg-flow-foreground/70 p-4"
+            role="presentation"
+          >
             <div
               class="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-flow-border bg-flow-panel shadow-2xl"
               role="dialog"
@@ -438,7 +422,8 @@
         </template>
 
         <section
-          class="secrets-panel rounded-2xl border border-flow-border bg-flow-card p-4 shadow-sm shadow-flow-foreground/5 sm:p-5"
+            class="secrets-panel rounded-2xl border border-flow-border bg-flow-card p-4 shadow-sm shadow-flow-foreground/5 sm:p-5"
+            class-hidden="page === 'list' || page === 'workflows' || page === 'editor'"
           aria-labelledby="secrets-title"
         >
           <div class="mb-5 flex items-start justify-between gap-3">
@@ -523,12 +508,12 @@
             <template for="name of secrets">
               <li>
                 <div
-                  class="flex min-h-14 items-center gap-2 rounded-xl border border-flow-border bg-flow-panel px-3.5 py-3"
+                  class="grid min-h-14 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl border border-flow-border bg-flow-panel px-3.5 py-3"
                 >
                   <button
                     type="button"
                     on-click="selectSecret(name)"
-                    class="group flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                    class="group grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto_1rem] items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                     aria-label="Edit secret {{ name }}"
                   >
                     <span

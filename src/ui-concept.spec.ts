@@ -9,6 +9,7 @@ describe("public UI concept preview", () => {
     expect(() => new Script(source)).not.toThrow();
     expect(previewLiveSource).not.toContain("setInterval");
     expect(previewLiveSource).not.toContain("of ${filtered.length} runs");
+    expect(previewLiveSource).not.toContain("Older Flow runs are available.");
     expect(previewLiveSource).toContain('data-action="prev-page"');
     expect(previewLiveSource).toContain('data-action="next-page"');
   });
@@ -27,7 +28,7 @@ describe("public UI concept preview", () => {
     const page = embedUiConcept(
       '<html><head><link rel="stylesheet" href="./style.css" /><script src="./app.js" defer></script></head><body></body></html>',
       "body { color: green; }",
-      "document.body.dataset.ready = 'true';"
+      "document.body.dataset.ready = 'true';",
     );
 
     expect(page).toContain("<style>body { color: green; }</style>");

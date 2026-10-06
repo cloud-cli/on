@@ -1,8 +1,25 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { generateWorkflowManagementHtml } from "./workflows-ui.js";
 import workflowsSetup from "./workflows-ui.mjs?raw";
 
 describe("workflow management UI", () => {
+  it("defines every Flow color utility and keeps app pages free of inline styles", () => {
+    const sourceDir = new URL(".", import.meta.url).pathname;
+    const pageFiles = readdirSync(sourceDir).filter((file) => file.endsWith(".html"));
+    const pageSource = pageFiles.map((file) => readFileSync(join(sourceDir, file), "utf8")).join("\n");
+    const theme = readFileSync(join(sourceDir, "index.css"), "utf8");
+    const tokens = new Set([...theme.matchAll(/--color-flow-([a-z-]+)\s*:/g)].map((match) => match[1]));
+    const usedTokens = new Set(
+      [...pageSource.matchAll(/(?:bg|text|border|divide|ring|shadow)-flow-([a-z-]+)/g)].map((match) => match[1]),
+    );
+    const missingTokens = [...usedTokens].filter((token) => !tokens.has(token));
+
+    expect(missingTokens).toEqual([]);
+    expect(pageSource).not.toMatch(/<style\b/i);
+  });
+
   it("provides authenticated workflow and write-only secret controls", () => {
     const html = generateWorkflowManagementHtml("editor", "example");
     const source = html + workflowsSetup;
@@ -34,6 +51,10 @@ describe("workflow management UI", () => {
     expect(source).toContain("No changes to save.");
     expect(source).not.toContain("{{ workflow.id }}");
     expect(source).toContain("{{ workflow.name }}");
+    expect(source).toContain("v{{ workflow.revision }}");
+    expect(source).toContain("attr-aria-label=\"'Edit ' + workflow.name\"");
+    expect(source).toContain('class="sr-only">Edit {{ workflow.name }}</span>');
+    expect(source).not.toContain('href="/settings/workflows"');
     expect(source).toContain("setTimeout(() =>");
     expect(source).toMatch(/validation\.value = \{\s*\.\.\.validation\.value,\s*running: true/);
     expect(source).toMatch(/validation\.value = \{\s*valid: false,\s*running: false,\s*error: error\.message\s*\}/);
@@ -54,6 +75,7 @@ describe("workflow management UI", () => {
     expect(source).toContain('href="/workflows"');
     expect(source).toContain("Back to workflows");
     expect(source).toContain("<app-header");
+    expect(source).not.toContain("Workflow control room");
     expect(source).toContain('href="/app-header.html"');
     expect(source).toContain('ref="helpContent"');
     expect(source).toContain('on-toggle="loadHelp($event)"');
