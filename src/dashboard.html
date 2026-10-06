@@ -7,206 +7,139 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/on.css" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
     <link rel="component" href="/app-header.html" />
-    <title>Workflow Engine Dashboard</title>
+    <title>Runs · Flow</title>
     <script type="importmap">
       { "imports": { "@app/": "/", "@li3/": "https://at-li3.static.apphor.de/" } }
     </script>
   </head>
-  <body class="bg-gray-950 text-gray-100 min-h-screen p-4 md:p-6 font-sans">
+  <body class="bg-flow-background text-flow-foreground min-h-screen p-4 md:p-6 font-sans">
     <template app>
-        <main class="max-w-6xl mx-auto space-y-6 py-6">
-        <app-header title="Runner Engine Status" subtitle="Live Job Queue &amp; Execution Traces"></app-header>
-        <div class="flex justify-end gap-2 text-xs font-mono">
-            <template if="refreshError">
-              <span class="rounded border border-rose-500/20 bg-rose-500/10 px-3 py-1 text-rose-400"
-                >Refresh failed</span
-              >
-            </template>
-        </div>
+      <main class="mx-auto max-w-6xl space-y-6 py-6">
+        <header class="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p class="text-sm text-flow-secondary">Activity</p>
+            <h1 class="text-3xl font-semibold tracking-tight">Runs</h1>
+          </div>
+          <template if="refreshError"
+            ><span class="rounded-full bg-rose-50 px-3 py-1 text-sm text-rose-700"
+              >Could not refresh runs</span
+            ></template
+          >
+        </header>
 
-        <form class="flex items-center gap-2" on-submit.prevent="applyFilter()">
-          <div class="relative min-w-0 flex-1">
-            <label class="sr-only" for="job-filter">Filter jobs</label>
+        <section class="space-y-4 rounded-2xl border border-flow-border bg-white p-4 md:p-5">
+          <form class="grid gap-3 md:grid-cols-[minmax(12rem,1fr)_12rem_12rem_auto]" on-submit.prevent="applyFilter()">
+            <label class="sr-only" for="job-filter">Search runs</label>
             <input
               id="job-filter"
               bind-value="filter"
               on-input="setFilter($event)"
-              class="w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 pr-10 text-sm text-gray-200 outline-none placeholder:text-gray-600 focus:border-indigo-500"
-              placeholder="Filter: name:cloud-cli/* or text search"
+              class="min-w-0 rounded-lg border border-flow-border bg-white px-3 py-2 text-sm outline-none focus:border-flow-primary"
+              placeholder="Search runs, workflows, or workers"
             />
-            <template if="filter">
-              <button
-                type="button"
-                on-click="clearFilter()"
-                class="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 text-gray-500 hover:bg-gray-800 hover:text-gray-200"
+            <label class="sr-only" for="workflow-filter">Workflow</label>
+            <select
+              id="workflow-filter"
+              bind-value="workflowFilter"
+              on-change="setWorkflowFilter($event)"
+              class="rounded-lg border border-flow-border bg-white px-3 py-2 text-sm"
+            >
+              <option value="">All workflows</option>
+              <template for="workflow of workflows"
+                ><option attr-value="workflow.id">{{ workflow.name }}</option></template
               >
-                <lucide-icon icon="x" size="15"></lucide-icon>
-                <span class="sr-only">Clear job filter</span>
-              </button>
-            </template>
-          </div>
-          <button
-            type="submit"
-            aria-label="Search jobs"
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-indigo-500/40 bg-indigo-500/10 text-indigo-200 hover:bg-indigo-500/20"
-          >
-            <lucide-icon icon="search" size="16"></lucide-icon>
-          </button>
-        </form>
-
-        <template if="activeFilter">
-          <p class="flex items-center gap-1">
-            <span class="text-xs text-gray-400">Showing {{ jobs.length }} jobs matching </span
-            ><span class="font-mono text-indigo-300">{{ activeFilter }}</span>
-          </p>
-        </template>
-
-        <template if="notificationNotice">
-          <button
-            class="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-3 text-left text-sm text-gray-300"
-            on-click="notificationNotice = ''"
-          >
-            {{ notificationNotice }}
-          </button>
-        </template>
-
-        <section class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hidden md:block">
-          <table class="w-full text-left text-sm">
-            <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase font-mono border-b border-gray-800">
-              <tr>
-                <th class="py-3 px-4">Job ID</th>
-                <th class="py-3 px-4">Workflow</th>
-                <th class="py-3 px-4">Status</th>
-                <th class="py-3 px-4 hidden xl:table-cell">Worker</th>
-                <th class="py-3 px-4 hidden lg:table-cell">Created At</th>
-                <th class="py-3 px-4 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <template for="job of jobs">
-                <tr class="border-b border-gray-800 hover:bg-gray-800/40 transition">
-                  <td class="py-3 px-4 font-mono text-indigo-400">
-                    <a attr-href="'/runs/' + job.id" class="hover:underline">#{{ job.id }}</a>
-                  </td>
-                  <td class="py-3 px-4 font-medium text-white">{{ job.workflowId }}</td>
-                  <td class="py-3 px-4">
-                    <span
-                      class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold"
-                      bind-class="{
-                      'bg-emerald-500/10.text-emerald-400': job.status === 'success',
-                      'bg-rose-500/10.text-rose-400': job.status === 'failed',
-                      'bg-indigo-500/10.text-indigo-400.animate-pulse': job.status === 'running' || job.status === 'pending',
-                      'bg-gray-500/10.text-gray-400': !['success', 'failed', 'running'].includes(job.status)
-                    }"
-                    >
-                      <lucide-icon
-                        class="shrink-0"
-                        bind-class="{
-                        'text-emerald-400': job.status === 'success',
-                        'text-rose-400': job.status === 'failed',
-                        'text-indigo-400.animate-spin': job.status === 'running' || job.status === 'pending',
-                        'text-gray-400': !['success', 'failed', 'running'].includes(job.status)
-                      }"
-                        bind-icon="
-                        job.status === 'success'
-                          ? 'circle-check'
-                          : job.status === 'failed'
-                            ? 'circle-x'
-                            : job.status === 'running'
-                              ? 'loader-circle'
-                              : 'circle'
-                      "
-                        size="14"
-                      ></lucide-icon>
-                      {{ upper(job.status) }}
-                    </span>
-                  </td>
-                  <td class="py-3 px-4 hidden xl:table-cell text-xs font-mono text-gray-400">
-                    {{ job.workerId || '-' }}
-                  </td>
-                  <td class="py-3 px-4 hidden lg:table-cell text-xs text-gray-400">{{ job.createdAt }}</td>
-                  <td class="py-3 px-4 text-right whitespace-nowrap">
-                    <a
-                      attr-href="'/runs/' + job.id"
-                      class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 px-3 py-1 rounded border border-gray-700"
-                      >View Trace</a
-                    >
-                  </td>
+            </select>
+            <label class="sr-only" for="worker-filter">Worker</label>
+            <select
+              id="worker-filter"
+              bind-value="workerFilter"
+              on-change="setWorkerFilter($event)"
+              class="rounded-lg border border-flow-border bg-white px-3 py-2 text-sm"
+            >
+              <option value="">All workers</option>
+              <template for="worker of workers"><option attr-value="worker.id">{{ worker.name }}</option></template>
+            </select>
+            <button type="submit" class="rounded-lg bg-flow-primary px-4 py-2 text-sm font-medium text-white">
+              Search
+            </button>
+          </form>
+          <nav class="flex flex-wrap gap-2" aria-label="Filter runs by status">
+            <template for="tab of statusTabs()"
+              ><button
+                type="button"
+                on-click="setStatusFilter(tab.status)"
+                attr-aria-pressed="statusFilter === tab.status ? 'true' : 'false'"
+                class="rounded-full border border-flow-border px-3 py-1.5 text-sm aria-pressed:bg-flow-primary aria-pressed:text-white"
+              >
+                {{ tab.label }} <span class="opacity-70">{{ tab.count }}</span>
+              </button></template
+            >
+          </nav>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[680px] text-left text-sm">
+              <thead class="border-b border-flow-border text-xs text-flow-secondary">
+                <tr>
+                  <th class="px-3 py-3 font-medium">Workflow</th>
+                  <th class="px-3 py-3 font-medium">Status</th>
+                  <th class="px-3 py-3 font-medium">Worker / queued</th>
+                  <th class="px-3 py-3 font-medium">Created</th>
+                  <th class="px-3 py-3 font-medium">Updated</th>
                 </tr>
-              </template>
-            </tbody>
-          </table>
-          <template if="!jobs.length">
-            <div class="p-8 text-center text-gray-500">
-              {{ activeFilter ? 'No jobs match the current filter.' : 'No jobs recorded yet.' }}
-            </div>
-          </template>
-        </section>
-
-        <section
-          class="md:hidden bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800 overflow-hidden"
-        >
-          <template for="job of jobs">
-            <a
-              attr-href="'/runs/' + job.id"
-              class="block p-4 bg-gray-900/60 hover:bg-gray-800/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
+              </thead>
+              <tbody>
+                <template for="job of visibleJobs()"
+                  ><tr class="border-b border-flow-border last:border-0 hover:bg-flow-panel">
+                    <td class="px-3 py-3">
+                      <a attr-href="'/runs/' + job.id" class="font-medium text-flow-foreground hover:underline"
+                        >{{ workflowName(job.workflowId) }}</a
+                      >
+                    </td>
+                    <td class="px-3 py-3">
+                      <span class="rounded-full bg-flow-panel px-2.5 py-1 text-xs font-medium"
+                        >{{ sentence(job.status) }}</span
+                      >
+                    </td>
+                    <td class="px-3 py-3 text-flow-secondary">{{ job.workerId || 'Queued' }}</td>
+                    <td class="px-3 py-3 text-flow-secondary">{{ formatDate(job.createdAt) }}</td>
+                    <td class="px-3 py-3 text-flow-secondary">{{ formatDate(job.updatedAt) }}</td>
+                  </tr></template
+                >
+              </tbody>
+            </table>
+            <template if="visibleJobs().length === 0"
+              ><p class="p-8 text-center text-sm text-flow-secondary">No runs match these filters.</p></template
             >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="flex items-center gap-2">
-                    <lucide-icon
-                      class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-700/70"
-                      bind-class="{
-                      'text-emerald-400': job.status === 'success',
-                      'text-rose-400': job.status === 'failed',
-                      'text-indigo-400.animate-spin': job.status === 'running' || job.status === 'pending',
-                      'text-gray-400': !['success', 'failed', 'running'].includes(job.status)
-                    }"
-                      bind-icon="
-                      job.status === 'success'
-                        ? 'circle-check'
-                        : job.status === 'failed'
-                          ? 'circle-x'
-                          : job.status === 'running'
-                            ? 'loader-circle'
-                            : 'circle'
-                    "
-                      size="15"
-                    ></lucide-icon>
-                    <h2 class="font-medium text-white truncate">{{ job.workflowId }}</h2>
-                  </div>
-                  <p class="mt-1 pl-[36px] text-xs font-mono text-gray-400">#{{ job.id }} · {{ upper(job.status) }}</p>
-                </div>
-              </div>
-            </a>
-          </template>
-          <template if="!jobs.length">
-            <div class="p-8 text-center text-gray-500">
-              {{ activeFilter ? 'No jobs match the current filter.' : 'No jobs recorded yet.' }}
-            </div>
-          </template>
-        </section>
-
-        <template if="hasMore">
-          <div class="flex justify-center">
+          </div>
+          <div class="flex items-center justify-between gap-3 border-t border-flow-border pt-3">
             <button
-              class="px-4 py-2 text-sm text-gray-200 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg"
-              on-click="loadMore()"
+              type="button"
+              on-click="previousPage()"
+              bind-disabled="page <= 1"
+              aria-label="Previous runs"
+              class="rounded-lg border border-flow-border bg-white px-3 py-2 text-sm text-flow-foreground disabled:opacity-50"
             >
-              {{ loadingMore ? 'Loading...' : 'Load more' }}
+              Previous
+            </button>
+            <span class="text-xs text-flow-secondary">Page {{ page }}</span>
+            <button
+              type="button"
+              on-click="nextPage()"
+              bind-disabled="!hasNextPage() || loadingMore"
+              aria-label="Next runs"
+              class="rounded-lg border border-flow-border bg-white px-3 py-2 text-sm text-flow-foreground disabled:opacity-50"
+            >
+              {{ loadingMore ? 'Loading…' : 'Next' }}
             </button>
           </div>
-        </template>
+        </section>
       </main>
-
       <script setup src="/dashboard.mjs"></script>
     </template>
-
     <script type="module">
-      import '@li3/web';
+      import "@li3/web";
     </script>
-    <script src="https://cdn.tailwindcss.com"></script>
   </body>
 </html>

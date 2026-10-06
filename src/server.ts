@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 import http from "node:http";
 import { URL } from "node:url";
 import { isProtectedUiRoute, safeReturnUrl } from "./safe-return-url.js";
@@ -131,6 +132,11 @@ export class WebhookServer {
     if (req.method === "GET" && url.pathname === "/app-icon.svg") {
       res.writeHead(200, { "Cache-Control": "public, max-age=86400", "Content-Type": "image/svg+xml" });
       return res.end(appIcon);
+    }
+
+    if (req.method === "GET" && url.pathname === "/on.css") {
+      res.writeHead(200, { "Cache-Control": "public, max-age=3600", "Content-Type": "text/css" });
+      return res.end(fs.readFileSync("./dist/on.css", "utf8"));
     }
 
     if (req.method === "GET" && url.pathname === "/preview-live.mjs") {

@@ -1,18 +1,20 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-  root: '.',
+  root: ".",
   resolve: {
     alias: {
-      '@': 'src',
+      "@": "src",
     },
   },
+  plugins: [tailwindcss()],
   build: {
-    target: 'esnext',
+    target: "esnext",
     lib: {
-      entry: './src/index.ts',
-      name: 'index',
-      formats: ['es'],
+      entry: "./src/index.ts",
+      name: "index",
+      formats: ["es"],
     },
     rollupOptions: {
       external: [/^node:.+$/, /^web-push$/],
@@ -22,11 +24,11 @@ export default defineConfig({
   test: {
     watch: !process.env.CI,
     globals: true,
-    environment: 'node',
-    include: ['src/**/*.spec.ts'],
+    environment: "node",
+    include: ["src/**/*.spec.ts"],
     coverage: {
-      provider: 'istanbul',
-      reporter: ['text', 'lcov'],
+      provider: "istanbul",
+      reporter: ["text", "lcov"],
     },
   },
 });

@@ -4,25 +4,39 @@ import settingsSetup from "./settings-ui.mjs?raw";
 import serverSetup from "./server.ts?raw";
 
 describe("settings UI", () => {
-  it("bootstraps the li3 application and API key controls", () => {
-    const html = generateSettingsHtml();
-    const source = html + settingsSetup;
-
-    expect(source).toContain("https://at-li3.static.apphor.de/");
-    expect(source).toContain("https://cdn.tailwindcss.com");
-    expect(source).toContain("max-w-6xl");
+  it("provides token, notifications, and worker settings without a duplicate workflows link", () => {
+    const source = generateSettingsHtml() + settingsSetup;
     expect(source).toContain("/api/api-keys");
     expect(source).toContain("Issue key");
     expect(source).toContain("workflows:write");
-    expect(source).toContain("Active tokens");
-    expect(source).toContain("bg-gray-950/60");
-    expect(source).toContain("page === 'tokens'");
-    expect(source).not.toContain("Authenticated as the human administrator.");
-    expect(source).toContain("peer-checked:bg-indigo-500");
-    expect(source).toContain("peer-focus-visible:ring-2");
+    expect(source).toContain("Notifications");
+    expect(source).toContain("Workers");
+    expect(source).not.toContain('href="/settings/workflows"');
+    expect(source).toContain("bg-white");
+    expect(source).not.toContain("bg-gray-950");
   });
 
-  it("renders the workers settings tab instead of falling back to tokens", () => {
+  it("loads and saves the user's timezone and formats worker/key timestamps", () => {
+    const html = generateSettingsHtml("workers") + settingsSetup;
+    expect(settingsSetup).toContain("/api/preferences");
+    expect(settingsSetup).toContain('method: "PUT"');
+    expect(settingsSetup).toContain("Intl.DateTimeFormat");
+    expect(settingsSetup).not.toContain("setApiToken");
+    expect(settingsSetup).toContain('new Date(text.includes("T") ? text : `${text.replace(" ", "T")}Z`)');
+    expect(html).toContain("formatTimestamp(worker.lastSeen)");
+    expect(html).toContain("formatTimestamp(key.created_at)");
+  });
+
+  it("shows the user roster and protects role changes with confirmation and 403 handling", () => {
+    const html = generateSettingsHtml() + settingsSetup;
+    expect(html).toContain("/api/users");
+    expect(html).toContain("/role");
+    expect(html).toContain("confirm(");
+    expect(html).toContain("usersForbidden");
+    expect(html).toContain("administrators only");
+  });
+
+  it("keeps the workers settings route", () => {
     expect(generateSettingsHtml("workers")).toContain('data-page="workers"');
     expect(serverSetup).toMatch(/rawPage\s*===\s*["']workers["']\s*\?\s*["']workers["']\s*:\s*["']tokens["']/);
   });

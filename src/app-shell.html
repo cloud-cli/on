@@ -1,26 +1,124 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#030712" />
+    <meta name="theme-color" content="#f3f5f1" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/on.css" />
     <script type="importmap">
-      { "imports": { "@app/": "/", "@li3/": "https://at-li3.static.apphor.de/", "ansi_up": "https://esm.sh/ansi_up@6.0.6", "diff": "https://unpkg.com/diff@9.0.0/libesm/index.js", "marked": "https://cdn.jsdelivr.net/npm/marked@18.0.12/lib/marked.esm.js" } }
+      {
+        "imports": {
+          "@app/": "/",
+          "@li3/": "https://at-li3.static.apphor.de/",
+          "ansi_up": "https://esm.sh/ansi_up@6.0.6",
+          "diff": "https://unpkg.com/diff@9.0.0/libesm/index.js",
+          "marked": "https://cdn.jsdelivr.net/npm/marked@18.0.12/lib/marked.esm.js"
+        }
+      }
     </script>
     <link rel="component" href="/app-router.html" />
-    <link rel="component" href="/app-header.html" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
-    <link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />
-    <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
-    <title>On Workflow Runner</title>
+    <title>Flow · Runs</title>
   </head>
-  <body class="min-h-screen bg-gray-950 text-gray-100 font-sans">
+  <body class="min-h-screen bg-flow-background font-sans text-flow-foreground">
     <template app>
-      <app-router></app-router>
+      <a
+        href="#main-content"
+        class="sr-only z-50 rounded-md bg-flow-foreground px-4 py-2 text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+      >
+        Skip to content
+      </a>
+      <div class="min-h-screen md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
+        <aside class="hidden min-h-screen border-r border-flow-border bg-flow-sidebar px-4 py-5 md:flex md:flex-col">
+          <a
+            href="/runs"
+            on-click="setActive('runs')"
+            class="mb-8 flex items-center gap-3 rounded-lg p-2 text-flow-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary"
+            aria-label="Flow home"
+          >
+            <span
+              class="grid h-9 w-9 place-items-center rounded-xl bg-flow-primary text-sm font-bold text-white"
+              aria-hidden="true"
+              >F</span
+            >
+            <span class="text-lg font-semibold tracking-tight">Flow</span>
+          </a>
+          <nav aria-label="Primary navigation" class="space-y-1">
+            <a
+              href="/runs"
+              on-click="setActive('runs')"
+              attr-aria-current="activeSection === 'runs' ? 'page' : null"
+              class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
+              ><lucide-icon icon="play" size="17"></lucide-icon>Runs</a
+            >
+            <a
+              href="/workflows"
+              on-click="setActive('workflows')"
+              attr-aria-current="activeSection === 'workflows' ? 'page' : null"
+              class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
+              ><lucide-icon icon="workflow" size="17"></lucide-icon>Workflows</a
+            >
+            <a
+              href="/settings/tokens"
+              on-click="setActive('settings')"
+              attr-aria-current="activeSection === 'settings' ? 'page' : null"
+              class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
+              ><lucide-icon icon="settings" size="17"></lucide-icon>Settings</a
+            >
+          </nav>
+          <template if="userAuthenticated">
+            <div class="mt-auto flex min-w-0 items-center gap-3 border-t border-flow-border pt-4">
+              <span
+                class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-flow-accent text-sm font-semibold text-flow-foreground"
+                >{{ userInitial }}</span
+              >
+              <span class="min-w-0"
+                ><span class="block truncate text-sm font-medium">{{ user.name || user.email }}</span
+                ><template if="user.name && user.email"
+                  ><span class="block truncate text-xs text-flow-secondary">{{ user.email }}</span></template
+                ></span
+              >
+            </div>
+          </template>
+        </aside>
+        <div class="min-w-0 pb-20 md:pb-0">
+          <div id="main-content" class="min-h-screen min-w-0 p-4 sm:p-6 lg:p-8">
+            <app-router></app-router>
+          </div>
+        </div>
+        <nav
+          aria-label="Mobile navigation"
+          class="fixed inset-x-0 bottom-0 z-10 grid grid-cols-3 border-t border-flow-border bg-flow-sidebar/95 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur md:hidden"
+        >
+          <a
+            href="/runs"
+            on-click="setActive('runs')"
+            attr-aria-current="activeSection === 'runs' ? 'page' : null"
+            class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg text-xs text-flow-secondary no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
+            ><lucide-icon icon="play" size="17"></lucide-icon>Runs</a
+          >
+          <a
+            href="/workflows"
+            on-click="setActive('workflows')"
+            attr-aria-current="activeSection === 'workflows' ? 'page' : null"
+            class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg text-xs text-flow-secondary no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
+            ><lucide-icon icon="workflow" size="17"></lucide-icon>Workflows</a
+          >
+          <a
+            href="/settings/tokens"
+            on-click="setActive('settings')"
+            attr-aria-current="activeSection === 'settings' ? 'page' : null"
+            class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg text-xs text-flow-secondary no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
+            ><lucide-icon icon="settings" size="17"></lucide-icon>Settings</a
+          >
+        </nav>
+      </div>
+      <script setup src="/app-shell.mjs"></script>
     </template>
-    <script type="module">import '@li3/web';</script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import "@li3/web";
+    </script>
   </body>
 </html>

@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
-import { loadFromArgs, printHelp } from './config.js';
-import { installTimestampedConsole } from './logger.js';
+import "./index.css";
 
-export { GitHubStatusPlugin } from './plugins/github-status.plugin.js';
-export { createWorkflowPlugin, registerWorkflowPlugin } from './plugins/workflow-registry.js';
+import { loadFromArgs, printHelp } from "./config.js";
+import { installTimestampedConsole } from "./logger.js";
+
+export { GitHubStatusPlugin } from "./plugins/github-status.plugin.js";
+export { createWorkflowPlugin, registerWorkflowPlugin } from "./plugins/workflow-registry.js";
 
 async function main() {
   installTimestampedConsole();
@@ -15,53 +17,64 @@ async function main() {
     return;
   }
 
-  const [{ QueueManager }, { SecretStore }, { WebhookServer }, { startWorkers }, { WorkflowRepository }, { WorkflowScheduler }, { OidcUserRepository }] = await Promise.all([
-    import('./queue.js'),
-    import('./secrets.js'),
-    import('./server.js'),
-    import('./worker.js'),
-    import('./workflows.js'),
-    import('./scheduler.js'),
-    import('./oidc-user-repository.js'),
+  const [
+    { QueueManager },
+    { SecretStore },
+    { WebhookServer },
+    { startWorkers },
+    { WorkflowRepository },
+    { WorkflowScheduler },
+    { OidcUserRepository },
+  ] = await Promise.all([
+    import("./queue.js"),
+    import("./secrets.js"),
+    import("./server.js"),
+    import("./worker.js"),
+    import("./workflows.js"),
+    import("./scheduler.js"),
+    import("./oidc-user-repository.js"),
   ]);
 
-  if (command === 'promote-admin') {
-    if (!subject) throw new Error('Usage: on promote-admin --subject <oidc-subject>');
+  if (command === "promote-admin") {
+    if (!subject) throw new Error("Usage: on promote-admin --subject <oidc-subject>");
     const users = new OidcUserRepository();
     await users.init();
-    if (!await users.promote(subject)) throw new Error(`OIDC user not found: ${subject}`);
+    if (!(await users.promote(subject))) throw new Error(`OIDC user not found: ${subject}`);
     console.log(`Promoted OIDC user ${subject} to admin.`);
     return;
   }
 
   const secrets = new SecretStore();
-  const queue = new QueueManager(process.env.WORKER_NAME || 'cli');
+  const queue = new QueueManager(process.env.WORKER_NAME || "cli");
 
   switch (command) {
-    case 'start-server': {
-      console.log('🌐 Starting Ingress Gateway...');
+    case "start-server": {
+      console.log("🌐 Starting Ingress Gateway...");
       await queue.init();
       await WebhookServer.withPort({ config, queue, secrets, adminToken: config.adminToken, port: config.port });
       break;
     }
 
-    case 'start-workers': {
+    case "start-workers": {
       console.log(`⚙️ Starting worker scheduler with ${config.workers} concurrent slot(s)...`);
       await queue.init();
       startWorkers(config.workers, queue, secrets, config);
       break;
     }
 
-    case 'start-scheduler': {
-      console.log('Starting workflow scheduler...');
+    case "start-scheduler": {
+      console.log("Starting workflow scheduler...");
       await queue.init();
       const workflows = new WorkflowRepository();
       await workflows.init();
       const scheduler = new WorkflowScheduler(queue, workflows, config);
       scheduler.start();
-      const stop = () => { scheduler.stop(); process.exit(0); };
-      process.once('SIGINT', stop);
-      process.once('SIGTERM', stop);
+      const stop = () => {
+        scheduler.stop();
+        process.exit(0);
+      };
+      process.once("SIGINT", stop);
+      process.once("SIGTERM", stop);
       break;
     }
 

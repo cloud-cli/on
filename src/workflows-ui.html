@@ -9,46 +9,82 @@
     <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
     <title>Runner Workflow Management</title>
     <script type="importmap">
-      { "imports": { "@app/": "/", "@li3/": "https://at-li3.static.apphor.de/", "diff": "https://unpkg.com/diff@9.0.0/libesm/index.js" } }
+      {
+        "imports": {
+          "@app/": "/",
+          "@li3/": "https://at-li3.static.apphor.de/",
+          "diff": "https://unpkg.com/diff@9.0.0/libesm/index.js"
+        }
+      }
     </script>
     <style>
-      body[data-page='list'] .editor-panel {
+      body[data-page="list"] .editor-panel {
         display: none;
       }
-      body[data-page='workflows'] .editor-panel,
-      body[data-page='workflows'] .secrets-panel,
-      body[data-page='secrets'] .workflow-list,
-      body[data-page='secrets'] .editor-panel {
+      body[data-page="workflows"] .editor-panel,
+      body[data-page="workflows"] .secrets-panel,
+      body[data-page="secrets"] .workflow-list,
+      body[data-page="secrets"] .editor-panel {
         display: none;
       }
-      body[data-page='editor'] .workflow-list,
-      body[data-page='editor'] .secrets-panel {
+      body[data-page="editor"] .workflow-list,
+      body[data-page="editor"] .secrets-panel {
         display: none;
       }
     </style>
   </head>
-  <body data-page="__WORKFLOW_PAGE__" class="min-h-screen bg-gray-950 p-4 font-sans text-gray-100 md:p-6">
+  <body data-page="__WORKFLOW_PAGE__" class="min-h-screen bg-flow-background p-4 text-flow-foreground font-sans md:p-6">
+    <link rel="stylesheet" href="/on.css" />
     <link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />
     <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
     <link rel="component" href="/app-header.html" />
 
     <template app>
-        <main class="mx-auto max-w-6xl space-y-5 py-6">
-        <template if="page === 'secrets'"><app-header title="Secrets" subtitle="Write-only credentials available to workflows" back="/runs" back-label="Back to dashboard"></app-header></template>
-        <template if="page !== 'secrets'"><app-header title="Workflow control room" subtitle="Draft, validate, and publish revisioned YAML definitions" back="/runs" back-label="Back to dashboard"></app-header></template>
-        <nav class="flex flex-wrap gap-1 rounded-xl border border-gray-800 bg-gray-900/70 p-1" aria-label="Settings navigation">
-          <a href="/settings/workflows" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800" bind-class="page === 'workflows' || page === 'editor' ? 'bg-gray-800.text-white' : ''">Workflows</a>
-          <a href="/settings/secrets" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800" bind-class="page === 'secrets' ? 'bg-gray-800.text-white' : ''">Secrets</a>
-          <a href="/settings/tokens" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">API tokens</a>
-          <a href="/settings/notifications" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Notifications</a>
+      <main class="mx-auto max-w-6xl space-y-5 py-6">
+        <template if="page === 'secrets'"
+          ><app-header
+            title="Secrets"
+            subtitle="Write-only credentials available to workflows"
+            back="/runs"
+            back-label="Back to dashboard"
+          ></app-header
+        ></template>
+        <template if="page !== 'secrets'"
+          ><app-header
+            title="Workflow control room"
+            subtitle="Draft, validate, and publish revisioned YAML definitions"
+            back="/runs"
+            back-label="Back to dashboard"
+          ></app-header
+        ></template>
+        <nav
+          class="flex flex-wrap gap-1 rounded-xl border border-flow-border bg-flow-card p-1"
+          aria-label="Settings navigation"
+        >
+          <a
+            href="/settings/workflows"
+            class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
+            bind-class="page === 'workflows' || page === 'editor' ? 'bg-flow-sidebar.text-flow-foreground' : ''"
+            >Workflows</a
+          >
+          <a
+            href="/settings/secrets"
+            class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
+            bind-class="page === 'secrets' ? 'bg-flow-sidebar.text-flow-foreground' : ''"
+            >Secrets</a
+          >
+          <a href="/settings/tokens" class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar">API tokens</a>
+          <a href="/settings/notifications" class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
+            >Notifications</a
+          >
         </nav>
 
         <template if="notice">
           <div
             role="status"
             class="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm"
-            bind-class="noticeError ? 'border-rose-500/40 bg-rose-500/10 text-rose-100' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'"
+            bind-class="noticeError ? 'border-flow-error/40 bg-flow-error/10 text-flow-error' : 'border-flow-success/40 bg-flow-success/10 text-flow-success'"
           >
             <lucide-icon bind-icon="noticeError ? 'circle-alert' : 'circle-check'" size="17"></lucide-icon>
             <span>{{ notice }}</span>
@@ -57,17 +93,17 @@
 
         <section id="workflow-layout" class="space-y-5">
           <nav
-            class="workflow-list rounded-2xl border border-gray-800 bg-gray-900/80 p-4 shadow-xl shadow-black/10"
+            class="workflow-list rounded-2xl border border-flow-border bg-flow-card p-4 shadow-sm shadow-flow-foreground/5"
             aria-labelledby="workflow-list-title"
           >
-            <div class="mb-4 flex items-end justify-between gap-3 border-b border-gray-800 pb-4">
+            <div class="mb-4 flex items-end justify-between gap-3 border-b border-flow-border pb-4">
               <div>
-                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-400">Definitions</p>
-                <h2 id="workflow-list-title" class="mt-1 text-lg font-semibold text-white">Workflows</h2>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-flow-primary">Definitions</p>
+                <h2 id="workflow-list-title" class="mt-1 text-lg font-semibold text-flow-foreground">Workflows</h2>
               </div>
               <a
                 href="/workflows/new"
-                class="inline-flex items-center gap-2 rounded-lg bg-indigo-500 px-3 py-2 text-sm font-semibold text-white outline-none transition hover:bg-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+                class="inline-flex items-center justify-center gap-2 rounded-lg bg-flow-primary px-3 py-2 text-sm font-semibold text-white outline-none transition hover:bg-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/40"
               >
                 <lucide-icon icon="plus" size="16"></lucide-icon>
                 New workflow
@@ -78,133 +114,122 @@
                 <li>
                   <a
                     attr-href="'/workflows/' + workflow.id"
-                    class="group flex min-h-16 items-center gap-3 rounded-xl border border-gray-800 bg-gray-950/50 px-3.5 py-3 text-left text-sm text-gray-300 outline-none transition hover:border-indigo-500/50 hover:bg-indigo-500/10 focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/50"
+                    class="group flex min-h-16 items-center gap-3 rounded-xl border border-flow-border bg-flow-panel px-3.5 py-3 text-left text-sm text-flow-secondary outline-none transition hover:border-flow-primary/50 hover:bg-flow-primary/10 focus-visible:border-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                   >
                     <span
-                      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-800 text-gray-400 transition group-hover:bg-indigo-500/15 group-hover:text-indigo-300"
+                      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-flow-sidebar text-flow-secondary transition group-hover:bg-flow-primary/15 group-hover:text-flow-primary"
                     >
                       <lucide-icon icon="workflow" size="17"></lucide-icon>
                     </span>
                     <span class="min-w-0 flex-1">
-                      <span class="block truncate text-base font-semibold text-gray-100">{{ workflow.name }}</span>
-                      <span class="mt-0.5 block truncate font-mono text-[11px] text-gray-500">{{ workflow.id }}</span>
+                      <span class="block truncate text-base font-semibold text-flow-foreground">{{ workflow.name }}</span>
                     </span>
                     <span
                       class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide"
-                      bind-class="workflow.status === 'published' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : workflow.status === 'archived' ? 'border-gray-700 bg-gray-800 text-gray-500' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'"
+                      bind-class="workflow.status === 'published' ? 'border-flow-success/30 bg-flow-success/10 text-flow-success' : workflow.status === 'archived' ? 'border-flow-border bg-flow-sidebar text-flow-secondary' : 'border-flow-warning/40 bg-flow-warning/10 text-flow-warning'"
                       >{{ workflow.status }}</span
                     >
                     <lucide-icon
                       icon="arrow-up-right"
                       size="16"
-                      class="shrink-0 text-gray-600 transition group-hover:text-indigo-300"
+                      class="shrink-0 text-flow-secondary transition group-hover:text-flow-primary"
                     ></lucide-icon>
                   </a>
                 </li>
               </template>
             </ul>
             <div
-              class="rounded-xl border border-dashed border-gray-700 px-4 py-8 text-center"
+              class="rounded-xl border border-dashed border-flow-border px-4 py-8 text-center"
               class-hidden="workflows.length > 0"
             >
-              <lucide-icon icon="workflow" size="22" class="mx-auto text-gray-600"></lucide-icon>
-              <p class="mt-2 text-sm font-medium text-gray-300">No workflows yet</p>
-              <p class="mt-1 text-xs text-gray-500">Create a definition to start automating jobs.</p>
+              <lucide-icon icon="workflow" size="22" class="mx-auto text-flow-secondary"></lucide-icon>
+              <p class="mt-2 text-sm font-medium text-flow-secondary">No workflows yet</p>
+              <p class="mt-1 text-xs text-flow-secondary">Create a definition to start automating jobs.</p>
             </div>
           </nav>
 
           <section
-            class="editor-panel overflow-hidden rounded-xl border border-gray-800 bg-gray-900/80 shadow-xl shadow-black/10"
+            class="editor-panel overflow-hidden rounded-2xl border border-flow-border bg-flow-card shadow-sm shadow-flow-foreground/5"
           >
-            <div class="border-b border-gray-800 px-4 pt-3 sm:px-5">
+            <div class="border-b border-flow-border px-4 pt-3 sm:px-5">
               <a
                 href="/workflows"
-                class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-gray-400 outline-none transition hover:bg-gray-800 hover:text-gray-100 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+                class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-flow-secondary outline-none transition hover:bg-flow-sidebar hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary/40"
               >
                 <lucide-icon icon="arrow-left" size="14"></lucide-icon>
                 Back to workflows
               </a>
             </div>
-            <div class="border-b border-gray-800 bg-gray-900 px-4 py-4 sm:px-5">
-              <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <label class="block max-w-xl flex-1 text-xs font-semibold uppercase tracking-wider text-gray-400"
-                  >Workflow ID
-                  <input
-                    bind-value="workflowId"
-                    on-input="setWorkflowId($event)"
-                    bind-disabled="selectedId"
-                    aria-describedby="workflow-id-help"
-                    class="mt-2 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2.5 font-mono text-sm normal-case tracking-normal text-white outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                    placeholder="derived-from-workflow-name"
-                  />
-                  <span
-                    id="workflow-id-help"
-                    class="mt-1 block text-[11px] font-normal normal-case tracking-normal text-gray-500"
-                    >The ID becomes permanent after the first save.</span
-                  >
-                </label>
-                <label class="inline-flex items-center gap-2 text-sm text-gray-300">
+            <div class="border-b border-flow-border bg-flow-panel px-4 py-4 sm:px-5">
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-end">
+                <label class="inline-flex items-center gap-2 text-sm text-flow-secondary">
                   <input
                     type="checkbox"
                     bind-checked="enabled"
                     on-change="setEnabled($event)"
-                    class="h-4 w-4 rounded border-gray-700 bg-gray-950 text-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                    class="h-4 w-4 rounded border-flow-border bg-flow-panel text-flow-primary focus:ring-2 focus:ring-flow-primary/20"
                   />
                   Enabled
                 </label>
-                 <div class="flex flex-wrap gap-2" class-hidden="readOnly">
-                   <button type="button" aria-label="Get AI workflow help" title="Get AI workflow help" on-click="openAiHelp()" class="inline-flex items-center gap-2 rounded-lg border border-indigo-500/50 px-3 py-2.5 text-sm font-medium text-indigo-200 outline-none hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
-                     <lucide-icon icon="sparkles" size="16"></lucide-icon><span class="hidden sm:inline">AI help</span>
-                   </button>
+                <div class="flex flex-wrap gap-2" class-hidden="readOnly">
+                  <button
+                    type="button"
+                    aria-label="Get AI workflow help"
+                    title="Get AI workflow help"
+                    on-click="openAiHelp()"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-primary/50 px-3 py-2.5 text-sm font-medium text-flow-primary outline-none hover:bg-flow-primary/10 focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                  >
+                    <lucide-icon icon="sparkles" size="16"></lucide-icon><span class="hidden md:inline">AI help</span>
+                  </button>
                   <button
                     type="button"
                     aria-label="Save workflow draft"
                     title="Save workflow draft"
                     on-click="save()"
                     bind-disabled="busy"
-                    class="inline-flex items-center gap-2 rounded-lg bg-indigo-500 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg bg-flow-primary px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-flow-primary disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <lucide-icon icon="save" size="16"></lucide-icon>
-                    <span class="hidden sm:inline">Save draft</span>
+                    <span class="hidden md:inline">Save draft</span>
                   </button>
-                   <button
-                     type="button"
-                     aria-label="Publish workflow"
+                  <button
+                    type="button"
+                    aria-label="Publish workflow"
                     title="Publish workflow"
-                     on-click="publish()"
-                     bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"
-                    class="inline-flex items-center gap-2 rounded-lg border border-emerald-500/50 px-3 py-2.5 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    on-click="publish()"
+                    bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-success/50 px-3 py-2.5 text-sm font-medium text-flow-success transition hover:bg-flow-success/10 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <lucide-icon icon="rocket" size="16"></lucide-icon>
-                    <span class="hidden sm:inline">Publish</span>
-                   </button>
-                   <button
-                     type="button"
-                     aria-label="Run workflow now"
-                     title="Run saved workflow draft now"
-                     on-click="runNow()"
-                     bind-disabled="busy || !selectedId || source !== savedSource || !validation.valid"
-                     class="inline-flex items-center gap-2 rounded-lg border border-sky-500/50 px-3 py-2.5 text-sm font-medium text-sky-300 transition hover:bg-sky-500/10 disabled:cursor-not-allowed disabled:opacity-50"
-                   >
-                     <lucide-icon icon="play" size="16"></lucide-icon>
-                     <span class="hidden sm:inline">Run now</span>
-                   </button>
-                   <button
+                    <span class="hidden md:inline">Publish</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Run workflow now"
+                    title="Run saved workflow draft now"
+                    on-click="runNow()"
+                    bind-disabled="busy || !selectedId || source !== savedSource || !validation.valid"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-info/50 px-3 py-2.5 text-sm font-medium text-flow-info transition hover:bg-flow-info/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <lucide-icon icon="play" size="16"></lucide-icon>
+                    <span class="hidden md:inline">Run now</span>
+                  </button>
+                  <button
                     type="button"
                     aria-label="Delete workflow"
                     title="Delete workflow"
                     on-click="remove()"
                     bind-disabled="busy"
-                    class="inline-flex items-center gap-2 rounded-lg border border-rose-500/50 px-3 py-2.5 text-sm font-medium text-rose-300 transition hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-error/50 px-3 py-2.5 text-sm font-medium text-flow-error transition hover:bg-flow-error/10 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <lucide-icon icon="trash" size="16"></lucide-icon>
-                    <span class="hidden sm:inline">Delete</span>
+                    <span class="hidden md:inline">Delete</span>
                   </button>
                 </div>
               </div>
             </div>
             <div class="p-3 sm:p-5">
-              <div class="mb-2 flex items-center justify-between px-1 text-xs text-gray-500">
+              <div class="mb-2 flex items-center justify-between px-1 text-xs text-flow-secondary">
                 <div class="flex items-center gap-2">
                   <button
                     type="button"
@@ -212,7 +237,7 @@
                     title="Validate workflow"
                     on-click="validate(1)"
                     bind-disabled="validation.running"
-                    bind-class="{ 'hidden': readOnly, 'text-emerald-400': validation.valid, 'text-rose-400': !validation.valid }"
+                    bind-class="{ 'hidden': readOnly, 'text-flow-success': validation.valid, 'text-rose-400': !validation.valid }"
                     class="disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <lucide-icon
@@ -222,24 +247,26 @@
                       size="16"
                     ></lucide-icon>
                   </button>
-                  <span class="font-medium" bind-class="validation.error ? 'bg-rose-500/10 text-rose-100' : ''"
+                  <span class="font-medium" bind-class="validation.error ? 'bg-flow-error/10 text-flow-error' : ''"
                     >{{ validation.error || '' }}</span
                   >
                 </div>
-                 <template if="revision">
-                   <button
-                     type="button"
-                     on-click="openRevisionDialog()"
-                     class="font-mono text-indigo-300 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-indigo-400/60"
-                   >Revision {{ revision }}</button>
-                 </template>
-                 <template if="!revision"><span class="font-mono">Unsaved draft</span></template>
+                <template if="revision">
+                  <button
+                    type="button"
+                    on-click="openRevisionDialog()"
+                    class="font-mono text-flow-primary outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                  >
+                    Revision {{ revision }}
+                  </button>
+                </template>
+                <template if="!revision"><span class="font-mono">Unsaved draft</span></template>
               </div>
               <template if="readOnly">
                 <code-block
                   language="yaml"
                   theme="atom-one-dark"
-                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-auto rounded-lg border border-gray-700 bg-gray-950 p-4"
+                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-auto rounded-lg border border-flow-border bg-flow-foreground p-4"
                   bind-source="source"
                 ></code-block>
               </template>
@@ -249,31 +276,31 @@
                   language="yaml"
                   theme="atom-one-dark"
                   nostatus="true"
-                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-hidden rounded-lg border border-gray-700 bg-gray-950"
+                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-hidden rounded-lg border border-flow-border bg-flow-foreground"
                   bind-value="source"
                   on-change="setSource($event.detail)"
                 ></code-editor>
               </template>
               <details
-                class="mt-4 overflow-hidden rounded-xl border border-gray-800 bg-gray-950/50"
+                class="mt-4 overflow-hidden rounded-xl border border-flow-border bg-flow-panel"
                 on-toggle="loadHelp($event)"
               >
                 <summary
-                  class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-gray-300 outline-none transition hover:bg-gray-900 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+                  class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-flow-secondary outline-none transition hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                 >
                   <span class="inline-flex items-center gap-2"
                     ><lucide-icon icon="circle-question-mark" size="16"></lucide-icon>Syntax</span
                   >
-                  <span class="ml-2 text-xs font-normal text-gray-500">Reference, tutorials, and examples</span>
+                  <span class="ml-2 text-xs font-normal text-flow-secondary">Reference, tutorials, and examples</span>
                 </summary>
                 <div
                   ref="helpContent"
-                  class="max-h-[38rem] overflow-y-auto border-t border-gray-800 bg-gray-950 px-4 py-5"
+                  class="max-h-[38rem] overflow-y-auto border-t border-flow-border bg-flow-foreground px-4 py-5"
                   role="region"
                   aria-label="Workflow syntax help"
                   aria-live="polite"
                 >
-                  <p class="text-sm text-gray-500">Expand to load the workflow syntax reference.</p>
+                  <p class="text-sm text-flow-secondary">Expand to load the workflow syntax reference.</p>
                 </div>
               </details>
             </div>
@@ -281,48 +308,128 @@
         </section>
 
         <template if="aiDialogOpen">
-          <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80 p-4" role="presentation">
-            <div class="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="workflow-ai-title">
-              <div class="flex items-start justify-between gap-3 border-b border-gray-800 px-5 py-4"><div><h2 id="workflow-ai-title" class="text-lg font-semibold text-white">AI workflow help</h2><p class="mt-1 text-sm text-gray-400">Describe the change you want. The suggestion will not modify the editor until you accept it.</p></div><button type="button" on-click="closeAiHelp()" aria-label="Close AI help" class="rounded-lg p-2 text-gray-400 hover:bg-gray-800"><lucide-icon icon="x" size="17"></lucide-icon></button></div>
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-flow-foreground/70 p-4" role="presentation">
+            <div
+              class="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-flow-border bg-flow-panel shadow-2xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="workflow-ai-title"
+            >
+              <div class="flex items-start justify-between gap-3 border-b border-flow-border px-5 py-4">
+                <div>
+                  <h2 id="workflow-ai-title" class="text-lg font-semibold text-flow-foreground">AI workflow help</h2>
+                  <p class="mt-1 text-sm text-flow-secondary">
+                    Describe the change you want. The suggestion will not modify the editor until you accept it.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  on-click="closeAiHelp()"
+                  aria-label="Close AI help"
+                  class="rounded-lg p-2 text-flow-secondary hover:bg-flow-sidebar"
+                >
+                  <lucide-icon icon="x" size="17"></lucide-icon>
+                </button>
+              </div>
               <div class="min-h-0 overflow-auto p-5">
                 <label class="sr-only" for="workflow-ai-request">Requested workflow change</label>
-                <textarea id="workflow-ai-request" bind-value="aiRequest" placeholder="Example: Add a Docker cache volume to the build step." class="min-h-24 w-full rounded-xl border border-gray-700 bg-gray-950 p-3 text-sm text-gray-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"></textarea>
-                <p class="mt-2 text-xs text-rose-300" class-hidden="!aiError">{{ aiError }}</p>
+                <textarea
+                  id="workflow-ai-request"
+                  bind-value="aiRequest"
+                  placeholder="Example: Add a Docker cache volume to the build step."
+                  class="min-h-24 w-full rounded-xl border border-flow-border bg-flow-panel p-3 text-sm text-flow-foreground outline-none focus:border-flow-primary focus:ring-2 focus:ring-flow-primary/20"
+                ></textarea>
+                <p class="mt-2 text-xs text-flow-error" class-hidden="!aiError">{{ aiError }}</p>
                 <template if="aiDiffHtml">
-                  <div class="mt-4"><p class="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Suggested changes</p><pre class="max-h-[36rem] overflow-auto rounded-xl border border-gray-700 bg-gray-950 p-4 font-mono text-xs leading-6" bind-innerhtml="aiDiffHtml"></pre></div>
+                  <div class="mt-4">
+                    <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-flow-secondary">Suggested changes</p>
+                    <pre
+                      class="max-h-[36rem] overflow-auto rounded-xl border border-flow-border bg-flow-foreground p-4 font-mono text-xs leading-6"
+                      bind-innerhtml="aiDiffHtml"
+                    ></pre>
+                  </div>
                 </template>
               </div>
-              <div class="flex items-center justify-end gap-2 border-t border-gray-800 px-5 py-3"><button type="button" on-click="closeAiHelp()" class="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Cancel</button><template if="aiDiffHtml"><button type="button" on-click="rejectAiSuggestion()" class="rounded-lg border border-rose-500/50 px-3 py-2 text-sm text-rose-300 hover:bg-rose-500/10">Reject</button><button type="button" on-click="acceptAiSuggestion()" class="rounded-lg bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400">Accept suggestion</button></template><button type="button" on-click="requestAiHelp()" bind-disabled="aiLoading || !aiRequest.trim()" class="rounded-lg bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50">{{ aiLoading ? 'Thinking...' : 'Suggest' }}</button></div>
+              <div class="flex items-center justify-end gap-2 border-t border-flow-border px-5 py-3">
+                <button
+                  type="button"
+                  on-click="closeAiHelp()"
+                  class="rounded-lg border border-flow-border px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
+                >
+                  Cancel</button
+                ><template if="aiDiffHtml"
+                  ><button
+                    type="button"
+                    on-click="rejectAiSuggestion()"
+                    class="rounded-lg border border-flow-error/50 px-3 py-2 text-sm text-flow-error hover:bg-flow-error/10"
+                  >
+                    Reject</button
+                  ><button
+                    type="button"
+                    on-click="acceptAiSuggestion()"
+                    class="rounded-lg bg-flow-primary px-3 py-2 text-sm font-semibold text-white hover:bg-flow-primary"
+                  >
+                    Accept suggestion
+                  </button></template
+                ><button
+                  type="button"
+                  on-click="requestAiHelp()"
+                  bind-disabled="aiLoading || !aiRequest.trim()"
+                  class="rounded-lg bg-flow-primary px-3 py-2 text-sm font-semibold text-white hover:bg-flow-primary disabled:opacity-50"
+                >
+                  {{ aiLoading ? 'Thinking...' : 'Suggest' }}
+                </button>
+              </div>
             </div>
           </div>
         </template>
 
         <template if="revisionDialogOpen">
-          <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80 p-4" role="presentation">
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-flow-foreground/70 p-4" role="presentation">
             <div
-              class="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl"
+              class="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-flow-border bg-flow-panel shadow-2xl"
               role="dialog"
               aria-modal="true"
               aria-labelledby="revision-dialog-title"
             >
-              <div class="flex items-center justify-between border-b border-gray-800 px-4 py-3">
+              <div class="flex items-center justify-between border-b border-flow-border px-4 py-3">
                 <div>
-                  <h2 id="revision-dialog-title" class="font-semibold text-white">Workflow revision {{ revisionNumber }}</h2>
-                  <p class="text-xs text-gray-500">Read-only source snapshot</p>
+                  <h2 id="revision-dialog-title" class="font-semibold text-flow-foreground">
+                    Workflow revision {{ revisionNumber }}
+                  </h2>
+                  <p class="text-xs text-flow-secondary">Read-only source snapshot</p>
                 </div>
-                <button type="button" on-click="closeRevisionDialog()" aria-label="Close revision dialog" class="rounded-lg p-2 text-gray-400 outline-none hover:bg-gray-800 hover:text-white focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+                <button
+                  type="button"
+                  on-click="closeRevisionDialog()"
+                  aria-label="Close revision dialog"
+                  class="rounded-lg p-2 text-flow-secondary outline-none hover:bg-flow-sidebar hover:text-white focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                >
                   <lucide-icon icon="x" size="17"></lucide-icon>
                 </button>
               </div>
-               <div class="min-h-0 flex-1 overflow-auto p-4">
-                 <p class="mb-3 text-sm text-rose-300" class-hidden="!revisionError">{{ revisionError }}</p>
-                 <pre class="min-h-[20rem] overflow-auto rounded-lg border border-gray-700 bg-gray-950 p-4 font-mono text-xs leading-6" bind-innerhtml="revisionDiffHtml"></pre>
+              <div class="min-h-0 flex-1 overflow-auto p-4">
+                <p class="mb-3 text-sm text-flow-error" class-hidden="!revisionError">{{ revisionError }}</p>
+                <pre
+                  class="min-h-[20rem] overflow-auto rounded-lg border border-flow-border bg-flow-foreground p-4 font-mono text-xs leading-6"
+                  bind-innerhtml="revisionDiffHtml"
+                ></pre>
               </div>
-               <div class="flex items-center justify-between border-t border-gray-800 px-4 py-3">
-                <button type="button" on-click="navigateRevision(-1)" bind-disabled="revisionLoading || revisionNumber <= 1" class="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-40">
+              <div class="flex items-center justify-between border-t border-flow-border px-4 py-3">
+                <button
+                  type="button"
+                  on-click="navigateRevision(-1)"
+                  bind-disabled="revisionLoading || revisionNumber <= 1"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-border px-3 py-2 text-sm text-flow-foreground outline-none hover:bg-flow-sidebar focus-visible:ring-2 focus-visible:ring-flow-primary/40 disabled:opacity-40"
+                >
                   <lucide-icon icon="chevron-left" size="16"></lucide-icon>Previous
                 </button>
-                 <button type="button" on-click="navigateRevision(1)" bind-disabled="revisionLoading || revisionNumber >= revision" class="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-40">
+                <button
+                  type="button"
+                  on-click="navigateRevision(1)"
+                  bind-disabled="revisionLoading || revisionNumber >= revision"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-border px-3 py-2 text-sm text-flow-foreground outline-none hover:bg-flow-sidebar focus-visible:ring-2 focus-visible:ring-flow-primary/40 disabled:opacity-40"
+                >
                   Next<lucide-icon icon="chevron-right" size="16"></lucide-icon>
                 </button>
               </div>
@@ -331,42 +438,49 @@
         </template>
 
         <section
-          class="secrets-panel rounded-2xl border border-gray-800 bg-gray-900/80 p-4 shadow-xl shadow-black/10 sm:p-5"
+          class="secrets-panel rounded-2xl border border-flow-border bg-flow-card p-4 shadow-sm shadow-flow-foreground/5 sm:p-5"
           aria-labelledby="secrets-title"
         >
           <div class="mb-5 flex items-start justify-between gap-3">
             <div class="flex items-start gap-3">
-              <span class="rounded-lg bg-indigo-500/10 p-2 text-indigo-300"
+              <span class="rounded-lg bg-flow-primary/10 p-2 text-flow-primary"
                 ><lucide-icon icon="key-round" size="18"></lucide-icon
               ></span>
               <div>
-                <h2 id="secrets-title" class="text-lg font-semibold text-white">Secrets</h2>
-                <p class="mt-0.5 text-sm text-gray-400">Write-only credentials available to workflows.</p>
+                <h2 id="secrets-title" class="text-lg font-semibold text-flow-foreground">Secrets</h2>
+                <p class="mt-0.5 text-sm text-flow-secondary">Write-only credentials available to workflows.</p>
               </div>
             </div>
             <span
-              class="rounded-full border border-gray-700 bg-gray-950 px-2.5 py-1 text-xs font-mono text-gray-400"
+              class="rounded-full border border-flow-border bg-flow-foreground px-2.5 py-1 text-xs font-mono text-flow-secondary"
               aria-label="Secret count"
               >{{ secrets.length }}</span
             >
           </div>
-          <details ref="secretForm" class="mb-5 overflow-hidden rounded-xl border border-gray-800 bg-gray-950/50">
-            <summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-gray-300 outline-none hover:bg-gray-900 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+          <details ref="secretForm" class="mb-5 overflow-hidden rounded-xl border border-flow-border bg-flow-panel">
+            <summary
+              class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-flow-secondary outline-none hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+            >
               <span>Add a secret</span>
               <lucide-icon icon="plus" size="17"></lucide-icon>
             </summary>
-            <div class="space-y-3 border-t border-gray-800 p-4">
-              <p class="text-xs text-gray-500">Saving an existing name replaces its encrypted value.</p>
+            <div class="space-y-3 border-t border-flow-border p-4">
+              <p class="text-xs text-flow-secondary">Saving an existing name replaces its encrypted value.</p>
               <label class="sr-only" for="secret-name">Secret name</label>
               <input
                 id="secret-name"
                 bind-value="secretName"
                 on-input="setSecretName($event)"
-                class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 font-mono text-sm uppercase outline-none transition placeholder:text-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                class="rounded-lg border border-flow-border bg-flow-panel px-3 py-2.5 font-mono text-sm uppercase outline-none transition placeholder:text-flow-secondary focus:border-flow-primary focus:ring-2 focus:ring-flow-primary/20"
                 placeholder="NPM_TOKEN"
               />
-              <label class="inline-flex items-center gap-2 text-sm text-gray-300">
-                <input type="checkbox" bind-checked="fileMode" on-change="setFileMode($event)" class="h-4 w-4 rounded border-gray-700 bg-gray-900 text-indigo-500 focus:ring-2 focus:ring-indigo-500/30" />
+              <label class="inline-flex items-center gap-2 text-sm text-flow-secondary">
+                <input
+                  type="checkbox"
+                  bind-checked="fileMode"
+                  on-change="setFileMode($event)"
+                  class="h-4 w-4 rounded border-flow-border bg-flow-panel text-indigo-500 focus:ring-2 focus:ring-flow-primary/20"
+                />
                 Binary file secret
               </label>
               <template if="!fileMode">
@@ -377,7 +491,7 @@
                   bind-value="secretValue"
                   on-input="setSecretValue($event)"
                   type="password"
-                  class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 font-mono text-sm outline-none transition placeholder:text-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                  class="rounded-lg border border-flow-border bg-flow-panel px-3 py-2.5 font-mono text-sm outline-none transition placeholder:text-flow-secondary focus:border-flow-primary focus:ring-2 focus:ring-flow-primary/20"
                   placeholder="New secret value"
                 />
               </template>
@@ -388,7 +502,7 @@
                   ref="secretFileInput"
                   on-change="setSecretFile($event)"
                   type="file"
-                  class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-400 file:mr-3 file:rounded file:border-0 file:bg-gray-700 file:px-2 file:py-1 file:text-xs file:text-gray-200 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                  class="rounded-lg border border-flow-border bg-flow-panel px-3 py-2 text-xs text-flow-secondary file:mr-3 file:rounded file:border-0 file:bg-flow-secondary file:px-2 file:py-1 file:text-xs file:text-flow-foreground focus:border-flow-primary focus:outline-none focus:ring-2 focus:ring-flow-primary/20"
                 />
               </template>
               <div>
@@ -398,7 +512,7 @@
                   title="Save secret value"
                   on-click="saveSecret()"
                   bind-disabled="busy"
-                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-500/60 px-3 py-2.5 text-sm font-medium text-indigo-200 outline-none transition hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-50"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-primary/60 px-3 py-2.5 text-sm font-medium text-flow-primary outline-none transition hover:bg-flow-primary/10 focus-visible:ring-2 focus-visible:ring-flow-primary/40 disabled:opacity-50"
                 >
                   <lucide-icon icon="lock-keyhole" size="16"></lucide-icon>Save secret
                 </button>
@@ -408,27 +522,33 @@
           <ul class="grid gap-2" aria-label="Saved secrets">
             <template for="name of secrets">
               <li>
-                <div class="flex min-h-14 items-center gap-2 rounded-xl border border-gray-800 bg-gray-950/50 px-3.5 py-3">
+                <div
+                  class="flex min-h-14 items-center gap-2 rounded-xl border border-flow-border bg-flow-panel px-3.5 py-3"
+                >
                   <button
                     type="button"
                     on-click="selectSecret(name)"
-                    class="group flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/50"
+                    class="group flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                     aria-label="Edit secret {{ name }}"
                   >
-                  <span
-                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-800 text-gray-500 group-hover:text-indigo-300"
-                    ><lucide-icon icon="key-round" size="15"></lucide-icon
-                  ></span>
-                  <span class="min-w-0 flex-1 truncate font-mono text-sm text-gray-200">{{ name }}</span>
-                    <span class="text-xs text-gray-500">Select</span>
-                    <lucide-icon icon="chevron-right" size="16" class="text-gray-600 transition group-hover:text-indigo-300"></lucide-icon>
+                    <span
+                      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-flow-sidebar text-flow-secondary group-hover:text-flow-primary"
+                      ><lucide-icon icon="key-round" size="15"></lucide-icon
+                    ></span>
+                    <span class="min-w-0 flex-1 truncate font-mono text-sm text-flow-foreground">{{ name }}</span>
+                    <span class="text-xs text-flow-secondary">Select</span>
+                    <lucide-icon
+                      icon="chevron-right"
+                      size="16"
+                      class="text-flow-secondary transition group-hover:text-flow-primary"
+                    ></lucide-icon>
                   </button>
                   <button
                     type="button"
                     on-click="removeSecret(name)"
                     aria-label="Delete secret {{ name }}"
                     title="Delete secret"
-                    class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-rose-300 outline-none transition hover:bg-rose-500/10 focus-visible:ring-2 focus-visible:ring-rose-400/60"
+                    class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-flow-error outline-none transition hover:bg-flow-error/10 focus-visible:ring-2 focus-visible:ring-flow-error/40"
                   >
                     <lucide-icon icon="trash" size="15"></lucide-icon>
                   </button>
@@ -437,12 +557,12 @@
             </template>
           </ul>
           <div
-            class="rounded-xl border border-dashed border-gray-700 px-4 py-8 text-center"
+            class="rounded-xl border border-dashed border-flow-border px-4 py-8 text-center"
             class-hidden="secrets.length > 0"
           >
-            <lucide-icon icon="key-round" size="22" class="mx-auto text-gray-600"></lucide-icon>
-            <p class="mt-2 text-sm font-medium text-gray-300">No secrets configured</p>
-              <p class="mt-1 text-xs text-gray-500">Add one above to make it available to a workflow.</p>
+            <lucide-icon icon="key-round" size="22" class="mx-auto text-flow-secondary"></lucide-icon>
+            <p class="mt-2 text-sm font-medium text-flow-secondary">No secrets configured</p>
+            <p class="mt-1 text-xs text-flow-secondary">Add one above to make it available to a workflow.</p>
           </div>
         </section>
       </main>
@@ -451,8 +571,7 @@
     </template>
 
     <script type="module">
-      import '@li3/web';
+      import "@li3/web";
     </script>
-    <script src="https://cdn.tailwindcss.com"></script>
   </body>
 </html>

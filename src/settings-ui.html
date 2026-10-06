@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8,91 +8,220 @@
       { "imports": { "@app/": "/", "@li3/": "https://at-li3.static.apphor.de/" } }
     </script>
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
+    <link rel="stylesheet" href="/on.css" />
     <link rel="component" href="/app-header.html" />
   </head>
-  <body data-page="__SETTINGS_PAGE__" class="min-h-screen bg-gray-950 p-4 font-sans text-gray-100 md:p-6">
+  <body data-page="__SETTINGS_PAGE__" class="min-h-screen bg-flow-background p-4 font-sans text-flow-foreground md:p-6">
     <template app>
       <main class="mx-auto max-w-6xl space-y-5 py-6">
-        <app-header title="Settings" subtitle="Account and automation settings" back="/runs" back-label="Back to jobs"></app-header>
-        <nav class="flex flex-wrap gap-1 rounded-xl border border-gray-800 bg-gray-900/70 p-1" aria-label="Settings navigation">
-          <a href="/settings/workflows" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Workflows</a>
-          <a href="/settings/secrets" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Secrets</a>
-          <a href="/settings/tokens" bind-class="page === 'tokens' ? 'bg-gray-800.text-white' : ''" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">API tokens</a>
-          <a href="/settings/notifications" bind-class="page === 'notifications' ? 'bg-gray-800.text-white' : ''" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Notifications</a>
-          <a href="/settings/workers" bind-class="page === 'workers' ? 'bg-gray-800.text-white' : ''" class="rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Workers</a>
+        <app-header
+          title="Settings"
+          subtitle="Account and automation settings"
+          back="/runs"
+          back-label="Back to jobs"
+        ></app-header>
+        <nav
+          class="flex flex-wrap gap-1 rounded-xl border border-flow-border bg-white p-1"
+          aria-label="Settings navigation"
+        >
+          <a href="/settings/secrets" class="rounded-lg px-3 py-2 text-sm text-flow-muted hover:bg-flow-background"
+            >Secrets</a
+          >
+          <a
+            href="/settings/tokens"
+            bind-class="page === 'tokens' ? 'bg-flow-background.text-flow-foreground' : ''"
+            class="rounded-lg px-3 py-2 text-sm text-flow-muted hover:bg-flow-background"
+            >API tokens</a
+          >
+          <a
+            href="/settings/notifications"
+            bind-class="page === 'notifications' ? 'bg-flow-background.text-flow-foreground' : ''"
+            class="rounded-lg px-3 py-2 text-sm text-flow-muted hover:bg-flow-background"
+            >Notifications</a
+          >
+          <a
+            href="/settings/workers"
+            bind-class="page === 'workers' ? 'bg-flow-background.text-flow-foreground' : ''"
+            class="rounded-lg px-3 py-2 text-sm text-flow-muted hover:bg-flow-background"
+            >Workers</a
+          >
+          <a
+            href="/settings/admin"
+            bind-class="page === 'admin' ? 'bg-flow-background.text-flow-foreground' : ''"
+            class="rounded-lg px-3 py-2 text-sm text-flow-muted hover:bg-flow-background"
+            >Admin</a
+          >
+          <a
+            href="/settings/timezone"
+            bind-class="page === 'timezone' ? 'bg-flow-background.text-flow-foreground' : ''"
+            class="rounded-lg px-3 py-2 text-sm text-flow-muted hover:bg-flow-background"
+            >Timezone</a
+          >
         </nav>
-
-        <template if="page === 'tokens'">
-        </template>
-        <template if="page === 'notifications'">
-          <section class="rounded-2xl border border-gray-800 bg-gray-900/80 p-5" aria-labelledby="notifications-title">
-            <h2 id="notifications-title" class="text-lg font-semibold text-white">Notifications</h2>
-            <p class="mt-1 text-sm text-gray-400">Receive job completion notifications on this device.</p>
-            <button type="button" on-click="toggleNotifications()" class="mt-5 inline-flex items-center gap-2 rounded-lg border border-indigo-500/60 px-4 py-2.5 text-sm font-medium text-indigo-200 outline-none hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
-              <lucide-icon bind-icon="notificationsEnabled ? 'bell-off' : 'bell-ring'" size="16"></lucide-icon>
+        <section class="rounded-2xl border border-flow-border bg-white p-5" aria-labelledby="timezone-title">
+          <h2 id="timezone-title" class="text-lg font-semibold">Your timezone</h2>
+          <p class="mt-1 text-sm text-flow-muted">Used to display worker and API token timestamps.</p>
+          <label for="timezone" class="mt-4 block text-sm font-medium">Timezone</label>
+          <select
+            id="timezone"
+            bind-value="timezone"
+            on-change="saveTimezone($event)"
+            class="mt-2 max-w-md rounded-lg border border-flow-border bg-white px-3 py-2 text-sm"
+          >
+            <template for="zone of timezones"><option attr-value="zone">{{ zone }}</option></template>
+          </select>
+          <p class="mt-2 text-sm text-flow-muted" role="status">{{ preferenceMessage }}</p>
+        </section>
+        <template if="page === 'tokens'"
+          ><section class="rounded-2xl border border-flow-border bg-white p-5" aria-labelledby="keys-title">
+            <h2 id="keys-title" class="text-lg font-semibold">API keys</h2>
+            <p class="mt-1 text-sm text-flow-muted">
+              Issue narrowly scoped credentials for automation tools. Keys are shown only once.
+            </p>
+            <div
+              class="mt-5 grid gap-3 rounded-xl border border-flow-border bg-flow-background p-4 md:grid-cols-[1fr_auto]"
+            >
+              <label class="sr-only" for="key-name">Key name</label
+              ><input
+                id="key-name"
+                bind-value="keyName"
+                on-input="setKeyName($event)"
+                placeholder="Documentation bot"
+                class="rounded-lg border border-flow-border bg-white px-3 py-2.5 text-sm"
+              />
+              <button
+                type="button"
+                on-click="issueKey()"
+                class="rounded-lg bg-flow-primary px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                Issue key
+              </button>
+              <fieldset class="md:col-span-2">
+                <legend class="mb-2 text-xs font-semibold uppercase tracking-wider text-flow-muted">Scopes</legend>
+                <div class="space-y-2">
+                  <template for="scope of scopeOptions"
+                    ><label class="flex cursor-pointer items-center gap-3 text-sm"
+                      ><input type="checkbox" bind-checked="scope.selected" on-change="toggleScope(scope)" />{{
+                      scope.label }}</label
+                    ></template
+                  >
+                </div>
+              </fieldset>
+            </div>
+            <template if="newToken"
+              ><div class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4" role="alert">
+                <p class="text-sm font-semibold">Copy this key now. It cannot be shown again.</p>
+                <code class="mt-2 block select-all break-all rounded bg-white p-3 font-mono text-xs"
+                  >{{ newToken }}</code
+                >
+              </div></template
+            >
+            <h3 class="mt-5 text-xs font-semibold uppercase tracking-wider text-flow-muted">Active tokens</h3>
+            <ul class="mt-2 space-y-2" aria-label="Active API keys">
+              <template for="key of keys"
+                ><li class="flex items-center justify-between gap-3 rounded-xl border border-flow-border px-4 py-3">
+                  <div>
+                    <p class="text-sm font-medium">{{ key.name }}</p>
+                    <p class="text-xs text-flow-muted">
+                      {{ key.scopes.join(', ') }} · created {{ formatTimestamp(key.created_at) }}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    on-click="revokeKey(key)"
+                    class="rounded-lg p-2 text-rose-700"
+                    aria-label="Revoke {{ key.name }}"
+                  >
+                    Revoke
+                  </button>
+                </li></template
+              >
+            </ul>
+          </section></template
+        >
+        <template if="page === 'notifications'"
+          ><section class="rounded-2xl border border-flow-border bg-white p-5">
+            <h2 class="text-lg font-semibold">Notifications</h2>
+            <p class="mt-1 text-sm text-flow-muted">Receive job completion notifications on this device.</p>
+            <button
+              type="button"
+              on-click="toggleNotifications()"
+              class="mt-5 rounded-lg border border-flow-border px-4 py-2.5 text-sm font-medium"
+            >
               {{ notificationsEnabled ? 'Disable notifications' : 'Enable notifications' }}
             </button>
-            <p class="mt-3 text-sm text-gray-400" role="status">{{ notificationMessage }}</p>
-          </section>
-        </template>
-
-        <template if="page === 'workers'">
-          <section class="rounded-2xl border border-gray-800 bg-gray-900/80 p-5" aria-labelledby="workers-title">
-            <h2 id="workers-title" class="text-lg font-semibold text-white">Workers</h2>
-            <p class="mt-1 text-sm text-gray-400">Connected runner status, versions, tags, and load.</p>
-            <div class="mt-5 overflow-hidden rounded-xl border border-gray-800"><table class="w-full text-left text-sm"><thead class="bg-gray-950 text-xs uppercase text-gray-500"><tr><th class="px-4 py-3">Worker</th><th class="px-4 py-3">Version</th><th class="px-4 py-3">Tags</th><th class="px-4 py-3">Load</th><th class="px-4 py-3">Last seen</th></tr></thead><tbody><template for="worker of workers"><tr class="border-t border-gray-800"><td class="px-4 py-3 font-mono text-gray-200">{{ worker.workerId }} <span class="ml-2 rounded-full px-2 py-0.5 text-xs" bind-class="worker.online ? 'bg-emerald-500/10.text-emerald-300' : 'bg-gray-800.text-gray-500'">{{ worker.online ? 'online' : 'offline' }}</span></td><td class="px-4 py-3 font-mono text-gray-400">{{ worker.version }}</td><td class="px-4 py-3 text-gray-400">{{ worker.tags.join(', ') }}</td><td class="px-4 py-3 text-gray-400">{{ worker.activeJobs }} / {{ worker.concurrency }}</td><td class="px-4 py-3 text-gray-500">{{ worker.lastSeen }}</td></tr></template></tbody></table><p class="p-5 text-sm text-gray-500" class-hidden="workers.length > 0">No worker heartbeats received yet.</p></div>
-          </section>
-        </template>
-
-        <template if="page === 'tokens'">
-        <section class="rounded-2xl border border-gray-800 bg-gray-900/80 p-5" aria-labelledby="keys-title">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <h2 id="keys-title" class="text-lg font-semibold text-white">API keys</h2>
-              <p class="mt-1 text-sm text-gray-400">Issue narrowly scoped credentials for automation tools. Keys are shown only once.</p>
+            <p class="mt-3 text-sm text-flow-muted" role="status">{{ notificationMessage }}</p>
+          </section></template
+        >
+        <template if="page === 'workers'"
+          ><section class="rounded-2xl border border-flow-border bg-white p-5">
+            <h2 class="text-lg font-semibold">Workers</h2>
+            <p class="mt-1 text-sm text-flow-muted">Connected runner status, versions, tags, and load.</p>
+            <div class="mt-5 overflow-x-auto rounded-xl border border-flow-border">
+              <table class="w-full text-left text-sm">
+                <thead class="bg-flow-background text-xs uppercase text-flow-muted">
+                  <tr>
+                    <th class="px-4 py-3">Worker</th>
+                    <th class="px-4 py-3">Version</th>
+                    <th class="px-4 py-3">Tags</th>
+                    <th class="px-4 py-3">Load</th>
+                    <th class="px-4 py-3">Last seen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template for="worker of workers"
+                    ><tr class="border-t border-flow-border">
+                      <td class="px-4 py-3 font-mono">
+                        {{ worker.workerId }} · {{ worker.online ? 'online' : 'offline' }}
+                      </td>
+                      <td class="px-4 py-3">{{ worker.version }}</td>
+                      <td class="px-4 py-3">{{ worker.tags.join(', ') }}</td>
+                      <td class="px-4 py-3">{{ worker.activeJobs }} / {{ worker.concurrency }}</td>
+                      <td class="px-4 py-3">{{ formatTimestamp(worker.lastSeen) }}</td>
+                    </tr></template
+                  >
+                </tbody>
+              </table>
+              <p class="p-5 text-sm text-flow-muted" class-hidden="workers.length > 0">
+                No worker heartbeats received yet.
+              </p>
             </div>
-          </div>
-          <div class="mt-5 grid gap-3 rounded-xl border border-gray-800 bg-gray-950/50 p-4 md:grid-cols-[1fr_auto]">
-            <label class="sr-only" for="key-name">Key name</label>
-            <input id="key-name" bind-value="keyName" on-input="setKeyName($event)" placeholder="Documentation bot" class="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30" />
-            <button type="button" on-click="issueKey()" class="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white outline-none hover:bg-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/60"><lucide-icon icon="key-round" size="16"></lucide-icon>Issue key</button>
-            <fieldset class="md:col-span-2">
-              <legend class="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Scopes</legend>
-              <div class="space-y-2">
-                <template for="scope of scopeOptions">
-                  <label class="group flex cursor-pointer items-center gap-3 text-sm text-gray-300">
-                    <input type="checkbox" bind-checked="scope.selected" on-change="toggleScope(scope)" class="peer sr-only" />
-                    <span aria-hidden="true" class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-gray-600 bg-gray-900 text-transparent transition peer-checked:border-indigo-400 peer-checked:bg-indigo-500 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-400/70 peer-disabled:opacity-50">
-                      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3 3 7-7"></path></svg>
-                    </span>
-                    <span class="group-hover:text-white">{{ scope.label }}</span>
-                  </label>
-                </template>
-              </div>
-            </fieldset>
-          </div>
-          <template if="newToken">
-            <div class="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4" role="alert">
-              <p class="text-sm font-semibold text-amber-200">Copy this key now. It cannot be shown again.</p>
-              <code class="mt-2 block select-all break-all rounded bg-gray-950 p-3 font-mono text-xs text-amber-100">{{ newToken }}</code>
-            </div>
-          </template>
-          <h3 class="mt-5 text-xs font-semibold uppercase tracking-wider text-gray-500">Active tokens</h3>
-          <ul class="mt-2 space-y-2" aria-label="Active API keys">
-            <template for="key of keys">
-              <li class="flex items-center justify-between gap-3 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
-                <div class="min-w-0"><p class="truncate text-sm font-medium text-gray-200">{{ key.name }}</p><p class="text-xs text-gray-500">{{ key.scopes.join(', ') }} · created {{ key.created_at }}</p></div>
-                <button type="button" on-click="revokeKey(key)" class="shrink-0 rounded-lg p-2 text-rose-300 outline-none hover:bg-rose-500/10 focus-visible:ring-2 focus-visible:ring-rose-400/60" aria-label="Revoke {{ key.name }}" title="Revoke key"><lucide-icon icon="trash" size="16"></lucide-icon></button>
-              </li>
-            </template>
-          </ul>
-        </section>
-        </template>
-        <p class="text-sm text-rose-300" role="alert" class-hidden="!error">{{ error }}</p>
+          </section></template
+        >
+        <template if="page === 'tokens'"
+          ><section class="rounded-2xl border border-flow-border bg-white p-5">
+            <h2 class="text-lg font-semibold">Users</h2>
+            <p class="mt-1 text-sm text-flow-muted">Manage access for this runner.</p>
+            <p class="mt-4 text-sm text-rose-700" class-hidden="!usersForbidden" role="status">
+              User management is available to administrators only.
+            </p>
+            <ul class="mt-4 space-y-2">
+              <template for="user of users"
+                ><li class="flex items-center justify-between gap-3 rounded-xl border border-flow-border p-4">
+                  <span
+                    ><span class="block text-sm font-medium">{{ user.name || user.email || 'Account' }}</span
+                    ><span class="block text-xs text-flow-muted"
+                      >{{ user.name && user.email ? user.email : user.role }}</span
+                    ></span
+                  ><button
+                    type="button"
+                    on-click="toggleRole(user)"
+                    attr-aria-label="'Change role for ' + (user.name || user.email || 'account')"
+                    class="rounded-lg border border-flow-border px-3 py-2 text-sm"
+                  >
+                    {{ user.role === 'admin' ? 'Remove admin' : 'Make admin' }}
+                  </button>
+                </li></template
+              >
+            </ul>
+          </section></template
+        >
+        <p class="text-sm text-rose-700" role="alert" class-hidden="!error">{{ error }}</p>
       </main>
       <script setup src="/settings-ui.mjs"></script>
     </template>
-    <script type="module">import '@li3/web';</script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import "@li3/web";
+    </script>
   </body>
 </html>

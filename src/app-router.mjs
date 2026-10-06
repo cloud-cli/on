@@ -21,6 +21,8 @@ export default function () {
       return { component: 'page-settings', url: '/pages/settings.html?page=notifications', page: 'notifications' };
     if (path === '/settings/workers')
       return { component: 'page-settings', url: '/pages/settings.html?page=workers', page: 'workers' };
+    if (path === '/settings/timezone')
+      return { component: 'page-settings', url: '/pages/settings.html?page=timezone', page: 'timezone' };
     if (path === '/settings' || path === '/workflows')
       return { component: 'page-workflows', url: '/pages/workflows.html?page=workflows', page: 'workflows' };
     const editor = path.match(/^\/settings\/workflows\/(new|[a-z0-9-]+)$/);
