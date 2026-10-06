@@ -30,7 +30,10 @@ ${appSource}
 }`;
 
   return pageSource
-    .replace('<link rel="stylesheet" href="./style.css" />', `<style>${stylesSource}</style>`)
+    .replace(
+      '<link rel="stylesheet" href="./style.css" />',
+      `<link rel="stylesheet" href="/on.css" /><style>${stylesSource}</style>`,
+    )
     .replace('<script src="./app.js" defer></script>', "")
     .replace("</body>", `<script>${previewScript}</script></body>`);
 }

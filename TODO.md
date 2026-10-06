@@ -1,13 +1,19 @@
-# Flow `/preview` UI follow-up
+# `/preview` UI follow-up
 
-## Scoped work
-- [ ] Map existing app styles to Tailwind v4 theme/config and replace custom CSS with Tailwind utilities where feasible.
-- [ ] Runs: remove page breadcrumb/header chrome while retaining the run list; support API search qualifiers such as `repo:octocat` and `owner:cloud-cli`; remove only the “Older Flow runs are available.” text.
-- [ ] Workflows: remove breadcrumb/header chrome; row actions are icon-only buttons with accessible labels; show revisions as `vX`; remove redundant icon before workflow name/revision; add space between workflow tabs and the workflow list.
-- [ ] Settings: move Workers under Settings; show worker list there; secret names truncate and columns align; remove workflow editor from Settings; retain secret management, tokens, timezone, and admin roster.
-- [ ] Sidebar: render signed-in user's name/email/role; style role as a small badge; profile link opens `OIDC_PROVIDER + '/me'` in a new tab with external-link icon.
+Each item is a separate change: run focused tests, inspect desktop/mobile screenshots, then commit and push before proceeding.
 
-## Verification and delivery
-- [ ] Add/update focused tests for the scoped behavior.
-- [ ] Run Prettier, ESLint autofix + validation, test suite, and build; inspect the final diff and working-tree safety.
-- [ ] Verify preview visually/browser-side if available; commit and push only task files, then inspect CI and deployment smoke test.
+## Tasks
+
+- [x] Add a `/preview`-aware Tailwind v4 build/source/theme pipeline while retaining existing styling so the preview remains visually unchanged.
+- [ ] Migrate the `/preview` shell/sidebar/topbar styles from custom CSS to Tailwind utilities and remove the corresponding CSS rules.
+- [ ] Migrate Runs list/detail/step-viewer styles from custom CSS to Tailwind utilities; preserve the concept step log viewer and status navigation.
+- [ ] Migrate Workflows and Settings/Workers/Secrets styles from custom CSS to Tailwind utilities; remove the custom stylesheet when all app pages are migrated.
+- [ ] Runs: remove breadcrumbs/page-title/user/shortcut chrome; keep run list and status navigation; forward API filter qualifiers such as `repo:octocat` and `owner:cloud-cli`; remove only “Older Flow runs are available.”
+- [ ] Workflows: remove breadcrumb/page-title/user/button chrome; rows with icon-only accessible actions; display `vX`; remove redundant leading icon; add spacing between tabs and list.
+- [ ] Settings: move Workers under Settings and show the workers list; truncate secret names and align list columns; remove workflow editor from Settings; keep secrets, tokens, timezone, and admin roster there.
+- [ ] Sidebar profile: use the signed-in name/email/role, style role as a small badge, and link to `OIDC_PROVIDER/me` in a new tab with an external-link arrow.
+
+## Delivery checks
+
+- [ ] For each task: focused tests, Prettier, ESLint autofix + validation, screenshot review at desktop and mobile, semantic commit, push, inspect CI, update this checklist.
+- [ ] Final full test suite and build; final diff review; confirm all tasks and report any unavailable browser/deployment verification.

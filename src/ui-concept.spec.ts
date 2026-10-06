@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { Script } from "node:vm";
 import { embedUiConcept, uiConceptPage } from "./ui-concept.js";
 import previewLiveSource from "../docs/ui-concept/preview-live.mjs?raw";
@@ -32,10 +33,21 @@ describe("public UI concept preview", () => {
     );
 
     expect(page).toContain("<style>body { color: green; }</style>");
+    expect(page).toContain('<link rel="stylesheet" href="/on.css" />');
     expect(page).toContain("document.body.dataset.ready = 'true';");
     expect(page).toContain('void import("/preview-live.mjs")');
     expect(page).toContain("</script></body>");
     expect(page).not.toContain('href="./style.css"');
     expect(page).not.toContain('src="./app.js"');
+  });
+
+  it("scans preview markup and declares the Flow design tokens in Tailwind v4", () => {
+    const tailwind = readFileSync(new URL("./index.css", import.meta.url), "utf8");
+
+    expect(tailwind).toContain('@source "../docs/ui-concept/**/*.{html,js,mjs}"');
+    expect(tailwind).toContain("--color-flow-background: #f3f5f1");
+    expect(tailwind).toContain("--color-flow-sidebar: #e9eee6");
+    expect(tailwind).toContain("--color-flow-muted: #505b52");
+    expect(tailwind).toContain('--font-sans: "DM Sans"');
   });
 });
