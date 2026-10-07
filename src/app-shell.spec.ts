@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { WebhookServer } from "./server.js";
 import shellSetup from "./app-shell.mjs?raw";
 
 const html = readFileSync(new URL("./app-shell.html", import.meta.url), "utf8");
@@ -33,5 +34,22 @@ describe("Flow application shell", () => {
     expect(html).toContain("oidcProviderUrl");
     expect(html).toContain('icon="external-link"');
     expect(html).toContain('if="userAuthenticated"');
+  });
+
+  it("serves the shell setup module referenced by the app shell", async () => {
+    expect(html).toContain('<script setup src="/app-shell.mjs"></script>');
+    const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      {},
+      { method: "GET", url: "/app-shell.mjs", headers: { host: "flow.test" } },
+      response,
+    );
+
+    expect(response.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-cache",
+      "Content-Type": "text/javascript; charset=utf-8",
+    });
+    expect(response.end).toHaveBeenCalledWith(shellSetup);
   });
 });

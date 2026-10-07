@@ -32,6 +32,7 @@ import { OidcClient } from "./oidc.js";
 import { OidcUserRepository } from "./oidc-user-repository.js";
 import { UserPreferencesRepository } from "./user-preferences.js";
 import apiClientSource from "./api-client.mjs?raw";
+import appShellSetup from "./app-shell.mjs?raw";
 import appHeaderSetup from "./app-header.mjs?raw";
 import appRouterSetup from "./app-router.mjs?raw";
 import dashboardSetup from "./dashboard.mjs?raw";
@@ -162,6 +163,10 @@ export class WebhookServer {
     if (req.method === "GET" && url.pathname === "/api-client.mjs") {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(apiClientSource);
+    }
+    if (req.method === "GET" && url.pathname === "/app-shell.mjs") {
+      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(appShellSetup);
     }
     if (req.method === "GET" && url.pathname === "/app-header.mjs") {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
