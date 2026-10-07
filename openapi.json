@@ -369,6 +369,20 @@
         }
       }
     },
+    "/api/session": {
+      "get": {
+        "tags": ["users"],
+        "summary": "Get the signed-in user's profile link and display identity",
+        "security": [{ "oidcSessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Signed-in display identity and identity-provider profile URL",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SessionProfile" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
     "/api/workflows/{workflowId}": {
       "get": {
         "tags": ["workflows"],
@@ -689,6 +703,22 @@
         "type": "object",
         "required": ["user"],
         "properties": { "user": { "$ref": "#/components/schemas/User" } }
+      },
+      "SessionProfile": {
+        "type": "object",
+        "required": ["user", "meUrl"],
+        "properties": {
+          "user": {
+            "type": "object",
+            "required": ["name", "email", "role"],
+            "properties": {
+              "name": { "type": "string" },
+              "email": { "type": "string", "format": "email" },
+              "role": { "type": "string", "enum": ["user", "admin"] }
+            }
+          },
+          "meUrl": { "type": "string", "format": "uri", "nullable": true }
+        }
       },
       "UiPreferences": {
         "type": "object",

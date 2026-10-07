@@ -60,44 +60,34 @@
           <span class="health-dot h-[6px] w-[6px] shrink-0 rounded-full bg-[#699d55]"></span
           ><span>Runners operational</span><span class="mono ml-auto text-[10px]">3/3</span>
         </div>
-        <button
-          class="profile flex w-full items-center gap-[10px] border-t border-flow-border px-[5px] pt-[19px] text-left"
-          data-action="preferences"
+        <a
+          id="profile-link"
+          class="profile flex w-full items-center gap-[10px] border-t border-flow-border px-[5px] pt-[19px] text-left text-flow-foreground no-underline hover:bg-flow-subtle"
+          href="#"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-disabled="true"
+          aria-label="Open identity profile in a new tab"
         >
           <span
             class="avatar grid h-[33px] w-[33px] shrink-0 place-items-center rounded-full bg-[#ebe6d9] text-[13px] font-semibold text-[#675c44]"
+            id="profile-avatar"
             >JD</span
-          ><span class="max-[900px]:hidden"
-            ><strong class="block text-[13px] font-medium">Jamie Davis</strong
-            ><small class="mt-[3px] block text-[13px] text-flow-muted">Workspace admin</small></span
-          ><span class="ml-auto text-flow-muted max-[900px]:hidden" data-icon="settings"></span>
-        </button>
+          ><span class="min-w-0 max-w-[138px] max-[900px]:hidden"
+            ><strong id="profile-name" class="block truncate text-[13px] font-medium">Jamie Davis</strong
+            ><small id="profile-email" class="mt-[3px] block truncate text-[12px] text-flow-muted">jamie@example.com</small
+            ><span
+              id="profile-role"
+              class="mt-1 inline-flex w-fit rounded-full bg-flow-subtle px-1.5 py-0.5 text-[10px] font-medium text-flow-muted"
+              >Admin</span
+            ></span
+          ><span class="ml-auto text-flow-muted max-[900px]:hidden" data-icon="external"></span>
+        </a>
       </div>
     </aside>
     <div
       class="app-shell ml-56 flex min-h-screen flex-col max-[1180px]:ml-48 max-[900px]:ml-[72px] max-[600px]:ml-0 max-[600px]:pb-[62px]"
     >
-      <header
-        class="topbar flex h-[72px] items-center justify-between gap-[15px] border-b border-flow-border px-[42px] max-[1180px]:px-7 max-[600px]:h-[58px] max-[600px]:px-5"
-      >
-        <div
-          class="breadcrumbs flex items-center gap-3 text-[13px] text-[#737a70] max-[600px]:gap-[7px]"
-          id="breadcrumbs"
-        ></div>
-        <div class="topbar-right flex items-center gap-5 max-[600px]:gap-[9px]">
-          <button
-            class="icon-button inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-flow-muted hover:bg-flow-subtle max-[600px]:hidden"
-            data-action="shortcuts"
-            aria-label="Keyboard shortcuts"
-            title="Keyboard shortcuts"
-          >
-            <span data-icon="keyboard"></span></button
-          ><span
-            class="avatar small grid h-[27px] w-[27px] place-items-center rounded-full bg-[#ebe6d9] text-[10px] font-semibold text-[#675c44] max-[600px]:hidden"
-            >JD</span
-          >
-        </div>
-      </header>
       <main id="main" tabindex="-1"></main>
     </div>
     <dialog id="dialog" aria-labelledby="dialog-title"></dialog>

@@ -29,6 +29,8 @@ const paths = {
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>',
   wrap: '<path d="M3 6h18M3 12h14a3 3 0 0 1 0 6h-5m3-3-3 3 3 3M3 18h4"/>',
   code: '<path d="m8 6-6 6 6 6m8-12 6 6-6 6M14 3l-4 18"/>',
+  edit: '<path d="m16 5 3 3M4 20l4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10Z"/><path d="M13.5 7.5 17 11"/>',
+  external: '<path d="M14 4h6v6m-11 3L20 4"/><path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/>',
   box: '<path d="m12 3 9 5v9l-9 5-9-5V8Zm0 9 9-4M3 8l9 4v10M7.5 5.5l9 5"/>',
   history: '<path d="M3 3v6h6M3.6 9a9 9 0 1 1-.2 6M12 7v5l3 2"/>',
   keyboard:
@@ -185,7 +187,6 @@ function navigation(page) {
   document.querySelector("#navigation").innerHTML = [
     ["runs", "Runs", "runs"],
     ["workflows", "Workflows", "workflow"],
-    ["workers", "Workers", "server"],
     ["settings", "Settings", "settings"],
   ]
     .map(
@@ -201,15 +202,10 @@ function navigation(page) {
         }</a>`,
     )
     .join("");
-  const title = page[0].toUpperCase() + page.slice(1);
-  const job = currentJob();
-  document.querySelector("#breadcrumbs").innerHTML = job
-    ? `<a class="hover:text-flow-foreground" href="#/runs">Runs</a><span class="text-flow-border">/</span><strong class="mono font-medium text-[#434b40]">#${job.id}</strong>`
-    : `<strong class="font-medium text-[#434b40]">${title}</strong>`;
-  document.title = `${job ? `Run #${job.id}` : title} · Flow`;
+  document.title = `${page[0].toUpperCase() + page.slice(1)} · Flow`;
 }
 function runsPage() {
-  main.innerHTML = `<div class="page-heading"><div><h1>Runs</h1><p class="subtitle">Every change, from commit to complete.</p></div><button class="button primary" data-action="new-run">${icon(
+  main.innerHTML = `<div class="mb-7 flex justify-end"><button class="button primary" data-action="new-run">${icon(
     "plus",
   )}Run workflow</button></div>
     <section aria-labelledby="recent-runs"><div class="section-heading"><h2 id="recent-runs">Runs <span class="count">${
@@ -241,11 +237,23 @@ function runsPage() {
 }
 function filteredJobs(includeStatus = true) {
   return jobs.filter((job) => {
+    const search = state.search.trim().toLowerCase();
+    const qualifier = search.match(/^([a-z0-9_-]+):(.+)$/);
     const text = [job.id, job.message, job.workflow.id, job.workflow.name, job.repo, job.commit, job.branch]
       .join(" ")
       .toLowerCase();
+    const repository = String(job.repo || "").toLowerCase();
+    const fullRepository = repository.includes("/") ? repository : `cloud-cli/${repository}`;
+    const owner = fullRepository.split("/")[0];
+    const qualifiedValue = qualifier
+      ? qualifier[1] === "owner"
+        ? owner
+        : qualifier[1] === "repo"
+          ? fullRepository
+          : String(job.inputs?.[qualifier[1]] ?? job[qualifier[1]] ?? "").toLowerCase()
+      : "";
     return (
-      text.includes(state.search.trim().toLowerCase()) &&
+      (qualifier ? qualifiedValue.includes(qualifier[2]) : text.includes(search)) &&
       (state.workflow === "all" || job.workflow.id === state.workflow) &&
       (state.branch === "all" || (state.branch === "main" ? job.branch === "main" : job.branch !== "main")) &&
       (!includeStatus ||
@@ -636,33 +644,19 @@ function workflowSource(workflow) {
     .join("\n")}`;
 }
 function workflowsPage() {
-  main.innerHTML = `<div class="page-heading"><div><h1>Workflows</h1><p class="subtitle">Your delivery process, clearly defined.</p></div><button class="button primary" data-action="new-run">${icon(
-    "plus",
-  )}Run workflow</button></div><div class="cards">${workflows
+  main.innerHTML = `<div class="workflow-list">${workflows
     .map(
       (workflow, index) =>
-        `<article class="workflow-card"><div class="card-heading">${icon("workflow")}<h2>${
-          workflow.name
-        }</h2><span class="tag">Enabled</span></div><p class="card-description">${
-          workflow.description
-        }</p><div class="card-details">${workflow.labels
-          .map((label) => `<span class="tag mono">${label}</span>`)
-          .join("")}<span class="tag">${
-          workflow.steps.length
-        } steps</span></div><div class="card-footer"><a class="text-button" href="#/runs?workflow=${
-          workflow.id
-        }">View runs ${icon(
-          "arrow",
-        )}</a><button class="button" data-action="workflow-source" data-value="${index}">${icon(
+        `<article class="workflow-item"><div class="workflow-header"><span class="workflow-name">${workflow.name}</span><span class="workflow-status success">Enabled</span></div><div class="workflow-meta"><span>v${workflow.revision || 1}</span><span>${workflow.steps.length} steps</span></div><div class="workflow-actions"><a class="button" href="#/runs?workflow=${workflow.id}" aria-label="View runs for ${workflow.name}" title="View runs">${icon(
+          "runs",
+        )}</a><button class="button" data-action="workflow-source" data-value="${index}" aria-label="View source for ${workflow.name}" title="View source">${icon(
           "code",
-        )}View source</button></div></article>`,
+        )}</button></div></article>`,
     )
     .join("")}</div>`;
 }
-function workersPage() {
-  main.innerHTML = `<div class="page-heading"><div><h1>Workers</h1><p class="subtitle">A clear view of your execution capacity.</p></div><span class="status success">${icon(
-    "check",
-  )}3 operational</span></div><div class="cards">${[
+function workerCards() {
+  return `<div class="cards">${[
     ["alpha", "main-server, docker", 36, 42, "1 / 4"],
     ["bravo", "node, linux", 12, 28, "0 / 4"],
     ["charlie", "docker, linux", 8, 21, "0 / 2"],
@@ -688,11 +682,12 @@ function getPreference(key) {
   }
 }
 function settingsPage() {
+  const timezone = localStorage.getItem("flow-concept-timezone") || "UTC";
   main.innerHTML = `<div class="page-heading"><div><h1>Settings</h1><p class="subtitle">The essentials for your workspace.</p></div></div><section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${
     getPreference("compact") ? "checked" : ""
   }/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${
     state.wrap ? "checked" : ""
-  }/></label></section><section class="settings-section"><h2>${icon(
+  }/></label><label class="setting-row"><span><strong>Timezone</strong><span class="settings-note">Use this timezone for displayed dates.</span></span><select id="timezone-setting"><option ${timezone === "UTC" ? "selected" : ""}>UTC</option><option ${timezone === "America/Los_Angeles" ? "selected" : ""}>America/Los_Angeles</option><option ${timezone === "Europe/London" ? "selected" : ""}>Europe/London</option></select></label></section><section class="settings-section"><h2>Workers</h2><p class="settings-note">Execution capacity available to workflows.</p>${workerCards()}</section><section class="settings-section"><h2>${icon(
     "lock",
   )} Secrets</h2><p class="settings-note">Available to workflows. Values are never displayed in the dashboard.</p>${[
     "NPM_TOKEN",
@@ -701,11 +696,11 @@ function settingsPage() {
   ]
     .map(
       (name) =>
-        `<div class="setting-row"><div><strong class="mono">${name}</strong><p>Workspace secret · Example</p></div><span class="secret-value" aria-label="Value hidden">••••••••••••</span></div>`,
+        `<div class="setting-row"><div class="min-w-0"><strong class="mono block max-w-[min(58vw,480px)] truncate" title="${name}">${name}</strong><p>Workspace secret · Example</p></div><span class="secret-value shrink-0" aria-label="Value hidden">••••••••••••</span></div>`,
     )
     .join(
       "",
-    )}</section><section class="settings-section"><h2>About</h2><p class="settings-note">An interactive design prototype based on Flow’s job list and run details. Run controls update this browser session. Display preferences are saved on this device.</p><div class="setting-row"><span class="settings-note">Explore without setup.</span><button class="button" data-action="shortcuts">${icon(
+    )}</section><section class="settings-section"><h2>Tokens</h2><p class="settings-note">Access tokens are hidden after creation.</p><div class="setting-row"><span>CI deploy token</span><span class="secret-value" aria-label="Token value hidden">••••••••••••</span></div></section><section class="settings-section"><h2>Admin roster</h2><div class="setting-row"><div><strong>Jamie Davis</strong><p>jamie@example.com</p></div><span class="workflow-status success">Admin</span></div></section><section class="settings-section"><h2>About</h2><p class="settings-note">An interactive design prototype based on Flow’s job list and run details. Run controls update this browser session. Display preferences are saved on this device.</p><div class="setting-row"><span class="settings-note">Explore without setup.</span><button class="button" data-action="shortcuts">${icon(
     "keyboard",
   )}Keyboard shortcuts</button></div></section>`;
 }
@@ -769,7 +764,7 @@ function render() {
     state.logQuery = "";
   }
   previousRoute = path;
-  navigation(["runs", "workflows", "workers", "settings"].includes(page) ? page : "runs");
+  navigation(["runs", "workflows", "settings"].includes(page) ? page : page === "workers" ? "settings" : "runs");
   if (path === "/runs") {
     readFilters();
     runsPage();
@@ -778,7 +773,7 @@ function render() {
   } else if (page === "workflows") {
     workflowsPage();
   } else if (page === "workers") {
-    workersPage();
+    settingsPage();
   } else if (page === "settings") {
     settingsPage();
   } else {
@@ -791,6 +786,11 @@ function render() {
     main.focus({ preventScroll: true });
   }
 }
+document.addEventListener("click", (event) => {
+  if (event.target.closest('#profile-link[aria-disabled="true"]')) {
+    event.preventDefault();
+  }
+});
 document.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) {
@@ -939,6 +939,9 @@ document.addEventListener("change", (event) => {
     } catch {
       toast("Preference applied for this session.");
     }
+  }
+  if (event.target.id === "timezone-setting") {
+    localStorage.setItem("flow-concept-timezone", event.target.value);
   }
 });
 document.addEventListener("submit", (event) => {

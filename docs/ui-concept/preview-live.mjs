@@ -28,6 +28,8 @@ const icons = {
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>',
   wrap: '<path d="M3 6h18M3 12h14a3 3 0 0 1 0 6h-5m3-3-3 3 3 3M3 18h4"/>',
   code: '<path d="m8 6-6 6 6 6m8-12 6 6-6 6M14 3l-4 18"/>',
+  edit: '<path d="m16 5 3 3M4 20l4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10Z"/><path d="M13.5 7.5 17 11"/>',
+  external: '<path d="M14 4h6v6m-11 3L20 4"/><path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/>',
   box: '<path d="m12 3 9 5v9l-9 5-9-5V8Zm0 9 9-4M3 8l9 4v10M7.5 5.5l9 5"/>',
   history: '<path d="M3 3v6h6M3.6 9a9 9 0 1 1-.2 6M12 7v5l3 2"/>',
   alert: '<path d="m12 3 10 18H2Z"/><path d="M12 9v5m0 3h.01"/>',
@@ -66,6 +68,9 @@ export function mountLivePreview() {
     workflows: [],
     workers: [],
     secrets: [],
+    apiKeys: [],
+    adminUsers: [],
+    timezone: "UTC",
     hasMore: false,
     loadingJobs: false,
     jobsLoaded: false,
@@ -91,6 +96,7 @@ export function mountLivePreview() {
   let previousRoute = "";
   let jobsLoadPromise;
   let refreshJobsAfterCurrentLoad = false;
+  let searchRefreshTimer;
 
   const route = () => {
     const [path, query = ""] = window.location.hash.slice(1).split("?");
@@ -117,6 +123,39 @@ export function mountLivePreview() {
       throw error;
     }
     return response.status === 204 ? null : response.json();
+  };
+
+  const loadProfile = async () => {
+    const link = document.querySelector("#profile-link");
+    if (!link) {
+      return;
+    }
+    try {
+      const profile = await apiJson("/api/session");
+      const name = profile.user?.name || profile.user?.email || "Signed-in user";
+      const email = profile.user?.email || "";
+      const initials = name
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0])
+        .join("")
+        .toUpperCase();
+      document.querySelector("#profile-name").textContent = name;
+      document.querySelector("#profile-email").textContent = email;
+      document.querySelector("#profile-role").textContent = profile.user?.role || "user";
+      document.querySelector("#profile-avatar").textContent = initials || "?";
+      const profileUrl = new URL(profile.meUrl);
+      if (!["https:", "http:"].includes(profileUrl.protocol)) {
+        return;
+      }
+      link.href = profileUrl.toString();
+      link.removeAttribute("aria-disabled");
+      link.setAttribute("aria-label", `Open ${name}'s identity profile in a new tab`);
+    } catch {
+      document.querySelector("#profile-role").textContent = "Unavailable";
+      link?.setAttribute("aria-disabled", "true");
+    }
   };
 
   const apiBlob = async (path) => {
@@ -176,12 +215,9 @@ export function mountLivePreview() {
       : error?.message || "The Flow API could not be reached.";
 
   const setNavigation = (page, jobId = "") => {
-    const currentJob = jobId ? state.jobs.find((job) => String(job.id) === String(jobId)) : null;
-    const currentJobId = currentJob?.id ?? jobId;
     document.querySelector("#navigation").innerHTML = [
       ["runs", "Runs", "runs"],
       ["workflows", "Workflows", "workflow"],
-      ["workers", "Workers", "server"],
       ["settings", "Settings", "settings"],
     ]
       .map(
@@ -197,14 +233,7 @@ export function mountLivePreview() {
           }</a>`,
       )
       .join("");
-    document.querySelector("#breadcrumbs").innerHTML = `${
-      jobId
-        ? `<a class="hover:text-flow-foreground" href="#/runs">Runs</a><span class="text-flow-border">/</span><strong class="mono font-medium text-[#434b40]">#${escape(
-            currentJobId,
-          )}</strong>`
-        : `<strong class="font-medium text-[#434b40]">${escape(page[0].toUpperCase() + page.slice(1))}</strong>`
-    }`;
-    document.title = `${jobId ? `Run #${currentJobId}` : page[0].toUpperCase() + page.slice(1)} · Flow`;
+    document.title = `${jobId ? `Run #${escape(jobId)}` : page[0].toUpperCase() + page.slice(1)} · Flow`;
   };
   const setBreadcrumbs = (page, jobId = null) => setNavigation(page, jobId);
 
@@ -230,6 +259,9 @@ export function mountLivePreview() {
         }
         if (state.workflow !== "all") {
           query.set("workflowId", state.workflow);
+        }
+        if (state.search.trim()) {
+          query.set("filter", state.search.trim());
         }
         const data = await apiJson(`/api/jobs?${query}`);
         if (older) {
@@ -307,6 +339,32 @@ export function mountLivePreview() {
     }
   };
 
+  const loadSettingsExtras = async () => {
+    const [keys, preferences, users] = await Promise.allSettled([
+      apiJson("/api/api-keys"),
+      apiJson("/api/preferences"),
+      apiJson("/api/users"),
+    ]);
+    if (keys.status === "fulfilled") {
+      state.apiKeys = keys.value.keys || [];
+      state.errors.apiKeys = null;
+    } else {
+      state.errors.apiKeys = keys.reason;
+    }
+    if (preferences.status === "fulfilled") {
+      state.timezone = preferences.value.timezone || "UTC";
+      state.errors.preferences = null;
+    } else {
+      state.errors.preferences = preferences.reason;
+    }
+    if (users.status === "fulfilled") {
+      state.adminUsers = users.value.users || [];
+      state.errors.adminUsers = null;
+    } else {
+      state.errors.adminUsers = users.reason;
+    }
+  };
+
   const workflowFormSource = () => {
     const source = document.getElementById("new-workflow-source")?.value.trim() || "";
     const name = document.getElementById("new-workflow-name")?.value.trim();
@@ -319,11 +377,13 @@ export function mountLivePreview() {
 
   const filteredJobs = () =>
     state.jobs.filter((job) => {
+      const search = state.search.trim().toLowerCase();
+      const hasQualifier = /^[a-z0-9_-]+:.+$/i.test(search);
       const text = [job.id, job.workflowId, workflowName(job.workflowId), job.status, job.workerId]
         .join(" ")
         .toLowerCase();
       return (
-        text.includes(state.search.trim().toLowerCase()) &&
+        (hasQualifier || text.includes(search)) &&
         (state.status === "all" ||
           (state.status === "running" ? ["pending", "running"].includes(job.status) : job.status === state.status)) &&
         (state.workflow === "all" || job.workflowId === state.workflow) &&
@@ -400,7 +460,7 @@ export function mountLivePreview() {
 
   const renderRuns = () => {
     setBreadcrumbs("runs");
-    main.innerHTML = `${pageHeading("Runs", "", runWorkflowButton())}${
+    main.innerHTML = `<div class="mb-7 flex justify-end">${runWorkflowButton()}</div>${
       state.loadingJobs && !state.jobs.length ? '<div class="empty-state"><p>Loading runs…</p></div>' : ""
     }<section aria-labelledby="recent-runs"><div class="section-heading"><h2 id="recent-runs">Recent runs</h2></div><div class="filters"><label class="search-box">${icon(
       "search",
@@ -775,31 +835,29 @@ export function mountLivePreview() {
     const workflowRows = visibleWorkflows
       .map((workflow) => {
         const index = state.workflows.indexOf(workflow);
-        return `<div class="workflow-item"><div class="workflow-header"><span class="workflow-icon">${icon(
-          "workflow",
-        )}</span><span class="workflow-name">${escape(
+        return `<div class="workflow-item"><div class="workflow-header"><span class="workflow-name">${escape(
           workflow.name || workflow.id,
         )}</span><span class="workflow-status ${
           workflow.status === "published" ? "success" : workflow.status === "archived" ? "disabled" : "enabled"
-        }">${escape(workflow.status)}</span></div><div class="workflow-meta"><span>Revision ${escape(
-          workflow.revision || "—",
+        }">${escape(workflow.status)}</span></div><div class="workflow-meta"><span>v${escape(
+          workflow.revision || 1,
         )}</span><span class="workflow-id mono">${escape(
           workflow.id,
-        )}</span></div><div class="workflow-actions"><a class="text-button" href="#/runs?workflow=${encodeURIComponent(
+        )}</span></div><div class="workflow-actions"><a class="button" aria-label="View runs for ${escape(
+          workflow.name || workflow.id,
+        )}" title="View runs" href="#/runs?workflow=${encodeURIComponent(
           workflow.id,
-        )}">View runs ${icon("arrow")}</a><a class="button" href="/settings/workflows/${encodeURIComponent(
+        )}">${icon("runs")}</a><a class="button" aria-label="Edit ${escape(workflow.name || workflow.id)}" title="Edit" href="/settings/workflows/${encodeURIComponent(
           workflow.id,
-        )}" target="_top">Edit ${icon(
-          "arrow",
-        )}</a><button class="button" data-action="workflow-source" data-value="${index}">${icon(
-          "code",
-        )}Source</button>${
+        )}" target="_top">${icon("edit")}</a><button class="button" aria-label="View source for ${escape(
+          workflow.name || workflow.id,
+        )}" title="View source" data-action="workflow-source" data-value="${index}">${icon("code")}</button>${
           workflow.revision > 1
-            ? `<button class="button small" data-action="workflow-revision" data-value="${index}" data-dir="-1">Previous revision</button>`
+            ? `<button class="button small" aria-label="Compare with previous revision" title="Previous revision" data-action="workflow-revision" data-value="${index}" data-dir="-1">${icon("history")}</button>`
             : ""
         }${
           workflow.status !== "published"
-            ? `<button class="button small success" data-action="workflow-publish" data-value="${index}">Publish ${icon(
+            ? `<button class="button small success" aria-label="Publish ${escape(workflow.name || workflow.id)}" title="Publish" data-action="workflow-publish" data-value="${index}">${icon(
                 "rocket",
               )}</button>`
             : ""
@@ -813,50 +871,12 @@ export function mountLivePreview() {
           ? "Choose another status tab or create a workflow."
           : "Flow has no workflow definitions to show."
       }</p></div>`;
-    main.innerHTML = `${pageHeading("Workflows", "Workflow definitions", runWorkflowButton())}${
+    main.innerHTML = `${
       state.errors.workflows
         ? `<div class="empty-state">${icon("lock")}<h3>Workflows unavailable</h3><p>${escape(
             permissionMessage(state.errors.workflows, "workflows:read"),
           )}</p><button class="button" data-action="retry-workflows">Retry</button></div>`
-        : `<div class="status-tabs" role="group" aria-label="Filter workflows by status">${tabButtons}</div><div class="workflow-list">${content}</div>`
-    }`;
-  };
-
-  const liveWorkersPage = async () => {
-    if (!state.workersLoaded) {
-      await loadWorkers();
-    }
-    setBreadcrumbs("workers");
-    main.innerHTML = `${pageHeading("Workers", "Live runner presence from Flow.")}${
-      state.errors.workers
-        ? `<div class="empty-state">${icon("lock")}<h3>Worker status unavailable</h3><p>${escape(
-            permissionMessage(state.errors.workers, "workers:read"),
-          )}</p><button class="button" data-action="retry-workers">Retry</button></div>`
-        : `<div class="cards">${
-            state.workers
-              .map(
-                (worker) =>
-                  `<article class="worker-card"><div class="card-heading">${icon("server")}<h2>${escape(
-                    worker.workerId || "Unknown worker",
-                  )}</h2><span class="status ${worker.online ? "success" : "cancelled"}">${
-                    worker.online ? "Online" : "Offline"
-                  }</span></div><div class="card-details">${
-                    (Array.isArray(worker.tags) ? worker.tags : [])
-                      .map((tag) => `<span class="tag mono">${escape(tag)}</span>`)
-                      .join("") || '<span class="settings-note">No labels</span>'
-                  }</div><div class="worker-stats"><div><span class="meta-label">Active jobs</span><strong>${escape(
-                    worker.activeJobs ?? 0,
-                  )}</strong></div><div><span class="meta-label">Concurrency</span><strong>${escape(
-                    worker.concurrency ?? "—",
-                  )}</strong></div></div><div class="card-footer"><span class="settings-note">${
-                    worker.version ? `Runner ${escape(worker.version)}` : "Runner version unavailable"
-                  }</span><span class="settings-note">Seen ${escape(
-                    formatDate(worker.lastSeen),
-                  )}</span></div></article>`,
-              )
-              .join("") ||
-            '<div class="empty-state"><h3>No workers reported</h3><p>Flow has no worker-presence records.</p></div>'
-          }</div>`
+        : `<div class="status-tabs" role="group" aria-label="Filter workflows by status">${tabButtons}</div><div class="workflow-list mt-4">${content}</div>`
     }`;
   };
 
@@ -864,38 +884,83 @@ export function mountLivePreview() {
     if (!state.secretsLoaded) {
       await loadSecrets();
     }
+    await Promise.all([loadWorkers(), loadSettingsExtras()]);
     setBreadcrumbs("settings");
+    const workerContent = state.errors.workers
+      ? `<p class="settings-note">${escape(permissionMessage(state.errors.workers, "workers:read"))}</p><button class="button" data-action="retry-workers">Retry workers</button>`
+      : `<div class="cards">${
+          state.workers
+            .map(
+              (worker) =>
+                `<article class="worker-card"><div class="card-heading">${icon("server")}<h2>${escape(
+                  worker.workerId || "Unknown worker",
+                )}</h2><span class="status ${worker.online ? "success" : "cancelled"}">${
+                  worker.online ? "Online" : "Offline"
+                }</span></div><div class="card-details">${
+                  (Array.isArray(worker.tags) ? worker.tags : [])
+                    .map((tag) => `<span class="tag mono">${escape(tag)}</span>`)
+                    .join("") || '<span class="settings-note">No labels</span>'
+                }</div><div class="worker-stats"><div><span class="meta-label">Active jobs</span><strong>${escape(
+                  worker.activeJobs ?? 0,
+                )}</strong></div><div><span class="meta-label">Concurrency</span><strong>${escape(
+                  worker.concurrency ?? "—",
+                )}</strong></div></div><div class="card-footer"><span class="settings-note">${
+                  worker.version ? `Runner ${escape(worker.version)}` : "Runner version unavailable"
+                }</span><span class="settings-note">Seen ${escape(formatDate(worker.lastSeen))}</span></div></article>`,
+            )
+            .join("") || '<p class="settings-note">No workers reported.</p>'
+        }</div>`;
+    const secretContent = state.errors.secrets
+      ? `<p class="settings-note">${escape(permissionMessage(state.errors.secrets, "secrets:read"))}</p><button class="button" data-action="retry-secrets">Retry</button>`
+      : state.secrets
+          .map(
+            (name) =>
+              `<div class="setting-row"><strong class="mono min-w-0 max-w-[min(58vw,480px)] truncate" title="${escape(name)}">${escape(
+                name,
+              )}</strong><span class="secret-value" aria-label="Secret value hidden">••••••••••••</span><button class="button tiny danger" data-action="remove-secret" data-value="${escape(
+                name,
+              )}">Remove</button></div>`,
+          )
+          .join("") || '<p class="settings-note">No secret names are configured.</p>';
+    const tokenContent = state.errors.apiKeys
+      ? `<p class="settings-note">${escape(permissionMessage(state.errors.apiKeys, "tokens:read"))}</p>`
+      : state.apiKeys
+          .map(
+            (key) =>
+              `<div class="setting-row"><div class="min-w-0"><strong class="mono">${escape(
+                key.name || key.label || "API token",
+              )}</strong><p>${escape((key.scopes || []).join(", ") || "Access token")}</p></div><span class="secret-value shrink-0" aria-label="Token value hidden">••••••••••••</span></div>`,
+          )
+          .join("") || '<p class="settings-note">No API tokens are configured.</p>';
+    const userContent = state.errors.adminUsers
+      ? `<p class="settings-note">${escape(permissionMessage(state.errors.adminUsers, "users:read"))}</p>`
+      : state.adminUsers
+          .map(
+            (user) =>
+              `<div class="setting-row"><div class="min-w-0"><strong>${escape(user.name || user.email || user.id)}</strong><p>${escape(
+                user.email || "",
+              )}</p></div><span class="workflow-status ${user.role === "admin" ? "success" : ""}">${escape(
+                user.role || "user",
+              )}</span></div>`,
+          )
+          .join("") || '<p class="settings-note">No users are available to display.</p>';
+    const timezoneOptions = [...new Set([state.timezone, "UTC", "America/Los_Angeles", "Europe/London"])]
+      .map((timezone) => `<option ${timezone === state.timezone ? "selected" : ""}>${escape(timezone)}</option>`)
+      .join("");
     main.innerHTML = `${pageHeading(
       "Settings",
-      "Preferences and secret names from Flow.",
+      "Workspace preferences and administration.",
     )}<section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${
       localStorage.getItem("flow-concept-compact") === "true" ? "checked" : ""
     }/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${
       state.wrap ? "checked" : ""
-    }/></label></section><section class="settings-section"><h2>${icon(
+    }/></label><label class="setting-row"><span><strong>Timezone</strong><span class="settings-note">Use this timezone for displayed dates.</span></span><select id="timezone-setting">${timezoneOptions}</select></label></section><section class="settings-section"><h2>Workers</h2>${workerContent}</section><section class="settings-section"><h2>${icon(
       "lock",
-    )} Secret names</h2><p class="settings-note">Values are never requested or displayed in this preview.</p>${
-      state.errors.secrets
-        ? `<p class="settings-note">${escape(
-            permissionMessage(state.errors.secrets, "secrets:read"),
-          )}</p><button class="button" data-action="retry-secrets">Retry</button>`
-        : state.secrets
-            .map(
-              (name) =>
-                `<div class="setting-row"><strong class="mono">${escape(
-                  name,
-                )}</strong><span class="secret-value" aria-label="Secret value hidden">••••••••••••</span><button class="button tiny danger" data-action="remove-secret" data-value="${name}">Remove</button></div>`,
-            )
-            .join("") || '<p class="settings-note">No secret names are configured.</p>'
-    }${
+    )} Secret names</h2><p class="settings-note">Values are never requested or displayed in this preview.</p>${secretContent}${
       !state.errors.secrets && state.secrets.length < 5
         ? '<div class="setting-row"><button class="button tiny" data-action="add-secret">Add secret</button></div>'
         : ""
-    }</section><section class="settings-section"><h2>Workflow editing</h2><p class="settings-note">Create and edit workflow definitions.</p><form id="new-workflow-form"><label class="form-field"><span>Workflow name</span><input id="new-workflow-name" type="text" placeholder="e.g. build-docker-image" required/></label><label class="form-field"><span>Workflow ID</span><input id="new-workflow-id" type="text" placeholder="derived-from-name" required/></label><label class="form-field"><span>Enabled</span><input type="checkbox" id="new-workflow-enabled" checked/></label><div class="form-field"><span>YAML source</span><textarea id="new-workflow-source" rows="8" placeholder="name: build-docker-image\nruns-on: [main-server, docker]\n\nsteps:\n  - name: Checkout repository\n    run: git checkout '$COMMIT'\n  - name: Install dependencies\n    run: pnpm install --frozen-lockfile\n  - name: Run tests\n    run: pnpm test\n  - name: Build and push\n    run: pnpm publish"></textarea></label></div><div class="form-footer"><button type="button" class="button" data-action="validate-workflow">Validate workflow</button><button type="button" class="button" data-action="run-now">Run now</button><button type="submit" class="button primary">${icon(
-      "plus",
-    )}Create workflow</button><button type="button" class="button" data-action="close-dialog">Cancel</button></div></form><a class="button secondary" href="/settings/workflows" target="_top">Open full workflow settings ${icon(
-      "arrow",
-    )}</a></section>`;
+    }</section><section class="settings-section"><h2>API tokens</h2>${tokenContent}</section><section class="settings-section"><h2>Admin roster</h2>${userContent}</section>`;
   };
 
   const showNotFound = () => {
@@ -1048,7 +1113,7 @@ export function mountLivePreview() {
       return;
     }
     if (path === "/workers") {
-      await liveWorkersPage();
+      await liveSettingsPage();
       return;
     }
     if (path === "/settings") {
@@ -1097,7 +1162,7 @@ export function mountLivePreview() {
     if (name === "retry-workers") {
       state.workersLoaded = false;
       state.errors.workers = null;
-      await liveWorkersPage();
+      await liveSettingsPage();
       return true;
     }
     if (name === "retry-secrets") {
@@ -1434,6 +1499,11 @@ export function mountLivePreview() {
     };
   };
 
+  document.addEventListener("click", (event) => {
+    if (event.target.closest('#profile-link[aria-disabled="true"]')) {
+      event.preventDefault();
+    }
+  });
   document.addEventListener("click", async (event) => {
     const handled = await action(event);
     if (handled) {
@@ -1475,6 +1545,10 @@ export function mountLivePreview() {
       state.search = event.target.value;
       state.page = 1;
       renderRunsTable();
+      window.clearTimeout(searchRefreshTimer);
+      searchRefreshTimer = window.setTimeout(() => {
+        void loadJobs();
+      }, 250);
     }
     if (event.target.id === "log-search") {
       state.logSearch = event.target.value;
@@ -1502,6 +1576,15 @@ export function mountLivePreview() {
       state.wrap = event.target.checked;
       localStorage.setItem("flow-concept-wrap", String(event.target.checked));
     }
+    if (event.target.id === "timezone-setting") {
+      state.timezone = event.target.value;
+      void apiJson("/api/preferences", {
+        method: "PUT",
+        body: JSON.stringify({ timezone: state.timezone }),
+      })
+        .then(() => showToast("Timezone saved."))
+        .catch((error) => showToast(`Could not save timezone: ${error.message}`));
+    }
   });
   window.addEventListener("hashchange", () => {
     state.run = null;
@@ -1513,6 +1596,7 @@ export function mountLivePreview() {
   document.querySelectorAll("[data-icon]").forEach((node) => {
     node.innerHTML = icon(node.dataset.icon);
   });
+  void loadProfile();
   document.body.classList.toggle("compact", localStorage.getItem("flow-concept-compact") === "true");
   state.wrap = localStorage.getItem("flow-concept-wrap") === "true";
   const initialQuery = route().query;

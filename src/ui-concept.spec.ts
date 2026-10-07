@@ -15,6 +15,73 @@ describe("public UI concept preview", () => {
     expect(previewLiveSource).toContain('data-action="next-page"');
   });
 
+  it("forwards qualified run searches to the jobs API and filters demo repositories", () => {
+    const demo = readFileSync(new URL("../docs/ui-concept/app.js", import.meta.url), "utf8");
+
+    expect(previewLiveSource).toContain('query.set("filter", state.search.trim())');
+    expect(previewLiveSource).toContain("const hasQualifier = /^[a-z0-9_-]+:.+$/i.test(search)");
+    expect(demo).toContain("search.match(/^([a-z0-9_-]+):(.+)$/)");
+    expect(demo).toContain('qualifier[1] === "owner"');
+    expect(demo).toContain('qualifier[1] === "repo"');
+  });
+
+  it("keeps run status navigation while removing the runs breadcrumb and header chrome", () => {
+    const markup = readFileSync(new URL("../docs/ui-concept/index.html", import.meta.url), "utf8");
+    const demo = readFileSync(new URL("../docs/ui-concept/app.js", import.meta.url), "utf8");
+
+    expect(markup).not.toContain('id="breadcrumbs"');
+    expect(markup).not.toContain("topbar-right");
+    expect(demo).not.toContain('document.querySelector("#breadcrumbs")');
+    expect(demo).toContain('"In progress"');
+    expect(previewLiveSource).toContain('"In progress"');
+    expect(previewLiveSource).not.toContain("Older Flow runs are available.");
+  });
+
+  it("renders workflows as revision-labelled rows with accessible icon-only actions", () => {
+    const demo = readFileSync(new URL("../docs/ui-concept/app.js", import.meta.url), "utf8");
+
+    expect(demo).toContain('class="workflow-item"');
+    expect(demo).toContain("v${workflow.revision || 1}");
+    expect(demo).toContain('aria-label="View source for ${workflow.name}"');
+    expect(previewLiveSource).toContain("workflow.revision || 1");
+    expect(previewLiveSource).toContain('aria-label="Edit ${escape(workflow.name || workflow.id)}"');
+    expect(previewLiveSource).toContain('aria-label="View runs for ${escape(');
+    expect(previewLiveSource).not.toContain('<span class="workflow-icon">');
+    expect(previewLiveSource).toContain('class="workflow-list mt-4"');
+  });
+
+  it("keeps workers, secrets, tokens, timezone, and the admin roster in Settings", () => {
+    const demo = readFileSync(new URL("../docs/ui-concept/app.js", import.meta.url), "utf8");
+
+    expect(demo).not.toContain('["workers", "Workers", "server"]');
+    expect(demo).toContain('else if (page === "workers")');
+    expect(demo).toContain("${workerCards()}");
+    expect(demo).toContain('id="timezone-setting"');
+    expect(demo).toContain("Admin roster");
+    expect(demo).not.toContain("Workflow editing</h2>");
+    expect(previewLiveSource).not.toContain('["workers", "Workers", "server"]');
+    expect(previewLiveSource).toContain('apiJson("/api/api-keys")');
+    expect(previewLiveSource).toContain('apiJson("/api/preferences")');
+    expect(previewLiveSource).toContain('apiJson("/api/users")');
+    expect(previewLiveSource).toContain('apiJson("/api/workers")');
+    expect(previewLiveSource).toContain('class="mono min-w-0 max-w-[min(58vw,480px)] truncate"');
+    expect(previewLiveSource).not.toContain("Workflow editing</h2>");
+  });
+
+  it("provides a signed-in profile link and compact role badge in the sidebar", () => {
+    const markup = readFileSync(new URL("../docs/ui-concept/index.html", import.meta.url), "utf8");
+
+    expect(markup).toContain('id="profile-link"');
+    expect(markup).toContain('target="_blank"');
+    expect(markup).toContain('rel="noopener noreferrer"');
+    expect(markup).toContain('id="profile-name"');
+    expect(markup).toContain('id="profile-email"');
+    expect(markup).toContain('id="profile-role"');
+    expect(markup).toContain('data-icon="external"');
+    expect(previewLiveSource).toContain('apiJson("/api/session")');
+    expect(previewLiveSource).toContain("link.href = profileUrl.toString()");
+  });
+
   it("embeds its styles and interactive prototype without separate asset requests", () => {
     expect(uiConceptPage).toContain("<title>Runs · Flow</title>");
     expect(uiConceptPage).toContain("function runsPage() {");

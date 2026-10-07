@@ -340,3 +340,56 @@ describe("per-user UI timezone preference", () => {
     expect(invalidResponse.writeHead).toHaveBeenCalledWith(400, { "Content-Type": "application/json; charset=utf-8" });
   });
 });
+
+describe("authenticated profile endpoint", () => {
+  it("returns only the signed-in display identity, role, and OIDC profile URL without caching", async () => {
+    const response: TestResponse = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    const server = {
+      requireAuthenticatedUser: vi.fn(() => true),
+      oidc: {
+        providerUrl: "https://identity.example.test/",
+        userFromCookie: vi.fn(() => ({ id: "subject-1", name: "Alex Example", email: "alex@example.test" })),
+      },
+      oidcUsers: { role: vi.fn(async () => "admin") },
+    };
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      { method: "GET", url: "/api/session", headers: { host: "flow.test", cookie: "session" } },
+      response,
+    );
+
+    expect(server.oidcUsers.role).toHaveBeenCalledWith("subject-1");
+    expect(response.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    expect(response.end).toHaveBeenCalledWith(
+      JSON.stringify({
+        user: { name: "Alex Example", email: "alex@example.test", role: "admin" },
+        meUrl: "https://identity.example.test/me",
+      }),
+    );
+  });
+
+  it("does not expose a profile response without an OIDC user session", async () => {
+    const response: TestResponse = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    const server = {
+      requireAuthenticatedUser: vi.fn(() => true),
+      oidc: { userFromCookie: vi.fn(() => undefined) },
+      oidcUsers: { role: vi.fn() },
+    };
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      { method: "GET", url: "/api/session", headers: { host: "flow.test" } },
+      response,
+    );
+
+    expect(response.writeHead).toHaveBeenCalledWith(401, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    expect(server.oidcUsers.role).not.toHaveBeenCalled();
+  });
+});

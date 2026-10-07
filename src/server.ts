@@ -309,6 +309,19 @@ export class WebhookServer {
       return this.renderAppShell(res);
     }
 
+    if (url.pathname === "/api/session" && req.method === "GET") {
+      if (!this.requireAuthenticatedUser(req, res)) return;
+      const user = this.oidc?.userFromCookie(req.headers.cookie);
+      if (!user) {
+        res.writeHead(401, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+        return res.end(JSON.stringify({ error: "Authentication required" }));
+      }
+      const role = await this.oidcUsers.role(user.id);
+      const meUrl = this.oidc?.providerUrl ? new URL("/me", this.oidc.providerUrl).toString() : null;
+      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ user: { name: user.name || "", email: user.email || "", role }, meUrl }));
+    }
+
     if (url.pathname === "/api/preferences" && req.method === "GET") {
       if (!this.requireAuthenticatedUser(req, res)) return;
       const user = this.oidc?.userFromCookie(req.headers.cookie);
