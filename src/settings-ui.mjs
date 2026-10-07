@@ -2,9 +2,10 @@ import { onInit, ref } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
 
 export default function () {
-  const page = document.body.dataset.page;
+  const page = "settings";
   const keys = ref([]);
   const workers = ref([]);
+  const workersForbidden = ref(false);
   const users = ref([]);
   const usersForbidden = ref(false);
   const keyName = ref("");
@@ -35,6 +36,13 @@ export default function () {
     { name: "secrets:read", label: "Read secret names", selected: false },
     { name: "secrets:write", label: "Manage secrets", selected: false },
   ]);
+  const secrets = ref([]);
+  const secretName = ref("");
+  const secretValue = ref("");
+  const fileMode = ref(false);
+  const secretFileName = ref("");
+  const secretFileData = ref("");
+  const busy = ref(false);
   const api = async (url, options = {}) => {
     const response = await apiFetch(url, {
       headers: { accept: "application/json", ...(options.body ? { "content-type": "application/json" } : {}) },
@@ -51,8 +59,84 @@ export default function () {
   const load = async () => {
     keys.value = (await api("/api/api-keys")).keys;
   };
+  const loadSecrets = async () => {
+    secrets.value = (await api("/api/secrets")).secrets;
+  };
+  const runSecretAction = async (action) => {
+    if (busy.value) return;
+    busy.value = true;
+    error.value = "";
+    try {
+      await action();
+    } catch (reason) {
+      error.value = reason.message;
+    } finally {
+      busy.value = false;
+    }
+  };
+  const saveSecret = () =>
+    runSecretAction(async () => {
+      const name = secretName.value.trim().toUpperCase();
+      if (!/^[A-Z][A-Z0-9_]*$/.test(name))
+        throw new Error("Secret names must start with a letter and contain only letters, numbers, and underscores.");
+      if (fileMode.value ? !secretFileData.value : !secretValue.value)
+        throw new Error(fileMode.value ? "Choose a file first." : "Set a secret value first.");
+      await api(`/api/secrets/${encodeURIComponent(name)}`, {
+        method: "PUT",
+        body: JSON.stringify(
+          fileMode.value
+            ? { value: secretFileData.value, encoding: "base64", originalName: secretFileName.value }
+            : { value: secretValue.value, encoding: "utf8" },
+        ),
+      });
+      secretName.value = "";
+      secretValue.value = "";
+      secretFileName.value = "";
+      secretFileData.value = "";
+      fileMode.value = false;
+      await loadSecrets();
+    });
+  const removeSecret = (name) => {
+    if (!confirm(`Delete ${name}?`)) return;
+    return runSecretAction(async () => {
+      await api(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
+      await loadSecrets();
+    });
+  };
+  const setSecretFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 0x8000)
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    secretFileName.value = file.name;
+    secretFileData.value = btoa(binary);
+  };
+  const setSecretName = (event) => {
+    secretName.value = event.target.value;
+  };
+  const setSecretValue = (event) => {
+    secretValue.value = event.target.value;
+  };
+  const setFileMode = (event) => {
+    fileMode.value = event.target.checked;
+  };
+  const selectSecret = (name) => {
+    secretName.value = name;
+    fileMode.value = false;
+    secretValue.value = "";
+  };
   const loadWorkers = async () => {
-    workers.value = (await api("/api/workers")).workers;
+    try {
+      workers.value = (await api("/api/workers")).workers;
+    } catch (reason) {
+      if (reason.status === 403) {
+        workersForbidden.value = true;
+        return;
+      }
+      throw reason;
+    }
   };
   const loadUsers = async () => {
     try {
@@ -172,26 +256,36 @@ export default function () {
     loadPreferences().catch((reason) => {
       error.value = reason.message;
     });
-    if (page === "tokens") {
-      load().catch((reason) => {
-        error.value = reason.message;
-      });
-    }
-    if (page === "workers") {
-      loadWorkers().catch((reason) => {
-        error.value = reason.message;
-      });
-    }
-    if (page === "tokens") {
-      loadUsers().catch((reason) => {
-        error.value = reason.message;
-      });
-    }
+    load().catch((reason) => {
+      error.value = reason.message;
+    });
+    loadSecrets().catch((reason) => {
+      error.value = reason.message;
+    });
+    loadWorkers().catch((reason) => {
+      error.value = reason.message;
+    });
+    loadUsers().catch((reason) => {
+      error.value = reason.message;
+    });
   });
   return {
     page,
+    secrets,
+    secretName,
+    secretValue,
+    fileMode,
+    busy,
+    saveSecret,
+    removeSecret,
+    setSecretFile,
+    setSecretName,
+    setSecretValue,
+    setFileMode,
+    selectSecret,
     keys,
     workers,
+    workersForbidden,
     users,
     usersForbidden,
     keyName,

@@ -12,7 +12,9 @@ describe("settings UI", () => {
     expect(source).toContain("workflows:write");
     expect(source).toContain("Notifications");
     expect(source).toContain("Workers");
-    expect(source).toContain('href="/settings/workers"');
+    expect(source).toContain('href="#section-workers"');
+    expect(source).toContain('id="section-keys"');
+    expect(source).toContain('id="section-notifications"');
     expect(source).not.toContain('href="/settings/workflows"');
     expect(source).toContain("bg-white");
     expect(source).not.toContain("bg-gray-950");
@@ -46,5 +48,23 @@ describe("settings UI", () => {
     expect(generateSettingsHtml("workers")).toContain('data-page="workers"');
     expect(serverSetup).toContain('rawPage === "workers"');
     expect(serverSetup).toContain("generateSettingsHtml(page)");
+  });
+
+  it("exposes secrets on the unified settings page with anchored deep links", () => {
+    const html = generateSettingsHtml("settings");
+    for (const section of ["timezone", "keys", "notifications", "workers", "users", "secrets"]) {
+      expect(html).toContain(`id="section-${section}"`);
+      expect(html).toContain(`href="#section-${section}"`);
+    }
+    expect(html).toContain('id="secret-value"');
+    expect(html).toContain('id="secret-file"');
+    expect(html).toContain('aria-label="Delete secret {{ name }}"');
+    expect(settingsSetup).toContain("loadWorkers()");
+    expect(settingsSetup).toContain("workersForbidden.value = true");
+    expect(settingsSetup).toContain("loadUsers()");
+    expect(settingsSetup).toContain('api("/api/secrets")');
+    expect(settingsSetup).toContain('method: "PUT"');
+    expect(settingsSetup).toContain('method: "DELETE"');
+    expect(settingsSetup).toContain('encoding: "base64"');
   });
 });

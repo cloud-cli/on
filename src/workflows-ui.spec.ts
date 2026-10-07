@@ -108,6 +108,13 @@ describe("workflow management UI", () => {
     );
   });
 
+  it("does not render settings navigation on workflow management pages", () => {
+    const html = generateWorkflowManagementHtml("workflows");
+    expect(html).not.toContain("Settings section navigation");
+    expect(html).not.toContain('href="/settings/tokens"');
+    expect(html).not.toContain('href="/settings/workers"');
+  });
+
   it("keeps the secret form structurally inside its disclosure panel", () => {
     const source = generateWorkflowManagementHtml("secrets");
     const start = source.indexOf('<details ref="secretForm"');

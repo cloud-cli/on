@@ -63,9 +63,15 @@
                 type="button"
                 on-click="setStatusFilter(tab.status)"
                 attr-aria-pressed="statusFilter === tab.status ? 'true' : 'false'"
-                class="rounded-full border border-flow-border px-3 py-1.5 text-sm aria-pressed:bg-flow-primary aria-pressed:text-white"
+                class="rounded-full border px-3 py-1.5 text-sm"
+                aria-label="Filter by {{ tab.label }} ({{ tab.count }})"
               >
-                {{ tab.label }} <span class="opacity-70">{{ tab.count }}</span>
+                {{ tab.label }}
+                <span
+                  class="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
+                  bind-class="'bg-flow-panel text-flow-foreground'"
+                  ><span>{{ tab.count }}</span></span
+                >
               </button></template
             >
           </nav>
@@ -89,8 +95,12 @@
                       >
                     </td>
                     <td class="px-3 py-3">
-                      <span class="rounded-full bg-flow-panel px-2.5 py-1 text-xs font-medium"
-                        >{{ sentence(job.status) }}</span
+                      <span
+                        class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold"
+                        bind-class="statusClass(job.status)"
+                        role="status"
+                        ><lucide-icon bind-icon="statusIcon(job.status)" size="14"></lucide-icon>{{ sentence(job.status)
+                        }}</span
                       >
                     </td>
                     <td class="px-3 py-3 text-flow-secondary">{{ job.workerId || 'Queued' }}</td>

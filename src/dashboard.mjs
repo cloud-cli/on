@@ -71,8 +71,16 @@ export default function setup() {
       label: "In progress",
       count: jobs.value.filter((job) => ["pending", "running"].includes(job.status)).length,
     },
-    { status: "failed", label: "Failed", count: jobs.value.filter((job) => job.status === "failed").length },
-    { status: "success", label: "Passed", count: jobs.value.filter((job) => job.status === "success").length },
+    {
+      status: "failed",
+      label: "Failed",
+      count: jobs.value.filter((job) => job.status === "failed").length,
+    },
+    {
+      status: "success",
+      label: "Passed",
+      count: jobs.value.filter((job) => job.status === "success").length,
+    },
   ];
   const loadTimezone = async () => {
     const response = await apiFetch("/api/preferences", { headers: { accept: "application/json" } });
@@ -97,6 +105,21 @@ export default function setup() {
     ]);
   };
   const terminalStatuses = new Set(["success", "failed", "cancelled"]);
+  const statusIcons = {
+    success: "circle-check",
+    failed: "circle-x",
+    pending: "clock",
+    running: "loader-circle",
+  };
+  const statusClass = (status) =>
+    ({
+      success: "border-emerald-300 bg-emerald-100 text-emerald-800",
+      failed: "border-rose-300 bg-rose-100 text-rose-800",
+      pending: "border-amber-300 bg-amber-100 text-amber-900",
+      running: "border-blue-300 bg-blue-100 text-blue-800",
+      cancelled: "border-slate-300 bg-slate-100 text-slate-700",
+    })[status] || "border-slate-300 bg-slate-100 text-slate-700";
+  const statusIcon = (status) => statusIcons[status] || "circle-help";
   const notifyCompletedJob = async (job) => {
     if (!notificationsEnabled.value || pushConfigured.value || !["success", "failed"].includes(job.status)) return;
     try {
@@ -383,6 +406,8 @@ export default function setup() {
     workflowName,
     formatDate,
     sentence,
+    statusClass,
+    statusIcon,
     loadMore,
     previousPage,
     nextPage,

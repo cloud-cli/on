@@ -158,11 +158,20 @@ describe("workflow and secret settings authentication", () => {
         method: "GET",
         headers: { host: "flow.test", cookie: "runner_oidc_session=session" },
       };
+      const response = { writeHead: vi.fn(), end: vi.fn() };
 
-      await (WebhookServer.prototype as any).handleRequest.call(server, request, {});
+      await (WebhookServer.prototype as any).handleRequest.call(server, request, response);
 
       expect(server.requireAuthenticatedUser).toHaveBeenCalled();
-      expect(server.renderAppShell).toHaveBeenCalledOnce();
+      if (path === "/settings/secrets") {
+        expect(server.renderAppShell).toHaveBeenCalledOnce();
+      } else {
+        expect(response.writeHead).toHaveBeenCalledWith(302, {
+          Location: path.replace(/^\/settings\/workflows/, "/workflows"),
+        });
+        expect(response.end).toHaveBeenCalledOnce();
+        expect(server.renderAppShell).not.toHaveBeenCalled();
+      }
     },
   );
 
@@ -182,6 +191,24 @@ describe("workflow and secret settings authentication", () => {
 
     expect(server.requireAuthenticatedUser).toHaveBeenCalled();
     expect(server.renderPageComponent).toHaveBeenCalledOnce();
+  });
+
+  it("routes the legacy timezone URL to the app shell behind the existing admin gate", async () => {
+    const server = {
+      oidc: { enabled: true, userFromCookie: () => ({ id: "admin", role: "admin" }) },
+      requireAdmin: vi.fn(() => true),
+      renderAppShell: vi.fn(),
+    };
+    const request = {
+      url: "/settings/timezone",
+      method: "GET",
+      headers: { host: "flow.test", cookie: "runner_oidc_session=session" },
+    };
+
+    await (WebhookServer.prototype as any).handleRequest.call(server, request, {});
+
+    expect(server.requireAdmin).toHaveBeenCalledOnce();
+    expect(server.renderAppShell).toHaveBeenCalledOnce();
   });
 });
 

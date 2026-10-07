@@ -17,19 +17,21 @@ describe("SPA router", () => {
     );
   });
 
-  it("maps all settings sub-pages to their respective components", () => {
+  it("maps legacy settings deep links to unified in-page sections", () => {
     expect(routerSetup).not.toContain("path === '/settings/workflows'");
-    expect(routerSetup).toContain('path === "/settings/secrets"');
-    expect(routerSetup).toContain('path === "/settings/tokens"');
-    expect(routerSetup).toContain('path === "/settings/notifications"');
-    expect(routerSetup).toContain('path === "/settings/workers"');
-    expect(routerSetup).toContain('path === "/settings"');
+    expect(routerSetup).toContain('"/settings/secrets": "secrets"');
+    expect(routerSetup).toContain('"/settings/tokens": "keys"');
+    expect(routerSetup).toContain('"/settings/notifications": "notifications"');
+    expect(routerSetup).toContain('"/settings/workers": "workers"');
+    expect(routerSetup).toContain('"/settings/timezone": "timezone"');
+    expect(routerSetup).toContain('"/settings/secrets": "secrets"');
+    expect(routerSetup).toContain('path === "/settings" || settingsSections[path]');
 
     expect(routerSetup).toContain('url: "/pages/workflows.html?page=workflows"');
-    expect(routerSetup).toContain('url: "/pages/workflows.html?page=secrets"');
-    expect(routerSetup).toContain('url: "/pages/settings.html?page=tokens"');
-    expect(routerSetup).toContain('url: "/pages/settings.html?page=notifications"');
-    expect(routerSetup).toContain('url: "/pages/settings.html?page=workers"');
+    expect(routerSetup).toContain('"/settings/tokens": "keys"');
+    expect(routerSetup).toContain(
+      '`/pages/settings.html?page=settings${path === "/settings" ? "" : `#section-${section}`}`',
+    );
   });
 
   it("SPA handleClick intercepts same-origin navigation excluding /auth/, /api/, /webhooks", () => {
@@ -41,19 +43,18 @@ describe("SPA router", () => {
   });
 
   it("routes /settings to settings and /workflows to workflow management", () => {
-    expect(routerSetup).toContain('if (path === "/settings")');
+    expect(routerSetup).toContain('path === "/settings" || settingsSections[path]');
     expect(routerSetup).toContain('if (path === "/workflows")');
-    expect(routerSetup).toContain('url: "/pages/settings.html?page=tokens"');
+    expect(routerSetup).toContain('page: "settings"');
     expect(routerSetup).toContain('url: "/pages/workflows.html?page=workflows"');
     expect(serverSetup).toContain("Location: destination");
+    expect(serverSetup).toContain("secrets|tokens|notifications|workers|timezone");
     expect(serverSetup).toContain("return this.renderAppShell(res);");
   });
 
   it("route mapping covers settings tabs and workflow editor paths only under /workflows", () => {
-    expect(routerSetup).toContain('path === "/settings/secrets"');
-    expect(routerSetup).toContain('path === "/settings/tokens"');
-    expect(routerSetup).toContain('path === "/settings/notifications"');
-    expect(routerSetup).toContain('path === "/settings/workers"');
+    expect(routerSetup).toContain('"/settings/secrets": "secrets"');
+    expect(routerSetup).toContain('"/settings/tokens": "keys"');
     expect(routerSetup).toContain('path === "/settings"');
 
     expect(routerSetup).not.toContain("path.match(/^\\/settings\\/workflows\\/(new|[a-z0-9-]+)$/)");

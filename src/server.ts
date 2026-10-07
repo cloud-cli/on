@@ -271,14 +271,17 @@ export class WebhookServer {
     if (req.method === "GET" && url.pathname === "/pages/settings.html") {
       const rawPage = url.searchParams.get("page");
       const page =
-        rawPage === "notifications"
-          ? "notifications"
-          : rawPage === "workers"
-            ? "workers"
-            : rawPage === "timezone"
-              ? "timezone"
-              : "tokens";
-      if (page !== "tokens" && !this.requireAdmin(req, res)) return;
+        rawPage === "settings"
+          ? "settings"
+          : rawPage === "notifications"
+            ? "notifications"
+            : rawPage === "workers"
+              ? "workers"
+              : rawPage === "timezone"
+                ? "timezone"
+                : "tokens";
+      if (page === "settings" && !this.requireAuthenticatedUser(req, res)) return;
+      if (page !== "settings" && page !== "tokens" && !this.requireAdmin(req, res)) return;
       if (page === "tokens" && !this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie))
         return this.requireAdmin(req, res);
       return this.renderPageComponent(res, "page-settings", generateSettingsHtml(page));
@@ -301,7 +304,7 @@ export class WebhookServer {
       return res.end();
     }
 
-    const settingsPageMatch = url.pathname.match(/^\/settings\/(secrets|tokens|notifications|workers)$/);
+    const settingsPageMatch = url.pathname.match(/^\/settings\/(secrets|tokens|notifications|workers|timezone)$/);
     if (req.method === "GET" && settingsPageMatch) {
       const page = settingsPageMatch[1] as "secrets" | "tokens" | "notifications" | "workers";
       if (page === "secrets") {

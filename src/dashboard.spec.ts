@@ -53,6 +53,14 @@ describe("dashboard", () => {
     expect(dashboardSetup).toContain("if (searchInProgress && !isSearch) return");
     expect(dashboardSetup).toContain("generation !== refreshGeneration");
     expect(html).toContain("Filter runs by status");
+    expect(html).toContain('bind-class="statusClass(job.status)"');
+    expect(html).toContain('bind-icon="statusIcon(job.status)"');
+    expect(dashboardSetup).toContain("border-rose-300 bg-rose-100 text-rose-800");
+    expect(dashboardSetup).toContain("border-emerald-300 bg-emerald-100 text-emerald-800");
+    expect(dashboardSetup).toContain("border-amber-300 bg-amber-100 text-amber-900");
+    expect(dashboardSetup).toContain("border-blue-300 bg-blue-100 text-blue-800");
+    expect(html).toContain("ml-2 inline-flex items-center gap-1 rounded-full");
+    expect(html).toContain('role="status"');
     expect(dashboardSetup).toContain('new EventSource("/api/events")');
     expect(dashboardSetup).toContain("/api/push/public-key");
     expect(html).toContain("https://sodium.static.apphor.de/lucide-icon.html");

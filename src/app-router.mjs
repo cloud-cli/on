@@ -3,6 +3,13 @@ import { getElement, load, onDestroy, onInit, templateRef } from "@li3/web";
 export default function () {
   const outlet = templateRef("outlet");
   let navigating = false;
+  const settingsSections = {
+    "/settings/secrets": "secrets",
+    "/settings/tokens": "keys",
+    "/settings/notifications": "notifications",
+    "/settings/workers": "workers",
+    "/settings/timezone": "timezone",
+  };
   const route = () => {
     const url = new URL(window.location.href);
     const path = url.pathname;
@@ -11,18 +18,14 @@ export default function () {
     if (path.match(/^\/runs\/\d+$/))
       return { component: "page-run", url: `/pages/run.html?jobId=${path.split("/").pop()}`, page: "run" };
     if (path === "/help") return { component: "page-help", url: "/pages/help.html", page: "help" };
-    if (path === "/settings/secrets")
-      return { component: "page-secrets", url: "/pages/workflows.html?page=secrets", page: "secrets" };
-    if (path === "/settings/tokens")
-      return { component: "page-settings", url: "/pages/settings.html?page=tokens", page: "tokens" };
-    if (path === "/settings/notifications")
-      return { component: "page-settings", url: "/pages/settings.html?page=notifications", page: "notifications" };
-    if (path === "/settings/workers")
-      return { component: "page-settings", url: "/pages/settings.html?page=workers", page: "workers" };
-    if (path === "/settings/timezone")
-      return { component: "page-settings", url: "/pages/settings.html?page=timezone", page: "timezone" };
-    if (path === "/settings")
-      return { component: "page-settings", url: "/pages/settings.html?page=tokens", page: "tokens" };
+    if (path === "/settings" || settingsSections[path]) {
+      const section = settingsSections[path] || "timezone";
+      return {
+        component: "page-settings",
+        url: `/pages/settings.html?page=settings${path === "/settings" ? "" : `#section-${section}`}`,
+        page: "settings",
+      };
+    }
     if (path === "/workflows")
       return { component: "page-workflows", url: "/pages/workflows.html?page=workflows", page: "workflows" };
     const legacyEditor = path.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
@@ -46,6 +49,19 @@ export default function () {
       } else {
         await load(current.url);
         outlet.value.replaceChildren(document.createElement(current.component));
+        const settingsSection = settingsSections[window.location.pathname];
+        if (settingsSection && !window.location.hash) {
+          history.replaceState(
+            null,
+            "",
+            `${window.location.pathname}${window.location.search}#section-${settingsSection}`,
+          );
+        }
+        if (window.location.hash) {
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => document.querySelector(window.location.hash)?.scrollIntoView()),
+          );
+        }
       }
       if (replace) history.replaceState(null, "", window.location.href);
     } catch (error) {

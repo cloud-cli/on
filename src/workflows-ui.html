@@ -35,26 +35,6 @@
             back-label="Back to dashboard"
           ></app-header
         ></template>
-        <nav
-          class="flex flex-wrap gap-1 rounded-xl border border-flow-border bg-flow-card p-1"
-          aria-label="Settings navigation"
-        >
-          <a
-            href="/settings/secrets"
-            class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
-            bind-class="page === 'secrets' ? 'bg-flow-sidebar.text-flow-foreground' : ''"
-            >Secrets</a
-          >
-          <a href="/settings/tokens" class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
-            >API tokens</a
-          >
-          <a
-            href="/settings/notifications"
-            class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
-            >Notifications</a
-          >
-        </nav>
-
         <template if="notice">
           <div
             role="status"
@@ -422,8 +402,8 @@
         </template>
 
         <section
-            class="secrets-panel rounded-2xl border border-flow-border bg-flow-card p-4 shadow-sm shadow-flow-foreground/5 sm:p-5"
-            class-hidden="page === 'list' || page === 'workflows' || page === 'editor'"
+          class="secrets-panel rounded-2xl border border-flow-border bg-flow-card p-4 shadow-sm shadow-flow-foreground/5 sm:p-5"
+          class-hidden="page === 'list' || page === 'workflows' || page === 'editor'"
           aria-labelledby="secrets-title"
         >
           <div class="mb-5 flex items-start justify-between gap-3">

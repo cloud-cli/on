@@ -14,6 +14,7 @@ describe("Flow application shell", () => {
     expect(html.match(/href="\/settings\/tokens"/g)).toHaveLength(2);
     expect(html).toContain("activeSection === 'settings' ? 'page' : null");
     expect(html).toContain("focus-visible:ring-2");
+    expect(html).toContain('>FLOW<span class="text-flow-primary">.</span>');
     expect(html).toContain('href="#main-content"');
     expect(html).toContain('id="main-content"');
     expect(html).not.toContain('<main class="min-h-screen min-w-0');
