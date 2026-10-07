@@ -40,14 +40,14 @@ describe("public UI concept preview", () => {
   it("renders workflows as revision-labelled rows with accessible icon-only actions", () => {
     const demo = readFileSync(new URL("../docs/ui-concept/app.js", import.meta.url), "utf8");
 
-    expect(demo).toContain('class="workflow-item"');
+    expect(demo).toContain('class="workflow-item grid grid-cols-[minmax(0,1fr)_auto]');
     expect(demo).toContain("v${workflow.revision || 1}");
     expect(demo).toContain('aria-label="View source for ${workflow.name}"');
     expect(previewLiveSource).toContain("workflow.revision || 1");
     expect(previewLiveSource).toContain('aria-label="Edit ${escape(workflow.name || workflow.id)}"');
     expect(previewLiveSource).toContain('aria-label="View runs for ${escape(');
     expect(previewLiveSource).not.toContain('<span class="workflow-icon">');
-    expect(previewLiveSource).toContain('class="workflow-list mt-4"');
+    expect(previewLiveSource).toContain('class="workflow-list mt-4 overflow-hidden');
   });
 
   it("keeps workers, secrets, tokens, timezone, and the admin roster in Settings", () => {
@@ -64,7 +64,7 @@ describe("public UI concept preview", () => {
     expect(previewLiveSource).toContain('apiJson("/api/preferences")');
     expect(previewLiveSource).toContain('apiJson("/api/users")');
     expect(previewLiveSource).toContain('apiJson("/api/workers")');
-    expect(previewLiveSource).toContain('class="mono min-w-0 max-w-[min(58vw,480px)] truncate"');
+    expect(previewLiveSource).toContain('class="mono min-w-0 max-w-[min(58vw,480px)] truncate text-xs font-medium"');
     expect(previewLiveSource).not.toContain("Workflow editing</h2>");
   });
 
@@ -80,6 +80,16 @@ describe("public UI concept preview", () => {
     expect(markup).toContain('data-icon="external"');
     expect(previewLiveSource).toContain('apiJson("/api/session")');
     expect(previewLiveSource).toContain("link.href = profileUrl.toString()");
+  });
+
+  it("uses Tailwind utilities for workflow rows and worker cards", () => {
+    const demo = readFileSync(new URL("../docs/ui-concept/app.js", import.meta.url), "utf8");
+    const stylesheet = readFileSync(new URL("../docs/ui-concept/style.css", import.meta.url), "utf8");
+
+    expect(demo).toContain("grid-cols-[minmax(0,1fr)_auto]");
+    expect(demo).toContain("worker-card rounded-lg border border-flow-border bg-white p-5");
+    expect(previewLiveSource).toContain("worker-card rounded-lg border border-flow-border bg-white p-5");
+    expect(stylesheet).not.toMatch(/\.workflow-item\s*\{|\.worker-card\s*\{|\.card-heading\s*\{/);
   });
 
   it("embeds its styles and interactive prototype without separate asset requests", () => {

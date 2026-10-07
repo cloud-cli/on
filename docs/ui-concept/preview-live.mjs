@@ -598,7 +598,7 @@ export function mountLivePreview() {
     if (state.detailTab === "artifacts") {
       const artifacts = run.artifacts || [];
       content.innerHTML = artifacts.length
-        ? `<section class="settings-section"><h2>Run artifacts <span class="count">${
+        ? `<section class="settings-section mb-4 rounded-[7px] border border-flow-border bg-white px-5 py-[18px] max-[600px]:px-[18px]"><h2 class="mb-[15px]">Run artifacts <span class="count">${
             artifacts.length
           }</span></h2>${artifacts
             .map(
@@ -619,7 +619,7 @@ export function mountLivePreview() {
       const history = await loadRunHistory(run);
       content.innerHTML =
         history.length > 1
-          ? `<section class="settings-section"><h2>Execution history</h2>${history
+          ? `<section class="settings-section mb-4 rounded-[7px] border border-flow-border bg-white px-5 py-[18px] max-[600px]:px-[18px]"><h2 class="mb-[15px]">Execution history</h2>${history
               .map(
                 (entry) =>
                   `<div class="setting-row"><div><strong><a href="#/runs/${encodeURIComponent(
@@ -835,15 +835,15 @@ export function mountLivePreview() {
     const workflowRows = visibleWorkflows
       .map((workflow) => {
         const index = state.workflows.indexOf(workflow);
-        return `<div class="workflow-item"><div class="workflow-header"><span class="workflow-name">${escape(
+        return `<div class="workflow-item grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-[5px] border-b border-flow-border px-4 py-[13px] last:border-b-0 max-[900px]:grid-cols-1 max-[900px]:gap-2"><div class="workflow-header col-start-1 flex min-w-0 items-center gap-[10px]"><span class="workflow-name overflow-hidden text-ellipsis whitespace-nowrap font-semibold">${escape(
           workflow.name || workflow.id,
         )}</span><span class="workflow-status ${
           workflow.status === "published" ? "success" : workflow.status === "archived" ? "disabled" : "enabled"
-        }">${escape(workflow.status)}</span></div><div class="workflow-meta"><span>v${escape(
+        } rounded px-[7px] py-[3px] text-[11px] capitalize">${escape(workflow.status)}</span></div><div class="workflow-meta col-start-1 flex min-w-0 items-center gap-[10px] pl-[27px] text-[11px] text-[#7e8874]"><span>v${escape(
           workflow.revision || 1,
         )}</span><span class="workflow-id mono">${escape(
           workflow.id,
-        )}</span></div><div class="workflow-actions"><a class="button" aria-label="View runs for ${escape(
+        )}</span></div><div class="workflow-actions col-start-2 row-span-2 row-start-1 flex min-w-0 flex-wrap items-center justify-end gap-[10px] max-[900px]:col-start-1 max-[900px]:row-start-auto max-[900px]:justify-start max-[900px]:pl-[27px]"><a class="button !px-[9px] !py-[6px] !text-[11px]" aria-label="View runs for ${escape(
           workflow.name || workflow.id,
         )}" title="View runs" href="#/runs?workflow=${encodeURIComponent(
           workflow.id,
@@ -876,7 +876,7 @@ export function mountLivePreview() {
         ? `<div class="empty-state">${icon("lock")}<h3>Workflows unavailable</h3><p>${escape(
             permissionMessage(state.errors.workflows, "workflows:read"),
           )}</p><button class="button" data-action="retry-workflows">Retry</button></div>`
-        : `<div class="status-tabs" role="group" aria-label="Filter workflows by status">${tabButtons}</div><div class="workflow-list mt-4">${content}</div>`
+        : `<div class="status-tabs" role="group" aria-label="Filter workflows by status">${tabButtons}</div><div class="workflow-list mt-4 overflow-hidden rounded-[7px] border border-[#cbd3c8] bg-white">${content}</div>`
     }`;
   };
 
@@ -888,25 +888,28 @@ export function mountLivePreview() {
     setBreadcrumbs("settings");
     const workerContent = state.errors.workers
       ? `<p class="settings-note">${escape(permissionMessage(state.errors.workers, "workers:read"))}</p><button class="button" data-action="retry-workers">Retry workers</button>`
-      : `<div class="cards">${
+      : `<div class="cards grid grid-cols-2 gap-4 max-[600px]:grid-cols-1">${
           state.workers
             .map(
               (worker) =>
-                `<article class="worker-card"><div class="card-heading">${icon("server")}<h2>${escape(
+                `<article class="worker-card rounded-lg border border-flow-border bg-white p-5"><div class="card-heading mb-[19px] flex items-center gap-[10px]"><span class="text-[19px] text-[#7e9468]">${icon("server")}</span><h2 class="text-[13px]">${escape(
                   worker.workerId || "Unknown worker",
-                )}</h2><span class="status ${worker.online ? "success" : "cancelled"}">${
+                )}</h2><span class="status ml-auto ${worker.online ? "success" : "cancelled"}">${
                   worker.online ? "Online" : "Offline"
-                }</span></div><div class="card-details">${
+                }</span></div><div class="card-details mt-[14px] flex flex-wrap gap-[7px]">${
                   (Array.isArray(worker.tags) ? worker.tags : [])
-                    .map((tag) => `<span class="tag mono">${escape(tag)}</span>`)
+                    .map(
+                      (tag) =>
+                        `<span class="tag mono rounded bg-[#f2f4ee] px-[7px] py-1 text-[10px] text-[#6b795e]">${escape(tag)}</span>`,
+                    )
                     .join("") || '<span class="settings-note">No labels</span>'
-                }</div><div class="worker-stats"><div><span class="meta-label">Active jobs</span><strong>${escape(
+                }</div><div class="worker-stats mt-[23px] grid grid-cols-2 gap-5"><div><span class="meta-label">Active jobs</span><strong>${escape(
                   worker.activeJobs ?? 0,
                 )}</strong></div><div><span class="meta-label">Concurrency</span><strong>${escape(
                   worker.concurrency ?? "—",
-                )}</strong></div></div><div class="card-footer"><span class="settings-note">${
+                )}</strong></div></div><div class="card-footer mt-[23px] flex items-center justify-between border-t border-flow-border pt-4"><span class="settings-note text-[12px] leading-[1.8] text-flow-muted">${
                   worker.version ? `Runner ${escape(worker.version)}` : "Runner version unavailable"
-                }</span><span class="settings-note">Seen ${escape(formatDate(worker.lastSeen))}</span></div></article>`,
+                }</span><span class="settings-note text-[12px] leading-[1.8] text-flow-muted">Seen ${escape(formatDate(worker.lastSeen))}</span></div></article>`,
             )
             .join("") || '<p class="settings-note">No workers reported.</p>'
         }</div>`;
@@ -915,9 +918,9 @@ export function mountLivePreview() {
       : state.secrets
           .map(
             (name) =>
-              `<div class="setting-row"><strong class="mono min-w-0 max-w-[min(58vw,480px)] truncate" title="${escape(name)}">${escape(
+              `<div class="setting-row flex items-center justify-between gap-4 border-t border-flow-border py-3 max-[600px]:gap-[14px]"><strong class="mono min-w-0 max-w-[min(58vw,480px)] truncate text-xs font-medium" title="${escape(name)}">${escape(
                 name,
-              )}</strong><span class="secret-value" aria-label="Secret value hidden">••••••••••••</span><button class="button tiny danger" data-action="remove-secret" data-value="${escape(
+              )}</strong><span class="secret-value shrink-0 text-xs text-flow-muted" aria-label="Secret value hidden">••••••••••••</span><button class="button tiny danger" data-action="remove-secret" data-value="${escape(
                 name,
               )}">Remove</button></div>`,
           )
@@ -927,9 +930,9 @@ export function mountLivePreview() {
       : state.apiKeys
           .map(
             (key) =>
-              `<div class="setting-row"><div class="min-w-0"><strong class="mono">${escape(
+              `<div class="setting-row flex items-center justify-between gap-4 border-t border-flow-border py-3 max-[600px]:gap-[14px]"><div class="min-w-0"><strong class="mono block text-xs font-medium">${escape(
                 key.name || key.label || "API token",
-              )}</strong><p>${escape((key.scopes || []).join(", ") || "Access token")}</p></div><span class="secret-value shrink-0" aria-label="Token value hidden">••••••••••••</span></div>`,
+              )}</strong><p class="mt-1 text-[11px] text-flow-muted max-[600px]:text-[13px]">${escape((key.scopes || []).join(", ") || "Access token")}</p></div><span class="secret-value shrink-0 text-xs text-flow-muted" aria-label="Token value hidden">••••••••••••</span></div>`,
           )
           .join("") || '<p class="settings-note">No API tokens are configured.</p>';
     const userContent = state.errors.adminUsers
@@ -937,7 +940,7 @@ export function mountLivePreview() {
       : state.adminUsers
           .map(
             (user) =>
-              `<div class="setting-row"><div class="min-w-0"><strong>${escape(user.name || user.email || user.id)}</strong><p>${escape(
+              `<div class="setting-row flex items-center justify-between gap-4 border-t border-flow-border py-3 max-[600px]:gap-[14px]"><div class="min-w-0"><strong class="block text-xs font-medium">${escape(user.name || user.email || user.id)}</strong><p class="mt-1 text-[11px] text-flow-muted max-[600px]:text-[13px]">${escape(
                 user.email || "",
               )}</p></div><span class="workflow-status ${user.role === "admin" ? "success" : ""}">${escape(
                 user.role || "user",
@@ -950,17 +953,17 @@ export function mountLivePreview() {
     main.innerHTML = `${pageHeading(
       "Settings",
       "Workspace preferences and administration.",
-    )}<section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${
+    )}<section class="settings-section mb-4 rounded-[7px] border border-flow-border bg-white px-5 py-[18px] max-[600px]:px-[18px]"><h2 class="mb-[15px]">Preferences</h2><label class="setting-row flex items-center justify-between gap-4 py-3 max-[600px]:gap-[14px]"><span><strong class="block text-xs font-medium">Compact run list</strong><span class="settings-note text-[12px] leading-[1.8] text-flow-muted">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${
       localStorage.getItem("flow-concept-compact") === "true" ? "checked" : ""
-    }/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${
+    }/></label><label class="setting-row flex items-center justify-between gap-4 border-t border-flow-border py-3 max-[600px]:gap-[14px]"><span><strong class="block text-xs font-medium">Wrap log lines</strong><span class="settings-note text-[12px] leading-[1.8] text-flow-muted">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${
       state.wrap ? "checked" : ""
-    }/></label><label class="setting-row"><span><strong>Timezone</strong><span class="settings-note">Use this timezone for displayed dates.</span></span><select id="timezone-setting">${timezoneOptions}</select></label></section><section class="settings-section"><h2>Workers</h2>${workerContent}</section><section class="settings-section"><h2>${icon(
+    }/></label><label class="setting-row flex items-center justify-between gap-4 border-t border-flow-border py-3 max-[600px]:gap-[14px]"><span><strong class="block text-xs font-medium">Timezone</strong><span class="settings-note text-[12px] leading-[1.8] text-flow-muted">Use this timezone for displayed dates.</span></span><select id="timezone-setting">${timezoneOptions}</select></label></section><section class="settings-section mb-4 rounded-[7px] border border-flow-border bg-white px-5 py-[18px] max-[600px]:px-[18px]"><h2 class="mb-[15px]">Workers</h2>${workerContent}</section><section class="settings-section mb-4 rounded-[7px] border border-flow-border bg-white px-5 py-[18px] max-[600px]:px-[18px]"><h2 class="mb-[15px]">${icon(
       "lock",
-    )} Secret names</h2><p class="settings-note">Values are never requested or displayed in this preview.</p>${secretContent}${
+    )} Secret names</h2><p class="settings-note mb-2 text-[12px] leading-[1.8] text-flow-muted">Values are never requested or displayed in this preview.</p>${secretContent}${
       !state.errors.secrets && state.secrets.length < 5
         ? '<div class="setting-row"><button class="button tiny" data-action="add-secret">Add secret</button></div>'
         : ""
-    }</section><section class="settings-section"><h2>API tokens</h2>${tokenContent}</section><section class="settings-section"><h2>Admin roster</h2>${userContent}</section>`;
+    }</section><section class="settings-section mb-4 rounded-[7px] border border-flow-border bg-white px-5 py-[18px] max-[600px]:px-[18px]"><h2 class="mb-[15px]">API tokens</h2>${tokenContent}</section><section class="settings-section mb-4 rounded-[7px] border border-flow-border bg-white px-5 py-[18px] max-[600px]:px-[18px]"><h2 class="mb-[15px]">Admin roster</h2>${userContent}</section>`;
   };
 
   const showNotFound = () => {

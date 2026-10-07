@@ -644,10 +644,10 @@ function workflowSource(workflow) {
     .join("\n")}`;
 }
 function workflowsPage() {
-  main.innerHTML = `<div class="workflow-list">${workflows
+  main.innerHTML = `<div class="workflow-list overflow-hidden rounded-[7px] border border-[#cbd3c8] bg-white">${workflows
     .map(
       (workflow, index) =>
-        `<article class="workflow-item"><div class="workflow-header"><span class="workflow-name">${workflow.name}</span><span class="workflow-status success">Enabled</span></div><div class="workflow-meta"><span>v${workflow.revision || 1}</span><span>${workflow.steps.length} steps</span></div><div class="workflow-actions"><a class="button" href="#/runs?workflow=${workflow.id}" aria-label="View runs for ${workflow.name}" title="View runs">${icon(
+        `<article class="workflow-item grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-[5px] border-b border-flow-border px-4 py-[13px] last:border-b-0 max-[900px]:grid-cols-1 max-[900px]:gap-2"><div class="workflow-header col-start-1 flex min-w-0 items-center gap-[10px]"><span class="workflow-name overflow-hidden text-ellipsis whitespace-nowrap font-semibold">${workflow.name}</span><span class="workflow-status success rounded bg-[#edf5e8] px-[7px] py-[3px] text-[11px] capitalize text-[#4d7040]">Enabled</span></div><div class="workflow-meta col-start-1 flex min-w-0 items-center gap-[10px] pl-[27px] text-[11px] text-[#7e8874]"><span>v${workflow.revision || 1}</span><span>${workflow.steps.length} steps</span></div><div class="workflow-actions col-start-2 row-span-2 row-start-1 flex min-w-0 flex-wrap items-center justify-end gap-[10px] max-[900px]:col-start-1 max-[900px]:row-start-auto max-[900px]:justify-start max-[900px]:pl-[27px]"><a class="button !px-[9px] !py-[6px] !text-[11px]" href="#/runs?workflow=${workflow.id}" aria-label="View runs for ${workflow.name}" title="View runs">${icon(
           "runs",
         )}</a><button class="button" data-action="workflow-source" data-value="${index}" aria-label="View source for ${workflow.name}" title="View source">${icon(
           "code",
@@ -656,21 +656,24 @@ function workflowsPage() {
     .join("")}</div>`;
 }
 function workerCards() {
-  return `<div class="cards">${[
+  return `<div class="cards grid grid-cols-2 gap-4 max-[600px]:grid-cols-1">${[
     ["alpha", "main-server, docker", 36, 42, "1 / 4"],
     ["bravo", "node, linux", 12, 28, "0 / 4"],
     ["charlie", "docker, linux", 8, 21, "0 / 2"],
   ]
     .map(
       ([name, tags, cpu, memory, slots]) =>
-        `<article class="worker-card"><div class="card-heading">${icon(
+        `<article class="worker-card rounded-lg border border-flow-border bg-white p-5"><div class="card-heading mb-[19px] flex items-center gap-[10px]"><span class="text-[19px] text-[#7e9468]">${icon(
           "server",
-        )}<h2>${name}</h2><span class="status success">Online</span></div><p class="card-description">Linux x64 · systemd runner</p><div class="card-details">${tags
+        )}</span><h2 class="text-[13px]">${name}</h2><span class="status success ml-auto">Online</span></div><p class="card-description text-[13px] leading-[1.8] text-[#7e8874]">Linux x64 · systemd runner</p><div class="card-details mt-[14px] flex flex-wrap gap-[7px]">${tags
           .split(", ")
-          .map((tag) => `<span class="tag mono">${tag}</span>`)
+          .map(
+            (tag) =>
+              `<span class="tag mono rounded bg-[#f2f4ee] px-[7px] py-1 text-[10px] text-[#6b795e]">${tag}</span>`,
+          )
           .join(
             "",
-          )}</div><div class="worker-stats"><div><span class="meta-label">CPU <span>${cpu}%</span></span><div class="progress-track"><div class="progress-fill" style="width:${cpu}%"></div></div></div><div><span class="meta-label">Memory <span>${memory}%</span></span><div class="progress-track"><div class="progress-fill" style="width:${memory}%"></div></div></div></div><div class="card-footer"><span class="settings-note">${slots} slots in use</span><span class="settings-note">Sample snapshot</span></div></article>`,
+          )}</div><div class="worker-stats mt-[23px] grid grid-cols-2 gap-5"><div><span class="meta-label flex justify-between">CPU <span>${cpu}%</span></span><div class="progress-track mt-[10px] h-1 overflow-hidden rounded-[3px] bg-[#edf0e7]"><div class="progress-fill h-full rounded-[3px] bg-[#a1bf85]" style="width:${cpu}%"></div></div></div><div><span class="meta-label flex justify-between">Memory <span>${memory}%</span></span><div class="progress-track mt-[10px] h-1 overflow-hidden rounded-[3px] bg-[#edf0e7]"><div class="progress-fill h-full rounded-[3px] bg-[#a1bf85]" style="width:${memory}%"></div></div></div></div><div class="card-footer mt-[23px] flex items-center justify-between border-t border-flow-border pt-4"><span class="settings-note text-[12px] leading-[1.8] text-flow-muted">${slots} slots in use</span><span class="settings-note text-[12px] leading-[1.8] text-flow-muted">Sample snapshot</span></div></article>`,
     )
     .join("")}</div>`;
 }
@@ -683,11 +686,11 @@ function getPreference(key) {
 }
 function settingsPage() {
   const timezone = localStorage.getItem("flow-concept-timezone") || "UTC";
-  main.innerHTML = `<div class="page-heading"><div><h1>Settings</h1><p class="subtitle">The essentials for your workspace.</p></div></div><section class="settings-section"><h2>Preferences</h2><label class="setting-row"><span><strong>Compact run list</strong><span class="settings-note">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${
+  main.innerHTML = `<div class="page-heading"><div><h1>Settings</h1><p class="subtitle">The essentials for your workspace.</p></div></div><section class="settings-section mb-4 rounded-[7px] border border-flow-border bg-white px-5 py-[18px]"><h2 class="mb-[15px]">Preferences</h2><label class="setting-row flex items-center justify-between gap-4 py-3"><span><strong class="block text-xs font-medium">Compact run list</strong><span class="settings-note text-[12px] leading-[1.8] text-flow-muted">Fit more activity on your screen.</span></span><input type="checkbox" id="compact-setting" ${
     getPreference("compact") ? "checked" : ""
-  }/></label><label class="setting-row"><span><strong>Wrap log lines</strong><span class="settings-note">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${
+  }/></label><label class="setting-row flex items-center justify-between gap-4 border-t border-flow-border py-3"><span><strong class="block text-xs font-medium">Wrap log lines</strong><span class="settings-note text-[12px] leading-[1.8] text-flow-muted">Keep long output within the log viewer.</span></span><input type="checkbox" id="wrap-setting" ${
     state.wrap ? "checked" : ""
-  }/></label><label class="setting-row"><span><strong>Timezone</strong><span class="settings-note">Use this timezone for displayed dates.</span></span><select id="timezone-setting"><option ${timezone === "UTC" ? "selected" : ""}>UTC</option><option ${timezone === "America/Los_Angeles" ? "selected" : ""}>America/Los_Angeles</option><option ${timezone === "Europe/London" ? "selected" : ""}>Europe/London</option></select></label></section><section class="settings-section"><h2>Workers</h2><p class="settings-note">Execution capacity available to workflows.</p>${workerCards()}</section><section class="settings-section"><h2>${icon(
+  }/></label><label class="setting-row flex items-center justify-between gap-4 border-t border-flow-border py-3 max-[600px]:gap-[14px]"><span><strong class="block text-xs font-medium">Timezone</strong><span class="settings-note text-[12px] leading-[1.8] text-flow-muted">Use this timezone for displayed dates.</span></span><select id="timezone-setting"><option ${timezone === "UTC" ? "selected" : ""}>UTC</option><option ${timezone === "America/Los_Angeles" ? "selected" : ""}>America/Los_Angeles</option><option ${timezone === "Europe/London" ? "selected" : ""}>Europe/London</option></select></label></section><section class="settings-section mb-4 rounded-[7px] border border-flow-border bg-white px-5 py-[18px] max-[600px]:px-[18px]"><h2 class="mb-[15px]">Workers</h2><p class="settings-note text-[12px] leading-[1.8] text-flow-muted">Execution capacity available to workflows.</p>${workerCards()}</section><section class="settings-section mb-4 rounded-[7px] border border-flow-border bg-white px-5 py-[18px] max-[600px]:px-[18px]"><h2 class="mb-[15px]">${icon(
     "lock",
   )} Secrets</h2><p class="settings-note">Available to workflows. Values are never displayed in the dashboard.</p>${[
     "NPM_TOKEN",
@@ -696,7 +699,7 @@ function settingsPage() {
   ]
     .map(
       (name) =>
-        `<div class="setting-row"><div class="min-w-0"><strong class="mono block max-w-[min(58vw,480px)] truncate" title="${name}">${name}</strong><p>Workspace secret · Example</p></div><span class="secret-value shrink-0" aria-label="Value hidden">••••••••••••</span></div>`,
+        `<div class="setting-row flex items-center justify-between gap-4 border-t border-flow-border py-3 max-[600px]:gap-[14px]"><div class="min-w-0"><strong class="mono block max-w-[min(58vw,480px)] truncate text-xs font-medium" title="${name}">${name}</strong><p class="mt-1 text-[11px] text-flow-muted max-[600px]:text-[13px]">Workspace secret · Example</p></div><span class="secret-value shrink-0 text-xs text-flow-muted" aria-label="Value hidden">••••••••••••</span></div>`,
     )
     .join(
       "",
