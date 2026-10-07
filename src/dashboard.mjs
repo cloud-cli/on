@@ -31,12 +31,6 @@ export default function setup() {
     searchInProgress = false,
     refreshGeneration = 0;
   const upper = (value) => String(value || "").toUpperCase();
-  const sentence = (value) => {
-    const label = String(value || "unknown")
-      .replace(/[_-]+/g, " ")
-      .toLowerCase();
-    return label.charAt(0).toUpperCase() + label.slice(1);
-  };
   const workflowName = (id) => workflows.value.find((workflow) => workflow.id === id)?.name || "Workflow";
   const formatDate = (value) => {
     if (!value) return "—";
@@ -405,7 +399,6 @@ export default function setup() {
     setStatusFilter,
     workflowName,
     formatDate,
-    sentence,
     statusClass,
     statusIcon,
     loadMore,

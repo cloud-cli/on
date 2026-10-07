@@ -20,11 +20,21 @@ describe("dashboard", () => {
         id: 7,
         workflowId: "deploy",
         status: "running",
+        statusLabel: "Running",
         workerId: "worker-1",
         createdAt: "2026-09-04 12:00:00",
         updatedAt: "2026-09-04 12:00:05",
       },
     ]);
+  });
+
+  it("precomputes human-readable status labels for template-safe interpolation", () => {
+    const jobs = toDashboardJobs([
+      { ...row, status: "in_progress" },
+      { ...row, id: 8, status: "timed-out" },
+    ]);
+
+    expect(jobs.map((job) => job.statusLabel)).toEqual(["In progress", "Timed out"]);
   });
 
   it("hydrates a li3 app and refreshes from server events", () => {
@@ -55,6 +65,8 @@ describe("dashboard", () => {
     expect(html).toContain("Filter runs by status");
     expect(html).toContain('bind-class="statusClass(job.status)"');
     expect(html).toContain('bind-icon="statusIcon(job.status)"');
+    expect(html).toContain("{{ job.statusLabel }}");
+    expect(html).not.toContain("{{ sentence(job.status)");
     expect(dashboardSetup).toContain("border-rose-300 bg-rose-100 text-rose-800");
     expect(dashboardSetup).toContain("border-emerald-300 bg-emerald-100 text-emerald-800");
     expect(dashboardSetup).toContain("border-amber-300 bg-amber-100 text-amber-900");

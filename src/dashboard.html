@@ -99,8 +99,8 @@
                         class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold"
                         bind-class="statusClass(job.status)"
                         role="status"
-                        ><lucide-icon bind-icon="statusIcon(job.status)" size="14"></lucide-icon>{{ sentence(job.status)
-                        }}</span
+                        ><lucide-icon bind-icon="statusIcon(job.status)" size="14"></lucide-icon
+                        ><span>{{ job.statusLabel }}</span></span
                       >
                     </td>
                     <td class="px-3 py-3 text-flow-secondary">{{ job.workerId || 'Queued' }}</td>
