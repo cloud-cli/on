@@ -21,7 +21,7 @@
           back-label="Back to jobs"
         ></app-header>
         <nav
-          class="mb-6 flex flex-wrap gap-2 rounded-xl border border-flow-border bg-flow-card p-1"
+          class="sticky top-0 z-20 -mx-1 mb-6 flex flex-wrap gap-2 rounded-xl border border-flow-border bg-flow-card/95 p-1 shadow-sm backdrop-blur"
           aria-label="Settings section navigation"
         >
           <a href="#section-timezone" class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-background"
@@ -95,8 +95,9 @@
               <div class="space-y-2">
                 <template for="scope of scopeOptions"
                   ><label class="flex cursor-pointer items-center gap-3 text-sm"
-                    ><input type="checkbox" bind-checked="scope.selected" on-change="toggleScope(scope)" />{{
-                    scope.label }}</label
+                    ><input type="checkbox" bind-checked="scope.selected" on-change="toggleScope(scope)" /><span
+                      >{{ scope.label }}</span
+                    ></label
                   ></template
                 >
               </div>

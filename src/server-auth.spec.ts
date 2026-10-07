@@ -32,7 +32,7 @@ describe("browser admin-route authorization", () => {
     const { allowed, response } = invokeRequireAdmin({ authenticated: true });
 
     expect(allowed).toBe(false);
-    expect(response.writeHead).toHaveBeenCalledWith(302, { Location: "/settings/tokens" });
+    expect(response.writeHead).toHaveBeenCalledWith(302, { Location: "/settings" });
     expect(response.end).toHaveBeenCalledOnce();
   });
 
@@ -145,35 +145,28 @@ describe("workflow and secret settings authentication", () => {
     expect(response.writeHead).toHaveBeenCalledWith(204);
   });
 
-  it.each(["/settings/workflows", "/settings/secrets", "/settings/workflows/new"])(
-    "serves %s to any signed-in user",
-    async (path) => {
-      const server = {
-        oidc: { enabled: true, userFromCookie: () => ({ id: "user-1", role: "user" }) },
-        requireAuthenticatedUser: vi.fn(() => true),
-        renderAppShell: vi.fn(),
-      };
-      const request = {
-        url: path,
-        method: "GET",
-        headers: { host: "flow.test", cookie: "runner_oidc_session=session" },
-      };
-      const response = { writeHead: vi.fn(), end: vi.fn() };
+  it.each(["/settings/workflows", "/settings/workflows/new"])("serves %s to any signed-in user", async (path) => {
+    const server = {
+      oidc: { enabled: true, userFromCookie: () => ({ id: "user-1", role: "user" }) },
+      requireAuthenticatedUser: vi.fn(() => true),
+      renderAppShell: vi.fn(),
+    };
+    const request = {
+      url: path,
+      method: "GET",
+      headers: { host: "flow.test", cookie: "runner_oidc_session=session" },
+    };
+    const response = { writeHead: vi.fn(), end: vi.fn() };
 
-      await (WebhookServer.prototype as any).handleRequest.call(server, request, response);
+    await (WebhookServer.prototype as any).handleRequest.call(server, request, response);
 
-      expect(server.requireAuthenticatedUser).toHaveBeenCalled();
-      if (path === "/settings/secrets") {
-        expect(server.renderAppShell).toHaveBeenCalledOnce();
-      } else {
-        expect(response.writeHead).toHaveBeenCalledWith(302, {
-          Location: path.replace(/^\/settings\/workflows/, "/workflows"),
-        });
-        expect(response.end).toHaveBeenCalledOnce();
-        expect(server.renderAppShell).not.toHaveBeenCalled();
-      }
-    },
-  );
+    expect(server.requireAuthenticatedUser).toHaveBeenCalled();
+    expect(response.writeHead).toHaveBeenCalledWith(302, {
+      Location: path.replace(/^\/settings\/workflows/, "/workflows"),
+    });
+    expect(response.end).toHaveBeenCalledOnce();
+    expect(server.renderAppShell).not.toHaveBeenCalled();
+  });
 
   it("serves the legacy workflow/secrets component to a signed-in user", async () => {
     const server = {
@@ -193,7 +186,7 @@ describe("workflow and secret settings authentication", () => {
     expect(server.renderPageComponent).toHaveBeenCalledOnce();
   });
 
-  it("routes the legacy timezone URL to the app shell behind the existing admin gate", async () => {
+  it("does not serve removed legacy settings URLs", async () => {
     const server = {
       oidc: { enabled: true, userFromCookie: () => ({ id: "admin", role: "admin" }) },
       requireAdmin: vi.fn(() => true),
@@ -204,11 +197,13 @@ describe("workflow and secret settings authentication", () => {
       method: "GET",
       headers: { host: "flow.test", cookie: "runner_oidc_session=session" },
     };
+    const response = { writeHead: vi.fn(), end: vi.fn() };
 
-    await (WebhookServer.prototype as any).handleRequest.call(server, request, {});
+    await (WebhookServer.prototype as any).handleRequest.call(server, request, response);
 
-    expect(server.requireAdmin).toHaveBeenCalledOnce();
-    expect(server.renderAppShell).toHaveBeenCalledOnce();
+    expect(server.requireAdmin).not.toHaveBeenCalled();
+    expect(server.renderAppShell).not.toHaveBeenCalled();
+    expect(response.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json" });
   });
 });
 

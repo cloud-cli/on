@@ -15,13 +15,16 @@ describe("settings UI", () => {
     expect(source).toContain('href="#section-workers"');
     expect(source).toContain('id="section-keys"');
     expect(source).toContain('id="section-notifications"');
+    expect(source).toContain('class="sticky top-0 z-20');
+    expect(source).toContain("{{ scope.label }}");
+    expect(source).not.toContain("{{\n                      scope.label");
     expect(source).not.toContain('href="/settings/workflows"');
     expect(source).toContain("bg-white");
     expect(source).not.toContain("bg-gray-950");
   });
 
   it("loads and saves the user's timezone and formats worker/key timestamps", () => {
-    const html = generateSettingsHtml("workers") + settingsSetup;
+    const html = generateSettingsHtml() + settingsSetup;
     expect(settingsSetup).toContain("/api/preferences");
     expect(settingsSetup).toContain('method: "PUT"');
     expect(settingsSetup).toContain("Intl.DateTimeFormat");
@@ -44,14 +47,14 @@ describe("settings UI", () => {
     expect(html).toContain("administrators only");
   });
 
-  it("keeps the workers settings route", () => {
-    expect(generateSettingsHtml("workers")).toContain('data-page="workers"');
-    expect(serverSetup).toContain('rawPage === "workers"');
-    expect(serverSetup).toContain("generateSettingsHtml(page)");
+  it("keeps the unified settings document independent of legacy route parameters", () => {
+    expect(generateSettingsHtml()).toContain('data-page="settings"');
+    expect(serverSetup).not.toContain('rawPage === "workers"');
+    expect(serverSetup).toContain("generateSettingsHtml()");
   });
 
   it("exposes secrets on the unified settings page with anchored deep links", () => {
-    const html = generateSettingsHtml("settings");
+    const html = generateSettingsHtml();
     for (const section of ["timezone", "keys", "notifications", "workers", "users", "secrets"]) {
       expect(html).toContain(`id="section-${section}"`);
       expect(html).toContain(`href="#section-${section}"`);

@@ -11,10 +11,11 @@ describe("Flow application shell", () => {
     expect(html).toContain('aria-label="Mobile navigation"');
     expect(html.match(/href="\/runs"/g)).toHaveLength(3);
     expect(html.match(/href="\/workflows"/g)).toHaveLength(2);
-    expect(html.match(/href="\/settings\/tokens"/g)).toHaveLength(2);
+    expect(html.match(/href="\/settings"/g)).toHaveLength(2);
     expect(html).toContain("activeSection === 'settings' ? 'page' : null");
     expect(html).toContain("focus-visible:ring-2");
-    expect(html).toContain('>FLOW<span class="text-flow-primary">.</span>');
+    expect(html).toContain('>flow<span class="text-[#729b5b]">.</span>');
+    expect(html).toContain("w-[27px] rounded-[2px] bg-[#547d42]");
     expect(html).toContain('href="#main-content"');
     expect(html).toContain('id="main-content"');
     expect(html).not.toContain('<main class="min-h-screen min-w-0');

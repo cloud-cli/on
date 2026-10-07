@@ -39,12 +39,14 @@
             aria-label="Flow home"
           >
             <span
-              class="grid h-9 w-9 place-items-center rounded-xl bg-flow-primary text-sm font-black tracking-tight text-white"
+              class="mr-0.5 flex h-[34px] w-[31px] -skew-y-[13deg] flex-col justify-center gap-[5px]"
               aria-hidden="true"
-              >F</span
-            >
-            <span class="text-lg font-bold tracking-[0.12em] text-flow-foreground"
-              >FLOW<span class="text-flow-primary">.</span></span
+              ><i class="block h-[5px] w-[27px] rounded-[2px] bg-[#547d42]"></i
+              ><i class="block h-[5px] w-5 rounded-[2px] bg-[#547d42]"></i
+              ><i class="block h-[5px] w-[13px] rounded-[2px] bg-[#547d42]"></i
+            ></span>
+            <span class="text-[33px] font-bold leading-none tracking-[-1.9px] text-flow-foreground"
+              >flow<span class="text-[#729b5b]">.</span></span
             >
           </a>
           <nav aria-label="Primary navigation" class="space-y-1">
@@ -63,7 +65,7 @@
               ><lucide-icon icon="workflow" size="17"></lucide-icon>Workflows</a
             >
             <a
-              href="/settings/tokens"
+              href="/settings"
               on-click="setActive('settings')"
               attr-aria-current="activeSection === 'settings' ? 'page' : null"
               class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
@@ -118,7 +120,7 @@
             ><lucide-icon icon="workflow" size="17"></lucide-icon>Workflows</a
           >
           <a
-            href="/settings/tokens"
+            href="/settings"
             on-click="setActive('settings')"
             attr-aria-current="activeSection === 'settings' ? 'page' : null"
             class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg text-xs text-flow-secondary no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"

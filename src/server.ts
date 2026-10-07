@@ -269,22 +269,8 @@ export class WebhookServer {
       );
     }
     if (req.method === "GET" && url.pathname === "/pages/settings.html") {
-      const rawPage = url.searchParams.get("page");
-      const page =
-        rawPage === "settings"
-          ? "settings"
-          : rawPage === "notifications"
-            ? "notifications"
-            : rawPage === "workers"
-              ? "workers"
-              : rawPage === "timezone"
-                ? "timezone"
-                : "tokens";
-      if (page === "settings" && !this.requireAuthenticatedUser(req, res)) return;
-      if (page !== "settings" && page !== "tokens" && !this.requireAdmin(req, res)) return;
-      if (page === "tokens" && !this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie))
-        return this.requireAdmin(req, res);
-      return this.renderPageComponent(res, "page-settings", generateSettingsHtml(page));
+      if (!this.requireAuthenticatedUser(req, res)) return;
+      return this.renderPageComponent(res, "page-settings", generateSettingsHtml());
     }
 
     if (req.method === "GET" && url.pathname === "/workflows") {
@@ -302,19 +288,6 @@ export class WebhookServer {
       const destination = url.pathname.replace(/^\/settings\/workflows/, "/workflows") + url.search;
       res.writeHead(302, { Location: destination });
       return res.end();
-    }
-
-    const settingsPageMatch = url.pathname.match(/^\/settings\/(secrets|tokens|notifications|workers|timezone)$/);
-    if (req.method === "GET" && settingsPageMatch) {
-      const page = settingsPageMatch[1] as "secrets" | "tokens" | "notifications" | "workers";
-      if (page === "secrets") {
-        if (!this.requireAuthenticatedUser(req, res)) return;
-      } else if (page === "tokens") {
-        if (!this.oidc?.userFromCookie(req.headers.cookie) && !this.isAdmin(req)) return this.requireAdmin(req, res);
-      } else if (!this.requireAdmin(req, res)) {
-        return;
-      }
-      return this.renderAppShell(res);
     }
 
     if (url.pathname === "/api/session" && req.method === "GET") {
@@ -1016,7 +989,7 @@ export class WebhookServer {
     const path = (req.url || "/").split("?")[0];
     if (req.method === "GET" && !path.startsWith("/api/")) {
       if (this.oidc?.userFromCookie(req.headers.cookie)) {
-        res.writeHead(302, { Location: "/settings/tokens" });
+        res.writeHead(302, { Location: "/settings" });
         res.end();
         return false;
       }
