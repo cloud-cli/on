@@ -16,11 +16,11 @@
   <body>
     <a href="#main" class="skip-link">Skip to content</a>
     <aside
-      class="fixed inset-y-0 left-0 z-20 flex w-64 flex-col border-r border-flow-sidebar px-4 pt-8 pb-8 max-w-sm max:w-[48px] max-[900px]:w-[72px] max-[900px]:items-center max-[900px]:px-3 max-[900px]:pt-7 max-[900px]:pb-3 max-[600px]:inset-x-0 max-[600px]:inset-y-auto max-[600px]:bottom-0 max-[600px]:h-[62px] max-[600px]:w-full max-[600px]:flex-row max-[600px]:items-center max-[600px]:border-0 max-[600px]:border-t max-[600px]:bg-flow-gray-100 max-[600px]:px-3 max-[600px]:pt-0 max-[600px]:pb-0 max-[600px]:backdrop-blur-sm"
+      class="sidebar fixed inset-y-0 left-0 z-20 flex w-56 flex-col border-r border-flow-border bg-flow-sidebar px-[17px] pt-8 pb-[18px] max-[1180px]:w-48 max-[1180px]:px-3 max-[900px]:w-[72px] max-[900px]:items-center max-[900px]:px-[9px] max-[900px]:pt-[27px] max-[900px]:pb-[15px] max-[600px]:inset-x-0 max-[600px]:inset-y-auto max-[600px]:bottom-0 max-[600px]:h-[62px] max-[600px]:w-full max-[600px]:flex-row max-[600px]:items-center max-[600px]:border-r-0 max-[600px]:border-t max-[600px]:bg-[#fafbf8f5] max-[600px]:px-3 max-[600px]:pt-0 max-[600px]:pb-[env(safe-area-inset-bottom)] max-[600px]:backdrop-blur-[15px]"
       aria-label="Workspace navigation"
     >
       <a
-        class="flex w-fit items-center px-2 text-3xl font-bold tracking[-1.9px] max:[900px]:p-0 max:[900px]:text-0 max:[600px]:hidden"
+        class="brand flex w-fit items-center px-[13px] text-[33px] font-bold tracking-[-1.9px] max-[900px]:p-0 max-[900px]:text-[0px] max-[600px]:hidden"
         href="#/runs"
         aria-label="Flow home"
         ><span
@@ -31,7 +31,7 @@
         >flow<span class="brand-period text-[#729b5b]">.</span></a
       >
       <div
-        class="workspace mx-[2px] my-[38px] flex items-center gap-[10px] rounded-[7px] border border-flow-border bg-flow-gray-50 px-[10px] py-3 max-[1180px]:gap-[7px] max-[900px]:hidden"
+        class="workspace mx-[2px] my-[38px] flex items-center gap-[10px] rounded-[7px] border border-flow-border bg-flow-subtle px-[10px] py-3 max-[1180px]:gap-[7px] max-[900px]:hidden"
       >
         <span
           class="workspace-icon grid h-[31px] w-[30px] place-items-center rounded-[5px] border border-[#e2e7dc] bg-[#edf1e7] text-[19px] font-bold"
@@ -42,12 +42,12 @@
           ><span class="mt-[3px] block text-[13px] text-flow-muted">Engineering workspace</span>
         </div>
         <span
-          class="workspace-label ml-auto rounded-[3px] border border-flow-border px-1 py-[2px] text-[13px] text-flow-muted max:[1180x]:hidden"
+          class="workspace-label ml-auto rounded-[3px] border border-flow-border px-1 py-[2px] text-[13px] text-flow-muted max-[1180px]:hidden"
           >PRO</span
         >
       </div>
       <div
-        class="nav-caption mb-2 px-2 text-sm font-semibold tracking-[1.4px] text-flow-foreground max:[900px]:hidden"
+        class="nav-caption mb-3 px-[13px] text-[13px] font-semibold tracking-[1.4px] text-flow-muted max-[900px]:hidden"
       >
         WORKSPACE
       </div>
@@ -75,25 +75,25 @@
       </div>
     </aside>
     <div
-      class="ml-56 flex min-h-screen flex-col max:[1180x]:ml-48 max:[900x]:ml-72 max:[600x]:ml-0 max:[600x]:pb-3"
+      class="app-shell ml-56 flex min-h-screen flex-col max-[1180px]:ml-48 max-[900px]:ml-[72px] max-[600px]:ml-0 max-[600px]:pb-[62px]"
     >
       <header
-        class="topbar flex h-[72px] items-center justify-between gap-3 border-b border-flow-border px-7 max:[600x]:h-14 max:[600x]:px-2"
+        class="topbar flex h-[72px] items-center justify-between gap-[15px] border-b border-flow-border px-[42px] max-[1180px]:px-7 max-[600px]:h-[58px] max-[600px]:px-5"
       >
         <div
           class="breadcrumbs flex items-center gap-3 text-[13px] text-[#737a70] max-[600px]:gap-[7px]"
           id="breadcrumbs"
         ></div>
-        <div class="topbar-right flex items-center gap-4 max:[600x]:gap-2">
+        <div class="topbar-right flex items-center gap-5 max-[600px]:gap-[9px]">
           <button
-            class="icon-button flex items-center justify-center rounded-md px-2 py-1.5 text-flow-foreground hover:bg-flow-subtle max:[600x]:hidden"
+            class="icon-button inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-flow-muted hover:bg-flow-subtle max-[600px]:hidden"
             data-action="shortcuts"
             aria-label="Keyboard shortcuts"
             title="Keyboard shortcuts"
           >
             <span data-icon="keyboard"></span></button
           ><span
-            class="avatar small grid h-8 w-8 rounded-full bg-flow-gray-100 text-[10px] font-semibold text-flow-foreground max:[600x]:hidden"
+            class="avatar small grid h-[27px] w-[27px] place-items-center rounded-full bg-[#ebe6d9] text-[10px] font-semibold text-[#675c44] max-[600px]:hidden"
             >JD</span
           >
         </div>
