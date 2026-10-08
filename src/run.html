@@ -234,8 +234,8 @@
                 role="tab"
                 attr-aria-selected="detailTab === tab.id ? 'true' : 'false'"
                 on-click="selectDetailTab(tab.id)"
-                class="run-detail-tab inline-flex items-center gap-2 border-b-2 border-transparent px-1 pb-3 text-sm text-flow-secondary hover:text-flow-foreground"
-                bind-class="{ 'active': detailTab === tab.id }"
+                class="run-detail-tab inline-flex cursor-pointer items-center gap-2 rounded-t-md border-b-2 border-transparent px-3 pb-3 pt-2 text-sm text-flow-secondary transition-colors hover:bg-flow-panel hover:text-flow-primary"
+                class-active="detailTab === tab.id"
               >
                 <lucide-icon bind-icon="tab.icon" size="15"></lucide-icon>
                 {{ tab.label }}
@@ -254,7 +254,7 @@
                 <template for="step of steps">
                   <button
                     class="step-button mb-1 flex w-full cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 py-2.5 text-left text-sm font-medium text-flow-secondary transition-colors hover:bg-flow-background"
-                    bind-class="{ 'active': selectedStep === step.index }"
+                    class-active="selectedStep === step.index"
                     on-click="selectStep(step.index)"
                     attr-aria-pressed="selectedStep === step.index ? 'true' : 'false'"
                     aria-label="{{ step.name || step.id || 'Step' }}, {{ upper(step.status) }}"

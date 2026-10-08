@@ -181,8 +181,9 @@ describe("run view", () => {
     expect(source).toContain("detailTab !== 'inputs'");
     expect(source).toContain("detailTab !== 'artifacts'");
     expect(source).toContain("detailTab !== 'history'");
-    expect(source).toContain("'active': detailTab === tab.id");
-    expect(source).toContain("'active': selectedStep === step.index");
+    expect(source).toContain('class-active="detailTab === tab.id"');
+    expect(source).toContain('class-active="selectedStep === step.index"');
+    expect(source).toContain("hover:bg-flow-panel hover:text-flow-primary");
     expect(source).toContain("data-restart-menu");
     expect(source).toContain('addEventListener("pointerdown", handleOutsideRestartMenu)');
     expect(source).toContain('removeEventListener("pointerdown", handleOutsideRestartMenu)');
@@ -233,14 +234,13 @@ describe("run view", () => {
     expect(source).not.toContain("unsafe");
   });
 
-  it("styles active run tabs and steps to match the preview selection", () => {
+  it("gives the selected tab and step a clear active treatment", () => {
     const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
 
-    expect(css).toContain(".step-button.active");
-    expect(css).toContain("border-color: #e2e5dc");
-    expect(css).toContain("background: white");
-    expect(css).toContain("box-shadow: 0 1px 3px #23351204");
-    expect(css).toContain("color: #303e25");
     expect(css).toContain(".run-detail-tab.active");
+    expect(css).toContain("background-color: #e8f0e5");
+    expect(css).toContain(".step-button.active");
+    expect(css).toContain("0 0 0 1px #387045");
+    expect(css).toContain("font-weight: 700");
   });
 });

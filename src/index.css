@@ -43,17 +43,19 @@
   --font-mono: "IBM Plex Mono", monospace;
 }
 
-@layer utilities {
-  .step-button.active {
-    border-color: #e2e5dc;
-    background: white;
-    box-shadow: 0 1px 3px #23351204;
-    color: #303e25;
-  }
+.run-detail-tab.active {
+  border-bottom-color: #387045;
+  background-color: #e8f0e5;
+  color: #174522;
+  font-weight: 700;
+}
 
-  .run-detail-tab.active {
-    border-bottom-color: #387045;
-    color: #1a1e22;
-    font-weight: 600;
-  }
+.step-button.active {
+  border-color: #387045;
+  background-color: white;
+  box-shadow:
+    0 0 0 1px #387045,
+    0 1px 3px #23351214;
+  color: #174522;
+  font-weight: 700;
 }
