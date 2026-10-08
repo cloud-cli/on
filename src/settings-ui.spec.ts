@@ -8,7 +8,8 @@ describe("settings UI", () => {
   it("provides token, notifications, and worker settings without a duplicate workflows link", () => {
     const source = generateSettingsHtml() + settingsSetup;
     expect(source).toContain("/api/api-keys");
-    expect(source).toContain("Issue key");
+    expect(source).toContain("New API key");
+    expect(source).toContain("Generate API key");
     expect(source).toContain("workflows:write");
     expect(source).toContain("Notifications");
     expect(source).toContain("Workers");
@@ -19,6 +20,11 @@ describe("settings UI", () => {
     expect(source).toContain("{{ scope.label }}");
     expect(source).not.toContain("{{\n                      scope.label");
     expect(source).not.toContain('href="/settings/workflows"');
+    expect(source).toContain('ref="apiKeyForm"');
+    expect(source).toContain("key.token");
+    expect(source).toContain("apiKeyForm.value.open = false");
+    expect(settingsSetup).toContain("revealedKeys.get(key.id)");
+    expect(settingsSetup).toContain("isNew: true");
     expect(source).toContain("bg-white");
     expect(source).not.toContain("bg-gray-950");
     expect(source).not.toContain("<app-header");

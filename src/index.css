@@ -72,3 +72,9 @@
   background-color: #ffffff33;
   color: white;
 }
+
+.api-key-row.active {
+  border-color: #38704566;
+  background-color: #e8f0e580;
+  box-shadow: 0 1px 3px #23351214;
+}

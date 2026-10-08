@@ -3,13 +3,13 @@ import { apiFetch } from "@app/api-client.mjs";
 
 export default function () {
   const page = "settings";
+  const apiKeyForm = templateRef("apiKeyForm");
   const keys = ref([]);
   const workers = ref([]);
   const workersForbidden = ref(false);
   const users = ref([]);
   const usersForbidden = ref(false);
   const keyName = ref("");
-  const newToken = ref("");
   const error = ref("");
   const timezone = ref(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const preferenceMessage = ref("");
@@ -59,7 +59,12 @@ export default function () {
     return body;
   };
   const load = async () => {
-    keys.value = (await api("/api/api-keys")).keys;
+    const revealedKeys = new Map(keys.value.filter((key) => key.token).map((key) => [key.id, key]));
+    const storedKeys = (await api("/api/api-keys")).keys;
+    keys.value = storedKeys.map((key) => {
+      const revealed = revealedKeys.get(key.id);
+      return revealed ? { ...key, token: revealed.token, isNew: true } : key;
+    });
   };
   const loadSecrets = async () => {
     secrets.value = (await api("/api/secrets")).secrets;
@@ -213,8 +218,16 @@ export default function () {
           scopes: scopeOptions.value.filter((scope) => scope.selected).map((scope) => scope.name),
         }),
       });
-      newToken.value = result.token;
+      const issuedKey = {
+        ...result,
+        id: result.id || result.label || result.name,
+        created_at: result.created_at || result.createdAt || "",
+        token: result.token,
+        isNew: true,
+      };
+      keys.value = [issuedKey, ...keys.value.filter((key) => key.id !== issuedKey.id)];
       keyName.value = "";
+      apiKeyForm.value.open = false;
       await load();
     } catch (reason) {
       error.value = reason.message;
@@ -304,12 +317,12 @@ export default function () {
     setFileMode,
     selectSecret,
     keys,
+    apiKeyForm,
     workers,
     workersForbidden,
     users,
     usersForbidden,
     keyName,
-    newToken,
     error,
     timezone,
     timezones,
