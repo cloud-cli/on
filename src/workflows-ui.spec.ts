@@ -22,6 +22,10 @@ describe("workflow management UI", () => {
     expect(html).toContain('<link rel="stylesheet" href="/on.css" />');
     expect(html).toContain("<code-editor");
     expect(html).toContain("Workflow syntax help");
+    expect(source).toContain('href="/runs"');
+    expect(source).toContain("Go to runs");
+    expect(workflowsSetup).toContain("showRunsLink = false");
+    expect(workflowsSetup).toMatch(/showNotice\([\s\S]*?false,\s*true,\s*\);/);
   });
 
   it("defines every Flow color utility and keeps app pages free of inline styles", () => {

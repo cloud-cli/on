@@ -197,6 +197,7 @@ describe("run view", () => {
     expect(source).not.toContain("Workflow execution");
     expect(source).toContain('class="flex flex-wrap items-baseline gap-x-2');
     expect(source).toContain('on-click="selectStep(step.index)"');
+    expect(source).toContain('class="block min-w-0 flex-1 truncate"');
     expect(source).toContain("attr-aria-pressed=\"step.isSelected ? 'true' : 'false'\"");
     expect(source).toContain("attr-aria-label=\"(step.name || step.id || 'Step') + ', ' + upper(step.status)\"");
     expect(source).toContain('bind-innerhtml="stepLog(selectedStepReport)"');

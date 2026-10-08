@@ -29,11 +29,17 @@
         <template if="notice">
           <div
             role="status"
-            class="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm"
+            class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-3 py-2.5 text-sm"
             bind-class="noticeError ? 'border-flow-error/40 bg-flow-error/10 text-flow-error' : 'border-flow-success/40 bg-flow-success/10 text-flow-success'"
           >
             <lucide-icon bind-icon="noticeError ? 'circle-alert' : 'circle-check'" size="17"></lucide-icon>
-            <span>{{ notice }}</span>
+            <span class="min-w-0 flex-1">{{ notice }}</span>
+            <a
+              href="/runs"
+              class-hidden="!noticeLink"
+              class="shrink-0 font-semibold underline underline-offset-2 hover:opacity-80"
+              >Go to runs</a
+            >
           </div>
         </template>
 

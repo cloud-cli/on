@@ -37,6 +37,7 @@ export default function () {
   const secretFileData = ref("");
   const notice = ref("");
   const noticeError = ref(false);
+  const noticeLink = ref(false);
   const busy = ref(false);
   const secretValueInput = templateRef("secretValueInput");
   const secretFileInput = templateRef("secretFileInput");
@@ -46,9 +47,10 @@ export default function () {
   const helpLoading = ref(false);
   let validationTimer;
 
-  const showNotice = (message, error = false) => {
+  const showNotice = (message, error = false, showRunsLink = false) => {
     notice.value = message;
     noticeError.value = error;
+    noticeLink.value = showRunsLink;
   };
 
   const redirectToLogin = () => {
@@ -173,6 +175,8 @@ export default function () {
       });
       showNotice(
         `Queued ${result.jobs.length} job${result.jobs.length === 1 ? "" : "s"} from revision ${result.revision}.`,
+        false,
+        true,
       );
     });
   const remove = () =>
@@ -462,6 +466,7 @@ export default function () {
     secretFileData,
     notice,
     noticeError,
+    noticeLink,
     busy,
     validate,
     save,
