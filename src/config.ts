@@ -1,7 +1,7 @@
-import { existsSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
-import type { RunnerConfig, UserRunnerConfig } from './types.js';
-import { parseArgs } from 'node:util';
+import { existsSync, statSync } from "node:fs";
+import { resolve } from "node:path";
+import type { RunnerConfig, UserRunnerConfig } from "./types.js";
+import { parseArgs } from "node:util";
 
 export async function loadConfig(values): Promise<RunnerConfig | null> {
   const configFromCli: UserRunnerConfig = {
@@ -20,7 +20,7 @@ export async function loadConfig(values): Promise<RunnerConfig | null> {
   const config = resolveConfig(configFromFile, configFromCli);
 
   if (!config.database) {
-    console.error('DATABASE_URL is required. Set DATABASE_URL or pass --database.');
+    console.error("DATABASE_URL is required. Set DATABASE_URL or pass --database.");
     return null;
   }
   process.env.DATABASE_URL = config.database;
@@ -31,19 +31,19 @@ export async function loadConfig(values): Promise<RunnerConfig | null> {
 export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: UserRunnerConfig): RunnerConfig {
   const _ = process.env;
   const port = Number(configFromFile.port || configFromCli.port || _.PORT || 11235);
-  const configuredTags = configFromFile.tags ?? (_.RUNNER_TAGS ? _.RUNNER_TAGS.split(',') : []);
-  const oidcProviderUrl = _.RUNNER_OIDC_PROVIDER_URL ?? _.AUTH_PROVIDER;
-  const oidcClientId = _.RUNNER_OIDC_CLIENT_ID ?? _.OIDC_CLIENT_ID;
-  const oidcClientSecret = _.RUNNER_OIDC_CLIENT_SECRET ?? _.OIDC_CLIENT_SECRET;
+  const configuredTags = configFromFile.tags ?? (_.RUNNER_TAGS ? _.RUNNER_TAGS.split(",") : []);
+  const oidcProviderUrl = _.OIDC_ISSUER ?? _.RUNNER_OIDC_PROVIDER_URL;
+  const oidcClientId = _.OIDC_CLIENT_ID ?? _.RUNNER_OIDC_CLIENT_ID;
+  const oidcClientSecret = _.OIDC_CLIENT_SECRET ?? _.RUNNER_OIDC_CLIENT_SECRET;
   return {
     port,
-    adminToken: configFromFile.adminToken ?? _.RUNNER_ADMIN_SECRET ?? '',
-    workerToken: configFromFile.workerToken ?? _.RUNNER_WORKER_SECRET ?? '',
-    database: configFromFile.database ?? configFromCli.database ?? _.DATABASE_URL ?? '',
+    adminToken: configFromFile.adminToken ?? _.RUNNER_ADMIN_SECRET ?? "",
+    workerToken: configFromFile.workerToken ?? _.RUNNER_WORKER_SECRET ?? "",
+    database: configFromFile.database ?? configFromCli.database ?? _.DATABASE_URL ?? "",
     workers: Number(configFromFile.workers ?? configFromCli.workers ?? _.RUNNER_WORKERS ?? 5),
     serverUrl: configFromFile.serverUrl ?? _.RUNNER_SERVER_URL ?? `http://127.0.0.1:${port}`,
     tags: configuredTags.map((tag) => tag.trim()).filter(Boolean),
-    storagePath: configFromFile.storagePath ?? _.RUNNER_TMP ?? '/tmp/workspaces',
+    storagePath: configFromFile.storagePath ?? _.RUNNER_TMP ?? "/tmp/workspaces",
     env: configFromFile.env ?? {},
     plugins: configFromFile.plugins ?? [],
     push:
@@ -54,7 +54,7 @@ export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: U
             privateKey: _.RUNNER_VAPID_PRIVATE_KEY,
             subject: _.RUNNER_VAPID_SUBJECT ?? `mailto:admin@localhost`,
           }
-      : undefined),
+        : undefined),
     oidc:
       configFromFile.oidc ??
       (oidcProviderUrl && oidcClientId && oidcClientSecret
@@ -88,7 +88,7 @@ Options:
    -k, --workers    Maximum concurrent jobs (default: 5, env: RUNNER_WORKERS)
                     Worker tags (comma-separated env: RUNNER_TAGS)
                     Webhook server URL (env: RUNNER_SERVER_URL)
-                    OIDC settings (env: RUNNER_OIDC_PROVIDER_URL, RUNNER_OIDC_CLIENT_ID, RUNNER_OIDC_CLIENT_SECRET)
+                    OIDC settings (env: OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET)
     -h, --help       Show this help message
   `);
 }
@@ -97,12 +97,12 @@ export async function loadFromArgs(): Promise<{ config: RunnerConfig | null; com
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
-      config: { type: 'string', short: 'c', default: process.env.RUNNER_CONFIG_FILE || './runner.config.mjs' },
-      database: { type: 'string', short: 'd' },
-      port: { type: 'string', short: 'p' },
-      workers: { type: 'string', short: 'k' },
-      subject: { type: 'string' },
-      help: { type: 'boolean', short: 'h' },
+      config: { type: "string", short: "c", default: process.env.RUNNER_CONFIG_FILE || "./runner.config.mjs" },
+      database: { type: "string", short: "d" },
+      port: { type: "string", short: "p" },
+      workers: { type: "string", short: "k" },
+      subject: { type: "string" },
+      help: { type: "boolean", short: "h" },
     },
   });
 
@@ -115,7 +115,7 @@ export async function loadFromArgs(): Promise<{ config: RunnerConfig | null; com
 
   return {
     config,
-    command: positionals[0] || 'start',
+    command: positionals[0] || "start",
     subject: values.subject,
   };
 }

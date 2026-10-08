@@ -114,7 +114,7 @@ Time triggers are defined beside a webhook trigger:
 on:
   schedule:
     - id: nightly
-      cron: '0 2 * * *'
+      cron: "0 2 * * *"
       timezone: Europe/Berlin
   solar:
     - id: morning
@@ -170,24 +170,24 @@ npx @cloud-cli/on [command] [options]
 
 ### CLI and Environment Options
 
-| Flag | Option       | Default               | Env                    | Description                                      |
-| ---- | ------------ | --------------------- | ---------------------- | ------------------------------------------------ |
-| `-h` | `--help`     | —                     | -                      | Prints CLI help message and exits.               |
-| `-c` | `--config`   | `./runner.config.mjs` | `RUNNER_CONFIG_FILE`   | Path to JavaScript configuration file.           |
-| `-d` | `--database` | -                     | `DATABASE_URL`        | Node.js ES module URL exporting the database API. |
-| `-p` | `--port`     | `11235`               | `PORT`                 | Port for the Ingress HTTP server.                |
-| `-k` | `--workers`  | `5`                   | `RUNNER_WORKERS`       | Maximum concurrent jobs on this node.            |
-|      |              |                       | `RUNNER_ADMIN_SECRET`  | Admin token to refresh secrets via API           |
-|      |              |                       | `RUNNER_WORKER_SECRET` | Worker token for job events and secret retrieval |
-|      |              |                       | `RUNNER_OIDC_PROVIDER_URL` | OIDC issuer URL, for example `https://auth.api.apphor.de` |
-|      |              |                       | `RUNNER_OIDC_CLIENT_ID` | Registered OIDC client identifier                 |
-|      |              |                       | `RUNNER_OIDC_CLIENT_SECRET` | Registered OIDC client secret                 |
-|      |              |                       | `AUTH_PROVIDER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Short aliases for the OIDC settings above. |
-|      |              |                       | `RUNNER_SERVER_URL`    | Webhook server URL used by workers.              |
-|      |              |                       | `RUNNER_TAGS`          | Comma-separated worker capability tags.          |
-|      |              |                       | `RUNNER_VAPID_PUBLIC_KEY`  | Public key for background Web Push notifications. |
-|      |              |                       | `RUNNER_VAPID_PRIVATE_KEY` | Private key for background Web Push notifications. |
-|      |              |                       | `RUNNER_VAPID_SUBJECT`      | VAPID contact, such as `mailto:admin@example.com`. |
+| Flag | Option       | Default               | Env                                                                              | Description                                               |
+| ---- | ------------ | --------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `-h` | `--help`     | —                     | -                                                                                | Prints CLI help message and exits.                        |
+| `-c` | `--config`   | `./runner.config.mjs` | `RUNNER_CONFIG_FILE`                                                             | Path to JavaScript configuration file.                    |
+| `-d` | `--database` | -                     | `DATABASE_URL`                                                                   | Node.js ES module URL exporting the database API.         |
+| `-p` | `--port`     | `11235`               | `PORT`                                                                           | Port for the Ingress HTTP server.                         |
+| `-k` | `--workers`  | `5`                   | `RUNNER_WORKERS`                                                                 | Maximum concurrent jobs on this node.                     |
+|      |              |                       | `RUNNER_ADMIN_SECRET`                                                            | Admin token to refresh secrets via API                    |
+|      |              |                       | `RUNNER_WORKER_SECRET`                                                           | Worker token for job events and secret retrieval          |
+|      |              |                       | `OIDC_ISSUER`                                                                    | OIDC issuer URL, for example `https://auth.api.apphor.de` |
+|      |              |                       | `OIDC_CLIENT_ID`                                                                 | Registered OIDC client identifier                         |
+|      |              |                       | `OIDC_CLIENT_SECRET`                                                             | Registered OIDC client secret                             |
+|      |              |                       | `RUNNER_OIDC_PROVIDER_URL`, `RUNNER_OIDC_CLIENT_ID`, `RUNNER_OIDC_CLIENT_SECRET` | Legacy aliases for the OIDC settings above.               |
+|      |              |                       | `RUNNER_SERVER_URL`                                                              | Webhook server URL used by workers.                       |
+|      |              |                       | `RUNNER_TAGS`                                                                    | Comma-separated worker capability tags.                   |
+|      |              |                       | `RUNNER_VAPID_PUBLIC_KEY`                                                        | Public key for background Web Push notifications.         |
+|      |              |                       | `RUNNER_VAPID_PRIVATE_KEY`                                                       | Private key for background Web Push notifications.        |
+|      |              |                       | `RUNNER_VAPID_SUBJECT`                                                           | VAPID contact, such as `mailto:admin@example.com`.        |
 
 Set `RUNNER_ADMIN_SECRET` only on the HTTP server for dashboard and management APIs. Set the same non-empty `RUNNER_WORKER_SECRET` on the server and every worker to publish job-status refresh events and retrieve job-scoped secrets. When the three `RUNNER_OIDC_*` values are configured, `/auth/login` enables browser sign-in, the browser uses the same bearer-token API path as external consumers, authenticated users can read logs, and the API token settings page issues and revokes scoped tokens through the OIDC provider. Register `https://your-runner-host/auth/callback` as the OIDC redirect URI. The dashboard workflow APIs accept either Bearer authentication or HTTP Basic authentication with username `admin` and the admin secret.
 
@@ -203,25 +203,25 @@ You can customize engine behavior using `runner.config.mjs` in your project root
 
 ```javascript
 // runner.config.mjs
-import { GitHubStatusPlugin } from '@cloud-cli/on';
+import { GitHubStatusPlugin } from "@cloud-cli/on";
 
 export default {
   port: 3000,
   workers: 5,
-  serverUrl: 'https://runner.example.com/',
-  tags: ['linux', 'docker'],
-  storagePath: '/tmp/workspaces',
-  database: 'https://remote.db.com/',
+  serverUrl: "https://runner.example.com/",
+  tags: ["linux", "docker"],
+  storagePath: "/tmp/workspaces",
+  database: "https://remote.db.com/",
 
   // Global environment variables passed to all steps
   env: {
-    NODE_ENV: 'production',
+    NODE_ENV: "production",
   },
 
   plugins: [
     new GitHubStatusPlugin({
       token: process.env.SECRET_GITHUB_TOKEN,
-      context: 'on',
+      context: "on",
     }),
   ],
 };
