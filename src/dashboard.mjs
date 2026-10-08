@@ -7,7 +7,7 @@ export default function setup() {
     hasMore = ref(false),
     loadingMore = ref(false),
     page = ref(1);
-  const pageSize = 8;
+  const pageSize = 50;
   const timezone = ref(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const filter = ref(""),
     activeFilter = ref(""),

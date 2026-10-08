@@ -68,6 +68,7 @@ describe("dashboard", () => {
     expect(html).toContain('class-active="tab.isActive"');
     expect(html).toContain("attr-aria-pressed=\"tab.isActive ? 'true' : 'false'\"");
     expect(dashboardSetup).toContain("isActive: statusFilter.value === tab.status");
+    expect(dashboardSetup).toContain("const pageSize = 50");
     expect(html).not.toContain(">✓</span>");
     expect(html).toContain('bind-class="statusClass(job.status)"');
     expect(html).toContain('bind-icon="statusIcon(job.status)"');
