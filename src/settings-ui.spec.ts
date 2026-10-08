@@ -29,6 +29,12 @@ describe("settings UI", () => {
     expect(settingsSetup).toContain("/api/preferences");
     expect(settingsSetup).toContain('method: "PUT"');
     expect(settingsSetup).toContain("Intl.DateTimeFormat");
+    expect(html).toContain('type="text"');
+    expect(html).toContain('list="timezone-options"');
+    expect(html).toContain('<datalist id="timezone-options">');
+    expect(html).not.toContain("<select");
+    expect(settingsSetup).toContain("new Intl.DateTimeFormat(undefined, { timeZone: selectedTimezone })");
+    expect(settingsSetup).toContain("timezone.value = saved.timezone");
     expect(settingsSetup).not.toContain("setApiToken");
     expect(settingsSetup).toContain('new Date(text.includes("T") ? text : `${text.replace(" ", "T")}Z`)');
     expect(html).toContain("formatTimestamp(worker.lastSeen)");

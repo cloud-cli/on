@@ -180,13 +180,26 @@ export default function () {
   };
   const saveTimezone = async (event) => {
     const previousTimezone = timezone.value;
-    timezone.value = event.target.value;
+    const selectedTimezone = event.target.value.trim();
+    try {
+      new Intl.DateTimeFormat(undefined, { timeZone: selectedTimezone });
+    } catch {
+      preferenceMessage.value = "Enter a valid IANA timezone, such as Europe/Paris.";
+      event.target.value = previousTimezone;
+      return;
+    }
+    timezone.value = selectedTimezone;
     preferenceMessage.value = "";
     try {
-      await api("/api/preferences", { method: "PUT", body: JSON.stringify({ timezone: timezone.value }) });
-      preferenceMessage.value = "Timezone saved.";
+      const saved = await api("/api/preferences", {
+        method: "PUT",
+        body: JSON.stringify({ timezone: selectedTimezone }),
+      });
+      timezone.value = saved.timezone;
+      preferenceMessage.value = `Timezone saved: ${saved.timezone}.`;
     } catch (reason) {
       timezone.value = previousTimezone;
+      event.target.value = previousTimezone;
       error.value = reason.message;
     }
   };

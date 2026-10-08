@@ -59,3 +59,16 @@
   color: #174522;
   font-weight: 700;
 }
+
+.run-status-filter.active {
+  border-color: #387045;
+  background-color: #387045;
+  box-shadow: 0 1px 3px #1a1e2233;
+  color: white;
+  font-weight: 700;
+}
+
+.run-status-filter.active .run-status-count {
+  background-color: #ffffff33;
+  color: white;
+}

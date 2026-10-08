@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { generateDashboardHtml, toDashboardJobs } from "./dashboard.js";
 import dashboardSetup from "./dashboard.mjs?raw";
 
@@ -63,9 +65,10 @@ describe("dashboard", () => {
     expect(dashboardSetup).toContain("if (searchInProgress && !isSearch) return");
     expect(dashboardSetup).toContain("generation !== refreshGeneration");
     expect(html).toContain("Filter runs by status");
-    expect(html).toContain("aria-pressed:bg-flow-primary");
-    expect(html).toContain('class-hidden="statusFilter !== tab.status"');
-    expect(html).toContain("attr-aria-pressed=\"statusFilter === tab.status ? 'true' : 'false'\"");
+    expect(html).toContain('class-active="tab.isActive"');
+    expect(html).toContain("attr-aria-pressed=\"tab.isActive ? 'true' : 'false'\"");
+    expect(dashboardSetup).toContain("isActive: statusFilter.value === tab.status");
+    expect(html).not.toContain(">✓</span>");
     expect(html).toContain('bind-class="statusClass(job.status)"');
     expect(html).toContain('bind-icon="statusIcon(job.status)"');
     expect(html).toContain("{{ job.statusLabel }}");
@@ -99,5 +102,13 @@ describe("dashboard", () => {
     expect(dashboardSetup).toContain("registration.showNotification(");
     expect(dashboardSetup).toContain("!terminalStatuses.has(previousStatus) && terminalStatuses.has(job.status)");
     expect(html).not.toContain('http-equiv="refresh"');
+  });
+
+  it("gives the active run filter a strong selected style", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
+
+    expect(css).toContain(".run-status-filter.active");
+    expect(css).toContain("background-color: #387045");
+    expect(css).toContain(".run-status-filter.active .run-status-count");
   });
 });

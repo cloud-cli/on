@@ -47,14 +47,19 @@
           <h2 id="timezone-title" class="text-lg font-semibold">Your timezone</h2>
           <p class="mt-1 text-sm text-flow-muted">Used to display worker and API token timestamps.</p>
           <label for="timezone" class="mt-4 block text-sm font-medium">Timezone</label>
-          <select
+          <input
             id="timezone"
+            type="text"
+            list="timezone-options"
             bind-value="timezone"
             on-change="saveTimezone($event)"
-            class="mt-2 max-w-md rounded-lg border border-flow-border bg-white px-3 py-2 text-sm"
-          >
-            <template for="zone of timezones"><option attr-value="zone">{{ zone }}</option></template>
-          </select>
+            placeholder="Search or type an IANA timezone"
+            autocomplete="off"
+            class="mt-2 w-full max-w-md rounded-lg border border-flow-border bg-white px-3 py-2 text-sm"
+          />
+          <datalist id="timezone-options">
+            <template for="zone of timezones"><option attr-value="zone"></option></template>
+          </datalist>
           <p class="mt-2 text-sm text-flow-muted" role="status">{{ preferenceMessage }}</p>
         </section>
         <section

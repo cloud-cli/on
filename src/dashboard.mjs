@@ -58,24 +58,25 @@ export default function setup() {
             .includes(activeFilter.value.toLowerCase())),
     );
   const visibleJobs = () => filteredJobs().slice((page.value - 1) * pageSize, page.value * pageSize);
-  const statusTabs = () => [
-    { status: "all", label: "All runs", count: jobs.value.length },
-    {
-      status: "running",
-      label: "In progress",
-      count: jobs.value.filter((job) => ["pending", "running"].includes(job.status)).length,
-    },
-    {
-      status: "failed",
-      label: "Failed",
-      count: jobs.value.filter((job) => job.status === "failed").length,
-    },
-    {
-      status: "success",
-      label: "Passed",
-      count: jobs.value.filter((job) => job.status === "success").length,
-    },
-  ];
+  const statusTabs = () =>
+    [
+      { status: "all", label: "All runs", count: jobs.value.length },
+      {
+        status: "running",
+        label: "In progress",
+        count: jobs.value.filter((job) => ["pending", "running"].includes(job.status)).length,
+      },
+      {
+        status: "failed",
+        label: "Failed",
+        count: jobs.value.filter((job) => job.status === "failed").length,
+      },
+      {
+        status: "success",
+        label: "Passed",
+        count: jobs.value.filter((job) => job.status === "success").length,
+      },
+    ].map((tab) => ({ ...tab, isActive: statusFilter.value === tab.status }));
   const loadTimezone = async () => {
     const response = await apiFetch("/api/preferences", { headers: { accept: "application/json" } });
     if (!response.ok) throw new Error(`Loading timezone preference failed: ${response.status}`);
