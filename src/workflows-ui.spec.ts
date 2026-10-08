@@ -98,6 +98,9 @@ describe("workflow management UI", () => {
     expect(source).toContain("attr-href=\"'/workflows/' + workflow.id\"");
     expect(source).toContain('href="/workflows"');
     expect(source).toContain("Back to workflows");
+    expect(source).toContain('class="border-b border-flow-border px-4 pb-3 pt-3 sm:px-5"');
+    expect(source).toContain('theme="googlecode"');
+    expect(source).not.toContain("border-b border-flow-border pb-4");
     expect(source).not.toContain("<app-header");
     expect(source).not.toContain("Workflow control room");
     expect(source).not.toContain("Definitions</p>");

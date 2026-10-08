@@ -43,7 +43,7 @@
             class-hidden="page === 'secrets' || page === 'editor'"
             aria-labelledby="workflow-list-title"
           >
-            <div class="mb-4 flex items-end justify-between gap-3 border-b border-flow-border pb-4">
+            <div class="mb-4 flex items-end justify-between gap-3">
               <div>
                 <h2 id="workflow-list-title" class="mt-1 text-lg font-semibold text-flow-foreground">Workflows</h2>
               </div>
@@ -97,7 +97,7 @@
             class="editor-panel overflow-hidden rounded-2xl border border-flow-border bg-flow-card shadow-sm shadow-flow-foreground/5"
             class-hidden="page === 'list' || page === 'workflows' || page === 'secrets'"
           >
-            <div class="border-b border-flow-border px-4 pt-3 sm:px-5">
+            <div class="border-b border-flow-border px-4 pb-3 pt-3 sm:px-5">
               <a
                 href="/workflows"
                 class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-flow-secondary outline-none transition hover:bg-flow-sidebar hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary/40"
@@ -211,7 +211,7 @@
               <template if="readOnly">
                 <code-block
                   language="yaml"
-                  theme="atom-one-dark"
+                  theme="googlecode"
                   class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-auto rounded-lg border border-flow-border bg-flow-foreground p-4"
                   bind-source="source"
                 ></code-block>
@@ -220,7 +220,7 @@
                 <code-editor
                   id="source-yaml"
                   language="yaml"
-                  theme="atom-one-dark"
+                  theme="googlecode"
                   nostatus="true"
                   class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-hidden rounded-lg border border-flow-border bg-flow-foreground"
                   bind-value="source"
