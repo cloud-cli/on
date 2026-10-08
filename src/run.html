@@ -398,6 +398,14 @@
             <p class="p-6 text-sm text-flow-secondary" class-hidden="previousRuns.length">No previous runs.</p>
           </div>
           <div class-hidden="detailTab !== 'source'">
+            <div class="flex justify-end border-b border-flow-border px-4 py-2" class-hidden="!isAdmin">
+              <a
+                attr-href="'/workflows/' + report.workflowId"
+                class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-flow-primary outline-none transition hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+              >
+                <lucide-icon icon="pencil" size="15"></lucide-icon>Edit workflow
+              </a>
+            </div>
             <code-block
               language="yaml"
               theme="googlecode"

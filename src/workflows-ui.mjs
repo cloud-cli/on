@@ -152,7 +152,7 @@ export default function () {
       savedSource.value = source.value;
       savedEnabled.value = enabled.value;
       revision.value = workflow.revision;
-      showNotice(`Saved ${workflow.id} as draft revision ${workflow.revision}.`);
+      showNotice(`Saved draft revision ${workflow.revision}.`);
       if (!initialId) history.replaceState(null, "", `/workflows/${workflow.id}`);
     });
   const publish = () =>

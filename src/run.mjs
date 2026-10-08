@@ -21,6 +21,7 @@ export default function setup() {
   const detailTab = ref("logs");
   const logSearch = ref("");
   const wrapLogs = ref(true);
+  const isAdmin = ref(false);
   const detailTabs = computed(() =>
     [
       { id: "logs", label: "Logs & steps", icon: "terminal" },
@@ -122,6 +123,12 @@ export default function setup() {
     if (!response.ok) throw new Error(`Loading timezone preference failed: ${response.status}`);
     const preferences = await response.json();
     if (preferences.timezone) timezone.value = preferences.timezone;
+  };
+  const loadAdminRole = async () => {
+    const response = await apiFetch("/api/session", { headers: { accept: "application/json" } });
+    if (!response.ok) return;
+    const session = await response.json();
+    isAdmin.value = session.user?.role === "admin";
   };
   const artifactUrl = (path) => `/api/runs/${report.value.jobId}/artifacts/${encodeURIComponent(path)}`;
   const downloadArtifact = async (event, path) => {
@@ -367,6 +374,7 @@ export default function setup() {
   onInit(() => {
     document.addEventListener("pointerdown", handleOutsideRestartMenu);
     void refreshRun();
+    void loadAdminRole().catch((error) => console.error("Unable to load run editor access", error));
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/service-worker.js").catch((error) => {
         console.error("Service worker registration failed", error);
@@ -390,6 +398,7 @@ export default function setup() {
 
   return {
     report,
+    isAdmin,
     previousRuns,
     manualRestartOpen,
     manualRestartLoading,
