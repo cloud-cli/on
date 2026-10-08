@@ -16,37 +16,45 @@
         "imports": {
           "@app/": "/",
           "@li3/": "https://at-li3.static.apphor.de/",
-         "ansi_up": "https://esm.sh/ansi_up@6.0.6",
-         "marked": "https://cdn.jsdelivr.net/npm/marked@18.0.12/lib/marked.esm.js"
+          "ansi_up": "https://esm.sh/ansi_up@6.0.6",
+          "marked": "https://cdn.jsdelivr.net/npm/marked@18.0.12/lib/marked.esm.js"
         }
       }
-  </script>
+    </script>
   </head>
-  <body class="bg-gray-950 text-gray-100 min-h-screen p-4 md:p-6 font-sans">
+  <body class="min-h-screen bg-flow-background p-4 font-sans text-flow-foreground md:p-6">
     <template app>
-      <div class="max-w-7xl mx-auto space-y-4 py-6">
-        <app-header bind-title="report.workflowName" bind-subtitle="'Run #' + report.jobId" back="/runs" back-label="Back to jobs"></app-header>
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 pb-4">
-          <p class="text-xs text-gray-400">
-            Started {{ formatDate(report.startedAt) }} · {{ timing }}
-            <template if="report.workerId"> · worker: {{ report.workerId }}</template>
-            <template if="report.parentId"> · from #{{ report.parentId }}</template>
-          </p>
+      <main class="max-w-7xl mx-auto space-y-4 py-6 run-detail">
+        <app-header
+          bind-title="report.workflowName"
+          bind-subtitle="'Run #' + report.jobId"
+          back="/runs"
+          back-label="Back to jobs"
+        ></app-header>
+        <header class="run-heading flex flex-wrap items-center justify-between gap-3 border-b border-flow-border pb-4">
+          <div>
+            <h1 class="text-2xl font-semibold text-flow-foreground">
+              {{ report.workflowName }} <span class="text-flow-secondary">#{{ report.jobId }}</span>
+            </h1>
+            <p class="subtitle text-sm text-flow-secondary">
+              <span>{{ runOrigin }}</span><span>·</span><span>{{ formatDate(report.startedAt) }}</span>
+            </p>
+          </div>
           <div class="flex items-center gap-2 shrink-0">
             <span
               class="px-4 py-1.5 rounded-full text-sm font-semibold border"
               bind-class="{
-              'bg-emerald-500/10.text-emerald-400.border-emerald-500/20': report.status === 'success',
-              'bg-rose-500/10.text-rose-400.border-rose-500/20': report.status === 'failed',
-              'bg-indigo-500/10.text-indigo-400.border-indigo-500/20': report.status === 'running',
-              'bg-amber-500/10.text-amber-400.border-amber-500/20': !['success', 'failed', 'running'].includes(report.status)
+              'bg-emerald-100.text-emerald-800.border-emerald-300': report.status === 'success',
+              'bg-rose-100.text-rose-800.border-rose-300': report.status === 'failed',
+              'bg-blue-100.text-blue-800.border-blue-300': report.status === 'running',
+              'bg-amber-100.text-amber-900.border-amber-300': !['success', 'failed', 'running'].includes(report.status)
             }"
             >
               {{ upper(report.status) }}
             </span>
             <template if="report.status === 'running'">
               <button
-                class="text-sm text-rose-300 px-4 py-1.5 border border-rose-500/50 hover:border-rose-400 rounded-full disabled:opacity-50"
+                class="rounded-full border border-rose-300 px-4 py-1.5 text-sm text-rose-700 hover:border-rose-400 disabled:opacity-50"
                 on-click="cancelJob()"
                 bind-disabled.bool="cancelling"
               >
@@ -55,48 +63,177 @@
             </template>
             <template if="report.status !== 'running'">
               <div class="relative flex items-center gap-1">
-                <button class="text-sm text-white px-4 py-1.5 border border-gray-600 hover:border-gray-400 rounded-full" on-click="restartJob()">Restart</button>
+                <button
+                  class="rounded-full border border-flow-border px-4 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+                  on-click="restartJob()"
+                >
+                  Restart
+                </button>
                 <details class="relative">
-                  <summary class="cursor-pointer list-none rounded-full border border-gray-600 p-2 text-gray-300 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60" aria-label="More restart options">
+                  <summary
+                    class="cursor-pointer list-none rounded-full border border-flow-border p-2 text-flow-secondary outline-none hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                    aria-label="More restart options"
+                  >
                     <lucide-icon icon="chevron-down" size="14"></lucide-icon>
                   </summary>
-                  <div class="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-gray-700 bg-gray-900 p-2 shadow-2xl">
-                    <button type="button" on-click="openManualRestart($event)" class="w-full rounded-lg px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-800">Restart with inputs</button>
+                  <div
+                    class="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-flow-border bg-white p-2 shadow-xl"
+                  >
+                    <button
+                      type="button"
+                      on-click="openManualRestart($event)"
+                      class="w-full rounded-lg px-3 py-2 text-left text-sm text-flow-foreground hover:bg-flow-panel"
+                    >
+                      Restart with inputs
+                    </button>
                   </div>
                 </details>
               </div>
             </template>
           </div>
-        </div>
+        </header>
+        <section
+          class="detail-meta grid gap-3 rounded-xl border border-flow-border bg-white p-4 sm:grid-cols-2 lg:grid-cols-5"
+          aria-label="Run metadata"
+        >
+          <div class="min-w-0">
+            <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary">Status</span
+            ><span class="mt-1 block text-sm font-medium text-flow-foreground">{{ upper(report.status) }}</span>
+          </div>
+          <div class="min-w-0">
+            <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary">Started</span
+            ><span class="mt-1 block text-sm text-flow-foreground">{{ formatDate(report.startedAt) }}</span>
+          </div>
+          <div class="min-w-0">
+            <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary">Duration</span
+            ><span class="mt-1 block text-sm text-flow-foreground">{{ timing }}</span>
+          </div>
+          <div class="min-w-0">
+            <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary">Worker</span
+            ><span class="mt-1 block truncate text-sm text-flow-foreground"
+              >{{ report.workerId || 'Awaiting worker' }}</span
+            >
+          </div>
+          <div class="min-w-0">
+            <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary"
+              >Workflow revision</span
+            ><span class="mt-1 block text-sm text-flow-foreground">{{ report.workflowRevision }}</span>
+          </div>
+        </section>
+        <template if="report.status === 'failed'">
+          <aside
+            class="failure-banner rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-800"
+            role="status"
+            aria-label="Run failed"
+          >
+            <strong>Run failed</strong>
+            <p class="mt-1 text-sm text-rose-300">{{ failedStepMessage }}</p>
+          </aside>
+        </template>
         <template if="manualRestartOpen">
           <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80 p-4" role="presentation">
-            <div class="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="manual-restart-title">
-              <div class="flex items-start justify-between gap-3"><div><h2 id="manual-restart-title" class="text-lg font-semibold text-white">Restart with inputs</h2><p class="mt-1 text-sm text-gray-400">These values override the original trigger inputs for the new run.</p></div><button type="button" on-click="closeManualRestart()" aria-label="Close restart dialog" class="rounded-lg p-2 text-gray-400 hover:bg-gray-800"><lucide-icon icon="x" size="17"></lucide-icon></button></div>
+            <div
+              class="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 p-5 shadow-2xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="manual-restart-title"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h2 id="manual-restart-title" class="text-lg font-semibold text-white">Restart with inputs</h2>
+                  <p class="mt-1 text-sm text-gray-400">
+                    These values override the original trigger inputs for the new run.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  on-click="closeManualRestart()"
+                  aria-label="Close restart dialog"
+                  class="rounded-lg p-2 text-gray-400 hover:bg-gray-800"
+                >
+                  <lucide-icon icon="x" size="17"></lucide-icon>
+                </button>
+              </div>
               <details class="mt-5 overflow-hidden rounded-xl border border-gray-800 bg-gray-950/60">
-                <summary class="cursor-pointer px-3 py-2 text-sm font-medium text-gray-300 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60">Original inputs</summary>
-                <code-block language="json" theme="atom-one-dark" bind-source="originalInputsJson" class="block max-h-64 overflow-auto border-t border-gray-800 p-3"></code-block>
+                <summary
+                  class="cursor-pointer px-3 py-2 text-sm font-medium text-gray-300 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+                >
+                  Original inputs
+                </summary>
+                <code-block
+                  language="json"
+                  theme="atom-one-dark"
+                  bind-source="originalInputsJson"
+                  class="block max-h-64 overflow-auto border-t border-gray-800 p-3"
+                ></code-block>
               </details>
               <div class="mt-4 space-y-3">
-                <p class="text-xs text-gray-500">Additional inputs override matching original values without changing the original payload.</p>
+                <p class="text-xs text-gray-500">
+                  Additional inputs override matching original values without changing the original payload.
+                </p>
                 <template for="entry of manualInputs">
-                  <div class="grid grid-cols-[1fr_1fr_auto] gap-2"><input bind-value="entry.key" on-input="setManualKey(entry, $event)" placeholder="Key" class="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-200" /><input bind-value="entry.value" on-input="setManualValue(entry, $event)" placeholder="Value" class="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-200" /><button type="button" on-click="removeManualInput(entry)" aria-label="Remove input" class="rounded-lg px-2 text-rose-300 hover:bg-rose-500/10"><lucide-icon icon="x" size="15"></lucide-icon></button></div>
+                  <div class="grid grid-cols-[1fr_1fr_auto] gap-2">
+                    <input
+                      bind-value="entry.key"
+                      on-input="setManualKey(entry, $event)"
+                      placeholder="Key"
+                      class="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-200"
+                    /><input
+                      bind-value="entry.value"
+                      on-input="setManualValue(entry, $event)"
+                      placeholder="Value"
+                      class="rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-200"
+                    /><button
+                      type="button"
+                      on-click="removeManualInput(entry)"
+                      aria-label="Remove input"
+                      class="rounded-lg px-2 text-rose-300 hover:bg-rose-500/10"
+                    >
+                      <lucide-icon icon="x" size="15"></lucide-icon>
+                    </button>
+                  </div>
                 </template>
-                <button type="button" on-click="addManualInput()" class="text-sm text-indigo-300 hover:underline">+ Add input</button>
+                <button type="button" on-click="addManualInput()" class="text-sm text-indigo-300 hover:underline">
+                  + Add input
+                </button>
               </div>
-              <div class="mt-6 flex justify-end gap-2"><button type="button" on-click="closeManualRestart()" class="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Cancel</button><button type="button" on-click="restartWithInputs()" bind-disabled="manualRestartLoading" class="rounded-lg bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50">{{ manualRestartLoading ? 'Restarting...' : 'Restart' }}</button></div>
+              <div class="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  on-click="closeManualRestart()"
+                  class="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-800"
+                >
+                  Cancel</button
+                ><button
+                  type="button"
+                  on-click="restartWithInputs()"
+                  bind-disabled="manualRestartLoading"
+                  class="rounded-lg bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50"
+                >
+                  {{ manualRestartLoading ? 'Restarting...' : 'Restart' }}
+                </button>
+              </div>
             </div>
           </div>
         </template>
         <template if="previousRuns.length">
           <details class="rounded-xl border border-gray-800 bg-gray-900/70">
-            <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-gray-300 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+            <summary
+              class="cursor-pointer px-4 py-3 text-sm font-medium text-gray-300 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+            >
               Previous runs
             </summary>
             <ul class="divide-y divide-gray-800 border-t border-gray-800">
               <template for="run of previousRuns">
                 <li>
-                  <a attr-href="'/runs/' + run.id" class="flex items-center justify-between gap-3 px-4 py-3 text-sm outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
-                    <span><span class="font-mono text-indigo-300">#{{ run.id }}</span><span class="ml-3 text-gray-400">{{ formatDate(run.startedAt) }}</span></span>
+                  <a
+                    attr-href="'/runs/' + run.id"
+                    class="flex items-center justify-between gap-3 px-4 py-3 text-sm outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+                  >
+                    <span
+                      ><span class="font-mono text-indigo-300">#{{ run.id }}</span
+                      ><span class="ml-3 text-gray-400">{{ formatDate(run.startedAt) }}</span></span
+                    >
                     <span class="font-semibold uppercase text-xs text-gray-400">{{ upper(run.status) }}</span>
                   </a>
                 </li>
@@ -105,29 +242,31 @@
           </details>
         </template>
 
-        <section class="rounded overflow-hidden border-b border-flow-border bg-flow-panel" aria-label="Execution Steps">
+        <section
+          class="execution overflow-hidden rounded-xl border border-flow-border bg-white"
+          aria-label="Execution steps and logs"
+        >
           <h2 class="sr-only">Execution Steps</h2>
-          <div class="grid lg:grid-cols-[300px_1fr] gap-4">
-            <aside class="steps-panel rounded-xl border border-flow-border bg-flow-panel p-4 shadow-sm shadow-flow-foreground/5" aria-label="Execution steps">
+          <div class="grid gap-0 lg:grid-cols-[226px_minmax(0,1fr)]">
+            <aside class="steps-panel border-flow-border bg-flow-panel p-4 lg:border-r" aria-label="Execution steps">
               <div class="steps-heading mb-3">
                 <span>Execution steps</span>
-                <span class="mono">{{ successfulSteps.length }} / {{ report.steps.length }}</span>
+                <span class="mono">{{ successfulSteps }} / {{ report.steps.length }}</span>
               </div>
               <template for="(step, index) of report.steps">
                 <button
-                  class="step-button rounded-lg px-3 py-1.5 text-sm font-medium transition-colors cursor-pointer"
-                  data-action="step"
-                  data-value="{{ index }}"
-                  aria-pressed="true"
+                  class="step-button mb-1 flex w-full cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 py-2.5 text-left text-sm font-medium text-flow-secondary transition-colors hover:bg-flow-background"
+                  on-click="selectStep(index)"
+                  attr-aria-pressed="selectedStep === index ? 'true' : 'false'"
                   bind-class="{
-                    'bg-flow-primary/20.text-flow-primary': state.step === index,
-                    'opacity-50 cursor-not-allowed': state.detailTab !== 'logs'
+                    'border-flow-border.bg-white.text-flow-foreground.shadow-sm': selectedStep === index,
+                    'opacity-50 cursor-not-allowed': detailTab !== 'logs'
                   }"
                   aria-label="{{ step.name }}, {{ upper(step.status) }}"
                 >
                   <lucide-icon
                     class="mr-2 h-4 w-4"
-                    bind-icon="state.step === index ? (step.status === 'success' ? 'circle-check' : step.status === 'failed' ? 'circle-x' : step.status === 'running' ? 'loader-circle' : 'circle') : 'circle'"
+                    bind-icon="selectedStep === index ? (step.status === 'success' ? 'circle-check' : step.status === 'failed' ? 'circle-x' : step.status === 'running' ? 'loader-circle' : 'circle') : 'circle'"
                     size="14"
                   ></lucide-icon>
                   <span>{{ step.name }}</span>
@@ -135,32 +274,47 @@
                 </button>
               </template>
             </aside>
-            <div class="log-panel bg-gray-950 rounded-lg p-4 overflow-auto" aria-label="Step log output">
-              <template if="state.step !== undefined && report.steps[state.step]">
+            <div class="log-panel min-w-0 overflow-auto bg-[#1c211e] p-4 text-[#c9d0c5]" aria-label="Step log output">
+              <template if="selectedStep !== undefined && report.steps[selectedStep]">
                 <div class="log-heading mb-3">
-                  <h3>{{ report.steps[state.step].name }} <small>{{ report.steps[state.step].status === 'failed' ? 'exit code 1' : upper(report.steps[state.step].status) }}</small></h3>
+                  <h3>{{ report.steps[selectedStep].name }} <small>{{ stepStatusLabel }}</small></h3>
                   <div class="log-actions">
-                    <button type="button" on-click="askAi(report.steps[state.step], $event)" aria-label="Get AI help for failed step" title="Get AI help" class="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gray-900 text-indigo-300 outline-none hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
-                      <lucide-icon bind-icon="aiLoading && aiStepId === report.steps[state.step].id ? 'loader-circle' : 'sparkles'" bind-class="aiLoading && aiStepId === report.steps[state.step].id ? 'animate-spin' : ''" size="16"></lucide-icon>
+                    <button
+                      type="button"
+                      on-click="askAi(report.steps[selectedStep], $event)"
+                      aria-label="Get AI help for failed step"
+                      title="Get AI help"
+                      class="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gray-900 text-indigo-300 outline-none hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+                    >
+                      <lucide-icon
+                        bind-icon="aiLoading && aiStepId === report.steps[selectedStep].id ? 'loader-circle' : 'sparkles'"
+                        bind-class="aiLoading && aiStepId === report.steps[selectedStep].id ? 'animate-spin' : ''"
+                        size="16"
+                      ></lucide-icon>
                     </button>
                   </div>
                 </div>
-                <pre class="whitespace-pre-wrap font-mono text-gray-300 leading-relaxed" bind-innerhtml="stepLog(report.steps[state.step])"></pre>
+                <pre
+                  class="whitespace-pre-wrap font-mono text-gray-300 leading-relaxed"
+                  bind-innerhtml="stepLog(report.steps[selectedStep])"
+                ></pre>
               </template>
-              <template if="state.step === undefined || !report.steps[state.step]">
+              <template if="selectedStep === undefined || !report.steps[selectedStep]">
                 <div class="p-4 text-sm text-gray-500">Select a step to view its log.</div>
               </template>
               <div class="step-count mt-4">
-                <span class="mono">
-                  {{ formatStepCount }} Total duration {{ formatDuration }}
-                </span>
+                <span class="mono"
+                  >{{ successfulSteps }} / {{ report.steps.length }} · Total duration {{ totalDuration }}</span
+                >
               </div>
             </div>
           </div>
         </section>
 
         <details class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <summary class="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 outline-none transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+          <summary
+            class="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 outline-none transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+          >
             Trigger Inputs
           </summary>
           <code-block
@@ -172,7 +326,9 @@
         </details>
         <template if="report.workflowSourceYaml">
           <details class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <summary class="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 outline-none transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+            <summary
+              class="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 outline-none transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+            >
               Workflow source YAML · revision {{ report.workflowRevision }}
             </summary>
             <code-block
@@ -184,9 +340,15 @@
           </details>
         </template>
         <template if="report.canViewLogs && aiStepId">
-          <aside class="fixed bottom-4 left-4 right-4 z-40 mt-4 flex max-h-[70vh] flex-col rounded-2xl border border-indigo-500/30 bg-gray-900/95 p-4 shadow-2xl backdrop-blur lg:left-auto lg:w-[28rem]" aria-labelledby="ai-help-title">
+          <aside
+            class="fixed bottom-4 left-4 right-4 z-40 mt-4 flex max-h-[70vh] flex-col rounded-2xl border border-indigo-500/30 bg-gray-900/95 p-4 shadow-2xl backdrop-blur lg:left-auto lg:w-[28rem]"
+            aria-labelledby="ai-help-title"
+          >
             <div class="flex items-start justify-between gap-3 border-b border-gray-800 pb-3">
-              <div><h2 id="ai-help-title" class="font-semibold text-white">AI help</h2><p class="mt-1 text-xs text-gray-500">Ask about a failed step.</p></div>
+              <div>
+                <h2 id="ai-help-title" class="font-semibold text-white">AI help</h2>
+                <p class="mt-1 text-xs text-gray-500">Ask about a failed step.</p>
+              </div>
               <lucide-icon icon="sparkles" size="18" class="text-indigo-300"></lucide-icon>
             </div>
             <div class="min-h-0 flex-1 space-y-3 overflow-y-auto py-3" aria-live="polite">
@@ -194,12 +356,23 @@
                 <lucide-icon icon="loader-circle" size="16" class="animate-spin"></lucide-icon>
                 Thinking through the failed step...
               </p>
-              <p class="text-sm text-gray-500" class-hidden="aiMessages.length > 0">Select the help icon beside a failed step to start.</p>
+              <p class="text-sm text-gray-500" class-hidden="aiMessages.length > 0">
+                Select the help icon beside a failed step to start.
+              </p>
               <template for="message of aiMessages">
-                <div class="rounded-lg p-3 text-sm" bind-class="message.role === 'assistant' ? 'bg-indigo-500/10.text-gray-200' : 'bg-gray-800.text-gray-300'">
-                  <p class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">{{ message.role }}</p>
-                  <template if="message.html"><div class="ai-markdown text-sm leading-relaxed" bind-innerhtml="message.html"></div></template>
-                  <template if="!message.html"><pre class="whitespace-pre-wrap font-sans leading-relaxed">{{ message.content }}</pre></template>
+                <div
+                  class="rounded-lg p-3 text-sm"
+                  bind-class="message.role === 'assistant' ? 'bg-indigo-500/10.text-gray-200' : 'bg-gray-800.text-gray-300'"
+                >
+                  <p class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                    {{ message.role }}
+                  </p>
+                  <template if="message.html"
+                    ><div class="ai-markdown text-sm leading-relaxed" bind-innerhtml="message.html"></div
+                  ></template>
+                  <template if="!message.html">
+                    <pre class="whitespace-pre-wrap font-sans leading-relaxed">{{ message.content }}</pre>
+                  </template>
                 </div>
               </template>
               <p class="text-sm text-rose-300" class-hidden="!aiError">{{ aiError }}</p>
@@ -207,15 +380,30 @@
             <form class="border-t border-gray-800 pt-3" on-submit.prevent="askFollowup()">
               <label class="sr-only" for="ai-question">Ask a follow-up question</label>
               <div class="flex gap-2">
-                <input id="ai-question" bind-value="aiQuestion" placeholder="Ask a follow-up..." bind-disabled="!aiStepId || aiLoading" class="min-w-0 flex-1 rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-200 outline-none placeholder:text-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-50" />
-                <button type="submit" aria-label="Ask AI" bind-disabled="!aiStepId || aiLoading" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500 text-white outline-none hover:bg-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-50"><lucide-icon icon="arrow-up" size="16"></lucide-icon></button>
+                <input
+                  id="ai-question"
+                  bind-value="aiQuestion"
+                  placeholder="Ask a follow-up..."
+                  bind-disabled="!aiStepId || aiLoading"
+                  class="min-w-0 flex-1 rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-200 outline-none placeholder:text-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-50"
+                />
+                <button
+                  type="submit"
+                  aria-label="Ask AI"
+                  bind-disabled="!aiStepId || aiLoading"
+                  class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500 text-white outline-none hover:bg-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/60 disabled:opacity-50"
+                >
+                  <lucide-icon icon="arrow-up" size="16"></lucide-icon>
+                </button>
               </div>
             </form>
           </aside>
         </template>
         <template if="report.canViewLogs && report.artifacts.length">
           <details class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <summary class="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 outline-none transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60">
+            <summary
+              class="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 outline-none transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+            >
               Artifacts
             </summary>
             <ul class="divide-y divide-gray-800 border-t border-gray-800">
@@ -225,19 +413,20 @@
                     href="#"
                     on-click="downloadArtifact($event, artifact)"
                     class="font-mono text-sm text-indigo-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60"
-                  >{{ artifact }}</a>
+                    >{{ artifact }}</a
+                  >
                 </li>
               </template>
             </ul>
           </details>
         </template>
-      </div>
+      </main>
 
       <script setup src="/run.mjs"></script>
     </template>
 
     <script type="module">
-      import '@li3/web';
+      import "@li3/web";
     </script>
   </body>
 </html>

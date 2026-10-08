@@ -63,7 +63,7 @@
                 type="button"
                 on-click="setStatusFilter(tab.status)"
                 attr-aria-pressed="statusFilter === tab.status ? 'true' : 'false'"
-                class="rounded-full border px-3 py-1.5 text-sm"
+                bind-class="statusFilter === tab.status ? 'rounded-full border border-flow-primary bg-flow-primary px-3 py-1.5 text-sm font-semibold text-white' : 'rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-secondary'"
                 aria-label="Filter by {{ tab.label }} ({{ tab.count }})"
               >
                 {{ tab.label }}

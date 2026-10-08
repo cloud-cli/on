@@ -1250,6 +1250,9 @@ export class WebhookServer {
   }
 
   private renderPageComponent(res: http.ServerResponse, name: string, source: string, body = false) {
+    const components = Array.from(source.matchAll(/<link\b[^>]*\brel=["']component["'][^>]*>/gi))
+      .map((match) => match[0])
+      .join("");
     const styles = Array.from(source.matchAll(/<style[\s\S]*?<\/style>/gi))
       .map((match) => match[0])
       .join("");
@@ -1262,7 +1265,7 @@ export class WebhookServer {
       if (start !== -1 && end > start) content = source.slice(start + "<template app>".length, end);
     }
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-    return res.end(`<template component="${name}">${styles}${content}</template>`);
+    return res.end(`<template component="${name}">${components}${styles}${content}</template>`);
   }
 
   private async renderDashboardJobs(

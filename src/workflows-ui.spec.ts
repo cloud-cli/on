@@ -3,8 +3,26 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { generateWorkflowManagementHtml } from "./workflows-ui.js";
 import workflowsSetup from "./workflows-ui.mjs?raw";
+import { WebhookServer } from "./server.js";
 
 describe("workflow management UI", () => {
+  it("keeps declared custom-element imports in the app-router page component", () => {
+    const response = { writeHead: () => response, end: (html: string) => html };
+    const source = generateWorkflowManagementHtml("editor", "example");
+    const html = (WebhookServer.prototype as any).renderPageComponent.call(
+      {},
+      response,
+      "page-workflow-editor",
+      source,
+    );
+
+    expect(html).toContain('<link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />');
+    expect(html).toContain('<link rel="component" href="https://sodium.static.apphor.de/code-block.html" />');
+    expect(html).toContain('<link rel="component" href="/app-header.html" />');
+    expect(html).toContain("<code-editor");
+    expect(html).toContain("Workflow syntax help");
+  });
+
   it("defines every Flow color utility and keeps app pages free of inline styles", () => {
     const sourceDir = new URL(".", import.meta.url).pathname;
     const pageFiles = readdirSync(sourceDir).filter((file) => file.endsWith(".html"));
