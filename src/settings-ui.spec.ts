@@ -33,7 +33,7 @@ describe("settings UI", () => {
     expect(settingsSetup).toContain('new Date(text.includes("T") ? text : `${text.replace(" ", "T")}Z`)');
     expect(html).toContain("formatTimestamp(worker.lastSeen)");
     expect(html).toContain("formatTimestamp(key.created_at)");
-    expect(html).toContain('title="{{ worker.workerId }}"');
+    expect(html).toContain('attr-title="worker.workerId"');
     const secrets = generateWorkflowManagementHtml("secrets");
     expect(secrets).toContain("grid-cols-[minmax(0,1fr)_2rem]");
     expect(secrets).toContain("grid-cols-[2rem_minmax(0,1fr)_auto_1rem]");
@@ -68,7 +68,7 @@ describe("settings UI", () => {
     expect(settingsSetup).toContain("secretForm.value.open = true");
     expect(settingsSetup).toContain('scrollIntoView({ behavior: "smooth", block: "center" })');
     expect(settingsSetup).toContain("secretValueInput.value?.focus({ preventScroll: true })");
-    expect(html).toContain('aria-label="Delete secret {{ name }}"');
+    expect(html).toContain("attr-aria-label=\"'Delete secret ' + name\"");
     expect(settingsSetup).toContain("loadWorkers()");
     expect(settingsSetup).toContain("workersForbidden.value = true");
     expect(settingsSetup).toContain("loadUsers()");

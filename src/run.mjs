@@ -21,13 +21,15 @@ export default function setup() {
   const detailTab = ref("logs");
   const logSearch = ref("");
   const wrapLogs = ref(true);
-  const detailTabs = [
-    { id: "logs", label: "Logs & steps", icon: "terminal" },
-    { id: "inputs", label: "Inputs", icon: "code" },
-    { id: "artifacts", label: "Artifacts", icon: "box" },
-    { id: "history", label: "History", icon: "history" },
-    { id: "source", label: "Workflow source", icon: "file-code" },
-  ];
+  const detailTabs = computed(() =>
+    [
+      { id: "logs", label: "Logs & steps", icon: "terminal" },
+      { id: "inputs", label: "Inputs", icon: "code" },
+      { id: "artifacts", label: "Artifacts", icon: "box" },
+      { id: "history", label: "History", icon: "list-clock" },
+      { id: "source", label: "Workflow source", icon: "file-code" },
+    ].map((tab) => ({ ...tab, isActive: detailTab.value === tab.id })),
+  );
   const now = ref(Date.now());
   const timezone = ref(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const ansiUp = new AnsiUp();
@@ -39,8 +41,24 @@ export default function setup() {
   let refreshPending = false;
   const cancelling = ref(false);
 
+  const formatDuration = (milliseconds) => {
+    const value = Number(milliseconds);
+    if (!Number.isFinite(value) || value < 0) return "—";
+    const seconds = Math.floor(value / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return `${hours ? `${hours}h ` : ""}${remainingMinutes ? `${remainingMinutes}m ` : ""}${seconds % 60}s`;
+  };
+
   const active = computed(() => ["pending", "running"].includes(report.value.status));
-  const steps = computed(() => (report.value.steps || []).map((item, index) => ({ ...item, index })));
+  const steps = computed(() =>
+    (report.value.steps || []).map((item, index) => ({
+      ...item,
+      index,
+      isSelected: Number(selectedStep.value) === Number(index),
+    })),
+  );
   const selectedStepReport = computed(() => report.value.steps?.[selectedStep.value]);
   const inputsJson = computed(() => JSON.stringify(report.value.inputs || {}, null, 2));
   const originalInputsJson = computed(() => JSON.stringify(report.value.inputs || {}, null, 2));
@@ -71,15 +89,6 @@ export default function setup() {
       timeStyle: "short",
       timeZone: timezone.value,
     }).format(date);
-  };
-  const formatDuration = (milliseconds) => {
-    const value = Number(milliseconds);
-    if (!Number.isFinite(value) || value < 0) return "—";
-    const seconds = Math.floor(value / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return `${hours ? `${hours}h ` : ""}${remainingMinutes ? `${remainingMinutes}m ` : ""}${seconds % 60}s`;
   };
   const copyLogs = async () => {
     const content = selectedStepReport.value?.logContent;

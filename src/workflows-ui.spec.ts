@@ -120,12 +120,12 @@ describe("workflow management UI", () => {
     expect(source).toContain('bind-checked="fileMode"');
     expect(source).toMatch(/encoding:\s*['"]base64['"]/);
     expect(source).toContain('on-click="removeSecret(name)"');
-    expect(source).toContain('aria-label="Delete secret {{ name }}"');
+    expect(source).toContain("attr-aria-label=\"'Delete secret ' + name\"");
     expect(source).toContain('ref="secretForm"');
     expect(source).toContain("Add a secret");
     expect(source).toContain('icon="trash"');
     expect(source).toContain('aria-label="Saved secrets"');
-    expect(source).toContain('aria-label="Edit secret {{ name }}"');
+    expect(source).toContain("attr-aria-label=\"'Edit secret ' + name\"");
     expect(source).toContain('data-page="editor"');
     expect(source).toContain("window.location.pathname.match");
     expect(source).toContain('page === "editor"');

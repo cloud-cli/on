@@ -479,7 +479,7 @@
                     type="button"
                     on-click="selectSecret(name)"
                     class="group grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto_1rem] items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-flow-primary/40"
-                    aria-label="Edit secret {{ name }}"
+                    attr-aria-label="'Edit secret ' + name"
                   >
                     <span
                       class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-flow-sidebar text-flow-secondary group-hover:text-flow-primary"
@@ -496,7 +496,7 @@
                   <button
                     type="button"
                     on-click="removeSecret(name)"
-                    aria-label="Delete secret {{ name }}"
+                    attr-aria-label="'Delete secret ' + name"
                     title="Delete secret"
                     class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-flow-error outline-none transition hover:bg-flow-error/10 focus-visible:ring-2 focus-visible:ring-flow-error/40"
                   >

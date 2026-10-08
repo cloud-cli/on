@@ -64,7 +64,7 @@
                 on-click="setStatusFilter(tab.status)"
                 attr-aria-pressed="statusFilter === tab.status ? 'true' : 'false'"
                 class="relative rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-secondary aria-pressed:border-flow-primary aria-pressed:bg-flow-primary aria-pressed:font-semibold aria-pressed:text-white"
-                aria-label="Filter by {{ tab.label }} ({{ tab.count }})"
+                attr-aria-label="'Filter by ' + tab.label + ' (' + tab.count + ')'"
               >
                 {{ tab.label }}
                 <span
