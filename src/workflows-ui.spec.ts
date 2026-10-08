@@ -26,6 +26,7 @@ describe("workflow management UI", () => {
     expect(source).toContain("Go to runs");
     expect(workflowsSetup).toContain("showRunsLink = false");
     expect(workflowsSetup).toMatch(/showNotice\([\s\S]*?false,\s*true,\s*\);/);
+    expect(workflowsSetup).toContain("showNotice(`Published revision ${workflow.revision}.`)");
   });
 
   it("defines every Flow color utility and keeps app pages free of inline styles", () => {

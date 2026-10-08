@@ -162,7 +162,7 @@ export default function () {
       const workflow = await api(`/api/workflows/${id}/publish`, { method: "POST" });
       selectedId.value = workflow.id;
       revision.value = workflow.revision;
-      showNotice(`Published ${workflow.id} revision ${workflow.revision}.`);
+      showNotice(`Published revision ${workflow.revision}.`);
     });
   const runNow = () =>
     run(async () => {
