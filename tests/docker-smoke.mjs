@@ -111,6 +111,11 @@ try {
   if (!settingsResponse.ok || !settings.includes("<app-router")) {
     throw new Error(`Authenticated Settings page failed: ${settingsResponse.status}\n${settings.slice(0, 300)}`);
   }
+  const runRefreshResponse = await fetch(`http://127.0.0.1:${appPort}/runs/42`, { headers: { authorization } });
+  const runRefresh = await runRefreshResponse.text();
+  if (!runRefreshResponse.ok || !runRefresh.includes("<app-router") || runRefresh.includes("Run Not Found")) {
+    throw new Error(`Run refresh did not return the standard app shell: ${runRefreshResponse.status}`);
+  }
   for (const path of ["/settings/secrets", "/settings/tokens", "/settings/notifications"]) {
     const response = await fetch(`http://127.0.0.1:${appPort}${path}`, { headers: { authorization } });
     if (response.status !== 404)

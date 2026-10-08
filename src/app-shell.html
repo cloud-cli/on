@@ -31,7 +31,7 @@
         Skip to content
       </a>
       <div class="min-h-screen md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
-        <aside class="hidden min-h-screen border-r border-flow-border bg-flow-sidebar px-4 py-5 md:flex md:flex-col">
+        <aside class="hidden border-r border-flow-border bg-flow-sidebar px-4 py-5 md:flex md:flex-col">
           <a
             href="/runs"
             on-click="setActive('runs')"
@@ -73,7 +73,7 @@
             >
           </nav>
           <template if="userAuthenticated">
-            <div class="mt-auto flex min-w-0 items-center gap-3 border-t border-flow-border pt-4">
+            <div class="mt-4 flex min-w-0 items-center gap-3 border-t border-flow-border pt-4">
               <span
                 class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-flow-accent text-sm font-semibold text-flow-foreground"
                 >{{ userInitial }}</span

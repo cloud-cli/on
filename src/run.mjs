@@ -6,7 +6,7 @@ import { formatTimestampedLogLine } from "@app/timezone-format.mjs";
 
 export default function setup() {
   const jobId = window.location.pathname.split("/").filter(Boolean).pop() || "";
-  const report = ref({ jobId });
+  const report = ref({ jobId, steps: [], artifacts: [], inputs: {} });
   const previousRuns = ref([]);
   const aiMessages = ref([]);
   const aiStepId = ref("");
@@ -19,6 +19,14 @@ export default function setup() {
   let previousRunsLoaded = false;
   const selectedStep = ref(0);
   const detailTab = ref("logs");
+  const logSearch = ref("");
+  const wrapLogs = ref(true);
+  const detailTabs = [
+    { id: "logs", label: "Logs & steps", icon: "terminal" },
+    { id: "inputs", label: "Inputs", icon: "code" },
+    { id: "artifacts", label: "Artifacts", icon: "box" },
+    { id: "history", label: "History", icon: "history" },
+  ];
   const now = ref(Date.now());
   const timezone = ref(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const ansiUp = new AnsiUp();
@@ -31,14 +39,16 @@ export default function setup() {
   const cancelling = ref(false);
 
   const active = computed(() => ["pending", "running"].includes(report.value.status));
+  const steps = computed(() => (report.value.steps || []).map((item, index) => ({ ...item, index })));
+  const selectedStepReport = computed(() => report.value.steps?.[selectedStep.value]);
   const inputsJson = computed(() => JSON.stringify(report.value.inputs || {}, null, 2));
   const originalInputsJson = computed(() => JSON.stringify(report.value.inputs || {}, null, 2));
   const timing = computed(() => {
-    if (report.value.status === "pending") return "Waiting for a worker";
+    if (report.value.status === "pending") return "—";
     if (report.value.status === "running") {
-      return `Running for ${Math.max(0, now.value - Date.parse(report.value.startedAt))}ms`;
+      return formatDuration(Math.max(0, now.value - Date.parse(report.value.startedAt)));
     }
-    return `Finished in ${report.value.durationMs}ms`;
+    return formatDuration(report.value.durationMs);
   });
   const runOrigin = computed(() =>
     report.value.parentId ? `Re-run of #${report.value.parentId}` : "Workflow execution",
@@ -68,19 +78,31 @@ export default function setup() {
     const value = Number(milliseconds);
     if (!Number.isFinite(value) || value < 0) return "—";
     const seconds = Math.floor(value / 1000);
-    return `${seconds > 0 ? `${seconds}m ` : ""}${seconds % 60}s`;
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return `${hours ? `${hours}h ` : ""}${remainingMinutes ? `${remainingMinutes}m ` : ""}${seconds % 60}s`;
+  };
+  const copyLogs = async () => {
+    const content = selectedStepReport.value?.logContent;
+    if (content && navigator.clipboard?.writeText) await navigator.clipboard.writeText(content);
+  };
+  const selectDetailTab = (tab) => {
+    detailTab.value = tab;
+  };
+  const setLogSearch = (event) => {
+    logSearch.value = event.target.value;
+  };
+  const toggleLogWrap = () => {
+    wrapLogs.value = !wrapLogs.value;
   };
   const successfulSteps = computed(() => report.value.steps?.filter((item) => item.status === "success").length || 0);
+  const totalSteps = computed(() => report.value.steps?.length || 0);
   const totalDuration = computed(() => formatDuration(report.value.durationMs));
   const stepStatusLabel = computed(() => {
     const current = report.value.steps?.[selectedStep.value];
     return current?.status === "failed" ? "exit code 1" : upper(current?.status);
   });
-  const formatStepCount = () => {
-    const successful = report.steps?.filter((s) => s.status === "success").length || 0;
-    const total = report.steps?.length || 0;
-    return `${successful} / ${total}`;
-  };
   const loadTimezone = async () => {
     const response = await apiFetch("/api/preferences", { headers: { accept: "application/json" } });
     if (!response.ok) throw new Error(`Loading timezone preference failed: ${response.status}`);
@@ -120,10 +142,11 @@ export default function setup() {
       return '<span class="text-indigo-400">Step is running. Logs will appear after it finishes.</span>';
     if (step.status === "pending") return '<span class="text-gray-500">Waiting to run.</span>';
     if (step.logContent) {
-      const localized = step.logContent
-        .split("\n")
-        .map((line) => formatTimestampedLogLine(line, timezone.value))
-        .join("\n");
+      const query = logSearch.value.trim().toLocaleLowerCase();
+      const lines = step.logContent.split("\n");
+      const matchingLines = query ? lines.filter((line) => line.toLocaleLowerCase().includes(query)) : lines;
+      if (query && matchingLines.length === 0) return '<span class="text-gray-400">No matching log lines.</span>';
+      const localized = matchingLines.map((line) => formatTimestampedLogLine(line, timezone.value)).join("\n");
       return ansiUp.ansi_to_html(localized);
     }
     return '<span class="text-gray-500">(No terminal log output recorded for this step)</span>';
@@ -367,6 +390,9 @@ export default function setup() {
     artifactUrl,
     downloadArtifact,
     stepLog,
+    steps,
+    selectedStepReport,
+    detailTabs,
     askAi,
     askFollowup,
     restartJob,
@@ -381,9 +407,17 @@ export default function setup() {
     cancelling,
     selectedStep,
     successfulSteps,
+    totalSteps,
     totalDuration,
     stepStatusLabel,
     selectStep,
     detailTab,
+    selectDetailTab,
+    logSearch,
+    setLogSearch,
+    wrapLogs,
+    toggleLogWrap,
+    copyLogs,
+    formatDuration,
   };
 }

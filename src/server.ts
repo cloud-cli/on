@@ -497,6 +497,10 @@ export class WebhookServer {
       return this.handleWorkflowAiHelp(req, res);
     }
 
+    if (req.method === "GET" && /^\/runs\/\d+$/.test(url.pathname)) {
+      return this.renderAppShell(res);
+    }
+
     if (req.method === "GET" && url.pathname.startsWith("/runs/")) {
       const jobId = url.pathname.replace("/runs/", "");
       return this.renderRunDetails(jobId, res, "html", await this.hasScope(req, "logs:read"));

@@ -43,6 +43,14 @@ describe("SPA router", () => {
     expect(serverSetup).toContain("return this.renderAppShell(res);");
   });
 
+  it("routes run detail URLs through the app shell and loads the run component on refresh", () => {
+    expect(routerSetup).toContain('component: "page-run", url: `/pages/run.html?jobId=${path.split("/").pop()}`');
+    expect(serverSetup).toContain('if (req.method === "GET" && /^\\/runs\\/\\d+$/.test(url.pathname))');
+    expect(serverSetup).toContain("return this.renderAppShell(res);");
+    expect(serverSetup).toContain('if (req.method === "GET" && url.pathname.startsWith("/api/runs/"))');
+    expect(handleClick).toContain('target.pathname.startsWith("/api/")');
+  });
+
   it("route mapping covers /settings and workflow editor paths only under /workflows", () => {
     expect(routerSetup).toContain('path === "/settings"');
 

@@ -23,6 +23,9 @@ describe("Flow application shell", () => {
     expect(html).not.toContain("Workers</a>");
     expect(html).not.toContain("Engineering");
     expect(html).not.toContain("JD");
+    expect(html).not.toContain("min-h-screen border-r border-flow-border");
+    expect(html.indexOf("Settings</a")).toBeLessThan(html.indexOf('if="userAuthenticated"'));
+    expect(html).not.toContain("mt-auto");
   });
 
   it("loads the signed-in profile from the session endpoint without inventing a user", () => {

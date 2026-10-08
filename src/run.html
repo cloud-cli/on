@@ -96,31 +96,37 @@
           </div>
         </header>
         <section
-          class="detail-meta grid gap-3 rounded-xl border border-flow-border bg-white p-4 sm:grid-cols-2 lg:grid-cols-5"
+          class="detail-meta grid divide-y divide-flow-border rounded-xl border border-flow-border bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0"
           aria-label="Run metadata"
         >
-          <div class="min-w-0">
-            <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary">Status</span
-            ><span class="mt-1 block text-sm font-medium text-flow-foreground">{{ upper(report.status) }}</span>
+          <div class="flex min-w-0 items-center gap-3 p-3 sm:p-4">
+            <lucide-icon icon="calendar-days" size="20" class="h-5 w-5 shrink-0 text-emerald-700"></lucide-icon>
+            <div class="min-w-0">
+              <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary sm:text-xs"
+                >Started</span
+              >
+              <span class="mt-1 block text-xs text-flow-foreground sm:text-sm">{{ formatDate(report.startedAt) }}</span>
+            </div>
           </div>
-          <div class="min-w-0">
-            <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary">Started</span
-            ><span class="mt-1 block text-sm text-flow-foreground">{{ formatDate(report.startedAt) }}</span>
+          <div class="flex min-w-0 items-center gap-3 p-3 sm:p-4">
+            <lucide-icon icon="timer" size="20" class="h-5 w-5 shrink-0 text-emerald-700"></lucide-icon>
+            <div class="min-w-0">
+              <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary sm:text-xs"
+                >Duration</span
+              >
+              <span class="mt-1 block text-xs text-flow-foreground sm:text-sm">{{ timing }}</span>
+            </div>
           </div>
-          <div class="min-w-0">
-            <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary">Duration</span
-            ><span class="mt-1 block text-sm text-flow-foreground">{{ timing }}</span>
-          </div>
-          <div class="min-w-0">
-            <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary">Worker</span
-            ><span class="mt-1 block truncate text-sm text-flow-foreground"
-              >{{ report.workerId || 'Awaiting worker' }}</span
-            >
-          </div>
-          <div class="min-w-0">
-            <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary"
-              >Workflow revision</span
-            ><span class="mt-1 block text-sm text-flow-foreground">{{ report.workflowRevision }}</span>
+          <div class="flex min-w-0 items-center gap-3 p-3 sm:p-4">
+            <lucide-icon icon="server" size="20" class="h-5 w-5 shrink-0 text-emerald-700"></lucide-icon>
+            <div class="min-w-0">
+              <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary sm:text-xs"
+                >Worker</span
+              >
+              <span class="mt-1 block truncate text-xs text-flow-foreground sm:text-sm"
+                >{{ report.workerId || 'Awaiting worker' }}</span
+              >
+            </div>
           </div>
         </section>
         <template if="report.status === 'failed'">
@@ -130,7 +136,7 @@
             aria-label="Run failed"
           >
             <strong>Run failed</strong>
-            <p class="mt-1 text-sm text-rose-300">{{ failedStepMessage }}</p>
+            <p class="mt-1 text-sm text-rose-800">{{ failedStepMessage }}</p>
           </aside>
         </template>
         <template if="manualRestartOpen">
@@ -219,120 +225,189 @@
             </div>
           </div>
         </template>
-        <template if="previousRuns.length">
-          <details class="rounded-xl border border-gray-800 bg-gray-900/70">
-            <summary
-              class="cursor-pointer px-4 py-3 text-sm font-medium text-gray-300 outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
-            >
-              Previous runs
-            </summary>
-            <ul class="divide-y divide-gray-800 border-t border-gray-800">
-              <template for="run of previousRuns">
-                <li>
-                  <a
-                    attr-href="'/runs/' + run.id"
-                    class="flex items-center justify-between gap-3 px-4 py-3 text-sm outline-none hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
-                  >
-                    <span
-                      ><span class="font-mono text-indigo-300">#{{ run.id }}</span
-                      ><span class="ml-3 text-gray-400">{{ formatDate(run.startedAt) }}</span></span
-                    >
-                    <span class="font-semibold uppercase text-xs text-gray-400">{{ upper(run.status) }}</span>
-                  </a>
-                </li>
-              </template>
-            </ul>
-          </details>
-        </template>
-
         <section
           class="execution overflow-hidden rounded-xl border border-flow-border bg-white"
-          aria-label="Execution steps and logs"
+          aria-label="Run details"
         >
-          <h2 class="sr-only">Execution Steps</h2>
-          <div class="grid gap-0 lg:grid-cols-[226px_minmax(0,1fr)]">
-            <aside class="steps-panel border-flow-border bg-flow-panel p-4 lg:border-r" aria-label="Execution steps">
-              <div class="steps-heading mb-3">
-                <span>Execution steps</span>
-                <span class="mono">{{ successfulSteps }} / {{ report.steps.length }}</span>
-              </div>
-              <template for="(step, index) of report.steps">
-                <button
-                  class="step-button mb-1 flex w-full cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 py-2.5 text-left text-sm font-medium text-flow-secondary transition-colors hover:bg-flow-background"
-                  on-click="selectStep(index)"
-                  attr-aria-pressed="selectedStep === index ? 'true' : 'false'"
-                  bind-class="{
-                    'border-flow-border.bg-white.text-flow-foreground.shadow-sm': selectedStep === index,
-                    'opacity-50 cursor-not-allowed': detailTab !== 'logs'
-                  }"
-                  aria-label="{{ step.name }}, {{ upper(step.status) }}"
+          <nav
+            class="flex flex-wrap gap-5 border-b border-flow-border px-4 pt-3 sm:px-6"
+            role="tablist"
+            aria-label="Run details tabs"
+          >
+            <template for="tab of detailTabs">
+              <button
+                type="button"
+                role="tab"
+                attr-aria-selected="detailTab === tab.id ? 'true' : 'false'"
+                on-click="selectDetailTab(tab.id)"
+                class="inline-flex items-center gap-2 border-b-2 border-transparent px-1 pb-3 text-sm text-flow-secondary hover:text-flow-foreground aria-selected:border-flow-primary aria-selected:font-semibold aria-selected:text-flow-foreground"
+              >
+                <lucide-icon bind-icon="tab.icon" size="15"></lucide-icon>
+                {{ tab.label }}
+              </button>
+            </template>
+          </nav>
+          <template if="detailTab === 'logs'">
+            <div class="grid gap-0 lg:grid-cols-[226px_minmax(0,1fr)]">
+              <aside class="steps-panel border-flow-border bg-flow-panel p-4 lg:border-r" aria-label="Execution steps">
+                <div
+                  class="steps-heading mb-3 flex items-center justify-between px-2 text-sm font-semibold text-flow-foreground"
                 >
-                  <lucide-icon
-                    class="mr-2 h-4 w-4"
-                    bind-icon="selectedStep === index ? (step.status === 'success' ? 'circle-check' : step.status === 'failed' ? 'circle-x' : step.status === 'running' ? 'loader-circle' : 'circle') : 'circle'"
-                    size="14"
-                  ></lucide-icon>
-                  <span>{{ step.name }}</span>
-                  <span class="ml-2 mono">{{ step.durationMs }}ms</span>
-                </button>
-              </template>
-            </aside>
-            <div class="log-panel min-w-0 overflow-auto bg-[#1c211e] p-4 text-[#c9d0c5]" aria-label="Step log output">
-              <template if="selectedStep !== undefined && report.steps[selectedStep]">
-                <div class="log-heading mb-3">
-                  <h3>{{ report.steps[selectedStep].name }} <small>{{ stepStatusLabel }}</small></h3>
-                  <div class="log-actions">
-                    <button
-                      type="button"
-                      on-click="askAi(report.steps[selectedStep], $event)"
-                      aria-label="Get AI help for failed step"
-                      title="Get AI help"
-                      class="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gray-900 text-indigo-300 outline-none hover:bg-indigo-500/10 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
-                    >
-                      <lucide-icon
-                        bind-icon="aiLoading && aiStepId === report.steps[selectedStep].id ? 'loader-circle' : 'sparkles'"
-                        bind-class="aiLoading && aiStepId === report.steps[selectedStep].id ? 'animate-spin' : ''"
-                        size="16"
-                      ></lucide-icon>
-                    </button>
-                  </div>
+                  <span>Execution steps</span>
+                  <span>{{ successfulSteps }} / {{ totalSteps }}</span>
                 </div>
-                <pre
-                  class="whitespace-pre-wrap font-mono text-gray-300 leading-relaxed"
-                  bind-innerhtml="stepLog(report.steps[selectedStep])"
-                ></pre>
-              </template>
-              <template if="selectedStep === undefined || !report.steps[selectedStep]">
-                <div class="p-4 text-sm text-gray-500">Select a step to view its log.</div>
-              </template>
-              <div class="step-count mt-4">
-                <span class="mono"
-                  >{{ successfulSteps }} / {{ report.steps.length }} · Total duration {{ totalDuration }}</span
-                >
+                <template for="step of steps">
+                  <button
+                    class="step-button mb-1 flex w-full cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 py-2.5 text-left text-sm font-medium text-flow-secondary transition-colors hover:bg-flow-background aria-pressed:border-emerald-200 aria-pressed:bg-white aria-pressed:text-flow-foreground aria-pressed:shadow-sm"
+                    on-click="selectStep(step.index)"
+                    attr-aria-pressed="selectedStep === step.index ? 'true' : 'false'"
+                    aria-label="{{ step.name || step.id || 'Step' }}, {{ upper(step.status) }}"
+                  >
+                    <lucide-icon
+                      class="h-4 w-4 shrink-0"
+                      bind-icon="step.status === 'success' ? 'circle-check' : step.status === 'failed' ? 'circle-x' : step.status === 'running' ? 'loader-circle' : step.status === 'skipped' ? 'circle-minus' : 'circle'"
+                      size="14"
+                    ></lucide-icon>
+                    <span class="min-w-0 flex-1 truncate">{{ step.name || step.id || 'Step' }}</span>
+                    <span class="shrink-0 font-mono text-xs text-flow-secondary"
+                      >{{ formatDuration(step.durationMs) }}</span
+                    >
+                  </button>
+                </template>
+              </aside>
+              <div class="log-panel min-w-0 overflow-auto bg-[#1c211e] text-[#c9d0c5]" aria-label="Step log output">
+                <template if="selectedStepReport">
+                  <div
+                    class="flex flex-wrap items-center justify-between gap-3 border-b border-[#3a423b] px-4 py-4 sm:px-6"
+                  >
+                    <h3 class="min-w-0 truncate text-base font-semibold text-[#e2e7df]">
+                      {{ selectedStepReport.name || selectedStepReport.id || 'Step' }}
+                      <small class="ml-2 text-xs font-normal text-[#98a393]">{{ stepStatusLabel }}</small>
+                    </h3>
+                    <div class="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        on-click="toggleLogWrap()"
+                        attr-aria-label="wrapLogs ? 'Disable log wrapping' : 'Enable log wrapping'"
+                        title="Toggle text wrapping"
+                        class="inline-flex h-8 items-center gap-2 rounded-md px-2 text-sm text-[#b4bdae] hover:bg-white/10 hover:text-white"
+                      >
+                        <lucide-icon bind-icon="wrapLogs ? 'wrap-text' : 'text'" size="16"></lucide-icon>
+                        <span class="sr-only">{{ wrapLogs ? 'Unwrap logs' : 'Wrap logs' }}</span>
+                      </button>
+                      <button
+                        type="button"
+                        on-click="copyLogs()"
+                        aria-label="Copy logs"
+                        title="Copy logs"
+                        class="inline-flex h-8 items-center gap-2 rounded-md px-2 text-sm text-[#b4bdae] hover:bg-white/10 hover:text-white"
+                      >
+                        <lucide-icon icon="copy" size="16"></lucide-icon><span class="sr-only">Copy logs</span>
+                      </button>
+                      <template if="report.status === 'failed'">
+                        <button
+                          type="button"
+                          on-click="askAi(selectedStepReport, $event)"
+                          aria-label="Get AI help for failed step"
+                          title="Get AI help"
+                          class="inline-flex h-8 items-center justify-center rounded-md px-2 text-[#b4bdae] hover:bg-white/10 hover:text-white"
+                        >
+                          <lucide-icon
+                            bind-icon="aiLoading && aiStepId === selectedStepReport.id ? 'loader-circle' : 'sparkles'"
+                            bind-class="aiLoading && aiStepId === selectedStepReport.id ? 'animate-spin' : ''"
+                            size="16"
+                          ></lucide-icon>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+                  <label
+                    class="flex items-center gap-3 border-b border-[#3a423b] bg-[#171c18] px-4 py-3 text-[#98a393] sm:px-6"
+                  >
+                    <lucide-icon icon="search" size="16"></lucide-icon>
+                    <span class="sr-only">Search this step's logs</span>
+                    <input
+                      type="search"
+                      aria-label="Search this step's logs"
+                      placeholder="Find in this step..."
+                      bind-value="logSearch"
+                      on-input="setLogSearch($event)"
+                      class="min-w-0 flex-1 bg-transparent font-mono text-sm text-[#e2e7df] outline-none placeholder:text-[#84907f]"
+                    />
+                  </label>
+                  <pre
+                    class="max-h-[70vh] min-h-72 overflow-auto px-4 py-3 font-mono text-xs leading-7 text-[#c9d0c5] sm:px-6 sm:py-4 sm:text-sm"
+                    bind-class="wrapLogs ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'"
+                    bind-innerhtml="stepLog(selectedStepReport)"
+                  ></pre>
+                  <div
+                    class="flex items-center justify-between border-t border-[#3a423b] px-4 py-3 text-xs text-[#98a393] sm:px-6"
+                  >
+                    <span>{{ successfulSteps }} / {{ totalSteps }} steps complete</span>
+                    <span>Total duration {{ totalDuration }}</span>
+                  </div>
+                </template>
+                <template if="!selectedStepReport">
+                  <p class="p-6 text-sm text-[#98a393]">No steps are available for this run.</p>
+                </template>
               </div>
             </div>
-          </div>
+          </template>
+          <template if="detailTab === 'inputs'">
+            <code-block
+              language="json"
+              theme="atom-one-dark"
+              bind-source="inputsJson"
+              class="block max-h-[38rem] overflow-auto bg-[#1c211e] p-5 text-sm"
+            ></code-block>
+          </template>
+          <template if="detailTab === 'artifacts'">
+            <template if="report.canViewLogs && report.artifacts.length">
+              <ul class="divide-y divide-flow-border">
+                <template for="artifact of report.artifacts">
+                  <li class="px-5 py-4">
+                    <a
+                      href="#"
+                      on-click="downloadArtifact($event, artifact)"
+                      class="font-mono text-sm text-flow-primary hover:underline"
+                      >{{ artifact }}</a
+                    >
+                  </li>
+                </template>
+              </ul>
+            </template>
+            <template if="!report.canViewLogs || !report.artifacts.length">
+              <p class="p-6 text-sm text-flow-secondary">No artifacts available for this run.</p>
+            </template>
+          </template>
+          <template if="detailTab === 'history'">
+            <template if="previousRuns.length">
+              <h3 class="sr-only">Previous runs</h3>
+              <ul class="divide-y divide-flow-border">
+                <template for="run of previousRuns">
+                  <li>
+                    <a
+                      attr-href="'/runs/' + run.id"
+                      class="flex items-center justify-between gap-3 px-5 py-4 text-sm text-flow-foreground hover:bg-flow-panel"
+                    >
+                      <span><span class="font-mono">#{{ run.id }}</span> · {{ formatDate(run.startedAt) }}</span>
+                      <span class="text-xs font-semibold uppercase text-flow-secondary">{{ upper(run.status) }}</span>
+                    </a>
+                  </li>
+                </template>
+              </ul>
+            </template>
+            <template if="!previousRuns.length">
+              <p class="p-6 text-sm text-flow-secondary">No previous runs.</p>
+            </template>
+          </template>
         </section>
-
-        <details class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <summary
-            class="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 outline-none transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
-          >
-            Trigger Inputs
-          </summary>
-          <code-block
-            language="json"
-            theme="atom-one-dark"
-            bind-source="inputsJson"
-            class="block max-h-[38rem] overflow-auto border-t border-gray-800 bg-gray-950 p-4"
-          ></code-block>
-        </details>
         <template if="report.workflowSourceYaml">
           <details class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
             <summary
-              class="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 outline-none transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+              class="cursor-pointer px-4 py-3 text-sm font-semibold text-flow-secondary outline-none transition hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
             >
-              Workflow source YAML · revision {{ report.workflowRevision }}
+              Workflow source YAML
             </summary>
             <code-block
               language="yaml"
