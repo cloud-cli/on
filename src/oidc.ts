@@ -11,6 +11,8 @@ export interface OidcUser {
   name?: string;
   email?: string;
   photo?: string;
+  preferred_username?: string;
+  picture?: string;
   role?: string;
 }
 
@@ -56,7 +58,7 @@ export class OidcClient {
 
   async loginUrl(redirectUri: string, returnTo: string): Promise<string> {
     const provider = await this.providerClient();
-    const authorization = provider.createAuthorizationRequest({ redirectUri });
+    const authorization = provider.createAuthorizationRequest({ redirectUri, scope: "openid profile email" });
     const verifier = authorization.codeVerifier;
     const state = this.signState({ verifier, returnTo, expiresAt: Date.now() + STATE_TTL_MS });
     const url = new URL(authorization.url);
@@ -77,7 +79,12 @@ export class OidcClient {
     })) as { access_token?: string; expires_in?: number };
     if (!tokens.access_token) throw new Error("OIDC token response did not include an access token");
     const userInfo = (await provider.getProfile(tokens.access_token)) as OidcUser & { sub?: string };
-    const user = { ...userInfo, id: userInfo.id || userInfo.sub || "" };
+    const user = {
+      ...userInfo,
+      id: userInfo.sub || userInfo.id || "",
+      name: userInfo.name || userInfo.preferred_username,
+      photo: userInfo.photo || userInfo.picture,
+    };
     if (!user.id) throw new Error("OIDC userinfo response did not include a user id");
 
     const sessionToken = randomUrlSafe(32);
