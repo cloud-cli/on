@@ -39,10 +39,13 @@ describe("systemd driver container environment", () => {
     const args = spawnMock.mock.calls[0][1] as string[];
     const systemdEnv = args.filter((arg) => arg.startsWith("--setenv=WORKING_DIR="));
     expect(systemdEnv).toEqual(["--setenv=WORKING_DIR=/workspace"]);
+    expect(args.some((arg) => arg.startsWith("--setenv=HOME="))).toBe(true);
     expect(args).toContain("-w");
     expect(args).toContain("/workspace");
     expect(args).toContain("-e");
     expect(args).toContain("WORKING_DIR");
+    expect(args).not.toContain("HOME");
+    expect(args).toContain('if [ -z "${HOME:-}" ]; then HOME=/root; fi; export HOME; exec /bin/sh -e -c "$1"');
 
     child.emit("close", 0, null);
     await handle.done;

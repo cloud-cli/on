@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { homedir } from "node:os";
 import { ExecutionDriver, StepContext, StepExecutionHandle, StepResult } from "../types.js";
 import { debug } from "../debug.js";
 import { TimestampedLogWriter } from "../timestamped-log.js";
@@ -61,10 +62,14 @@ export class SystemdDriver implements ExecutionDriver {
 
     const env = {
       ...(ctx.env || {}),
-      PATH: ctx.env?.PATH || process.env.PATH,
+      PATH: ctx.env?.PATH || process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+      HOME: ctx.env?.HOME || process.env.HOME || homedir(),
       // This is the path visible to the step process, not the host-side Docker bind source.
       WORKING_DIR: ctx.image ? "/workspace" : ctx.workingDir,
     };
+    const containerEnvKeys = [
+      ...new Set([...Object.keys(ctx.env || {}).filter((key) => key !== "PATH"), "WORKING_DIR"]),
+    ];
 
     for (const [key, val] of Object.entries(env)) {
       systemdFlags.push(`--setenv=${key}=${val}`);
@@ -89,15 +94,15 @@ export class SystemdDriver implements ExecutionDriver {
         `${ctx.workingDir}:/workspace`,
         "-w",
         "/workspace",
-        ...Object.keys(env)
-          .filter((k) => k !== "PATH")
-          .flatMap((k) => ["-e", k]),
+        ...containerEnvKeys.flatMap((key) => ["-e", key]),
         "--entrypoint",
         "/bin/sh",
         ...(ctx.dockerArgs || []),
         ctx.image,
         "-e",
         "-c",
+        'if [ -z "${HOME:-}" ]; then HOME=/root; fi; export HOME; exec /bin/sh -e -c "$1"',
+        "runner-step",
         ctx.command,
       ];
     } else {

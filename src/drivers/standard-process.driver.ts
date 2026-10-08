@@ -1,13 +1,14 @@
-import { spawn, ChildProcess } from 'node:child_process';
-import fs from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { ExecutionDriver, StepContext, StepExecutionHandle, StepResult } from '../types.js';
-import { debug } from '../debug.js';
-import { TimestampedLogWriter } from '../timestamped-log.js';
+import { spawn, ChildProcess } from "node:child_process";
+import fs from "node:fs";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { homedir } from "node:os";
+import { ExecutionDriver, StepContext, StepExecutionHandle, StepResult } from "../types.js";
+import { debug } from "../debug.js";
+import { TimestampedLogWriter } from "../timestamped-log.js";
 
 export class StandardProcessDriver implements ExecutionDriver {
-  name = 'standard-process';
+  name = "standard-process";
 
   async isSupported(): Promise<boolean> {
     return true;
@@ -24,7 +25,7 @@ export class StandardProcessDriver implements ExecutionDriver {
       fs.mkdirSync(ctx.workingDir, { recursive: true });
       fs.chmodSync(ctx.workingDir, 0o777);
 
-      logFd = fs.openSync(logFilePath, 'a');
+      logFd = fs.openSync(logFilePath, "a");
       logWriter = new TimestampedLogWriter(logFd);
     } catch (err: any) {
       return {
@@ -34,44 +35,52 @@ export class StandardProcessDriver implements ExecutionDriver {
           error: new Error(`Failed to initialize step log file: ${err.message}`),
         }),
         cancel: async () => {},
-        logFilePath: '',
+        logFilePath: "",
       };
     }
 
     let cmd: string;
     let args: string[];
 
-    const env = {
+    const env: Record<string, string> = {
       ...ctx.env,
+      PATH: ctx.env?.PATH || process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+      HOME: ctx.env?.HOME || process.env.HOME || homedir(),
     };
+    const containerEnvKeys = [
+      ...new Set([...Object.keys(ctx.env || {}).filter((key) => key !== "PATH"), "WORKING_DIR"]),
+    ];
 
     if (ctx.image) {
-      env.WORKING_DIR = '/workspace';
-      cmd = 'docker';
+      env.WORKING_DIR = "/workspace";
+      cmd = "docker";
       args = [
-        'run',
-        '--rm',
-        '--init',
-        '-v',
+        "run",
+        "--rm",
+        "--init",
+        "-v",
         `${ctx.workingDir}:/workspace`,
-        '-w',
-        '/workspace',
-          '--entrypoint',
-          '/bin/sh',
-         ...ctx.volumes?.flatMap((volume) => ['-v', volume]) || [],
-         ...ctx.dockerArgs || [],
-          ...Object.keys(env).filter((k) => k !== 'PATH').flatMap((k) => ['-e', k]),
+        "-w",
+        "/workspace",
+        "--entrypoint",
+        "/bin/sh",
+        ...(ctx.volumes?.flatMap((volume) => ["-v", volume]) || []),
+        ...(ctx.dockerArgs || []),
+        ...containerEnvKeys.flatMap((key) => ["-e", key]),
         ctx.image,
-        '-c',
+        "-e",
+        "-c",
+        'if [ -z "${HOME:-}" ]; then HOME=/root; fi; export HOME; exec /bin/sh -e -c "$1"',
+        "runner-step",
         ctx.command,
       ];
     } else {
       env.WORKING_DIR = ctx.workingDir;
-      cmd = process.env.SHELL || 'sh';
-      args = ['-e', '-c', ctx.command];
+      cmd = process.env.SHELL || "sh";
+      args = ["-e", "-c", ctx.command];
     }
 
-    debug('$ ' + cmd, args.join(' '));
+    debug("$ " + cmd, args.join(" "));
 
     let child: ChildProcess;
     try {
@@ -79,10 +88,10 @@ export class StandardProcessDriver implements ExecutionDriver {
         cwd: ctx.workingDir,
         env,
         detached: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ["ignore", "pipe", "pipe"],
       });
-      child.stdout?.on('data', (chunk) => logWriter?.write(chunk));
-      child.stderr?.on('data', (chunk) => logWriter?.write(chunk));
+      child.stdout?.on("data", (chunk) => logWriter?.write(chunk));
+      child.stderr?.on("data", (chunk) => logWriter?.write(chunk));
     } catch (spawnErr: any) {
       try {
         fs.closeSync(logFd);
@@ -130,15 +139,15 @@ export class StandardProcessDriver implements ExecutionDriver {
         timeoutTimer.unref();
       }
 
-      child.on('close', (code) => {
+      child.on("close", (code) => {
         safeResolve({
           exitCode: code ?? (isCancelled ? 130 : 1),
           durationMs: Date.now() - startTime,
-          error: isCancelled ? new Error('Step timed out or was cancelled by user') : undefined,
+          error: isCancelled ? new Error("Step timed out or was cancelled by user") : undefined,
         });
       });
 
-      child.on('error', (err) => {
+      child.on("error", (err) => {
         safeResolve({
           exitCode: 1,
           durationMs: Date.now() - startTime,
@@ -162,13 +171,13 @@ export class StandardProcessDriver implements ExecutionDriver {
     if (child.pid && !child.killed) {
       try {
         // Send SIGTERM to entire process group (-PID)
-        process.kill(-child.pid, 'SIGTERM');
+        process.kill(-child.pid, "SIGTERM");
 
         // Escalate to SIGKILL after 5 seconds if process tree is still alive
         const killTimer = setTimeout(() => {
           try {
             if (child.pid && !child.killed) {
-              process.kill(-child.pid, 'SIGKILL');
+              process.kill(-child.pid, "SIGKILL");
             }
           } catch {}
         }, 5000);
@@ -182,6 +191,6 @@ export class StandardProcessDriver implements ExecutionDriver {
   }
 
   async readLog(file: string) {
-    return readFile(file, 'utf-8');
+    return readFile(file, "utf-8");
   }
 }
