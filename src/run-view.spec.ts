@@ -153,8 +153,11 @@ describe("run view", () => {
     const html = renderRunHtml(unsafe);
     const source = html + runSetup;
     expect(source).not.toContain("<script state>");
-    expect(source).toContain('bind-title="report.workflowName"');
+    expect(source).toContain("{{ report.workflowName }}");
     expect(source).toContain('aria-label="Run metadata"');
+    expect(source).toContain('<link rel="stylesheet" href="/on.css" />');
+    expect(source).not.toContain('bind-title="report.workflowName"');
+    expect(source).toContain('href="/runs"');
     expect(source).toContain('class="run-heading');
     expect(source).toContain('class="detail-meta');
     expect(source).toContain('class="execution');

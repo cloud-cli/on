@@ -9,17 +9,11 @@
     </script>
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
     <link rel="stylesheet" href="/on.css" />
-    <link rel="component" href="/app-header.html" />
   </head>
   <body data-page="__SETTINGS_PAGE__" class="min-h-screen bg-flow-background p-4 font-sans text-flow-foreground md:p-6">
     <template app>
       <main class="mx-auto max-w-6xl space-y-5 py-6">
-        <app-header
-          title="Settings"
-          subtitle="Account and automation settings"
-          back="/runs"
-          back-label="Back to jobs"
-        ></app-header>
+        <h1 class="sr-only">Settings</h1>
         <nav
           class="sticky top-0 z-20 -mx-1 mb-6 flex flex-wrap gap-2 rounded-xl border border-flow-border bg-flow-card/95 p-1 shadow-sm backdrop-blur"
           aria-label="Settings section navigation"
@@ -222,11 +216,6 @@
                 <p class="mt-0.5 text-sm text-flow-secondary">Write-only credentials available to workflows.</p>
               </div>
             </div>
-            <span
-              class="rounded-full border border-flow-border bg-flow-foreground px-2.5 py-1 text-xs font-mono text-flow-secondary"
-              aria-label="Secret count"
-              >{{ secrets.length }}</span
-            >
           </div>
           <details ref="secretForm" class="mb-5 overflow-hidden rounded-xl border border-flow-border bg-flow-panel">
             <summary

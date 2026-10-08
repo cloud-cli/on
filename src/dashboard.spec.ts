@@ -63,9 +63,8 @@ describe("dashboard", () => {
     expect(dashboardSetup).toContain("if (searchInProgress && !isSearch) return");
     expect(dashboardSetup).toContain("generation !== refreshGeneration");
     expect(html).toContain("Filter runs by status");
-    expect(html).toContain(
-      "statusFilter === tab.status ? 'rounded-full border border-flow-primary bg-flow-primary px-3 py-1.5 text-sm font-semibold text-white'",
-    );
+    expect(html).toContain("aria-pressed:bg-flow-primary");
+    expect(html).toContain('class-hidden="statusFilter !== tab.status"');
     expect(html).toContain("attr-aria-pressed=\"statusFilter === tab.status ? 'true' : 'false'\"");
     expect(html).toContain('bind-class="statusClass(job.status)"');
     expect(html).toContain('bind-icon="statusIcon(job.status)"');

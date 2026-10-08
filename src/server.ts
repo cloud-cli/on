@@ -1250,7 +1250,7 @@ export class WebhookServer {
   }
 
   private renderPageComponent(res: http.ServerResponse, name: string, source: string, body = false) {
-    const components = Array.from(source.matchAll(/<link\b[^>]*\brel=["']component["'][^>]*>/gi))
+    const components = Array.from(source.matchAll(/<link\b[^>]*\brel=["'](?:component|stylesheet)["'][^>]*>/gi))
       .map((match) => match[0])
       .join("");
     const styles = Array.from(source.matchAll(/<style[\s\S]*?<\/style>/gi))

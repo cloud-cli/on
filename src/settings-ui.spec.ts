@@ -21,6 +21,7 @@ describe("settings UI", () => {
     expect(source).not.toContain('href="/settings/workflows"');
     expect(source).toContain("bg-white");
     expect(source).not.toContain("bg-gray-950");
+    expect(source).not.toContain("<app-header");
   });
 
   it("loads and saves the user's timezone and formats worker/key timestamps", () => {
@@ -61,6 +62,12 @@ describe("settings UI", () => {
     }
     expect(html).toContain('id="secret-value"');
     expect(html).toContain('id="secret-file"');
+    expect(html).not.toContain('aria-label="Secret count"');
+    expect(html).not.toContain("<app-header");
+    expect(settingsSetup).toContain('const secretForm = templateRef("secretForm")');
+    expect(settingsSetup).toContain("secretForm.value.open = true");
+    expect(settingsSetup).toContain('scrollIntoView({ behavior: "smooth", block: "center" })');
+    expect(settingsSetup).toContain("secretValueInput.value?.focus({ preventScroll: true })");
     expect(html).toContain('aria-label="Delete secret {{ name }}"');
     expect(settingsSetup).toContain("loadWorkers()");
     expect(settingsSetup).toContain("workersForbidden.value = true");

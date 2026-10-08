@@ -63,10 +63,16 @@
                 type="button"
                 on-click="setStatusFilter(tab.status)"
                 attr-aria-pressed="statusFilter === tab.status ? 'true' : 'false'"
-                bind-class="statusFilter === tab.status ? 'rounded-full border border-flow-primary bg-flow-primary px-3 py-1.5 text-sm font-semibold text-white' : 'rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-secondary'"
+                class="relative rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-secondary aria-pressed:border-flow-primary aria-pressed:bg-flow-primary aria-pressed:font-semibold aria-pressed:text-white"
                 aria-label="Filter by {{ tab.label }} ({{ tab.count }})"
               >
                 {{ tab.label }}
+                <span
+                  class-hidden="statusFilter !== tab.status"
+                  class="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-white/20 text-[10px]"
+                  aria-hidden="true"
+                  >✓</span
+                >
                 <span
                   class="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
                   bind-class="'bg-flow-panel text-flow-foreground'"

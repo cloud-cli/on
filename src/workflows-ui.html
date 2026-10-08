@@ -23,18 +23,9 @@
     <link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />
     <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
-    <link rel="component" href="/app-header.html" />
 
     <template app>
       <main class="mx-auto max-w-6xl space-y-5 py-6">
-        <template if="page === 'secrets'"
-          ><app-header
-            title="Secrets"
-            subtitle="Write-only credentials available to workflows"
-            back="/runs"
-            back-label="Back to dashboard"
-          ></app-header
-        ></template>
         <template if="notice">
           <div
             role="status"
@@ -54,7 +45,6 @@
           >
             <div class="mb-4 flex items-end justify-between gap-3 border-b border-flow-border pb-4">
               <div>
-                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-flow-primary">Definitions</p>
                 <h2 id="workflow-list-title" class="mt-1 text-lg font-semibold text-flow-foreground">Workflows</h2>
               </div>
               <a
@@ -78,9 +68,9 @@
                     </span>
                   </a>
                   <span
-                    class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide"
-                    bind-class="workflow.status === 'published' ? 'border-flow-success/30 bg-flow-success/10 text-flow-success' : workflow.status === 'archived' ? 'border-flow-border bg-flow-sidebar text-flow-secondary' : 'border-flow-warning/40 bg-flow-warning/10 text-flow-warning'"
-                    >{{ workflow.status }}</span
+                    class-hidden="workflow.status !== 'draft'"
+                    class="rounded-full border border-flow-warning/40 bg-flow-warning/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-flow-warning"
+                    >Draft</span
                   >
                   <a
                     attr-href="'/workflows/' + workflow.id"
@@ -416,11 +406,6 @@
                 <p class="mt-0.5 text-sm text-flow-secondary">Write-only credentials available to workflows.</p>
               </div>
             </div>
-            <span
-              class="rounded-full border border-flow-border bg-flow-foreground px-2.5 py-1 text-xs font-mono text-flow-secondary"
-              aria-label="Secret count"
-              >{{ secrets.length }}</span
-            >
           </div>
           <details ref="secretForm" class="mb-5 overflow-hidden rounded-xl border border-flow-border bg-flow-panel">
             <summary

@@ -18,7 +18,8 @@ describe("workflow management UI", () => {
 
     expect(html).toContain('<link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />');
     expect(html).toContain('<link rel="component" href="https://sodium.static.apphor.de/code-block.html" />');
-    expect(html).toContain('<link rel="component" href="/app-header.html" />');
+    expect(html).not.toContain("app-header");
+    expect(html).toContain('<link rel="stylesheet" href="/on.css" />');
     expect(html).toContain("<code-editor");
     expect(html).toContain("Workflow syntax help");
   });
@@ -92,9 +93,12 @@ describe("workflow management UI", () => {
     expect(source).toContain("attr-href=\"'/workflows/' + workflow.id\"");
     expect(source).toContain('href="/workflows"');
     expect(source).toContain("Back to workflows");
-    expect(source).toContain("<app-header");
+    expect(source).not.toContain("<app-header");
     expect(source).not.toContain("Workflow control room");
-    expect(source).toContain('href="/app-header.html"');
+    expect(source).not.toContain("Definitions</p>");
+    expect(source).not.toContain('aria-label="Secret count"');
+    expect(source).toContain("class-hidden=\"workflow.status !== 'draft'\"");
+    expect(source).toContain("Draft");
     expect(source).toContain('ref="helpContent"');
     expect(source).toContain('on-toggle="loadHelp($event)"');
     expect(source).toContain("new DOMParser()");

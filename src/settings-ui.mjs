@@ -1,4 +1,4 @@
-import { onInit, ref } from "@li3/web";
+import { onInit, ref, templateRef } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
 
 export default function () {
@@ -43,6 +43,8 @@ export default function () {
   const secretFileName = ref("");
   const secretFileData = ref("");
   const busy = ref(false);
+  const secretForm = templateRef("secretForm");
+  const secretValueInput = templateRef("secretValueInput");
   const api = async (url, options = {}) => {
     const response = await apiFetch(url, {
       headers: { accept: "application/json", ...(options.body ? { "content-type": "application/json" } : {}) },
@@ -126,6 +128,9 @@ export default function () {
     secretName.value = name;
     fileMode.value = false;
     secretValue.value = "";
+    if (secretForm.value) secretForm.value.open = true;
+    secretForm.value?.scrollIntoView({ behavior: "smooth", block: "center" });
+    secretValueInput.value?.focus({ preventScroll: true });
   };
   const loadWorkers = async () => {
     try {
@@ -272,6 +277,8 @@ export default function () {
   return {
     page,
     secrets,
+    secretForm,
+    secretValueInput,
     secretName,
     secretValue,
     fileMode,
