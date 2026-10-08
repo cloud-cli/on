@@ -9,6 +9,8 @@ describe("Flow application shell", () => {
   it("provides responsive, accessible navigation around the mounted router", () => {
     expect(html).toContain('aria-label="Primary navigation"');
     expect(html).toContain('aria-label="Mobile navigation"');
+    expect(html).toContain("bottom-0 z-50");
+    expect(html).toContain("pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)] pt-2");
     expect(html.match(/href="\/runs"/g)).toHaveLength(3);
     expect(html.match(/href="\/workflows"/g)).toHaveLength(2);
     expect(html.match(/href="\/settings"/g)).toHaveLength(2);
