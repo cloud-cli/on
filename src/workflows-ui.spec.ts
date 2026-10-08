@@ -56,6 +56,11 @@ describe("workflow management UI", () => {
     expect(source).toContain("secretName.value.trim().toUpperCase() === name");
     expect(source).toContain("Secret names must start with a letter");
     expect(source).toContain("initialId || `wf-${crypto.randomUUID()}`");
+    expect(source).toContain(
+      'const page = workflowPath ? "editor" : document.body.dataset.page || params.get("page") || "workflows"',
+    );
+    expect(source).toContain("? openWorkflow(initialId)");
+    expect(source).toContain("const workflow = await api(workflowUrl)");
     expect(source).not.toContain("derivedId");
     expect(source).toContain("Save draft");
     expect(source).toContain('href="/workflows/new"');
@@ -123,6 +128,7 @@ describe("workflow management UI", () => {
     expect(source).toContain('aria-label="Edit secret {{ name }}"');
     expect(source).toContain('data-page="editor"');
     expect(source).toContain("window.location.pathname.match");
+    expect(source).toContain('page === "editor"');
     expect(source).toMatch(/workflowPath\[1\] !== ['"]new['"]/);
     expect(source).toMatch(/const initialId = params\.get\(["']id["']\) \|\| pathWorkflowId/);
     expect(source).toMatch(

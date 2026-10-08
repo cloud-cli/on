@@ -2,9 +2,9 @@ import { onDestroy, onInit, ref, templateRef } from "@li3/web";
 import { diffLines } from "diff";
 
 export default function () {
-  const page = document.body.dataset.page;
   const params = new URLSearchParams(window.location.search);
   const workflowPath = window.location.pathname.match(/^\/(?:settings\/)?workflows\/(new|[a-z0-9-]+)$/);
+  const page = workflowPath ? "editor" : document.body.dataset.page || params.get("page") || "workflows";
   const pathWorkflowId = workflowPath && workflowPath[1] !== "new" ? workflowPath[1] : "";
   const initialId = params.get("id") || pathWorkflowId;
   const initialRevision = params.get("revision") ? Number(params.get("revision")) : null;
