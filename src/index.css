@@ -42,3 +42,18 @@
   --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
 }
+
+@layer utilities {
+  .step-button.active {
+    border-color: #e2e5dc;
+    background: white;
+    box-shadow: 0 1px 3px #23351204;
+    color: #303e25;
+  }
+
+  .run-detail-tab.active {
+    border-bottom-color: #387045;
+    color: #1a1e22;
+    font-weight: 600;
+  }
+}

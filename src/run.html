@@ -33,17 +33,11 @@
             >
               <lucide-icon icon="arrow-left" size="15"></lucide-icon>All runs
             </a>
-            <h1 class="text-2xl font-semibold text-flow-foreground">
-              {{ report.workflowName }} <span class="text-flow-secondary">#{{ report.jobId }}</span>
+            <h1 class="flex flex-wrap items-baseline gap-x-2 text-2xl font-semibold text-flow-foreground">
+              <span>{{ report.workflowName }}</span><span class="text-flow-secondary">#{{ report.jobId }}</span>
             </h1>
-            <p class="subtitle text-sm text-flow-secondary">
-              <span>{{ runOrigin }}</span><span>·</span><span>{{ formatDate(report.startedAt) }}</span>
-            </p>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <a href="/auth/logout" class="rounded-full px-3 py-2 text-sm text-flow-secondary hover:bg-flow-panel"
-              >Sign out</a
-            >
             <span
               class="px-4 py-1.5 rounded-full text-sm font-semibold border"
               bind-class="{
@@ -72,7 +66,7 @@
                 >
                   Restart
                 </button>
-                <details class="relative">
+                <details class="relative" data-restart-menu>
                   <summary
                     class="cursor-pointer list-none rounded-full border border-flow-border p-2 text-flow-secondary outline-none hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                     aria-label="More restart options"
@@ -240,14 +234,15 @@
                 role="tab"
                 attr-aria-selected="detailTab === tab.id ? 'true' : 'false'"
                 on-click="selectDetailTab(tab.id)"
-                class="inline-flex items-center gap-2 border-b-2 border-transparent px-1 pb-3 text-sm text-flow-secondary hover:text-flow-foreground aria-selected:border-flow-primary aria-selected:font-semibold aria-selected:text-flow-foreground"
+                class="run-detail-tab inline-flex items-center gap-2 border-b-2 border-transparent px-1 pb-3 text-sm text-flow-secondary hover:text-flow-foreground"
+                bind-class="{ 'active': detailTab === tab.id }"
               >
                 <lucide-icon bind-icon="tab.icon" size="15"></lucide-icon>
                 {{ tab.label }}
               </button>
             </template>
           </nav>
-          <template if="detailTab === 'logs'">
+          <div class-hidden="detailTab !== 'logs'">
             <div class="grid gap-0 lg:grid-cols-[226px_minmax(0,1fr)]">
               <aside class="steps-panel border-flow-border bg-flow-panel p-4 lg:border-r" aria-label="Execution steps">
                 <div
@@ -258,7 +253,8 @@
                 </div>
                 <template for="step of steps">
                   <button
-                    class="step-button mb-1 flex w-full cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 py-2.5 text-left text-sm font-medium text-flow-secondary transition-colors hover:bg-flow-background aria-pressed:border-emerald-200 aria-pressed:bg-white aria-pressed:text-flow-foreground aria-pressed:shadow-sm"
+                    class="step-button mb-1 flex w-full cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 py-2.5 text-left text-sm font-medium text-flow-secondary transition-colors hover:bg-flow-background"
+                    bind-class="{ 'active': selectedStep === step.index }"
                     on-click="selectStep(step.index)"
                     attr-aria-pressed="selectedStep === step.index ? 'true' : 'false'"
                     aria-label="{{ step.name || step.id || 'Step' }}, {{ upper(step.status) }}"
@@ -336,7 +332,7 @@
                     />
                   </label>
                   <pre
-                    class="max-h-[70vh] min-h-72 overflow-auto px-4 py-3 font-mono text-xs leading-7 text-[#c9d0c5] sm:px-6 sm:py-4 sm:text-sm"
+                    class="max-h-[70vh] min-h-72 overflow-auto px-4 py-3 font-mono text-[13px] leading-7 text-[#c9d0c5] sm:px-6 sm:py-4"
                     bind-class="wrapLogs ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'"
                     bind-innerhtml="stepLog(selectedStepReport)"
                   ></pre>
@@ -352,17 +348,17 @@
                 </template>
               </div>
             </div>
-          </template>
-          <template if="detailTab === 'inputs'">
+          </div>
+          <div class-hidden="detailTab !== 'inputs'">
             <code-block
               language="json"
               theme="atom-one-dark"
               bind-source="inputsJson"
               class="block max-h-[38rem] overflow-auto bg-[#1c211e] p-5 text-sm"
             ></code-block>
-          </template>
-          <template if="detailTab === 'artifacts'">
-            <template if="report.canViewLogs && report.artifacts.length">
+          </div>
+          <div class-hidden="detailTab !== 'artifacts'">
+            <div class-hidden="!report.canViewLogs || !report.artifacts.length">
               <ul class="divide-y divide-flow-border">
                 <template for="artifact of report.artifacts">
                   <li class="px-5 py-4">
@@ -375,13 +371,13 @@
                   </li>
                 </template>
               </ul>
-            </template>
-            <template if="!report.canViewLogs || !report.artifacts.length">
-              <p class="p-6 text-sm text-flow-secondary">No artifacts available for this run.</p>
-            </template>
-          </template>
-          <template if="detailTab === 'history'">
-            <template if="previousRuns.length">
+            </div>
+            <p class="p-6 text-sm text-flow-secondary" class-hidden="report.canViewLogs && report.artifacts.length">
+              No artifacts available for this run.
+            </p>
+          </div>
+          <div class-hidden="detailTab !== 'history'">
+            <div class-hidden="!previousRuns.length">
               <h3 class="sr-only">Previous runs</h3>
               <ul class="divide-y divide-flow-border">
                 <template for="run of previousRuns">
@@ -396,27 +392,22 @@
                   </li>
                 </template>
               </ul>
-            </template>
-            <template if="!previousRuns.length">
-              <p class="p-6 text-sm text-flow-secondary">No previous runs.</p>
-            </template>
-          </template>
-        </section>
-        <template if="report.workflowSourceYaml">
-          <details class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <summary
-              class="cursor-pointer px-4 py-3 text-sm font-semibold text-flow-secondary outline-none transition hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
-            >
-              Workflow source YAML
-            </summary>
+            </div>
+            <p class="p-6 text-sm text-flow-secondary" class-hidden="previousRuns.length">No previous runs.</p>
+          </div>
+          <div class-hidden="detailTab !== 'source'">
             <code-block
               language="yaml"
               theme="atom-one-dark"
               bind-source="report.workflowSourceYaml"
               class="block max-h-[38rem] overflow-auto border-t border-gray-800 bg-gray-950 p-4"
+              class-hidden="!report.workflowSourceYaml"
             ></code-block>
-          </details>
-        </template>
+            <p class="p-6 text-sm text-flow-secondary" class-hidden="report.workflowSourceYaml">
+              Workflow source is unavailable.
+            </p>
+          </div>
+        </section>
         <template if="report.canViewLogs && aiStepId">
           <aside
             class="fixed bottom-4 left-4 right-4 z-40 mt-4 flex max-h-[70vh] flex-col rounded-2xl border border-indigo-500/30 bg-gray-900/95 p-4 shadow-2xl backdrop-blur lg:left-auto lg:w-[28rem]"

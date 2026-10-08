@@ -26,6 +26,7 @@ export default function setup() {
     { id: "inputs", label: "Inputs", icon: "code" },
     { id: "artifacts", label: "Artifacts", icon: "box" },
     { id: "history", label: "History", icon: "history" },
+    { id: "source", label: "Workflow source", icon: "file-code" },
   ];
   const now = ref(Date.now());
   const timezone = ref(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
@@ -50,9 +51,6 @@ export default function setup() {
     }
     return formatDuration(report.value.durationMs);
   });
-  const runOrigin = computed(() =>
-    report.value.parentId ? `Re-run of #${report.value.parentId}` : "Workflow execution",
-  );
   const failedStepMessage = computed(() => {
     const failedStep = report.value.steps?.find((item) => item.status === "failed");
     return failedStep
@@ -345,8 +343,13 @@ export default function setup() {
     const data = JSON.parse(event.data || "{}");
     if (!data.jobId || String(data.jobId) === String(report.value.jobId)) void refreshRun();
   };
+  const handleOutsideRestartMenu = (event) => {
+    const menu = document.querySelector("[data-restart-menu]");
+    if (menu?.open && !menu.contains(event.target)) menu.open = false;
+  };
 
   onInit(() => {
+    document.addEventListener("pointerdown", handleOutsideRestartMenu);
     void refreshRun();
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/service-worker.js").catch((error) => {
@@ -363,6 +366,7 @@ export default function setup() {
     }, 1000);
   });
   onDestroy(() => {
+    document.removeEventListener("pointerdown", handleOutsideRestartMenu);
     eventSource?.close();
     clearInterval(refreshTimer);
     clearInterval(clockTimer);
@@ -382,7 +386,6 @@ export default function setup() {
     inputsJson,
     originalInputsJson,
     timing,
-    runOrigin,
     failedStepMessage,
     upper,
     timezone,

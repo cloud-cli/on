@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { buildRunView, renderRunHtml, type RunView } from "./run-view.js";
 import type { WorkflowExecutionReport } from "./types.js";
 import runSetup from "./run.mjs?raw";
@@ -164,7 +166,9 @@ describe("run view", () => {
     expect(source).toContain("bg-flow-background");
     expect(source).toContain("bg-[#1c211e]");
     expect(source).toContain("{{ failedStepMessage }}");
-    expect(source).toContain("{{ runOrigin }}");
+    expect(source).not.toContain("{{ runOrigin }}");
+    expect(source).not.toContain("Workflow execution");
+    expect(source).toContain('class="flex flex-wrap items-baseline gap-x-2');
     expect(source).toContain('on-click="selectStep(step.index)"');
     expect(source).toContain("attr-aria-pressed=\"selectedStep === step.index ? 'true' : 'false'\"");
     expect(source).toContain('bind-innerhtml="stepLog(selectedStepReport)"');
@@ -174,11 +178,15 @@ describe("run view", () => {
     expect(source).toContain("Search this step's logs");
     expect(source).toContain("toggleLogWrap()");
     expect(source).toContain('aria-label="Copy logs"');
-    expect(source).toContain("detailTab === 'inputs'");
-    expect(source).toContain("detailTab === 'artifacts'");
-    expect(source).toContain("detailTab === 'history'");
-    expect(source).toContain("aria-selected:text-flow-foreground");
-    expect(source).toContain("aria-pressed:border-emerald-200");
+    expect(source).toContain("detailTab !== 'inputs'");
+    expect(source).toContain("detailTab !== 'artifacts'");
+    expect(source).toContain("detailTab !== 'history'");
+    expect(source).toContain("'active': detailTab === tab.id");
+    expect(source).toContain("'active': selectedStep === step.index");
+    expect(source).toContain("data-restart-menu");
+    expect(source).toContain('addEventListener("pointerdown", handleOutsideRestartMenu)');
+    expect(source).toContain('removeEventListener("pointerdown", handleOutsideRestartMenu)');
+    expect(source).toContain("text-[13px]");
     expect(source).toContain("formatDuration(report.value.durationMs)");
     expect(source).toContain('icon="calendar-days"');
     expect(source).toContain('icon="timer"');
@@ -191,7 +199,8 @@ describe("run view", () => {
     expect(source).toContain("#{{ report.jobId }}");
     expect(source).toContain("apiFetch(`/api/runs/${jobId}`");
     expect(source).toContain("lucide-icon");
-    expect(source).toContain("Workflow source YAML");
+    expect(source).toContain("detailTab !== 'source'");
+    expect(source).toContain('bind-source="report.workflowSourceYaml"');
     expect(source).toContain("Get AI help for failed step");
     expect(source).toContain("/ai-help");
     expect(source).toContain("Previous runs");
@@ -222,5 +231,16 @@ describe("run view", () => {
     expect(source).not.toContain("location.reload()");
     expect(source).not.toContain("</script><script>alert(1)</script>");
     expect(source).not.toContain("unsafe");
+  });
+
+  it("styles active run tabs and steps to match the preview selection", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
+
+    expect(css).toContain(".step-button.active");
+    expect(css).toContain("border-color: #e2e5dc");
+    expect(css).toContain("background: white");
+    expect(css).toContain("box-shadow: 0 1px 3px #23351204");
+    expect(css).toContain("color: #303e25");
+    expect(css).toContain(".run-detail-tab.active");
   });
 });
