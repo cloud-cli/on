@@ -50,6 +50,13 @@ export default function setup() {
     const remainingMinutes = minutes % 60;
     return `${hours ? `${hours}h ` : ""}${remainingMinutes ? `${remainingMinutes}m ` : ""}${seconds % 60}s`;
   };
+  const parseTimestamp = (value) => {
+    if (!value) return Number.NaN;
+    const text = String(value).trim();
+    const normalized = text.includes("T") ? text : text.replace(" ", "T");
+    const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+    return Date.parse(hasTimezone ? normalized : `${normalized}Z`);
+  };
 
   const active = computed(() => ["pending", "running"].includes(report.value.status));
   const steps = computed(() =>
@@ -65,7 +72,7 @@ export default function setup() {
   const timing = computed(() => {
     if (report.value.status === "pending") return "—";
     if (report.value.status === "running") {
-      return formatDuration(Math.max(0, now.value - Date.parse(report.value.startedAt)));
+      return formatDuration(Math.max(0, now.value - parseTimestamp(report.value.startedAt)));
     }
     return formatDuration(report.value.durationMs);
   });

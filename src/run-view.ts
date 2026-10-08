@@ -5,6 +5,13 @@ import type { JobPayload, JobRecord, StepReport, WorkflowExecutionReport, Workfl
 const SENSITIVE_KEY =
   /(?:^|[_-])auth(?:entication)?(?:$|[_-])|access[_-]?key|api[_-]?key|authorization|cookie|credential|passphrase|password|private[_-]?key|secret|session(?:id)?|signing[_-]?key|token/i;
 
+function normalizeTimestamp(value: string): string {
+  const text = String(value || "").trim();
+  if (!text) return text;
+  const normalized = text.includes("T") ? text : text.replace(" ", "T");
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`;
+}
+
 export interface RunView {
   jobId: string;
   workerId?: string;
@@ -47,8 +54,11 @@ export function buildRunView(
     parentId: String(report.parentId || job.parentId || ""),
     workflowName: redact(canonicalWorkflowName || report.workflowName || "Unknown workflow"),
     status,
-    durationMs: status === "running" ? Math.max(0, Date.now() - Date.parse(report.startedAt)) : report.durationMs,
-    startedAt: report.startedAt,
+    durationMs:
+      status === "running"
+        ? Math.max(0, Date.now() - Date.parse(normalizeTimestamp(report.startedAt)))
+        : report.durationMs,
+    startedAt: normalizeTimestamp(report.startedAt),
     finishedAt: report.finishedAt,
     inputs: sanitizeValue(report.inputs || {}, redact) as Record<string, unknown>,
     steps: (report.steps || []).map((step) => {
@@ -83,7 +93,7 @@ function buildPendingReport(
   payload: JobPayload,
   steps: WorkflowStep[],
 ): WorkflowExecutionReport {
-  const startedAt = job.started_at || job.created_at;
+  const startedAt = normalizeTimestamp(job.started_at || job.created_at);
 
   return {
     jobId: String(job.id),

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildRunView, renderRunHtml, type RunView } from "./run-view.js";
@@ -149,6 +149,31 @@ describe("run view", () => {
     expect(runView.workflowName).not.toContain("e4fbf26d");
   });
 
+  it("treats timezone-naive database timestamps as UTC when calculating active duration", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-04T12:00:00.000Z"));
+    try {
+      const runView = buildRunView(
+        {
+          id: 42,
+          workflow_id: "deploy",
+          status: "running",
+          payload: JSON.stringify({ workflowId: "deploy", inputs: {}, steps: [] }),
+          report: null,
+          started_at: "2026-09-04 06:30:00",
+          created_at: "2026-09-04 06:30:00",
+        } as any,
+        {},
+        (value) => value,
+      );
+
+      expect(runView.startedAt).toBe("2026-09-04T06:30:00Z");
+      expect(runView.durationMs).toBe(5.5 * 60 * 60 * 1000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("injects escaped state and SSE refresh behavior into HTML", () => {
     const unsafe = view("running");
     unsafe.steps[0].logContent = "</script><script>alert(1)</script>";
@@ -156,6 +181,8 @@ describe("run view", () => {
     const source = html + runSetup;
     expect(source).not.toContain("<script state>");
     expect(source).toContain("{{ report.workflowName }}");
+    expect(runSetup).toContain("now.value - parseTimestamp(report.value.startedAt)");
+    expect(runSetup).toContain("return Date.parse(hasTimezone ? normalized : `${normalized}Z`)");
     expect(source).toContain('aria-label="Run metadata"');
     expect(source).toContain('<link rel="stylesheet" href="/on.css" />');
     expect(source).not.toContain('bind-title="report.workflowName"');
