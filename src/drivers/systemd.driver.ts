@@ -1,20 +1,20 @@
-import { spawn, exec, ChildProcess } from 'node:child_process';
-import fs from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { promisify } from 'node:util';
-import { ExecutionDriver, StepContext, StepExecutionHandle, StepResult } from '../types.js';
-import { debug } from '../debug.js';
-import { TimestampedLogWriter } from '../timestamped-log.js';
+import { spawn, exec, ChildProcess } from "node:child_process";
+import fs from "node:fs";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
+import { ExecutionDriver, StepContext, StepExecutionHandle, StepResult } from "../types.js";
+import { debug } from "../debug.js";
+import { TimestampedLogWriter } from "../timestamped-log.js";
 
 const execAsync = promisify(exec);
 
 export class SystemdDriver implements ExecutionDriver {
-  name = 'systemd';
+  name = "systemd";
 
   async isSupported(): Promise<boolean> {
     try {
-      return fs.existsSync('/run/systemd/system');
+      return fs.existsSync("/run/systemd/system");
     } catch {
       return false;
     }
@@ -31,7 +31,7 @@ export class SystemdDriver implements ExecutionDriver {
       fs.mkdirSync(ctx.workingDir, { recursive: true });
       fs.chmodSync(ctx.workingDir, 0o777);
 
-      logFd = fs.openSync(logFilePath, 'a');
+      logFd = fs.openSync(logFilePath, "a");
       logWriter = new TimestampedLogWriter(logFd);
     } catch (err: any) {
       return {
@@ -41,27 +41,29 @@ export class SystemdDriver implements ExecutionDriver {
           error: new Error(`Failed to initialize step log file: ${err.message}`),
         }),
         cancel: async () => {},
-        logFilePath: '',
+        logFilePath: "",
       };
     }
 
     const unitName = `workflow-${ctx.jobId}-${ctx.step.id}-attempt-${ctx.attempt || 1}-${Date.now()}`.replace(
       /[^a-zA-Z0-9_-]/g,
-      '_',
+      "_",
     );
     const systemdFlags: string[] = [
       `--unit=${unitName}`,
-      '--wait',
-      '--pipe',
-      '--collect',
-      '-p',
-      'RemainAfterExit=no',
+      "--wait",
+      "--pipe",
+      "--collect",
+      "-p",
+      "RemainAfterExit=no",
       `--working-directory=${ctx.workingDir}`,
     ];
 
     const env = {
       ...(ctx.env || {}),
       PATH: ctx.env?.PATH || process.env.PATH,
+      // This is the path visible to the step process, not the host-side Docker bind source.
+      WORKING_DIR: ctx.image ? "/workspace" : ctx.workingDir,
     };
 
     for (const [key, val] of Object.entries(env)) {
@@ -76,42 +78,42 @@ export class SystemdDriver implements ExecutionDriver {
     let commandArgs: string[];
 
     if (ctx.image) {
-      systemdFlags.push(`--setenv=WORKING_DIR=/workspace`);
       commandArgs = [
-        'docker',
-        'run',
-        '--rm',
-         '--init',
-         `--name=${unitName}`,
-         ...ctx.volumes?.flatMap((volume) => ['-v', volume]) || [],
-         '-v',
+        "docker",
+        "run",
+        "--rm",
+        "--init",
+        `--name=${unitName}`,
+        ...(ctx.volumes?.flatMap((volume) => ["-v", volume]) || []),
+        "-v",
         `${ctx.workingDir}:/workspace`,
-        '-w',
-        '/workspace',
-         ...Object.keys(env).filter((k) => k !== 'PATH').flatMap((k) => ['-e', k]),
-         '--entrypoint',
-         '/bin/sh',
-        ...ctx.dockerArgs || [],
+        "-w",
+        "/workspace",
+        ...Object.keys(env)
+          .filter((k) => k !== "PATH")
+          .flatMap((k) => ["-e", k]),
+        "--entrypoint",
+        "/bin/sh",
+        ...(ctx.dockerArgs || []),
         ctx.image,
-         '-e',
-        '-c',
+        "-e",
+        "-c",
         ctx.command,
       ];
     } else {
-      systemdFlags.push(`--setenv=WORKING_DIR=${ctx.workingDir}`);
-      commandArgs = [process.env.SHELL || 'sh', '-e', '-c', ctx.command];
+      commandArgs = [process.env.SHELL || "sh", "-e", "-c", ctx.command];
     }
 
-    debug('$ systemd-run', [...systemdFlags, '--', ...commandArgs].join(' '));
+    debug("$ systemd-run", [...systemdFlags, "--", ...commandArgs].join(" "));
 
     let child: ChildProcess;
 
     try {
-      child = spawn('systemd-run', [...systemdFlags, '--', ...commandArgs], {
-        stdio: ['ignore', 'pipe', 'pipe'],
+      child = spawn("systemd-run", [...systemdFlags, "--", ...commandArgs], {
+        stdio: ["ignore", "pipe", "pipe"],
       });
-      child.stdout?.on('data', (chunk) => logWriter?.write(chunk));
-      child.stderr?.on('data', (chunk) => logWriter?.write(chunk));
+      child.stdout?.on("data", (chunk) => logWriter?.write(chunk));
+      child.stderr?.on("data", (chunk) => logWriter?.write(chunk));
     } catch (spawnErr: any) {
       try {
         fs.closeSync(logFd);
@@ -145,16 +147,16 @@ export class SystemdDriver implements ExecutionDriver {
         });
       };
 
-      child.on('close', (code, signal) => {
+      child.on("close", (code, signal) => {
         const exitCode = code !== null ? code : signal ? (isCancelled ? 130 : 1) : 0;
         safeResolve({
           exitCode,
           durationMs: Date.now() - startTime,
-          error: isCancelled ? new Error('Step cancelled by user or systemd timeout') : undefined,
+          error: isCancelled ? new Error("Step cancelled by user or systemd timeout") : undefined,
         });
       });
 
-      child.on('error', (err) => {
+      child.on("error", (err) => {
         safeResolve({
           exitCode: 1,
           durationMs: Date.now() - startTime,
@@ -183,10 +185,10 @@ export class SystemdDriver implements ExecutionDriver {
   }
 
   async readLog(file: string) {
-    const content = await readFile(file, 'utf-8');
-    const start = content.includes('Running as unit: ') ? content.indexOf('\n') + 1 : 0;
-    const end = content.includes('Finished with result: ')
-      ? content.lastIndexOf('Finished with result: ')
+    const content = await readFile(file, "utf-8");
+    const start = content.includes("Running as unit: ") ? content.indexOf("\n") + 1 : 0;
+    const end = content.includes("Finished with result: ")
+      ? content.lastIndexOf("Finished with result: ")
       : content.length;
 
     return content.slice(start, end);
