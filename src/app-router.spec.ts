@@ -97,6 +97,8 @@ describe("SPA router", () => {
     expect(routerSetup).toContain("showOnboarding()");
     expect(routerSetup).toContain('apiFetch("/api/teams", {');
     expect(routerSetup).toContain('localStorage.setItem("runner-team-id", team.id)');
+    expect(routerSetup).toContain("let teamCreated = false");
+    expect(routerSetup).toContain("Your team was created, but this browser could not save the selected team");
     expect(routerSetup).toContain('document.body.dataset.teamless = "true"');
     expect(routerSetup).toContain("Continue to Flow");
     expect(routerTemplate).toContain('ref="outlet"');
