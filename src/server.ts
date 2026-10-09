@@ -18,6 +18,7 @@ import { renderHelpHtml } from "../ui/help.js";
 import openApiSpec from "../openapi.json" with { type: "json" };
 import { ApiKeyRepository } from "./api-key-repository.js";
 import { generateSettingsHtml } from "../ui/settings-ui.js";
+import { generateTeamSettingsHtml } from "../ui/team-settings-ui.js";
 import { buildAiHelpMessages, createAiRequest, streamAiHelp } from "./ai-help.js";
 import { workflowDocs } from "../ui/help.js";
 import appHeaderTemplate from "../ui/app-header.html?raw";
@@ -40,6 +41,7 @@ import appRouterSetup from "../ui/app-router.mjs?raw";
 import dashboardSetup from "../ui/dashboard.mjs?raw";
 import runSetup from "../ui/run.mjs?raw";
 import settingsSetup from "../ui/settings-ui.mjs?raw";
+import teamSettingsSetup from "../ui/team-settings-ui.mjs?raw";
 import workflowsSetup from "../ui/workflows-ui.mjs?raw";
 import timezoneFormatSource from "../ui/timezone-format.mjs?raw";
 
@@ -221,6 +223,10 @@ export class WebhookServer {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(settingsSetup);
     }
+    if (req.method === "GET" && url.pathname === "/team-settings-ui.mjs") {
+      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(teamSettingsSetup);
+    }
     if (req.method === "GET" && (url.pathname === "/workflows-ui.mjs" || url.pathname === "/pages/workflows-ui.mjs")) {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(workflowsSetup);
@@ -316,6 +322,12 @@ export class WebhookServer {
       }
       return this.renderPageComponent(res, "page-settings", generateSettingsHtml());
     }
+    if (req.method === "GET" && url.pathname === "/pages/team-settings.html") {
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
+      return this.renderPageComponent(res, "page-team-settings", generateTeamSettingsHtml());
+    }
 
     if (req.method === "GET" && url.pathname === "/workflows") {
       if (!this.requireAuthenticatedUser(req, res)) {
@@ -325,6 +337,12 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/settings") {
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
+      return this.renderAppShell(res);
+    }
+    if (req.method === "GET" && /^\/teams\/[^/]+\/settings$/.test(url.pathname)) {
       if (!this.requireAuthenticatedUser(req, res)) {
         return;
       }
