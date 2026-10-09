@@ -63,12 +63,12 @@
                 type="button"
                 on-click="setStatusFilter(tab.status)"
                 attr-aria-pressed="tab.isActive ? 'true' : 'false'"
-                class="relative rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-secondary transition-colors hover:bg-flow-panel hover:text-flow-primary aria-[pressed=true]:border-flow-primary aria-[pressed=true]:bg-flow-primary aria-[pressed=true]:font-bold aria-[pressed=true]:text-white aria-[pressed=true]:shadow-sm"
+                class="relative rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-secondary transition-colors hover:bg-flow-panel hover:text-flow-primary aria-[pressed=true]:border-flow-primary aria-[pressed=true]:bg-flow-primary aria-[pressed=true]:text-white aria-[pressed=true]:shadow-sm"
                 attr-aria-label="'Filter by ' + tab.label + ' (' + tab.count + ')'"
               >
                 {{ tab.label }}
                 <span
-                  class="ml-2 inline-flex items-center gap-1 rounded-full bg-flow-panel px-2 py-0.5 text-xs font-semibold text-flow-foreground [[aria-pressed=true]_&]:bg-white/20 [[aria-pressed=true]_&]:text-white"
+                  class="ml-2 inline-flex items-center gap-1 rounded-full bg-flow-panel px-2 py-0.5 text-xs text-flow-foreground [[aria-pressed=true]_&]:bg-white/20 [[aria-pressed=true]_&]:text-white"
                   ><span>{{ tab.count }}</span></span
                 >
               </button></template

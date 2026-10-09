@@ -107,10 +107,16 @@ describe("dashboard", () => {
     expect(html).not.toContain('http-equiv="refresh"');
   });
 
-  it("gives the active run filter a strong selected style", () => {
+  it("keeps status filter pill font weight stable when selected", () => {
     const html = readFileSync(resolve(process.cwd(), "src/dashboard.html"), "utf8");
 
     expect(html).toContain("attr-aria-pressed=\"tab.isActive ? 'true' : 'false'\"");
-    expect(html).toContain("aria-[pressed=true]:font-bold");
+    const buttonClass = html.match(/on-click="setStatusFilter\(tab\.status\)"[\s\S]*?class="([^"]+)"/)?.[1];
+    const countClass = html.match(/\{\{ tab\.label \}\}[\s\S]*?<span\s+class="([^"]+)"/)?.[1];
+
+    expect(buttonClass).toBeDefined();
+    expect(buttonClass).not.toMatch(/font-(?:bold|semibold)/);
+    expect(countClass).toBeDefined();
+    expect(countClass).not.toContain("font-semibold");
   });
 });
