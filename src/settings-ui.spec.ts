@@ -25,6 +25,11 @@ describe("settings UI", () => {
     expect(source).toContain("key.token");
     expect(source).toContain('class-hidden="!keys.length"');
     expect(source).toContain("Active tokens");
+    expect(source).toContain('id="section-keys"');
+    expect(source).toContain('class="scroll-mt-6 rounded-xl border border-flow-border bg-white p-5"');
+    expect(source).toContain('class="rounded-lg border border-flow-border px-4 py-3"');
+    expect(source).toContain("rounded-lg border border-flow-border p-4");
+    expect(source).not.toContain('icon="key-round" size="18"');
     expect(source).toContain("apiKeyForm.value.open = false");
     expect(settingsSetup).toContain("revealedKeys.get(key.id)");
     expect(settingsSetup).toContain("isNew: true");
