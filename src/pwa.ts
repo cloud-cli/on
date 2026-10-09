@@ -1,19 +1,19 @@
 export const webManifest = JSON.stringify({
-  id: '/runs',
-  name: 'Flow',
-  short_name: 'Flow',
-  description: 'Follow CI/CD runs, workflows, and results.',
-  start_url: '/runs',
-  scope: '/',
-  display: 'standalone',
-  background_color: '#263d32',
-  theme_color: '#263d32',
+  id: "/runs",
+  name: "Flow",
+  short_name: "Flow",
+  description: "Follow CI/CD runs, workflows, and results.",
+  start_url: "/runs",
+  scope: "/",
+  display: "standalone",
+  background_color: "#263d32",
+  theme_color: "#263d32",
   icons: [
     {
-      src: '/app-icon.svg',
-      sizes: 'any',
-      type: 'image/svg+xml',
-      purpose: 'any maskable',
+      src: "/app-icon.svg",
+      sizes: "any",
+      type: "image/svg+xml",
+      purpose: "any maskable",
     },
   ],
 });
@@ -26,6 +26,11 @@ export const appIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512
     <path d="M112 321 250 289v44l-138 32z"/>
   </g>
 </svg>`;
+
+export function getAppIcon(beta = false): string {
+  if (!beta) return appIcon;
+  return appIcon.replace('fill="#263d32"', 'fill="#101b3f"');
+}
 
 export const serviceWorker = `self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));

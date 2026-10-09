@@ -53,3 +53,19 @@ describe("OIDC configuration", () => {
     expect(resolveConfig({}, {}).oidc?.providerUrl).toBe("https://issuer.test");
   });
 });
+
+describe("beta deployment configuration", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(["true", "TRUE", "1", "yes"])("enables beta mode for %s", (value) => {
+    vi.stubEnv("BETA", value);
+
+    expect(resolveConfig({}, {}).beta).toBe(true);
+  });
+
+  it.each([undefined, "", "false", "0", "no"])("keeps production mode for %s", (value) => {
+    vi.stubEnv("BETA", value ?? "");
+
+    expect(resolveConfig({}, {}).beta).toBe(false);
+  });
+});

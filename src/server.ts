@@ -6,7 +6,7 @@ import { isProtectedUiRoute, safeReturnUrl } from "./safe-return-url.js";
 import { dashboardTemplate, generateDashboardHtml, toDashboardJobs } from "./dashboard.js";
 import { EventBroker } from "./events.js";
 import { GitHubPreprocessor } from "./preprocessors/github.js";
-import { appIcon, serviceWorker, webManifest } from "./pwa.js";
+import { getAppIcon, serviceWorker, webManifest } from "./pwa.js";
 import { QueueManager } from "./queue.js";
 import { buildRunView, renderRunHtml } from "./run-view.js";
 import { SafeExpressionEvaluator } from "./safe-eval.js";
@@ -56,6 +56,7 @@ export class WebhookServer {
   private apiKeys = new ApiKeyRepository();
   private adminToken: string;
   private workerToken: string;
+  private beta: boolean;
   private oidc?: OidcClient;
   private oidcUsers = new OidcUserRepository();
   private userPreferences = new UserPreferencesRepository();
@@ -74,6 +75,7 @@ export class WebhookServer {
     this.push = new PushRepository(options.config);
     this.adminToken = options.adminToken;
     this.workerToken = options.config.workerToken;
+    this.beta = options.config.beta ?? false;
     this.oidc = options.config.oidc ? new OidcClient(options.config.oidc) : undefined;
 
     this.workflowsLoaded = Promise.all([
@@ -154,8 +156,11 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/app-icon.svg") {
-      res.writeHead(200, { "Cache-Control": "public, max-age=86400", "Content-Type": "image/svg+xml" });
-      return res.end(appIcon);
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "image/svg+xml",
+      });
+      return res.end(getAppIcon(this.beta));
     }
 
     if (req.method === "GET" && url.pathname === "/on.css") {
@@ -327,8 +332,8 @@ export class WebhookServer {
         "Content-Type": "text/html; charset=utf-8",
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
-          "Content-Security-Policy":
-            "default-src 'none'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        "Content-Security-Policy":
+          "default-src 'none'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
       });
       return res.end(`<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
