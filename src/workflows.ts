@@ -2,6 +2,7 @@ import YAML from "yaml";
 import db from "./db-client.js";
 import { runMigrations } from "./migrations.js";
 import type { WorkflowDefinition, WorkflowRevision } from "./types.js";
+import { ensureTeamDataSchema } from "./team-data-schema.js";
 
 export const DEFAULT_STEP_TIMEOUT_MS = 30_000;
 
@@ -141,6 +142,7 @@ export class WorkflowRepository {
       );
     `);
     await runMigrations();
+    await ensureTeamDataSchema();
   }
 
   validate(sourceYaml: string): WorkflowDefinition[] {
@@ -184,6 +186,81 @@ export class WorkflowRepository {
     return { id: canonicalId, name: workflows[0].name, sourceYaml, revision, status: "draft", enabled };
   }
 
+  async saveDraftForTeam(teamId: string, id: string, sourceYaml: string, enabled = true): Promise<StoredWorkflow> {
+    const workflows = this.validate(sourceYaml);
+    if (workflows.length !== 1) {
+      throw new Error("Workflow must contain exactly one definition");
+    }
+    const canonicalId = workflowId(id);
+    workflows[0].id = canonicalId;
+    const existing = await db.get("SELECT team_id FROM workflows WHERE id = ?", [canonicalId]);
+    if (existing && existing.team_id !== teamId) {
+      throw new Error("Workflow not found");
+    }
+    const revision = await db.get(
+      "SELECT COALESCE(MAX(revision), 0) AS revision FROM workflow_revisions WHERE workflow_id = ?",
+      [canonicalId],
+    );
+    const nextRevision = Number(revision?.revision || 0) + 1;
+    await db.run(
+      `INSERT INTO workflows (id, name, source_yaml, status, enabled, team_id) VALUES (?, ?, ?, 'draft', ?, ?)
+      ON CONFLICT(id) DO UPDATE SET name = excluded.name, source_yaml = excluded.source_yaml, status = 'draft', enabled = excluded.enabled,
+      updated_at = CURRENT_TIMESTAMP WHERE workflows.team_id = excluded.team_id`,
+      [canonicalId, workflows[0].name, sourceYaml, enabled ? 1 : 0, teamId],
+    );
+    const owner = await db.get("SELECT team_id FROM workflows WHERE id = ?", [canonicalId]);
+    if (!owner || owner.team_id !== teamId) {
+      throw new Error("Workflow not found");
+    }
+    await db.run(
+      "INSERT INTO workflow_revisions (workflow_id, revision, source_yaml, normalized_json) VALUES (?, ?, ?, ?)",
+      [canonicalId, nextRevision, sourceYaml, JSON.stringify(workflows[0])],
+    );
+    return { id: canonicalId, name: workflows[0].name, sourceYaml, revision: nextRevision, status: "draft", enabled };
+  }
+
+  async listForTeam(teamId: string): Promise<StoredWorkflow[]> {
+    const rows = await db.all(
+      "SELECT id, name, source_yaml, COALESCE(active_revision, 0) AS revision, status, enabled FROM workflows WHERE team_id = ? ORDER BY name",
+      [teamId],
+    );
+    return rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      sourceYaml: row.source_yaml,
+      revision: Number(row.revision),
+      status: row.status,
+      enabled: Boolean(row.enabled),
+    }));
+  }
+
+  async getForTeam(teamId: string, id: string): Promise<StoredWorkflow | null> {
+    const row = await db.get(
+      "SELECT id, name, source_yaml, COALESCE(active_revision, 0) AS revision, status, enabled FROM workflows WHERE team_id = ? AND id = ?",
+      [teamId, id],
+    );
+    return row
+      ? {
+          id: row.id,
+          name: row.name,
+          sourceYaml: row.source_yaml,
+          revision: Number(row.revision),
+          status: row.status,
+          enabled: Boolean(row.enabled),
+        }
+      : null;
+  }
+
+  async deleteForTeam(teamId: string, id: string): Promise<boolean> {
+    if (!(await this.getForTeam(teamId, id))) {
+      return false;
+    }
+    await db.run("DELETE FROM scheduled_runs WHERE workflow_id = ?", [id]);
+    await db.run("DELETE FROM workflow_revisions WHERE workflow_id = ?", [id]);
+    await db.run("DELETE FROM workflows WHERE team_id = ? AND id = ?", [teamId, id]);
+    return true;
+  }
+
   async publish(id: string): Promise<StoredWorkflow | null> {
     const workflow = await db.get("SELECT * FROM workflows WHERE id = ?", [id]);
     if (!workflow) {
@@ -196,6 +273,29 @@ export class WorkflowRepository {
     await db.run(
       "UPDATE workflows SET status = 'published', active_revision = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       [revision.revision, id],
+    );
+    return {
+      id,
+      name: workflow.name,
+      sourceYaml: workflow.source_yaml,
+      revision: Number(revision.revision),
+      status: "published",
+      enabled: Boolean(workflow.enabled),
+    };
+  }
+
+  async publishForTeam(teamId: string, id: string): Promise<StoredWorkflow | null> {
+    const workflow = await db.get("SELECT * FROM workflows WHERE team_id = ? AND id = ?", [teamId, id]);
+    if (!workflow) {
+      return null;
+    }
+    this.validate(workflow.source_yaml);
+    const revision = await db.get("SELECT MAX(revision) AS revision FROM workflow_revisions WHERE workflow_id = ?", [
+      id,
+    ]);
+    await db.run(
+      "UPDATE workflows SET status = 'published', active_revision = ?, updated_at = CURRENT_TIMESTAMP WHERE team_id = ? AND id = ?",
+      [revision.revision, teamId, id],
     );
     return {
       id,
@@ -271,6 +371,19 @@ export class WorkflowRepository {
     const rows =
       await db.all(`SELECT w.id AS workflow_id, r.revision, r.normalized_json FROM workflows w JOIN workflow_revisions r
       ON r.workflow_id = w.id AND r.revision = w.active_revision WHERE w.status = 'published' AND w.enabled = 1`);
+    return rows.map((row: any) => ({
+      workflowId: row.workflow_id,
+      revision: Number(row.revision),
+      definition: JSON.parse(row.normalized_json),
+    }));
+  }
+
+  async publishedForTeam(teamId: string): Promise<WorkflowRevision[]> {
+    const rows = await db.all(
+      `SELECT w.id AS workflow_id, r.revision, r.normalized_json FROM workflows w JOIN workflow_revisions r
+      ON r.workflow_id = w.id AND r.revision = w.active_revision WHERE w.team_id = ? AND w.status = 'published' AND w.enabled = 1`,
+      [teamId],
+    );
     return rows.map((row: any) => ({
       workflowId: row.workflow_id,
       revision: Number(row.revision),

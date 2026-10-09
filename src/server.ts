@@ -32,6 +32,7 @@ import { OidcClient } from "./oidc.js";
 import { renderErrorPage, type ErrorPageOptions } from "../ui/error-page.js";
 import { OidcUserRepository } from "./oidc-user-repository.js";
 import { UserPreferencesRepository } from "./user-preferences.js";
+import { TeamRepository } from "./teams.js";
 import apiClientSource from "../ui/api-client.mjs?raw";
 import appShellSetup from "../ui/app-shell.mjs?raw";
 import appHeaderSetup from "../ui/app-header.mjs?raw";
@@ -58,6 +59,7 @@ export class WebhookServer {
   private oidc?: OidcClient;
   private oidcUsers = new OidcUserRepository();
   private userPreferences = new UserPreferencesRepository();
+  private teams = new TeamRepository();
   private events = new EventBroker();
   private workflowsLoaded: Promise<void>;
 
@@ -348,6 +350,42 @@ export class WebhookServer {
       return res.end(JSON.stringify({ user: { name: user.name || "", email: user.email || "", role }, meUrl }));
     }
 
+    if (req.method === "GET" && url.pathname === "/teams/accept") {
+      res.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "text/html; charset=utf-8",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy":
+          "default-src 'none'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      });
+      return res.end(`<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Join team · Flow</title>
+<body style="font:16px system-ui;max-width:36rem;margin:15vh auto;padding:1rem;color:#17202a">
+<h1>Join a Flow team</h1><p id="status">Checking invitation…</p>
+<button id="accept" style="padding:.7rem 1rem" hidden>Accept invitation</button>
+<p><a href="/runs">Back to Flow</a></p>
+<script>
+const status=document.querySelector('#status');
+const token=new URLSearchParams(location.hash.slice(1)).get('token')||sessionStorage.getItem('runner-pending-team-invite')||'';
+history.replaceState(null,'',location.pathname);
+sessionStorage.removeItem('runner-pending-team-invite');
+(async()=>{
+  if(!token){status.textContent='Invitation link is missing or invalid.';return}
+  const sessionResponse=await fetch('/api/auth/session');
+  const session=sessionResponse.ok?await sessionResponse.json():{};
+  if(!session.authenticated){sessionStorage.setItem('runner-pending-team-invite',token);location.assign('/auth/login?url=%2Fteams%2Faccept');return}
+  status.textContent='Accept this invitation to join the team.';
+  const button=document.querySelector('#accept');button.hidden=false;
+  button.addEventListener('click',async()=>{try{const response=await fetch('/api/teams/accept',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token})});if(!response.ok)throw new Error('This invitation is invalid, expired, or for a different verified sign-in email.');status.textContent='You joined the team. Redirecting…';setTimeout(()=>location.assign('/settings'),700)}catch(error){status.textContent=error.message}})
+})().catch(()=>{status.textContent='Could not validate this invitation. Please try again.'});
+</script></body></html>`);
+    }
+    if (url.pathname.startsWith("/api/teams")) {
+      return this.handleTeams(req, res, url);
+    }
+
     if (url.pathname === "/api/preferences" && req.method === "GET") {
       if (!this.requireAuthenticatedUser(req, res)) {
         return;
@@ -516,7 +554,7 @@ export class WebhookServer {
         return res.end(JSON.stringify({ error: "filter must be at most 200 characters" }));
       }
 
-      return this.renderDashboardJobs(res, limit, afterId, beforeId, filter, workflowId);
+      return this.renderDashboardJobs(req, res, limit, afterId, beforeId, filter, workflowId);
     }
 
     const workflowApiV1Match = url.pathname.match(/^\/api\/v1\/workflows(?:\/([a-z0-9-]+))?$/);
@@ -603,14 +641,21 @@ export class WebhookServer {
       if (!(await this.requireAuthenticatedApiRequest(req, res))) {
         return;
       }
-      return this.handleJobWait(waitMatch[1], url.searchParams.get("timeout"), res);
+      return this.handleJobWait(req, waitMatch[1], url.searchParams.get("timeout"), res);
     }
 
     if (req.method === "GET" && url.pathname === "/api/events") {
-      if (!this.isWorker(req) && !(await this.requireAuthenticatedApiRequest(req, res))) {
+      if (this.isWorker(req)) {
+        return this.events.subscribe(req, res, undefined, true);
+      }
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) {
         return;
       }
-      return this.events.subscribe(req, res);
+      const teamId = await this.requireTeam(req, res);
+      if (!teamId) {
+        return;
+      }
+      return this.events.subscribe(req, res, teamId);
     }
 
     if (req.method === "GET" && url.pathname === "/api/push/public-key") {
@@ -685,18 +730,12 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && /^\/runs\/\d+$/.test(url.pathname)) {
-      if (!this.requireAuthenticatedUser(req, res)) {
-        return;
-      }
       return this.renderAppShell(res);
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/runs/")) {
-      if (!this.requireAuthenticatedUser(req, res)) {
-        return;
-      }
       const jobId = url.pathname.replace("/runs/", "");
-      return this.renderRunDetails(jobId, res, "html", await this.hasScope(req, "logs:read"));
+      return this.renderRunDetails(req, jobId, res, "html", await this.hasScope(req, "logs:read"));
     }
 
     const aiHelpMatch = url.pathname.match(/^\/api\/runs\/(\d+)\/ai-help$/);
@@ -717,7 +756,7 @@ export class WebhookServer {
         return this.handleArtifactDownload(req, res, artifactMatch[1], decodeURIComponent(artifactMatch[2]));
       }
       const jobId = url.pathname.replace("/api/runs/", "");
-      return this.renderRunDetails(jobId, res, "json", await this.hasScope(req, "logs:read"));
+      return this.renderRunDetails(req, jobId, res, "json", await this.hasScope(req, "logs:read"));
     }
 
     if (req.method === "POST" && url.pathname.startsWith("/restart/")) {
@@ -729,9 +768,23 @@ export class WebhookServer {
       return this.handleSecretReload(req, res);
     }
 
+    if (req.method === "POST" && url.pathname.startsWith("/webhooks/team/")) {
+      const match = url.pathname.match(/^\/webhooks\/team\/([^/]+)\/([a-z0-9-]+)$/);
+      if (!match) {
+        res.writeHead(404).end();
+        return;
+      }
+      const team = await this.teams.teamForWebhookToken(decodeURIComponent(match[1]));
+      if (!team) {
+        res.writeHead(404).end();
+        return;
+      }
+      return this.handleWebhook(match[2], req, res, team.id);
+    }
+
     if (req.method === "POST" && url.pathname.startsWith("/webhooks/")) {
       const provider = url.pathname.replace("/webhooks/", "");
-      return this.handleWebhook(provider, req, res);
+      return this.handleWebhook(provider, req, res, "default");
     }
 
     // Keep machine-readable errors for APIs, but give browser navigation a helpful not-found page.
@@ -765,7 +818,7 @@ export class WebhookServer {
   /**
    * Processes incoming HTTP webhooks
    */
-  private async handleWebhook(provider: string, req: http.IncomingMessage, res: http.ServerResponse) {
+  private async handleWebhook(provider: string, req: http.IncomingMessage, res: http.ServerResponse, teamId: string) {
     try {
       const { rawBuffer, headers } = await this.readRequest(req, res);
 
@@ -773,7 +826,7 @@ export class WebhookServer {
         return;
       }
 
-      const { isValid, inputs, secretValues } = await this.preprocess(provider, headers, rawBuffer);
+      const { isValid, inputs, secretValues } = await this.preprocess(provider, headers, rawBuffer, teamId);
 
       if (!isValid) {
         res.writeHead(401, { "Content-Type": "application/json" });
@@ -782,7 +835,7 @@ export class WebhookServer {
       }
 
       await this.workflowsLoaded;
-      await this.matchWorkflows(provider, inputs, await this.workflows.published(), secretValues);
+      await this.matchWorkflows(provider, inputs, await this.workflows.publishedForTeam(teamId), secretValues, teamId);
 
       res.writeHead(202, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ message: "OK" }));
@@ -797,6 +850,10 @@ export class WebhookServer {
     if (!(await this.requireScope(req, res, "runs:dispatch"))) {
       return;
     }
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
+      return;
+    }
     const body = await this.readJson(req, res);
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return;
@@ -804,15 +861,17 @@ export class WebhookServer {
     const jobs = await this.matchWorkflows(
       provider,
       body,
-      await this.workflows.published(),
-      await this.currentSecrets(),
+      await this.workflows.publishedForTeam(teamId),
+      await this.currentSecrets(teamId),
+      teamId,
     );
     res.writeHead(202, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ jobs: jobs.map((id) => ({ id, provider })) }));
   }
 
   private async handleWorkflowRun(req: http.IncomingMessage, res: http.ServerResponse, workflowId: string) {
-    if (!this.requireAuthenticatedUser(req, res)) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
       return;
     }
     const body = await this.readJson(req, res);
@@ -825,7 +884,8 @@ export class WebhookServer {
     }
 
     await this.workflowsLoaded;
-    const latest = await this.workflows.latestRevision(workflowId);
+    const owned = await this.workflows.getForTeam(teamId, workflowId);
+    const latest = owned ? await this.workflows.latestRevision(workflowId) : null;
     if (!latest) {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Workflow not found" }));
@@ -853,19 +913,28 @@ export class WebhookServer {
       if (jobId) {
         jobs.push(jobId);
       }
-      this.events.publish("jobs.available", { tags: requiredTags });
+      this.events.publish("jobs.available", { tags: requiredTags, teamId });
     }
 
     res.writeHead(202, { "Content-Type": "application/json; charset=utf-8" });
     return res.end(JSON.stringify({ workflowId, revision: latest.revision, jobs }));
   }
 
-  private async handleJobWait(jobId: string, timeoutParam: string | null, res: http.ServerResponse) {
+  private async handleJobWait(
+    req: http.IncomingMessage,
+    jobId: string,
+    timeoutParam: string | null,
+    res: http.ServerResponse,
+  ) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
+      return;
+    }
     const timeout = Math.min(120_000, Math.max(0, Number(timeoutParam || 30_000)));
     const started = Date.now();
     let job;
     do {
-      job = await this.queue.getJob(jobId);
+      job = await this.queue.getJobForTeam(teamId, jobId);
       if (!job || ["success", "failed", "cancelled"].includes(job.status) || Date.now() - started >= timeout) {
         break;
       }
@@ -875,20 +944,23 @@ export class WebhookServer {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Job not found" }));
     }
+    const payload = {
+      job: toDashboardJobs([job])[0],
+      terminal: ["success", "failed", "cancelled"].includes(job.status),
+    };
     res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-    return res.end(
-      JSON.stringify({
-        job: toDashboardJobs([job])[0],
-        terminal: ["success", "failed", "cancelled"].includes(job.status),
-      }),
-    );
+    return res.end(JSON.stringify(this.redactStructured(payload, await this.currentSecrets(teamId))));
   }
 
   private async handleJobStatus(req: http.IncomingMessage, jobId: string, res: http.ServerResponse) {
     if (!(await this.requireAuthenticatedApiRequest(req, res))) {
       return;
     }
-    const job = await this.queue.getJob(jobId);
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
+      return;
+    }
+    const job = await this.queue.getJobForTeam(teamId, jobId);
     if (!job) {
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify({ error: "Job not found" }));
@@ -908,7 +980,11 @@ export class WebhookServer {
     if (!(await this.hasScope(req, "logs:read"))) {
       return this.requireScope(req, res, "logs:read");
     }
-    const job = await this.queue.getJob(jobId);
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
+      return;
+    }
+    const job = await this.queue.getJobForTeam(teamId, jobId);
     if (!job) {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Run not found" }));
@@ -917,18 +993,25 @@ export class WebhookServer {
     const definition = await this.workflows.getRevision(job.workflow_id, job.workflow_revision);
     const snapshot = await this.workflows.getRevisionSnapshot(job.workflow_id, job.workflow_revision);
     const logs = await this.queue.getJobLogs(jobId);
+    const secrets = await this.currentSecrets(teamId);
+    const safeReport = this.redactStructured(report || {}, secrets);
+    const safeLogs = this.redactStructured(logs, secrets);
     const failedIndex = report?.steps?.findIndex((step) => step.status === "failed") ?? -1;
     res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
     return res.end(
       JSON.stringify({
         jobId: String(job.id),
-        workflow: { id: job.workflow_id, revision: job.workflow_revision, sourceYaml: snapshot?.sourceYaml },
+        workflow: {
+          id: job.workflow_id,
+          revision: job.workflow_revision,
+          sourceYaml: snapshot?.sourceYaml ? this.redact(snapshot.sourceYaml, secrets) : undefined,
+        },
         status: job.status,
-        inputs: report?.inputs || {},
-        failedStep: failedIndex >= 0 ? report.steps[failedIndex] : null,
-        steps: failedIndex >= 0 ? report.steps.slice(0, failedIndex + 1) : report?.steps || [],
-        logs,
-        artifacts: report?.artifacts || [],
+        inputs: safeReport.inputs || {},
+        failedStep: failedIndex >= 0 ? safeReport.steps[failedIndex] : null,
+        steps: failedIndex >= 0 ? safeReport.steps.slice(0, failedIndex + 1) : safeReport.steps || [],
+        logs: safeLogs,
+        artifacts: safeReport.artifacts || [],
         workflowFound: Boolean(definition),
       }),
     );
@@ -958,10 +1041,10 @@ export class WebhookServer {
     return { rawBuffer, headers };
   }
 
-  private async preprocess(provider: string, headers, rawBuffer: Buffer) {
+  private async preprocess(provider: string, headers, rawBuffer: Buffer, teamId: string) {
     let dbSecrets: Record<string, string> = {};
     try {
-      dbSecrets = await this.secretRepository.getAll();
+      dbSecrets = await this.secretRepository.getAllForTeam(teamId);
     } catch (error) {
       if (process.env.RUNNER_MASTER_KEY || process.env.CREDENTIALS_DIRECTORY) {
         throw error;
@@ -969,7 +1052,7 @@ export class WebhookServer {
     }
     const secret =
       dbSecrets[`${provider.toUpperCase()}_WEBHOOK_SECRET`] ||
-      this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`);
+      (teamId === "default" ? this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`) : undefined);
     const preprocessor = this.preprocessors.get(provider);
     try {
       if (preprocessor) {
@@ -990,6 +1073,7 @@ export class WebhookServer {
     inputs: any,
     workflows: import("./types.js").WorkflowRevision[],
     secretValues: Record<string, string> = {},
+    teamId: string,
   ) {
     const jobIds: number[] = [];
     for (const { definition: workflow, revision } of workflows) {
@@ -1037,7 +1121,7 @@ export class WebhookServer {
         if (jobId) {
           jobIds.push(jobId);
         }
-        this.events.publish("jobs.available", { tags: requiredTags });
+        this.events.publish("jobs.available", { tags: requiredTags, teamId });
       }
     }
     return jobIds;
@@ -1114,6 +1198,218 @@ export class WebhookServer {
     }
     res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ error: "Authentication required" }));
+    return false;
+  }
+
+  private async requireTeam(req: http.IncomingMessage, res: http.ServerResponse): Promise<string | null> {
+    const cookieUser = this.oidc?.userFromCookie(req.headers.cookie);
+    const user = cookieUser || (await this.userForRequest(req));
+    if (!user) {
+      res
+        .writeHead(401, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ error: "Authentication required" }));
+      return null;
+    }
+    if (
+      cookieUser &&
+      req.method &&
+      !["GET", "HEAD", "OPTIONS"].includes(req.method.toUpperCase()) &&
+      !this.requireSameOrigin(req, res)
+    ) {
+      return null;
+    }
+    const queryTeamId = new URL(req.url || "/", "http://localhost").searchParams.get("teamId") || "";
+    const teamId = (
+      typeof req.headers["x-team-id"] === "string" ? req.headers["x-team-id"].trim() : queryTeamId
+    ).trim();
+    if (!teamId || !(await this.teams.isMember(teamId, user.id))) {
+      res
+        .writeHead(teamId ? 404 : 400, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ error: teamId ? "Team not found" : "X-Team-ID is required" }));
+      return null;
+    }
+    return teamId;
+  }
+
+  private async handleTeams(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
+    const cookieUser = this.oidc?.userFromCookie(req.headers.cookie);
+    const user = await this.userForRequest(req);
+    if (!user) {
+      res
+        .writeHead(401, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ error: "Authentication required" }));
+      return;
+    }
+    if (
+      cookieUser &&
+      req.method &&
+      !["GET", "HEAD", "OPTIONS"].includes(req.method.toUpperCase()) &&
+      !this.requireSameOrigin(req, res)
+    ) {
+      return;
+    }
+    await this.workflowsLoaded;
+    if (url.pathname === "/api/teams" && req.method === "GET") {
+      res
+        .writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+        .end(JSON.stringify({ teams: await this.teams.listForUser(user.id) }));
+      return;
+    }
+    if (url.pathname === "/api/teams" && req.method === "POST") {
+      const body = await this.readJson(req, res);
+      if (!body || typeof body.name !== "string" || !body.name.trim()) {
+        if (!res.headersSent) {
+          res.writeHead(400).end();
+        }
+        return;
+      }
+      try {
+        const team = await this.teams.createTeam(body.name, user.id);
+        res.writeHead(201, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(
+          JSON.stringify({
+            team: { id: team.id, name: team.name, role: "admin" },
+            webhookPath: `/webhooks/team/${encodeURIComponent(team.webhookToken)}/{provider}`,
+          }),
+        );
+      } catch (error: any) {
+        res.writeHead(422, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
+      }
+      return;
+    }
+    const invite = url.pathname.match(/^\/api\/teams\/([^/]+)\/invitations$/);
+    const members = url.pathname.match(/^\/api\/teams\/([^/]+)\/members$/);
+    const member = url.pathname.match(/^\/api\/teams\/([^/]+)\/members\/([^/]+)$/);
+    if (member && req.method === "PUT") {
+      const teamId = decodeURIComponent(member[1]);
+      const subject = decodeURIComponent(member[2]);
+      if (!(await this.teams.isAdmin(teamId, user.id))) {
+        res.writeHead(404).end();
+        return;
+      }
+      const body = await this.readJson(req, res);
+      if (!body || !["admin", "member"].includes(body.role)) {
+        if (!res.headersSent) {
+          res.writeHead(400).end(JSON.stringify({ error: "role must be admin or member" }));
+        }
+        return;
+      }
+      const result = await this.teams.setMemberRole(teamId, subject, body.role);
+      res
+        .writeHead(result === "updated" ? 204 : result === "last-admin" ? 409 : 404)
+        .end(result === "last-admin" ? JSON.stringify({ error: "A team must retain at least one admin" }) : undefined);
+      return;
+    }
+    if (member && req.method === "DELETE") {
+      const teamId = decodeURIComponent(member[1]);
+      const subject = decodeURIComponent(member[2]);
+      if (!(await this.teams.isAdmin(teamId, user.id))) {
+        res.writeHead(404).end();
+        return;
+      }
+      const result = await this.teams.removeMember(teamId, subject);
+      if (result === "admin") {
+        res
+          .writeHead(409, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Team admins cannot be removed here" }));
+        return;
+      }
+      res.writeHead(result === "removed" ? 204 : 404).end();
+      return;
+    }
+    if (members && req.method === "GET") {
+      const teamId = decodeURIComponent(members[1]);
+      if (!(await this.teams.isMember(teamId, user.id))) {
+        res.writeHead(404).end();
+        return;
+      }
+      res
+        .writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+        .end(JSON.stringify({ members: await this.teams.listMembers(teamId) }));
+      return;
+    }
+    if (invite && req.method === "POST") {
+      const teamId = decodeURIComponent(invite[1]);
+      if (!(await this.teams.isAdmin(teamId, user.id))) {
+        res.writeHead(404).end();
+        return;
+      }
+      const body = await this.readJson(req, res);
+      if (!body || typeof body.email !== "string") {
+        return;
+      }
+      try {
+        const record = await this.teams.createInvitation(teamId, body.email, user.id);
+        res.writeHead(201, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(
+          JSON.stringify({
+            link: `/teams/accept#token=${encodeURIComponent(record.token)}`,
+            expiresAt: record.expiresAt,
+          }),
+        );
+      } catch (e: any) {
+        res.writeHead(422).end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+    const rotateWebhook = url.pathname.match(/^\/api\/teams\/([^/]+)\/webhook-token$/);
+    if (rotateWebhook && req.method === "POST") {
+      const teamId = decodeURIComponent(rotateWebhook[1]);
+      if (!(await this.teams.isAdmin(teamId, user.id))) {
+        res.writeHead(404).end();
+        return;
+      }
+      const token = await this.teams.rotateWebhookToken(teamId);
+      if (!token) {
+        res.writeHead(404).end();
+        return;
+      }
+      res
+        .writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+        .end(JSON.stringify({ webhookPath: `/webhooks/team/${encodeURIComponent(token)}/{provider}` }));
+      return;
+    }
+    if (url.pathname === "/api/teams/accept" && req.method === "POST") {
+      const body = await this.readJson(req, res);
+      if (!body || typeof body.token !== "string" || !user.email || user.email_verified !== true) {
+        res.writeHead(403).end(JSON.stringify({ error: "A verified sign-in email is required" }));
+        return;
+      }
+      const result = await this.teams.acceptInvitation(body.token, user.id, user.email);
+      res
+        .writeHead(result === "accepted" ? 200 : 404, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ result }));
+      return;
+    }
+    res.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Not found" }));
+  }
+
+  private async userForRequest(req: http.IncomingMessage) {
+    const sessionUser = this.oidc?.userFromCookie(req.headers.cookie);
+    if (sessionUser) {
+      return sessionUser;
+    }
+    const bearer = this.oidcBearer(req);
+    return bearer ? await this.oidc?.userFromAccessToken(bearer) : undefined;
+  }
+
+  private requireSameOrigin(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+    const origin = req.headers.origin;
+    const requestHost = String(req.headers.host || "")
+      .trim()
+      .toLowerCase();
+    try {
+      const parsedOrigin = origin ? new URL(origin) : null;
+      if (
+        parsedOrigin &&
+        ["http:", "https:"].includes(parsedOrigin.protocol) &&
+        parsedOrigin.host.toLowerCase() === requestHost
+      ) {
+        return true;
+      }
+    } catch {
+      // Reject malformed Origin and Host values.
+    }
+    res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ error: "Same-origin request required" }));
     return false;
   }
 
@@ -1437,12 +1733,13 @@ export class WebhookServer {
   }
 
   private async handleWorkflowList(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.requireAuthenticatedUser(req, res)) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
       return;
     }
     await this.workflowsLoaded;
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ workflows: await this.workflows.list() }));
+    res.end(JSON.stringify({ workflows: await this.workflows.listForTeam(teamId) }));
   }
 
   private async handleWorkflowGet(
@@ -1451,14 +1748,17 @@ export class WebhookServer {
     id: string,
     revisionParam: string | null = null,
   ) {
-    if (!this.requireAuthenticatedUser(req, res)) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
       return;
     }
     const revision = revisionParam === null ? undefined : Number(revisionParam);
     const workflow =
       revision !== undefined && Number.isSafeInteger(revision) && revision > 0
-        ? await this.workflows.getRevisionSnapshot(id, revision)
-        : await this.workflows.get(id);
+        ? (await this.workflows.getForTeam(teamId, id))
+          ? await this.workflows.getRevisionSnapshot(id, revision)
+          : null
+        : await this.workflows.getForTeam(teamId, id);
     if (!workflow) {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Workflow not found" }));
@@ -1468,7 +1768,8 @@ export class WebhookServer {
   }
 
   private async handleWorkflowSave(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
-    if (!this.requireAuthenticatedUser(req, res)) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
       return;
     }
     const body = await this.readJson(req, res);
@@ -1481,7 +1782,7 @@ export class WebhookServer {
       return;
     }
     try {
-      const workflow = await this.workflows.saveDraft(id, body.sourceYaml, body.enabled !== false);
+      const workflow = await this.workflows.saveDraftForTeam(teamId, id, body.sourceYaml, body.enabled !== false);
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify(workflow));
     } catch (error: any) {
@@ -1491,10 +1792,11 @@ export class WebhookServer {
   }
 
   private async handleWorkflowDelete(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
-    if (!this.requireAuthenticatedUser(req, res)) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
       return;
     }
-    if (!(await this.workflows.delete(id))) {
+    if (!(await this.workflows.deleteForTeam(teamId, id))) {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Workflow not found" }));
     }
@@ -1502,10 +1804,15 @@ export class WebhookServer {
   }
 
   private async handleWorkflowPublish(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
-    if (!this.requireAuthenticatedUser(req, res)) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
       return;
     }
-    const workflow = await this.workflows.publish(id);
+    if (!(await this.workflows.getForTeam(teamId, id))) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Workflow not found" }));
+    }
+    const workflow = await this.workflows.publishForTeam(teamId, id);
     if (!workflow) {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Workflow not found" }));
@@ -1515,15 +1822,17 @@ export class WebhookServer {
   }
 
   private async handleSecretList(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.requireAuthenticatedUser(req, res)) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
       return;
     }
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ secrets: await this.secretRepository.names() }));
+    res.end(JSON.stringify({ secrets: await this.secretRepository.namesForTeam(teamId) }));
   }
 
   private async handleSecretSave(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
-    if (!this.requireAuthenticatedUser(req, res)) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
       return;
     }
     const body = await this.readJson(req, res);
@@ -1534,7 +1843,7 @@ export class WebhookServer {
       return;
     }
     try {
-      await this.secretRepository.set(name, body.value, body.encoding || "utf8");
+      await this.secretRepository.setForTeam(teamId, name, body.value, body.encoding || "utf8");
       res.writeHead(204).end();
     } catch (error: any) {
       res.writeHead(422, { "Content-Type": "application/json" });
@@ -1543,10 +1852,11 @@ export class WebhookServer {
   }
 
   private async handleSecretDelete(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
-    if (!this.requireAuthenticatedUser(req, res)) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
       return;
     }
-    if (!(await this.secretRepository.delete(name))) {
+    if (!(await this.secretRepository.deleteForTeam(teamId, name))) {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Secret not found" }));
     }
@@ -1564,7 +1874,7 @@ export class WebhookServer {
       return res.end(JSON.stringify({ error: "Job is not assigned to this worker" }));
     }
     res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ secrets: await this.secretRepository.getAllForJob() }));
+    res.end(JSON.stringify({ secrets: await this.secretRepository.getAllForJob(job.team_id || "default") }));
   }
 
   /**
@@ -1606,10 +1916,10 @@ export class WebhookServer {
       return res.end(JSON.stringify({ error: "Invalid event payload" }));
     }
 
-    this.events.publish("jobs.changed", jobId ? { jobId } : {});
     if (jobId) {
       const job = await this.queue.getJob(jobId);
       if (job) {
+        this.events.publish("jobs.changed", { jobId, teamId: job.team_id || "default" });
         void this.push.notify(job);
       }
     }
@@ -1621,11 +1931,15 @@ export class WebhookServer {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Push notifications are not configured" }));
     }
-    res.writeHead(200, { "Cache-Control": "private, no-store", "Content-Type": "application/json" });
+    res.writeHead(200, { "Cache-Control": "public, max-age=3600", "Content-Type": "application/json" });
     res.end(JSON.stringify({ publicKey: this.push.publicKey }));
   }
 
   private async handlePushSubscribe(req: http.IncomingMessage, res: http.ServerResponse) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
+      return;
+    }
     const body = await this.readJson(req, res);
     if (!body) {
       return;
@@ -1644,11 +1958,15 @@ export class WebhookServer {
       }
       return;
     }
-    await this.push.save(body);
+    await this.push.save(body, teamId);
     res.writeHead(204).end();
   }
 
   private async handlePushUnsubscribe(req: http.IncomingMessage, res: http.ServerResponse) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
+      return;
+    }
     const body = await this.readJson(req, res);
     if (!body) {
       return;
@@ -1661,7 +1979,7 @@ export class WebhookServer {
       }
       return;
     }
-    await this.push.remove(body.endpoint);
+    await this.push.remove(body.endpoint, teamId);
     res.writeHead(204).end();
   }
 
@@ -1700,6 +2018,7 @@ export class WebhookServer {
   }
 
   private async renderDashboardJobs(
+    req: http.IncomingMessage,
     res: http.ServerResponse,
     limit: number,
     afterId?: number,
@@ -1707,15 +2026,21 @@ export class WebhookServer {
     filter?: string,
     workflowId?: string,
   ) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
+      return;
+    }
     let rows;
     try {
-      rows = await this.queue.listJobs(limit + 1, afterId, beforeId, filter, workflowId);
+      rows = await this.queue.listJobsForTeam(teamId, limit + 1, afterId, beforeId, filter, workflowId);
     } catch (error: any) {
       res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify({ error: error.message }));
     }
     const jobs = toDashboardJobs(rows.slice(0, limit));
-    const body = await this.redactText(JSON.stringify({ jobs, hasMore: rows.length > limit }));
+    const body = JSON.stringify(
+      this.redactStructured({ jobs, hasMore: rows.length > limit }, await this.currentSecrets(teamId)),
+    );
     res.writeHead(200, {
       "Cache-Control": "no-store",
       "Content-Type": "application/json; charset=utf-8",
@@ -1727,12 +2052,17 @@ export class WebhookServer {
    * Serves single job HTML report
    */
   private async renderRunDetails(
+    req: http.IncomingMessage,
     jobId: string,
     res: http.ServerResponse,
     format: "html" | "json",
     canViewLogs: boolean,
   ) {
-    const job = await this.queue.getJob(jobId);
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
+      return;
+    }
+    const job = await this.queue.getJobForTeam(teamId, jobId);
 
     if (!job) {
       if (format === "json") {
@@ -1748,7 +2078,7 @@ export class WebhookServer {
     }
 
     const logsMap = canViewLogs ? await this.queue.getJobLogs(jobId) : {};
-    const secretValues = await this.currentSecrets();
+    const secretValues = await this.secretRepository.getAllForTeam(teamId);
     const definition = await this.workflows.getRevision(job.workflow_id, job.workflow_revision);
     const snapshot = canViewLogs
       ? await this.workflows.getRevisionSnapshot(job.workflow_id, job.workflow_revision)
@@ -1776,6 +2106,14 @@ export class WebhookServer {
     if (!(await this.requireScope(req, res, "runs:control"))) {
       return;
     }
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
+      return;
+    }
+    if (!(await this.queue.getJobForTeam(teamId, jobId))) {
+      res.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Job not found" }));
+      return;
+    }
     const body = req.headers["content-length"] || req.headers["transfer-encoding"] ? await this.readJson(req, res) : {};
     if (!body || (body.inputs !== undefined && (typeof body.inputs !== "object" || Array.isArray(body.inputs)))) {
       return;
@@ -1783,7 +2121,7 @@ export class WebhookServer {
     const id = await this.queue.restartJob(jobId, body.inputs || {});
 
     if (id) {
-      this.events.publish("jobs.available");
+      this.events.publish("jobs.available", { teamId });
       res.writeHead(201, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ id }));
       return;
@@ -1802,7 +2140,13 @@ export class WebhookServer {
     if (!(await this.requireScope(req, res, "artifacts:read"))) {
       return;
     }
-    const file = (await this.queue.getStoredFiles("artifact", jobId)).find((entry) => entry.path === filePath);
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
+      return;
+    }
+    const file = (await this.queue.getStoredFilesForTeam(teamId, "artifact", jobId)).find(
+      (entry) => entry.path === filePath,
+    );
     if (!file) {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Artifact not found" }));
@@ -1819,14 +2163,20 @@ export class WebhookServer {
     if (!(await this.hasScope(req, "logs:read"))) {
       return this.requireScope(req, res, "logs:read");
     }
-    const apiKey = await this.currentSecrets().then((secrets) => secrets.OPENAI_API_KEY || process.env.OPENAI_API_KEY);
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
+      return;
+    }
+    const apiKey = await this.currentSecrets(teamId).then(
+      (secrets) => secrets.OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+    );
     const model = process.env.OPENAI_API_MODEL;
     const apiUrl = process.env.OPENAI_API_URL;
     if (!model || !apiUrl) {
       res.writeHead(503, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "AI help is not configured" }));
     }
-    const job = await this.queue.getJob(jobId);
+    const job = await this.queue.getJobForTeam(teamId, jobId);
     if (!job?.report) {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Run report not found" }));
@@ -1848,7 +2198,7 @@ export class WebhookServer {
       res.writeHead(400, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "A failed step and workflow revision are required" }));
     }
-    const secretValues = await this.currentSecrets();
+    const secretValues = await this.currentSecrets(teamId);
     const messages = buildAiHelpMessages(
       snapshot.sourceYaml,
       report.steps || [],
@@ -1884,13 +2234,14 @@ export class WebhookServer {
   }
 
   private async handleWorkflowAiHelp(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.requireAuthenticatedUser(req, res)) {
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
       return;
     }
     const body = await this.readJson(req, res);
     const request = typeof body?.request === "string" ? body.request.trim() : "";
     const sourceYaml = typeof body?.sourceYaml === "string" ? body.sourceYaml : "";
-    const apiKey = (await this.currentSecrets()).OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+    const apiKey = (await this.currentSecrets(teamId)).OPENAI_API_KEY || process.env.OPENAI_API_KEY;
     const model = process.env.OPENAI_API_MODEL;
     const apiUrl = process.env.OPENAI_API_URL;
     if (!request) {
@@ -1935,6 +2286,14 @@ export class WebhookServer {
     if (!(await this.requireScope(req, res, "runs:control"))) {
       return;
     }
+    const teamId = await this.requireTeam(req, res);
+    if (!teamId) {
+      return;
+    }
+    if (!(await this.queue.getJobForTeam(teamId, jobId))) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Job not found" }));
+    }
 
     const result = await this.queue.cancelJob(jobId);
     if (result === "not_found") {
@@ -1946,16 +2305,16 @@ export class WebhookServer {
       return res.end(JSON.stringify({ error: "Job is no longer running" }));
     }
 
-    this.events.publish("jobs.changed", { jobId: Number(jobId) });
+    this.events.publish("jobs.changed", { jobId: Number(jobId), teamId });
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ id: Number(jobId), status: "cancelled" }));
   }
 
-  private async currentSecrets(): Promise<Record<string, string>> {
+  private async currentSecrets(teamId = "default"): Promise<Record<string, string>> {
     try {
-      return await this.secretRepository.getAll();
+      return await this.secretRepository.getAllForTeam(teamId);
     } catch (error) {
-      if (process.env.RUNNER_MASTER_KEY || process.env.CREDENTIALS_DIRECTORY) {
+      if (teamId !== "default" || process.env.RUNNER_MASTER_KEY || process.env.CREDENTIALS_DIRECTORY) {
         throw error;
       }
       return this.secrets.getAll();
@@ -1968,8 +2327,19 @@ export class WebhookServer {
     return redactor.redactText(value);
   }
 
-  private async redactText(value: string): Promise<string> {
-    return this.redact(value, await this.currentSecrets());
+  private redactStructured<T>(value: T, secrets: Record<string, string>): T {
+    if (typeof value === "string") {
+      return this.redact(value, secrets) as T;
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => this.redactStructured(item, secrets)) as T;
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [key, this.redactStructured(item, secrets)]),
+      ) as T;
+    }
+    return value;
   }
 
   async listen(port: number): Promise<WebhookServer> {

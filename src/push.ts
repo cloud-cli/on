@@ -14,19 +14,19 @@ export class PushRepository {
     return this.config.push?.publicKey;
   }
 
-  async save(subscription: PushSubscriptionInput): Promise<void> {
+  async save(subscription: PushSubscriptionInput, teamId: string): Promise<void> {
     await db.run(
-      `INSERT INTO push_subscriptions (endpoint, p256dh, auth) VALUES (?, ?, ?)
-       ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth`,
-      [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth],
+      `INSERT INTO team_push_subscriptions (endpoint, p256dh, auth, team_id) VALUES (?, ?, ?, ?)
+       ON CONFLICT(team_id, endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth`,
+      [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth, teamId],
     );
   }
 
-  async remove(endpoint: string): Promise<void> {
-    await db.run("DELETE FROM push_subscriptions WHERE endpoint = ?", [endpoint]);
+  async remove(endpoint: string, teamId: string): Promise<void> {
+    await db.run("DELETE FROM team_push_subscriptions WHERE endpoint = ? AND team_id = ?", [endpoint, teamId]);
   }
 
-  async notify(job: { id: number; workflow_id: string; status: string }): Promise<void> {
+  async notify(job: { id: number; workflow_id: string; status: string; team_id?: string }): Promise<void> {
     if (!this.config.push || !["success", "failed", "cancelled"].includes(job.status)) {
       return;
     }
@@ -38,7 +38,9 @@ export class PushRepository {
       return;
     }
     webpush.setVapidDetails(this.config.push.subject, this.config.push.publicKey, this.config.push.privateKey);
-    const subscriptions = await db.all("SELECT endpoint, p256dh, auth FROM push_subscriptions");
+    const subscriptions = await db.all("SELECT endpoint, p256dh, auth FROM team_push_subscriptions WHERE team_id = ?", [
+      job.team_id || "default",
+    ]);
     const payload = JSON.stringify({
       title: `Job #${job.id} ${job.status}`,
       body: `${job.workflow_id} finished with status ${job.status}.`,
@@ -54,7 +56,7 @@ export class PushRepository {
           );
         } catch (error: any) {
           if (error.statusCode === 404 || error.statusCode === 410) {
-            await this.remove(subscription.endpoint);
+            await this.remove(subscription.endpoint, job.team_id || "default");
           } else {
             console.error(`Unable to send push notification to ${subscription.endpoint}:`, error.message);
           }

@@ -2,6 +2,7 @@ import db from "./db-client.js";
 import { WorkflowExecutionReport, JobPayload, JobRecord, JobStatus } from "./types.js";
 import { timestampLogLines } from "./timestamped-log.js";
 import { FileStorage } from "./file-storage.js";
+import { ensureTeamDataSchema } from "./team-data-schema.js";
 
 export class QueueManager {
   private readonly fileStorage = new FileStorage();
@@ -10,6 +11,7 @@ export class QueueManager {
 
   async init() {
     await this.createTables();
+    await ensureTeamDataSchema();
     await this.clearStaleJobs();
   }
 
@@ -27,16 +29,23 @@ export class QueueManager {
     // If a concurrency key is provided, cancel existing pending/running jobs in that group
     if (concurrencyKey) {
       await db.run(
-        `UPDATE jobs
-         SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
-         WHERE concurrency_key = ? AND status IN ('pending', 'running');`,
-        [concurrencyKey],
+        `UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE team_id = (SELECT team_id FROM workflows WHERE id = ?)
+         AND concurrency_key = ? AND status IN ('pending', 'running');`,
+        [workflowId, concurrencyKey],
       );
     }
 
     const res = await db.run(
-      `INSERT INTO jobs (workflow_id, workflow_revision, required_tags, concurrency_key, payload) VALUES (?, ?, ?, ?, ?);`,
-      [workflowId, workflowRevision, JSON.stringify(requiredTags), concurrencyKey || "", JSON.stringify(payload)],
+      `INSERT INTO jobs (workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id)
+      VALUES (?, ?, ?, ?, ?, COALESCE((SELECT team_id FROM workflows WHERE id = ?), 'default'));`,
+      [
+        workflowId,
+        workflowRevision,
+        JSON.stringify(requiredTags),
+        concurrencyKey || "",
+        JSON.stringify(payload),
+        workflowId,
+      ],
     );
 
     return Number(res?.lastInsertRowid ?? res?.id ?? 0);
@@ -78,9 +87,7 @@ export class QueueManager {
 
   async releaseJob(jobId: string | number): Promise<void> {
     await db.run(
-      `UPDATE jobs
-       SET status = 'pending', worker_id = NULL, started_at = NULL, updated_at = CURRENT_TIMESTAMP
-       WHERE id = ? AND status = 'running';`,
+      `UPDATE jobs SET status = 'pending', worker_id = NULL, started_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running';`,
       [jobId],
     );
   }
@@ -150,11 +157,11 @@ export class QueueManager {
 
     const newJob = await db.get(
       `INSERT INTO jobs (
-         parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload,
+         parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id,
          status, worker_id, report, started_at, finished_at
        )
-       SELECT id, workflow_id, ?, required_tags, concurrency_key, ?,
-              'pending', NULL, NULL, NULL, NULL
+       SELECT id, workflow_id, ?, required_tags, concurrency_key, ?, team_id,
+               'pending', NULL, NULL, NULL, NULL
        FROM jobs
        WHERE id = ?
        RETURNING *`,
@@ -174,9 +181,7 @@ export class QueueManager {
 
   async clearStaleJobs() {
     return await db.run(
-      `UPDATE jobs
-       SET status = 'pending', worker_id = NULL, updated_at = CURRENT_TIMESTAMP
-       WHERE status = 'running' AND started_at < datetime('now', '-1 hour');`,
+      `UPDATE jobs SET status = 'pending', worker_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE status = 'running' AND started_at < datetime('now', '-1 hour');`,
     );
   }
 
@@ -244,6 +249,11 @@ export class QueueManager {
     return db.get(`SELECT * FROM jobs WHERE id = ?`, [jobId]);
   }
 
+  /** Tenant-scoped job lookup for authenticated server requests. */
+  async getJobForTeam(teamId: string, jobId: string | number): Promise<any> {
+    return db.get("SELECT * FROM jobs WHERE team_id = ? AND id = ?", [teamId, jobId]);
+  }
+
   /**
    * List recent jobs for dashboard status monitoring
    */
@@ -287,6 +297,47 @@ export class QueueManager {
 
     const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
     return db.all(`SELECT * FROM jobs${where} ORDER BY id DESC LIMIT ?;`, [...values, limit]);
+  }
+
+  /** Tenant-scoped job listing; teamId is mandatory. */
+  async listJobsForTeam(
+    teamId: string,
+    limit = 50,
+    afterId?: number,
+    beforeId?: number,
+    filter?: string,
+    workflowId?: string,
+  ): Promise<any[]> {
+    const conditions = ["team_id = ?"];
+    const values: Array<number | string> = [teamId];
+    if (afterId !== undefined) {
+      conditions.push("id > ?");
+      values.push(afterId);
+    }
+    if (beforeId !== undefined) {
+      conditions.push("id < ?");
+      values.push(beforeId);
+    }
+    if (filter) {
+      const separator = filter.indexOf(":");
+      if (separator > 0) {
+        const field = filter.slice(0, separator).trim();
+        const pattern = filter.slice(separator + 1).trim();
+        if (!/^[A-Za-z0-9_-]+$/.test(field) || !pattern) {
+          throw new Error("Invalid job filter");
+        }
+        conditions.push("json_extract(payload, '$.inputs.' || ?) GLOB ?");
+        values.push(field, pattern);
+      } else {
+        conditions.push("LOWER(payload) LIKE LOWER(?)");
+        values.push(`%${filter}%`);
+      }
+    }
+    if (workflowId) {
+      conditions.push("workflow_id = ?");
+      values.push(workflowId);
+    }
+    return db.all(`SELECT * FROM jobs WHERE ${conditions.join(" AND ")} ORDER BY id DESC LIMIT ?`, [...values, limit]);
   }
 
   /**
@@ -351,6 +402,17 @@ export class QueueManager {
       kind,
       ownerKey,
     ]);
+  }
+
+  async getStoredFilesForTeam(
+    teamId: string,
+    kind: "artifact" | "cache",
+    jobId: string | number,
+  ): Promise<Array<{ path: string; content: string }>> {
+    if (!(await this.getJobForTeam(teamId, jobId))) {
+      return [];
+    }
+    return this.getStoredFiles(kind, String(jobId));
   }
 
   async updateWorkerPresence(worker: {
