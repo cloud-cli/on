@@ -62,4 +62,22 @@ describe("SPA router", () => {
     expect(routerSetup).toContain('component: "page-not-found", page: "not-found"');
     expect(routerSetup).toContain('if (current.page === "not-found")');
   });
+
+  it("keeps mounted page instances alive and only loads each primary page on first visit", () => {
+    expect(routerSetup).toContain("const mountedPages = new Map()");
+    expect(routerSetup).toContain("mountedPages.get(cacheKey)");
+    expect(routerSetup).toContain("page.hidden = page !== component");
+    expect(routerSetup).toContain("outlet.value.append(component)");
+    expect(routerSetup).not.toContain("outlet.value.replaceChildren(document.createElement(current.component))");
+  });
+
+  it("delegates same-origin link navigation across the whole shell", () => {
+    expect(routerSetup).toContain('document.addEventListener("click", handleClick)');
+    expect(routerSetup).toContain('document.removeEventListener("click", handleClick)');
+  });
+
+  it("mounts run details and workflow editors as disposable route components", () => {
+    expect(routerSetup).toContain('!["run", "editor"].includes(current.page)');
+    expect(routerSetup).toContain("activeTransientPage?.remove()");
+  });
 });
