@@ -33,22 +33,33 @@
             >
               <lucide-icon icon="arrow-left" size="15"></lucide-icon>All runs
             </a>
-            <h1 class="flex flex-wrap items-baseline gap-x-2 text-2xl font-semibold text-flow-foreground">
+            <h1 class="flex flex-wrap items-center gap-x-2 text-2xl font-semibold text-flow-foreground">
               <span>{{ report.workflowName }}</span><span class="text-flow-secondary">#{{ report.jobId }}</span>
+              <span
+                class="px-3 py-1 rounded-full text-xs font-semibold border"
+                bind-class="{'bg-emerald-100.text-emerald-800.border-emerald-300': report.status === 'success', 'bg-rose-100.text-rose-800.border-rose-300': report.status === 'failed', 'bg-blue-100.text-blue-800.border-blue-300': report.status === 'running', 'bg-amber-100.text-amber-900.border-amber-300': !['success', 'failed', 'running'].includes(report.status)}"
+                >{{ upper(report.status) }}</span
+              >
             </h1>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <span
-              class="px-4 py-1.5 rounded-full text-sm font-semibold border"
-              bind-class="{
-              'bg-emerald-100.text-emerald-800.border-emerald-300': report.status === 'success',
-              'bg-rose-100.text-rose-800.border-rose-300': report.status === 'failed',
-              'bg-blue-100.text-blue-800.border-blue-300': report.status === 'running',
-              'bg-amber-100.text-amber-900.border-amber-300': !['success', 'failed', 'running'].includes(report.status)
-            }"
+            <button
+              type="button"
+              on-click="copyRunUrl()"
+              class="inline-flex items-center gap-2 rounded-full border border-flow-border px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+              title="Copy URL"
             >
-              {{ upper(report.status) }}
-            </span>
+              <lucide-icon icon="link" size="15"></lucide-icon>Copy URL
+            </button>
+            <button
+              type="button"
+              on-click="downloadLogs()"
+              class="inline-flex items-center gap-2 rounded-full border border-flow-border px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+              class-hidden="!report.canViewLogs"
+              title="Download logs"
+            >
+              <lucide-icon icon="download" size="15"></lucide-icon>Download Logs
+            </button>
             <template if="report.status === 'running'">
               <button
                 class="rounded-full border border-rose-300 px-4 py-1.5 text-sm text-rose-700 hover:border-rose-400 disabled:opacity-50"

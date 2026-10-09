@@ -114,7 +114,7 @@ export default function setup() {
       running: "border-blue-300 bg-blue-100 text-blue-800",
       cancelled: "border-slate-300 bg-slate-100 text-slate-700",
     })[status] || "border-slate-300 bg-slate-100 text-slate-700";
-  const statusIcon = (status) => statusIcons[status] || "circle-help";
+  const statusIcon = (status) => statusIcons[status] || "circle-question-mark";
   const notifyCompletedJob = async (job) => {
     if (!notificationsEnabled.value || pushConfigured.value || !["success", "failed"].includes(job.status)) return;
     try {

@@ -195,7 +195,7 @@ describe("run view", () => {
     expect(source).toContain("{{ failedStepMessage }}");
     expect(source).not.toContain("{{ runOrigin }}");
     expect(source).not.toContain("Workflow execution");
-    expect(source).toContain('class="flex flex-wrap items-baseline gap-x-2');
+    expect(source).toContain('class="flex flex-wrap items-center gap-x-2');
     expect(source).toContain('on-click="selectStep(step.index)"');
     expect(source).toContain('class="block min-w-0 flex-1 truncate"');
     expect(source).toContain('class-hidden="!isAdmin"');
@@ -210,6 +210,11 @@ describe("run view", () => {
     expect(source).toContain("Logs & steps");
     expect(source).toContain("Search this step's logs");
     expect(source).toContain("toggleLogWrap()");
+    expect(source).toContain('on-click="downloadLogs()"');
+    expect(source).toContain('on-click="copyRunUrl()"');
+    expect(runSetup).toContain("navigator.clipboard.writeText(window.location.href)");
+    expect(runSetup).toContain("link.download = `run-${report.value.jobId}-logs.txt`");
+    expect(runSetup).toContain('if (previousStatus !== "failed" && nextReport.status === "failed")');
     expect(source).toContain('aria-label="Copy logs"');
     expect(source).toContain("detailTab !== 'inputs'");
     expect(source).toContain("detailTab !== 'artifacts'");

@@ -103,6 +103,22 @@ export default function setup() {
     const content = selectedStepReport.value?.logContent;
     if (content && navigator.clipboard?.writeText) await navigator.clipboard.writeText(content);
   };
+  const copyRunUrl = async () => {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(window.location.href);
+  };
+  const downloadLogs = () => {
+    const content = (report.value.steps || [])
+      .map(
+        (step) =>
+          `===== ${step.name || step.id || "Step"} (${String(step.status || "unknown").toUpperCase()}) =====\n${step.logContent || ""}`,
+      )
+      .join("\n\n");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+    link.download = `run-${report.value.jobId}-logs.txt`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
   const selectDetailTab = (tab) => {
     detailTab.value = tab;
   };
@@ -329,6 +345,10 @@ export default function setup() {
       const previousStatus = report.value.status;
       const nextReport = await response.json();
       report.value = nextReport;
+      if (previousStatus !== "failed" && nextReport.status === "failed") {
+        const failedIndex = (nextReport.steps || []).findIndex((step) => step.status === "failed");
+        if (failedIndex >= 0) selectedStep.value = failedIndex;
+      }
       document.title = `Run #${nextReport.jobId} - ${nextReport.workflowName}`;
       void loadPreviousRuns();
       if (
@@ -447,6 +467,8 @@ export default function setup() {
     wrapLogs,
     toggleLogWrap,
     copyLogs,
+    copyRunUrl,
+    downloadLogs,
     formatDuration,
   };
 }

@@ -31,9 +31,9 @@
       >
         Skip to content
       </a>
-      <div class="h-dvh overflow-hidden md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
+      <div class="h-dvh overflow-hidden md:grid md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]">
         <aside
-          class="hidden min-h-0 overflow-y-auto border-r border-flow-border bg-flow-sidebar px-4 py-5 md:flex md:flex-col"
+          class="hidden h-full min-h-0 overflow-y-auto border-r border-flow-border bg-flow-sidebar px-4 py-5 md:flex md:flex-col"
         >
           <a
             href="/runs"
@@ -77,7 +77,7 @@
           </nav>
           <template if="userAuthenticated">
             <div
-              class="mt-4 flex min-w-0 items-center gap-3 border border-flow-border py-2 px-3 rounded-lg bg-white/20"
+              class="mt-4 flex min-w-0 items-center gap-3 border border-flow-border py-2 px-3 rounded-lg bg-white/40"
             >
               <span
                 class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-flow-accent text-sm font-semibold text-flow-foreground"
@@ -101,7 +101,7 @@
             </div>
           </template>
         </aside>
-        <div class="h-dvh min-h-0 min-w-0 overflow-y-auto overscroll-y-contain pb-20 md:pb-0">
+        <div class="h-dvh min-h-0 min-w-0 overflow-y-auto overscroll-y-contain pb-20 md:h-full md:pb-0">
           <div id="main-content" tabindex="-1" class="min-h-full min-w-0 p-4 sm:p-6 lg:p-8">
             <app-router></app-router>
           </div>

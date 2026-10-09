@@ -73,6 +73,7 @@ describe("dashboard", () => {
     expect(html).not.toContain(">✓</span>");
     expect(html).toContain('bind-class="statusClass(job.status)"');
     expect(html).toContain('bind-icon="statusIcon(job.status)"');
+    expect(html).toContain("job.status === 'running' ? 'animate-spin' : ''");
     expect(html).toContain("{{ job.statusLabel }}");
     expect(html).not.toContain("{{ sentence(job.status)");
     expect(dashboardSetup).toContain("border-rose-300 bg-rose-100 text-rose-800");
