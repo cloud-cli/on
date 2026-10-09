@@ -111,6 +111,7 @@ export function isExemptFromGlobalOidcAuth(pathname: string, method: string): bo
     "/run.mjs",
     "/settings-ui.mjs",
     "/team-settings-ui.mjs",
+    "/teams-landing.mjs",
     "/workflows-ui.mjs",
     "/pages/dashboard.mjs",
     "/pages/run.mjs",
@@ -151,6 +152,7 @@ export function isProtectedUiRoute(pathname: string, method: string): boolean {
     /^\/runs\/\d+$/.test(pathname) ||
     pathname === "/help" ||
     pathname === "/settings" ||
+    pathname === "/teams" ||
     /^\/teams\/[^/]+\/settings$/.test(pathname) ||
     /^\/settings\/(secrets|tokens|notifications|workers|timezone)$/.test(pathname) ||
     pathname === "/workflows" ||
