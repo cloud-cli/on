@@ -1,6 +1,7 @@
 import { onDestroy, onInit, ref, templateRef } from "@li3/web";
 import { diffLines } from "diff";
 import { navigateTo } from "@app/app-router.mjs";
+import { apiFetch } from "@app/api-client.mjs";
 
 export default function () {
   const params = new URLSearchParams(window.location.search);
@@ -60,7 +61,7 @@ export default function () {
   };
 
   const api = async (url, options = {}) => {
-    const response = await fetch(url, {
+    const response = await apiFetch(url, {
       ...options,
       credentials: "same-origin",
       headers: {
@@ -368,7 +369,7 @@ export default function () {
     aiError.value = "";
     aiDiffHtml.value = "";
     try {
-      const response = await fetch("/api/ai/workflow-help", {
+      const response = await apiFetch("/api/ai/workflow-help", {
         method: "POST",
         credentials: "same-origin",
         headers: { accept: "text/event-stream", "content-type": "application/json" },

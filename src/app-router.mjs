@@ -1,4 +1,5 @@
 import { getElement, load, onDestroy, onInit, templateRef } from "@li3/web";
+import { apiFetch } from "@app/api-client.mjs";
 
 export function navigateTo(path) {
   history.pushState(null, "", path);
@@ -11,6 +12,81 @@ export default function () {
   const mountedPages = new Map();
   let activeTransientPage = null;
   let routeMessage = null;
+  const checkTeams = async () => {
+    const response = await apiFetch("/api/teams", { headers: { accept: "application/json" } });
+    if (!response.ok)
+      throw new Error(`Unable to check your teams (${response.status}). Please reload or sign in again.`);
+    const result = await response.json();
+    const teams = result.teams || [];
+    if (teams.length) {
+      const selected = localStorage.getItem("runner-team-id");
+      if (!teams.some((team) => team.id === selected)) localStorage.setItem("runner-team-id", teams[0].id);
+    }
+    return teams;
+  };
+  const showOnboarding = () => {
+    document.body.dataset.teamless = "true";
+    for (const page of mountedPages.values()) page.hidden = true;
+    activeTransientPage?.remove();
+    activeTransientPage = null;
+    routeMessage?.remove();
+    const main = document.createElement("main");
+    main.className = "mx-auto mt-16 w-full max-w-lg rounded-2xl border border-flow-border bg-white p-8 shadow-sm";
+    main.innerHTML =
+      '<p class="text-sm font-semibold uppercase tracking-wide text-flow-primary">Welcome to Flow</p><h1 class="mt-3 text-2xl font-semibold">Create your first team</h1><p class="mt-2 text-sm text-flow-secondary">Teams keep your workflows, runs, and secrets together.</p><form class="mt-6 space-y-4"><label class="block text-sm font-medium" for="first-team-name">Team name</label><input id="first-team-name" name="name" required maxlength="100" autocomplete="organization" class="w-full rounded-lg border border-flow-border px-3 py-2" placeholder="Acme Engineering"><p class="hidden text-sm text-rose-700" role="alert"></p><button class="rounded-lg bg-flow-primary px-4 py-2 font-semibold text-white">Create team</button></form>';
+    const form = main.querySelector("form");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = form.querySelector("button");
+      const alert = form.querySelector('[role="alert"]');
+      const name = new FormData(form).get("name").trim();
+      if (!name) return;
+      button.disabled = true;
+      button.textContent = "Creating…";
+      alert.classList.add("hidden");
+      try {
+        const response = await apiFetch("/api/teams", {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok)
+          throw new Error(result.error || `Team creation failed (${response.status}). Please try again.`);
+        const team = result.team || result;
+        if (!team.id)
+          throw new Error("Team was created but the response had no team ID. Reload and select your team in Settings.");
+        localStorage.setItem("runner-team-id", team.id);
+        document.body.dataset.teamless = "false";
+        window.dispatchEvent(new Event("runner-teams-updated"));
+        main.querySelector("form").remove();
+        const success = document.createElement("section");
+        success.className = "mt-6 space-y-3 text-sm";
+        const confirmation = document.createElement("p");
+        confirmation.textContent = `Team “${team.name || name}” created successfully.`;
+        success.append(confirmation);
+        if (result.webhookPath) {
+          const webhook = document.createElement("p");
+          webhook.className = "break-all rounded-lg bg-flow-sidebar p-3";
+          webhook.textContent = `Webhook endpoint: ${result.webhookPath}`;
+          success.append(webhook);
+        }
+        const continueButton = document.createElement("button");
+        continueButton.className = "rounded-lg bg-flow-primary px-4 py-2 font-semibold text-white";
+        continueButton.textContent = "Continue to Flow";
+        continueButton.addEventListener("click", () => void navigate(true));
+        success.append(continueButton);
+        main.append(success);
+      } catch (error) {
+        alert.textContent = error.message || "Unable to create team. Please try again.";
+        alert.classList.remove("hidden");
+        button.disabled = false;
+        button.textContent = "Create team";
+      }
+    });
+    routeMessage = main;
+    outlet.value.replaceChildren(main);
+  };
   const route = () => {
     const url = new URL(window.location.href);
     const path = url.pathname;
@@ -34,6 +110,13 @@ export default function () {
   const navigate = async (replace = false) => {
     const currentNavigation = ++navigationId;
     try {
+      const teams = await checkTeams();
+      if (currentNavigation !== navigationId) return;
+      if (!teams.length) {
+        showOnboarding();
+        return;
+      }
+      document.body.dataset.teamless = "false";
       const current = route();
       document.body.dataset.page = current.page;
       activeTransientPage?.remove();
@@ -99,7 +182,8 @@ export default function () {
     if (
       target.origin !== window.location.origin ||
       !target.pathname.startsWith("/") ||
-      target.pathname.startsWith("/auth/")
+      target.pathname.startsWith("/auth/") ||
+      target.pathname === "/teams/accept"
     )
       return;
     if (target.pathname.startsWith("/api/") || target.pathname.startsWith("/webhooks/")) return;

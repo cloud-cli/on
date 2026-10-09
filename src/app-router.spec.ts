@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import routerTemplate from "./app-router.html?raw";
 import routerSetup from "./app-router.mjs?raw";
 import serverSetup from "./server.ts?raw";
+import appShell from "./app-shell.html?raw";
 
 const handleClick = routerSetup.match(/const handleClick = \(event\) => \{([\s\S]*?)\n  \};/)?.[1] ?? "";
 
@@ -87,5 +88,17 @@ describe("SPA router", () => {
   it("mounts run details and workflow editors as disposable route components", () => {
     expect(routerSetup).toContain('!["run", "editor"].includes(current.page)');
     expect(routerSetup).toContain("activeTransientPage?.remove()");
+  });
+
+  it("checks team membership before mounting app routes and offers focused first-team onboarding", () => {
+    expect(appShell).toContain('data-teamless="checking"');
+    expect(routerSetup).toContain('apiFetch("/api/teams"');
+    expect(routerSetup).toContain("if (!teams.length)");
+    expect(routerSetup).toContain("showOnboarding()");
+    expect(routerSetup).toContain('apiFetch("/api/teams", {');
+    expect(routerSetup).toContain('localStorage.setItem("runner-team-id", team.id)');
+    expect(routerSetup).toContain('document.body.dataset.teamless = "true"');
+    expect(routerSetup).toContain("Continue to Flow");
+    expect(routerTemplate).toContain('ref="outlet"');
   });
 });

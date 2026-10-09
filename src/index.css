@@ -40,3 +40,15 @@
   --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
 }
+body[data-teamless]:not([data-teamless="false"]) aside,
+body[data-teamless]:not([data-teamless="false"]) nav[aria-label="Mobile navigation"] {
+  display: none !important;
+}
+
+body[data-teamless]:not([data-teamless="false"]) [data-app-layout] {
+  display: block;
+}
+
+body[data-teamless]:not([data-teamless="false"]) #main-content {
+  grid-column: 1 / -1;
+}
