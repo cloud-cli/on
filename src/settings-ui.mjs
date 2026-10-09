@@ -7,8 +7,10 @@ export default function () {
   const keys = ref([]);
   const workers = ref([]);
   const workersForbidden = ref(false);
+  const workersLoaded = ref(false);
   const users = ref([]);
   const usersForbidden = ref(false);
+  const usersLoaded = ref(false);
   const keyName = ref("");
   const error = ref("");
   const timezone = ref(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
@@ -236,6 +238,8 @@ export default function () {
         return;
       }
       throw reason;
+    } finally {
+      workersLoaded.value = true;
     }
   };
   const loadUsers = async () => {
@@ -247,6 +251,8 @@ export default function () {
         return;
       }
       throw reason;
+    } finally {
+      usersLoaded.value = true;
     }
   };
   const loadPreferences = async () => {
@@ -413,8 +419,10 @@ export default function () {
     apiKeyForm,
     workers,
     workersForbidden,
+    workersLoaded,
     users,
     usersForbidden,
+    usersLoaded,
     keyName,
     error,
     timezone,
