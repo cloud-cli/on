@@ -96,15 +96,8 @@ describe("settings UI", () => {
     expect(settingsSetup).toContain('encoding: "base64"');
   });
 
-  it("exposes team creation, admin invitations, and webhook rotation controls", () => {
-    const html = generateSettingsHtml() + settingsSetup;
-    expect(html).toContain('id="section-teams"');
-    expect(html).toContain("Create team");
-    expect(html).toContain("Create invite link");
-    expect(html).toContain("Generate / rotate webhook URL");
-    expect(html).toContain("can be used once by the matching email account");
-    expect(settingsSetup).toContain("/api/teams/${encodeURIComponent(teamId)}/invitations");
-    expect(settingsSetup).toContain("/api/teams/${encodeURIComponent(teamId)}/webhook-token");
-    expect(settingsSetup).toContain('localStorage.setItem("runner-team-id", result.team.id)');
+  it("keeps team APIs out of general settings", () => {
+    expect(generateSettingsHtml()).not.toContain("section-teams");
+    expect(settingsSetup).not.toContain("/api/teams");
   });
 });

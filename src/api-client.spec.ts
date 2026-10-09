@@ -90,6 +90,20 @@ describe("browser API client sign-in recovery", () => {
     expect(new Headers(fetch.mock.calls[1][1]?.headers).get("authorization")).toBe("Bearer oidc-access-token");
   });
 
+  it("preserves an explicitly selected team header on API requests", async () => {
+    const { fetch } = installBrowser([
+      new Response(JSON.stringify({ access_token: "oidc-access-token", expires_at: Date.now() + 60_000 }), {
+        status: 200,
+      }),
+      new Response(JSON.stringify({ members: [] }), { status: 200 }),
+    ]);
+    const { apiFetch } = await importClient();
+
+    await apiFetch("/api/teams/team-b/members", { headers: { "X-Team-ID": "team-b" } });
+
+    expect(new Headers(fetch.mock.calls[1][1]?.headers).get("X-Team-ID")).toBe("team-b");
+  });
+
   it("keeps manually supplied API keys without requesting an OIDC token", async () => {
     const { fetch, sessionStorage } = installBrowser([]);
     const { loadToken, setApiToken } = await importClient();

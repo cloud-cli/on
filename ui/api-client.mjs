@@ -217,7 +217,7 @@ export async function apiFetch(input, init = {}) {
   }
   const headers = new Headers(init.headers);
   const teamId = typeof localStorage === "undefined" ? "" : localStorage.getItem("runner-team-id") || "";
-  if (teamId) {
+  if (teamId && !headers.has("X-Team-ID")) {
     headers.set("X-Team-ID", teamId);
   }
   if (acquired.token) {
@@ -234,7 +234,7 @@ export async function apiFetch(input, init = {}) {
   expiresAt = 0;
   sessionStorage.removeItem("runner-api-token");
   const retryHeaders = new Headers(init.headers);
-  if (teamId) {
+  if (teamId && !retryHeaders.has("X-Team-ID")) {
     retryHeaders.set("X-Team-ID", teamId);
   }
   const retryToken = await acquireToken();
