@@ -27,6 +27,11 @@ export const appIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512
   </g>
 </svg>`;
 
+export function getAppIcon(beta = false): string {
+  if (!beta) {return appIcon;}
+  return appIcon.replace('fill="#263d32"', 'fill="#101b3f"');
+}
+
 export const serviceWorker = `self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 self.addEventListener('push', (event) => {

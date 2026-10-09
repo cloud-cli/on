@@ -1,5 +1,5 @@
-import { QueueManager } from './queue.js';
-import { SecretStore } from './secrets.js';
+import { QueueManager } from "./queue.js";
+import { SecretStore } from "./secrets.js";
 
 // types can be grouped in 4 different layers
 // 1. configuration and initialization: the settings to initialize the webserver and the runners, and bridge the host with the runnables
@@ -24,6 +24,8 @@ export interface RunnerConfig {
   tags: string[];
   /** Storage path for job workspaces and step logs */
   storagePath: string;
+  /** Marks the deployment as beta (used to identify its PWA icon). */
+  beta?: boolean;
   /** Global environment variables injected into all step runs */
   env: Record<string, string>;
   /** External integrations notified about workflow lifecycle changes */
@@ -117,7 +119,7 @@ export interface WorkflowTrigger {
 export interface ScheduleTrigger {
   id?: string;
   cron?: string;
-  event?: 'sunrise' | 'sunset';
+  event?: "sunrise" | "sunset";
   latitude?: number;
   longitude?: number;
   timezone?: string;
@@ -187,7 +189,7 @@ export interface WebhookServerOptions {
   adminToken: string;
 }
 
-export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+export type JobStatus = "pending" | "running" | "success" | "failed" | "cancelled";
 
 export interface JobRecord {
   id: number;
@@ -233,12 +235,12 @@ export interface WorkflowPlugin {
   onWorkflowFinish?: (wf: WorkflowContext, status: FinalJobStatus) => Promise<void>;
 }
 
-export type FinalJobStatus = Exclude<JobStatus, 'pending' | 'running'>;
+export type FinalJobStatus = Exclude<JobStatus, "pending" | "running">;
 
 export interface StepReport {
   id: string;
   name: string;
-  status: 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'cancelled';
+  status: "pending" | "running" | "success" | "failed" | "skipped" | "cancelled";
   durationMs: number;
   exitCode?: number;
   startedAt?: string;
@@ -252,7 +254,7 @@ export interface WorkflowExecutionReport {
   jobId: string;
   parentId: string;
   workflowName: string;
-  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+  status: "pending" | "running" | "success" | "failed" | "cancelled";
   durationMs: number;
   startedAt: string;
   finishedAt?: string;
