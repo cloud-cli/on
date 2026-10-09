@@ -100,6 +100,14 @@ export default function () {
       return { component: "page-run", url: `/pages/run.html?jobId=${path.split("/").pop()}`, page: "run" };
     if (path === "/help") return { component: "page-help", url: "/pages/help.html", page: "help" };
     if (path === "/settings") return { component: "page-settings", url: "/pages/settings.html", page: "settings" };
+    const teamSettings = path.match(/^\/teams\/([^/]+)\/settings$/);
+    if (teamSettings)
+      return {
+        component: "page-team-settings",
+        url: `/pages/team-settings.html?teamId=${encodeURIComponent(teamSettings[1])}`,
+        page: "team-settings",
+        teamId: decodeURIComponent(teamSettings[1]),
+      };
     if (path === "/workflows")
       return { component: "page-workflows", url: "/pages/workflows.html?page=workflows", page: "workflows" };
     const legacyEditor = path.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
@@ -122,6 +130,10 @@ export default function () {
       }
       document.body.dataset.teamless = "false";
       const current = route();
+      if (current.teamId) {
+        if (!teams.some((team) => team.id === current.teamId)) throw new Error("You are not a member of this team.");
+        localStorage.setItem("runner-team-id", current.teamId);
+      }
       document.body.dataset.page = current.page;
       activeTransientPage?.remove();
       activeTransientPage = null;
@@ -135,12 +147,13 @@ export default function () {
           '<h1 class="text-xl font-semibold">404 — Page not found</h1><p class="mt-2 text-sm">The page you are looking for does not exist. <a href="/">Go home</a> or <a href="/runs">view runs</a>.</p>';
         outlet.value.append(routeMessage);
       } else {
-        const persistentPage = !["run", "editor"].includes(current.page);
+        const persistentPage = !["run", "editor", "team-settings"].includes(current.page);
         const cacheKey = current.page;
         let component = persistentPage ? mountedPages.get(cacheKey) : null;
         if (!component) {
           await load(current.url);
           if (currentNavigation !== navigationId) return;
+          if (current.teamId) localStorage.setItem("runner-team-id", current.teamId);
           component = document.createElement(current.component);
           component.dataset.routePage = current.page;
           if (persistentPage) {

@@ -55,8 +55,10 @@ export async function apiFetch(input, init = {}) {
     return rawFetch(input, init);
   }
   const headers = new Headers(init.headers);
-  const teamId = await ensureTeamSelection();
-  if (teamId) headers.set("X-Team-ID", teamId);
+  if (!headers.has("X-Team-ID")) {
+    const teamId = await ensureTeamSelection();
+    if (teamId) headers.set("X-Team-ID", teamId);
+  }
   const accessToken = await loadToken();
   if (accessToken) headers.set("authorization", `Bearer ${accessToken}`);
   return rawFetch(input, { ...init, headers });

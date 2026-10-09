@@ -6,6 +6,15 @@ export default function setup() {
   const oidcProviderUrl = ref("");
   const userAuthenticated = ref(false);
   const userInitial = ref("U");
+  const teams = ref([]);
+  const loadTeams = async () => {
+    try {
+      const response = await fetch("/api/teams", { headers: { accept: "application/json" } });
+      teams.value = response.ok ? (await response.json()).teams || [] : [];
+    } catch (error) {
+      console.error("Unable to load teams", error);
+    }
+  };
 
   const handleSkipKeydown = (event) => {
     if (!event.target.closest?.("[data-skip-to-content]") || !["Enter", " "].includes(event.key)) return;
@@ -17,11 +26,12 @@ export default function setup() {
 
   const syncSection = () => {
     const path = window.location.pathname;
-    activeSection.value = path.startsWith("/settings")
-      ? "settings"
-      : path.startsWith("/workflows")
-        ? "workflows"
-        : "runs";
+    activeSection.value =
+      path.startsWith("/settings") || path.startsWith("/teams/")
+        ? "settings"
+        : path.startsWith("/workflows")
+          ? "workflows"
+          : "runs";
   };
 
   const setActive = (section) => {
@@ -43,14 +53,17 @@ export default function setup() {
           .trim()
           .slice(0, 1)
           .toUpperCase();
+        void loadTeams();
       })
       .catch((error) => console.error("Unable to load the signed-in profile", error));
+    window.addEventListener("runner-teams-updated", loadTeams);
   });
 
   onDestroy(() => {
     window.removeEventListener("popstate", syncSection);
+    window.removeEventListener("runner-teams-updated", loadTeams);
     document.removeEventListener("keydown", handleSkipKeydown);
   });
 
-  return { activeSection, user, userAuthenticated, userInitial, oidcProviderUrl, setActive };
+  return { activeSection, user, userAuthenticated, userInitial, oidcProviderUrl, teams, setActive };
 }

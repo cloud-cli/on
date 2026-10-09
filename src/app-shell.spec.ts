@@ -53,6 +53,18 @@ describe("Flow application shell", () => {
     expect(html).toContain('if="userAuthenticated"');
   });
 
+  it("lists teams below the user card and links each team to its settings page", () => {
+    const userCard = html.indexOf('if="userAuthenticated"');
+    const teamsList = html.indexOf('aria-label="Your teams"');
+
+    expect(teamsList).toBeGreaterThan(userCard);
+    expect(html).toContain("# {{ team.name }}");
+    expect(html).toContain("'/teams/' + encodeURIComponent(team.id) + '/settings'");
+    expect(shellSetup).toContain('fetch("/api/teams"');
+    expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
+    expect(shellSetup).toContain('path.startsWith("/teams/")');
+  });
+
   it("handles Enter and Space on the skip link without triggering browser navigation", () => {
     expect(shellSetup).toContain('["Enter", " "].includes(event.key)');
     expect(shellSetup).toContain("event.preventDefault()");

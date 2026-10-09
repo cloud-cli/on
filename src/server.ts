@@ -18,6 +18,7 @@ import { renderHelpHtml } from "./help.js";
 import openApiSpec from "../openapi.json" with { type: "json" };
 import { ApiKeyRepository } from "./api-key-repository.js";
 import { generateSettingsHtml } from "./settings-ui.js";
+import { generateTeamSettingsHtml } from "./team-settings-ui.js";
 import { buildAiHelpMessages, createAiRequest, streamAiHelp } from "./ai-help.js";
 import { workflowDocs } from "./help.js";
 import appHeaderTemplate from "./app-header.html?raw";
@@ -40,6 +41,7 @@ import appRouterSetup from "./app-router.mjs?raw";
 import dashboardSetup from "./dashboard.mjs?raw";
 import runSetup from "./run.mjs?raw";
 import settingsSetup from "./settings-ui.mjs?raw";
+import teamSettingsSetup from "./team-settings-ui.mjs?raw";
 import workflowsSetup from "./workflows-ui.mjs?raw";
 import timezoneFormatSource from "./timezone-format.mjs?raw";
 
@@ -211,6 +213,10 @@ export class WebhookServer {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(settingsSetup);
     }
+    if (req.method === "GET" && url.pathname === "/team-settings-ui.mjs") {
+      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(teamSettingsSetup);
+    }
     if (req.method === "GET" && (url.pathname === "/workflows-ui.mjs" || url.pathname === "/pages/workflows-ui.mjs")) {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(workflowsSetup);
@@ -295,6 +301,10 @@ export class WebhookServer {
       if (!this.requireAuthenticatedUser(req, res)) return;
       return this.renderPageComponent(res, "page-settings", generateSettingsHtml());
     }
+    if (req.method === "GET" && url.pathname === "/pages/team-settings.html") {
+      if (!this.requireAuthenticatedUser(req, res)) return;
+      return this.renderPageComponent(res, "page-team-settings", generateTeamSettingsHtml());
+    }
 
     if (req.method === "GET" && url.pathname === "/workflows") {
       if (!this.requireAuthenticatedUser(req, res)) return;
@@ -302,6 +312,10 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/settings") {
+      if (!this.requireAuthenticatedUser(req, res)) return;
+      return this.renderAppShell(res);
+    }
+    if (req.method === "GET" && /^\/teams\/[^/]+\/settings$/.test(url.pathname)) {
       if (!this.requireAuthenticatedUser(req, res)) return;
       return this.renderAppShell(res);
     }

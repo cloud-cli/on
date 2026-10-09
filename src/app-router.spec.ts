@@ -86,7 +86,7 @@ describe("SPA router", () => {
   });
 
   it("mounts run details and workflow editors as disposable route components", () => {
-    expect(routerSetup).toContain('!["run", "editor"].includes(current.page)');
+    expect(routerSetup).toContain('!["run", "editor", "team-settings"].includes(current.page)');
     expect(routerSetup).toContain("activeTransientPage?.remove()");
   });
 
@@ -102,5 +102,15 @@ describe("SPA router", () => {
     expect(routerSetup).toContain('document.body.dataset.teamless = "true"');
     expect(routerSetup).toContain("Continue to Flow");
     expect(routerTemplate).toContain('ref="outlet"');
+  });
+
+  it("routes team settings through membership validation and scopes the selected team", () => {
+    expect(routerSetup).toContain("path.match(/^\\/teams\\/([^/]+)\\/settings$/)");
+    expect(routerSetup).toContain("teams.some((team) => team.id === current.teamId)");
+    expect(routerSetup).toContain('localStorage.setItem("runner-team-id", current.teamId)');
+    expect(routerSetup).toContain("url: `/pages/team-settings.html?teamId=${encodeURIComponent(teamSettings[1])}`");
+    expect(serverSetup).toContain('url.pathname === "/pages/team-settings.html"');
+    expect(serverSetup).toContain('url.pathname === "/team-settings-ui.mjs"');
+    expect(serverSetup).toContain("^\\/teams\\/[^/]+\\/settings$");
   });
 });
