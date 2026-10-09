@@ -17,6 +17,7 @@ describe("settings UI", () => {
     expect(source).toContain('id="section-keys"');
     expect(source).toContain('id="section-notifications"');
     expect(source).toContain('class="sticky top-0 z-20');
+    expect(source).not.toContain("-mx-1");
     expect(source).toContain("{{ scope.label }}");
     expect(source).not.toContain("{{\n                      scope.label");
     expect(source).not.toContain('href="/settings/workflows"');
@@ -51,13 +52,18 @@ describe("settings UI", () => {
     expect(secrets).toContain("grid-cols-[2rem_minmax(0,1fr)_auto_1rem]");
   });
 
-  it("shows the user roster and protects role changes with confirmation and 403 handling", () => {
+  it("hides worker and user sections when access is forbidden", () => {
     const html = generateSettingsHtml() + settingsSetup;
     expect(html).toContain("/api/users");
     expect(html).toContain("/role");
     expect(html).toContain("confirm(");
     expect(html).toContain("usersForbidden");
-    expect(html).toContain("administrators only");
+    expect(html).toContain("workersLoaded.value = true");
+    expect(html).toContain("usersLoaded.value = true");
+    expect(html.match(/class-hidden="!workersLoaded \|\| workersForbidden"/g)).toHaveLength(2);
+    expect(html.match(/class-hidden="!usersLoaded \|\| usersForbidden"/g)).toHaveLength(2);
+    expect(html).not.toContain("administrators only");
+    expect(html).not.toContain("does not have permission to view worker status");
   });
 
   it("keeps the unified settings document independent of legacy route parameters", () => {
