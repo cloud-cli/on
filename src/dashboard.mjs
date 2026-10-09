@@ -364,7 +364,9 @@ export default function setup() {
           if (notificationsEnabled.value) void enablePushNotifications();
         })
         .catch((error) => console.error("Service worker registration failed", error));
-    eventSource = new EventSource("/api/events");
+    eventSource = new EventSource(
+      `/api/events?teamId=${encodeURIComponent(localStorage.getItem("runner-team-id") || "")}`,
+    );
     eventSource.addEventListener("jobs.available", refreshJobs);
     eventSource.addEventListener("jobs.changed", refreshJobs);
     eventSource.onerror = () => {

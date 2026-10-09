@@ -268,7 +268,8 @@ describe("run view", () => {
     expect(source).toContain("formatDate(report.startedAt)");
     expect(source).toContain("/api/preferences");
     expect(source).not.toContain("https://cdn.tailwindcss.com");
-    expect(source).toContain('new EventSource("/api/events")');
+    expect(source).toContain("new EventSource(");
+    expect(source).toContain("/api/events?teamId=");
     expect(source).toContain('addEventListener("jobs.changed", handleJobChange)');
     expect(source).toContain("apiFetch(`/api/runs/${jobId}`");
     expect(source).toContain("now.value = Date.now()");

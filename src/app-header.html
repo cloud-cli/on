@@ -42,6 +42,15 @@
         </a>
       </template>
       <template if="authenticated">
+        <select
+          class="max-w-40 rounded-lg border border-gray-700 bg-gray-900 px-2 py-2 text-xs text-gray-200 outline-none focus:border-indigo-500"
+          bind-value="activeTeamId"
+          on-change="switchTeam($event)"
+          attr-aria-label="Current team"
+          class-hidden="teams.length < 2"
+        >
+          <template for="team of teams"><option attr-value="team.id">{{ team.name }}</option></template>
+        </select>
         <span class="hidden text-xs text-gray-400 sm:inline">{{ userName }}</span>
         <a class="text-xs text-indigo-300 hover:text-white" href="/auth/logout">Sign out</a>
       </template>

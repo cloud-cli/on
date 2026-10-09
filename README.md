@@ -2,6 +2,29 @@
 
 General-purpose workflows
 
+## Teams and tenant isolation
+
+Workflows, runs, logs, artifacts, secrets, dashboard results, push subscriptions, and job events
+are scoped to a team. The first migration creates a `Default` team, assigns existing workflows,
+secrets, runs, push subscriptions, and known OIDC users to it, and preserves existing data. New
+OIDC users do not gain access to that team automatically.
+
+Sign in and open **Settings → Teams** to create a team or invite a teammate. A team admin creates
+an invitation by email and shares the generated link manually. Links expire after seven days,
+are single-use, and can only be accepted by a signed-in OIDC account with the same verified email.
+Team members can use the team's regular workflow features; team admins can invite members, change
+member roles, and remove regular members. A team must retain at least one administrator.
+
+Select the active team from the header. When using browser APIs, the client sends `X-Team-ID`; the
+server checks the signed-in user's membership on every team-scoped request. Scoped machine tokens
+alone do not bypass team membership checks.
+
+Each team has a unique, unguessable webhook path. Create or rotate it from **Settings → Teams**;
+the path is displayed once, so store it securely. Configure provider webhooks using
+`/webhooks/team/<secret>/<provider>` (for example, `.../github`). Provider signature validation
+continues to apply. Legacy `/webhooks/<provider>` routes target only the migrated `Default` team.
+Rotating a team's webhook token immediately invalidates its previous URL.
+
 A self-hosted, lightweight, high-performance CI/CD runner engine built for Node.js.
 
 Designed with a strict **security-first boundary**, native **JavaScript AST evaluation**, zero-DSL template literals, and a **built-in terminal log web dashboard**.

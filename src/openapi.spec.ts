@@ -11,6 +11,11 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api/workflows/{workflowId}/run"]).toHaveProperty("post");
     expect(spec.paths["/api/runs/{jobId}/artifacts/{path}"]).toHaveProperty("get");
     expect(spec.paths["/webhooks/{provider}"]).toHaveProperty("post");
+    expect(spec.paths["/webhooks/team/{webhookToken}/{provider}"]).toHaveProperty("post");
+    expect(spec.paths["/api/teams"].get.security).toEqual([{ oidcSessionCookie: [] }]);
+    expect(spec.paths["/api/teams/{teamId}/invitations"]).toHaveProperty("post");
+    expect(spec.paths["/api/teams/{teamId}/members/{subject}"]).toHaveProperty("delete");
+    expect(spec.paths["/api/teams/{teamId}/members/{subject}"]).toHaveProperty("put");
   });
 
   it("documents workflow and secret settings as OIDC-session protected", () => {

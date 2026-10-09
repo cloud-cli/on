@@ -401,7 +401,9 @@ export default function setup() {
         console.error("Service worker registration failed", error);
       });
     }
-    eventSource = new EventSource("/api/events");
+    eventSource = new EventSource(
+      `/api/events?teamId=${encodeURIComponent(localStorage.getItem("runner-team-id") || "")}`,
+    );
     eventSource.addEventListener("jobs.changed", handleJobChange);
     refreshTimer = setInterval(() => {
       if (active.value) void refreshRun();

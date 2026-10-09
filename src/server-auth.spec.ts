@@ -163,14 +163,15 @@ describe("workflow and secret settings authentication", () => {
     const request = { headers: { cookie: "runner_oidc_session=session" } };
     const workflows = [{ id: "deploy-app", name: "Deploy app" }];
     const server = {
-      requireAuthenticatedUser: vi.fn(() => true),
+      requireTeam: vi.fn(async () => "team-a"),
       workflowsLoaded: Promise.resolve(),
-      workflows: { list: vi.fn(async () => workflows) },
+      workflows: { listForTeam: vi.fn(async () => workflows) },
     };
 
     await (WebhookServer.prototype as any).handleWorkflowList.call(server, request, response);
 
-    expect(server.requireAuthenticatedUser).toHaveBeenCalledWith(request, response);
+    expect(server.requireTeam).toHaveBeenCalledWith(request, response);
+    expect(server.workflows.listForTeam).toHaveBeenCalledWith("team-a");
     expect(response.writeHead).toHaveBeenCalledWith(200, { "Content-Type": "application/json; charset=utf-8" });
     expect(response.end).toHaveBeenCalledWith(JSON.stringify({ workflows }));
   });
@@ -183,15 +184,15 @@ describe("workflow and secret settings authentication", () => {
     const request = { headers: { cookie: "runner_oidc_session=session" } };
     const draft = { id: "deploy-app", revision: 2 };
     const server = {
-      requireAuthenticatedUser: vi.fn(() => true),
+      requireTeam: vi.fn(async () => "team-a"),
       readJson: vi.fn(async () => ({ sourceYaml: "name: Deploy app" })),
-      workflows: { saveDraft: vi.fn(async () => draft) },
+      workflows: { saveDraftForTeam: vi.fn(async () => draft) },
     };
 
     await (WebhookServer.prototype as any).handleWorkflowSave.call(server, request, response, "deploy-app");
 
-    expect(server.requireAuthenticatedUser).toHaveBeenCalledWith(request, response);
-    expect(server.workflows.saveDraft).toHaveBeenCalledWith("deploy-app", "name: Deploy app", true);
+    expect(server.requireTeam).toHaveBeenCalledWith(request, response);
+    expect(server.workflows.saveDraftForTeam).toHaveBeenCalledWith("team-a", "deploy-app", "name: Deploy app", true);
     expect(response.writeHead).toHaveBeenCalledWith(200, { "Content-Type": "application/json; charset=utf-8" });
     expect(response.end).toHaveBeenCalledWith(JSON.stringify(draft));
   });
@@ -203,15 +204,15 @@ describe("workflow and secret settings authentication", () => {
     };
     const request = { headers: { cookie: "runner_oidc_session=session" } };
     const server = {
-      requireAuthenticatedUser: vi.fn(() => true),
+      requireTeam: vi.fn(async () => "team-a"),
       readJson: vi.fn(async () => ({ value: "test-secret" })),
-      secretRepository: { set: vi.fn(async () => undefined) },
+      secretRepository: { setForTeam: vi.fn(async () => undefined) },
     };
 
     await (WebhookServer.prototype as any).handleSecretSave.call(server, request, response, "DEPLOY_KEY");
 
-    expect(server.requireAuthenticatedUser).toHaveBeenCalledWith(request, response);
-    expect(server.secretRepository.set).toHaveBeenCalledWith("DEPLOY_KEY", "test-secret", "utf8");
+    expect(server.requireTeam).toHaveBeenCalledWith(request, response);
+    expect(server.secretRepository.setForTeam).toHaveBeenCalledWith("team-a", "DEPLOY_KEY", "test-secret", "utf8");
     expect(response.writeHead).toHaveBeenCalledWith(204);
   });
 
@@ -274,6 +275,44 @@ describe("workflow and secret settings authentication", () => {
     expect(server.requireAdmin).not.toHaveBeenCalled();
     expect(server.renderAppShell).not.toHaveBeenCalled();
     expect(response.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json; charset=utf-8" });
+  });
+});
+
+describe("team authorization", () => {
+  it("requires an authenticated team member and hides teams the caller cannot access", async () => {
+    const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    const server = {
+      oidc: { userFromCookie: () => ({ id: "member-1" }) },
+      teams: { isMember: vi.fn(async (teamId: string) => teamId === "team-a") },
+    };
+    const request = { url: "/api/workflows", headers: { cookie: "session", "x-team-id": "team-b" } };
+
+    await expect((WebhookServer.prototype as any).requireTeam.call(server, request, response)).resolves.toBeNull();
+    expect(response.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json" });
+    expect(server.teams.isMember).toHaveBeenCalledWith("team-b", "member-1");
+  });
+
+  it("scopes webhook matching to the team selected by its unique URL token", async () => {
+    const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    const workflows = [{ workflowId: "team-a-flow", revision: 1 }];
+    const server = {
+      readRequest: vi.fn(async () => ({ rawBuffer: Buffer.from("{}"), headers: {} })),
+      preprocess: vi.fn(async (_provider: string, _headers: unknown, _raw: Buffer, teamId: string) => ({
+        isValid: true,
+        inputs: {},
+        secretValues: { TEAM: teamId },
+      })),
+      workflowsLoaded: Promise.resolve(),
+      workflows: { publishedForTeam: vi.fn(async (teamId: string) => (teamId === "team-a" ? workflows : [])) },
+      matchWorkflows: vi.fn(async () => []),
+    };
+
+    await (WebhookServer.prototype as any).handleWebhook.call(server, "github", {}, response, "team-a");
+
+    expect(server.preprocess).toHaveBeenCalledWith("github", {}, Buffer.from("{}"), "team-a");
+    expect(server.workflows.publishedForTeam).toHaveBeenCalledWith("team-a");
+    expect(server.matchWorkflows).toHaveBeenCalledWith("github", {}, workflows, { TEAM: "team-a" }, "team-a");
+    expect(response.writeHead).toHaveBeenCalledWith(202, { "Content-Type": "application/json" });
   });
 });
 

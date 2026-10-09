@@ -45,6 +45,14 @@ export default function () {
   const busy = ref(false);
   const secretForm = templateRef("secretForm");
   const secretValueInput = templateRef("secretValueInput");
+  const teams = ref([]);
+  const teamMembers = ref([]);
+  const isTeamAdmin = ref(false);
+  const newTeamName = ref("");
+  const inviteEmail = ref("");
+  const inviteLink = ref("");
+  const webhookPath = ref("");
+  const teamMessage = ref("");
   const api = async (url, options = {}) => {
     const response = await apiFetch(url, {
       headers: { accept: "application/json", ...(options.body ? { "content-type": "application/json" } : {}) },
@@ -69,6 +77,88 @@ export default function () {
   const loadSecrets = async () => {
     secrets.value = (await api("/api/secrets")).secrets;
   };
+  const loadTeams = async () => {
+    teams.value = (await api("/api/teams")).teams || [];
+    let teamId = localStorage.getItem("runner-team-id");
+    if (!teams.value.some((team) => team.id === teamId)) teamId = teams.value[0]?.id || "";
+    if (teamId) localStorage.setItem("runner-team-id", teamId);
+    else localStorage.removeItem("runner-team-id");
+    if (teamId) {
+      isTeamAdmin.value = teams.value.some((team) => team.id === teamId && team.role === "admin");
+      const result = await api(`/api/teams/${encodeURIComponent(teamId)}/members`);
+      teamMembers.value = result.members || [];
+    }
+    window.dispatchEvent(new Event("runner-teams-updated"));
+  };
+  const selectedTeamId = () => localStorage.getItem("runner-team-id") || teams.value[0]?.id || "";
+  const setNewTeamName = (event) => {
+    newTeamName.value = event.target.value;
+  };
+  const setInviteEmail = (event) => {
+    inviteEmail.value = event.target.value;
+  };
+  const createTeam = () =>
+    runSecretAction(async () => {
+      const result = await api("/api/teams", { method: "POST", body: JSON.stringify({ name: newTeamName.value }) });
+      localStorage.setItem("runner-team-id", result.team.id);
+      webhookPath.value = `${location.origin}${result.webhookPath}`;
+      teamMessage.value = `Created ${result.team.name}. This webhook URL is shown only once; save it now.`;
+      newTeamName.value = "";
+      await loadTeams();
+    });
+  const createInvitation = () =>
+    runSecretAction(async () => {
+      const teamId = selectedTeamId();
+      if (!teamId) throw new Error("Select a team first.");
+      const result = await api(`/api/teams/${encodeURIComponent(teamId)}/invitations`, {
+        method: "POST",
+        body: JSON.stringify({ email: inviteEmail.value }),
+      });
+      inviteLink.value = new URL(result.link, location.origin).toString();
+      teamMessage.value = `Invite link expires ${new Date(result.expiresAt).toLocaleString()}.`;
+    });
+  const rotateWebhook = () =>
+    runSecretAction(async () => {
+      const teamId = selectedTeamId();
+      if (!teamId) throw new Error("Select a team first.");
+      const result = await api(`/api/teams/${encodeURIComponent(teamId)}/webhook-token`, { method: "POST" });
+      webhookPath.value = `${location.origin}${result.webhookPath}`;
+      teamMessage.value = "Webhook URL rotated. The previous URL no longer works; save this URL now.";
+    });
+  const copyValue = async (value) => {
+    await navigator.clipboard.writeText(value);
+    teamMessage.value = "Copied to clipboard.";
+  };
+  const removeMember = (member) =>
+    runSecretAction(async () => {
+      const teamId = selectedTeamId();
+      const response = await fetch(
+        `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(member.subject)}`,
+        { method: "DELETE", headers: { "X-Team-ID": teamId } },
+      );
+      if (!response.ok) throw new Error(response.status === 404 ? "Member not found." : "Could not remove member.");
+      teamMessage.value = `Removed ${member.name || member.email || "member"} from this team.`;
+      await loadTeams();
+    });
+  const toggleMemberRole = (member) =>
+    runSecretAction(async () => {
+      const teamId = selectedTeamId();
+      const role = member.role === "admin" ? "member" : "admin";
+      const response = await fetch(
+        `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(member.subject)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "X-Team-ID": teamId },
+          body: JSON.stringify({ role }),
+        },
+      );
+      if (!response.ok)
+        throw new Error(
+          response.status === 409 ? "A team must retain at least one admin." : "Could not update member role.",
+        );
+      teamMessage.value = `Updated ${member.name || member.email || "member"} to ${role}.`;
+      await loadTeams();
+    });
   const runSecretAction = async (action) => {
     if (busy.value) return;
     busy.value = true;
@@ -299,6 +389,9 @@ export default function () {
     loadUsers().catch((reason) => {
       error.value = reason.message;
     });
+    loadTeams().catch((reason) => {
+      if (reason.status !== 400) error.value = reason.message;
+    });
   });
   return {
     page,
@@ -338,5 +431,21 @@ export default function () {
     notificationsEnabled,
     notificationMessage,
     toggleNotifications,
+    teams,
+    teamMembers,
+    isTeamAdmin,
+    newTeamName,
+    inviteEmail,
+    inviteLink,
+    webhookPath,
+    teamMessage,
+    setNewTeamName,
+    setInviteEmail,
+    createTeam,
+    createInvitation,
+    rotateWebhook,
+    copyValue,
+    removeMember,
+    toggleMemberRole,
   };
 }

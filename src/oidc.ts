@@ -10,6 +10,7 @@ export interface OidcUser {
   id: string;
   name?: string;
   email?: string;
+  email_verified?: boolean;
   photo?: string;
   preferred_username?: string;
   picture?: string;
@@ -106,6 +107,25 @@ export class OidcClient {
   userFromCookie(cookieHeader: string | undefined): OidcUser | undefined {
     const session = this.sessionFromCookie(cookieHeader);
     return session?.user;
+  }
+
+  async userFromAccessToken(accessToken: string): Promise<OidcUser | undefined> {
+    if (!accessToken || accessToken.length > 16_384) return undefined;
+    try {
+      const provider = await this.providerClient();
+      const userInfo = (await provider.getUserInfo(accessToken)) as (OidcUser & { sub?: string }) | null;
+      if (!userInfo || typeof userInfo !== "object") return undefined;
+      const id = typeof userInfo.sub === "string" ? userInfo.sub : userInfo.id;
+      if (!id) return undefined;
+      return {
+        ...userInfo,
+        id,
+        name: userInfo.name || userInfo.preferred_username,
+        photo: userInfo.photo || userInfo.picture,
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   setRole(cookieHeader: string, role: "user" | "admin") {

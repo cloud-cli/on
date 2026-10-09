@@ -1,7 +1,8 @@
-import db from './db-client.js';
-import { WorkflowExecutionReport, JobPayload, JobRecord, JobStatus } from './types.js';
-import { timestampLogLines } from './timestamped-log.js';
-import { FileStorage } from './file-storage.js';
+import db from "./db-client.js";
+import { WorkflowExecutionReport, JobPayload, JobRecord, JobStatus } from "./types.js";
+import { timestampLogLines } from "./timestamped-log.js";
+import { FileStorage } from "./file-storage.js";
+import { ensureTeamDataSchema } from "./team-data-schema.js";
 
 export class QueueManager {
   private readonly fileStorage = new FileStorage();
@@ -10,6 +11,7 @@ export class QueueManager {
 
   async init() {
     await this.createTables();
+    await ensureTeamDataSchema();
     await this.clearStaleJobs();
   }
 
@@ -17,22 +19,34 @@ export class QueueManager {
    * Enqueues a new job into the database.
    * Includes simple GitHub-style concurrency cancellation.
    */
-  async enqueue(workflowId: string, workflowRevision: number, payload: JobPayload, requiredTags: string[] = [], concurrencyKey?: string) {
+  async enqueue(
+    workflowId: string,
+    workflowRevision: number,
+    payload: JobPayload,
+    requiredTags: string[] = [],
+    concurrencyKey?: string,
+  ) {
     // If a concurrency key is provided, cancel existing pending/running jobs in that group
     if (concurrencyKey) {
       await db.run(
-        `UPDATE jobs SET status = 'cancelled' WHERE concurrency_key = ? AND status IN ('pending', 'running');`,
-        [concurrencyKey],
+        `UPDATE jobs SET status = 'cancelled' WHERE team_id = (SELECT team_id FROM workflows WHERE id = ?)
+         AND concurrency_key = ? AND status IN ('pending', 'running');`,
+        [workflowId, concurrencyKey],
       );
     }
 
-    const res = await db.run(`INSERT INTO jobs (workflow_id, workflow_revision, required_tags, concurrency_key, payload) VALUES (?, ?, ?, ?, ?);`, [
-      workflowId,
-      workflowRevision,
-      JSON.stringify(requiredTags),
-      concurrencyKey || '',
-      JSON.stringify(payload),
-    ]);
+    const res = await db.run(
+      `INSERT INTO jobs (workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id)
+      VALUES (?, ?, ?, ?, ?, COALESCE((SELECT team_id FROM workflows WHERE id = ?), 'default'));`,
+      [
+        workflowId,
+        workflowRevision,
+        JSON.stringify(requiredTags),
+        concurrencyKey || "",
+        JSON.stringify(payload),
+        workflowId,
+      ],
+    );
 
     return Number(res?.lastInsertRowid ?? res?.id ?? 0);
   }
@@ -94,17 +108,17 @@ export class QueueManager {
     );
   }
 
-  async cancelJob(jobId: string | number): Promise<'cancelled' | 'not_found' | 'not_active'> {
+  async cancelJob(jobId: string | number): Promise<"cancelled" | "not_found" | "not_active"> {
     const job = await this.getJob(jobId);
-    if (!job) return 'not_found';
-    if (job.status !== 'pending' && job.status !== 'running') return 'not_active';
+    if (!job) return "not_found";
+    if (job.status !== "pending" && job.status !== "running") return "not_active";
 
     await db.run(
       `UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP
        WHERE id = ? AND status IN ('pending', 'running');`,
       [jobId],
     );
-    return (await this.getJob(jobId))?.status === 'cancelled' ? 'cancelled' : 'not_active';
+    return (await this.getJob(jobId))?.status === "cancelled" ? "cancelled" : "not_active";
   }
 
   async restartJob(jobId: string | number, manualInputs: Record<string, unknown> = {}) {
@@ -112,25 +126,29 @@ export class QueueManager {
 
     if (!job) return;
 
-    if (job.status === 'running') {
+    if (job.status === "running") {
       await db.run(`UPDATE jobs SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP WHERE id = ?;`, [jobId]);
     }
 
-    const activeWorkflow = await db.get('SELECT active_revision FROM workflows WHERE id = ?', [job.workflow_id]);
+    const activeWorkflow = await db.get("SELECT active_revision FROM workflows WHERE id = ?", [job.workflow_id]);
     const activeRevision = Number(activeWorkflow?.active_revision);
     if (!Number.isSafeInteger(activeRevision) || activeRevision < 1) {
       throw new Error(`Workflow ${job.workflow_id} has no active revision`);
     }
-    const payload = job.payload ? typeof job.payload === 'string' ? JSON.parse(job.payload) : job.payload : { inputs: {} };
+    const payload = job.payload
+      ? typeof job.payload === "string"
+        ? JSON.parse(job.payload)
+        : job.payload
+      : { inputs: {} };
     payload.inputs = { ...(payload.inputs || {}), ...manualInputs };
 
     const newJob = await db.get(
       `INSERT INTO jobs (
-         parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload,
+         parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id,
          status, worker_id, report, started_at, finished_at
        )
-       SELECT id, workflow_id, ?, required_tags, concurrency_key, ?,
-              'pending', NULL, NULL, NULL, NULL
+       SELECT id, workflow_id, ?, required_tags, concurrency_key, ?, team_id,
+               'pending', NULL, NULL, NULL, NULL
        FROM jobs
        WHERE id = ?
        RETURNING *`,
@@ -145,7 +163,7 @@ export class QueueManager {
    */
   async isCancelled(jobId: string | number): Promise<boolean> {
     const job = (await db.get(`SELECT status FROM jobs WHERE id = ?;`, [+jobId])) as { status: JobStatus } | null;
-    return job?.status === 'cancelled';
+    return job?.status === "cancelled";
   }
 
   async clearStaleJobs() {
@@ -218,41 +236,91 @@ export class QueueManager {
     return db.get(`SELECT * FROM jobs WHERE id = ?`, [jobId]);
   }
 
+  /** Tenant-scoped job lookup for authenticated server requests. */
+  async getJobForTeam(teamId: string, jobId: string | number): Promise<any> {
+    return db.get("SELECT * FROM jobs WHERE team_id = ? AND id = ?", [teamId, jobId]);
+  }
+
   /**
    * List recent jobs for dashboard status monitoring
    */
-  async listJobs(limit = 50, afterId?: number, beforeId?: number, filter?: string, workflowId?: string): Promise<any[]> {
+  async listJobs(
+    limit = 50,
+    afterId?: number,
+    beforeId?: number,
+    filter?: string,
+    workflowId?: string,
+  ): Promise<any[]> {
     const conditions: string[] = [];
     const values: Array<number | string> = [];
 
     if (afterId !== undefined) {
-      conditions.push('id > ?');
+      conditions.push("id > ?");
       values.push(afterId);
     }
     if (beforeId !== undefined) {
-      conditions.push('id < ?');
+      conditions.push("id < ?");
       values.push(beforeId);
     }
     if (filter) {
-      const separator = filter.indexOf(':');
+      const separator = filter.indexOf(":");
       if (separator > 0) {
         const field = filter.slice(0, separator).trim();
         const pattern = filter.slice(separator + 1).trim();
-        if (!/^[A-Za-z0-9_-]+$/.test(field) || !pattern) throw new Error('Invalid job filter');
+        if (!/^[A-Za-z0-9_-]+$/.test(field) || !pattern) throw new Error("Invalid job filter");
         conditions.push("json_extract(payload, '$.inputs.' || ?) GLOB ?");
         values.push(field, pattern);
       } else {
-        conditions.push('LOWER(payload) LIKE LOWER(?)');
+        conditions.push("LOWER(payload) LIKE LOWER(?)");
         values.push(`%${filter}%`);
       }
     }
     if (workflowId) {
-      conditions.push('workflow_id = ?');
+      conditions.push("workflow_id = ?");
       values.push(workflowId);
     }
 
-    const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
+    const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
     return db.all(`SELECT * FROM jobs${where} ORDER BY id DESC LIMIT ?;`, [...values, limit]);
+  }
+
+  /** Tenant-scoped job listing; teamId is mandatory. */
+  async listJobsForTeam(
+    teamId: string,
+    limit = 50,
+    afterId?: number,
+    beforeId?: number,
+    filter?: string,
+    workflowId?: string,
+  ): Promise<any[]> {
+    const conditions = ["team_id = ?"];
+    const values: Array<number | string> = [teamId];
+    if (afterId !== undefined) {
+      conditions.push("id > ?");
+      values.push(afterId);
+    }
+    if (beforeId !== undefined) {
+      conditions.push("id < ?");
+      values.push(beforeId);
+    }
+    if (filter) {
+      const separator = filter.indexOf(":");
+      if (separator > 0) {
+        const field = filter.slice(0, separator).trim();
+        const pattern = filter.slice(separator + 1).trim();
+        if (!/^[A-Za-z0-9_-]+$/.test(field) || !pattern) throw new Error("Invalid job filter");
+        conditions.push("json_extract(payload, '$.inputs.' || ?) GLOB ?");
+        values.push(field, pattern);
+      } else {
+        conditions.push("LOWER(payload) LIKE LOWER(?)");
+        values.push(`%${filter}%`);
+      }
+    }
+    if (workflowId) {
+      conditions.push("workflow_id = ?");
+      values.push(workflowId);
+    }
+    return db.all(`SELECT * FROM jobs WHERE ${conditions.join(" AND ")} ORDER BY id DESC LIMIT ?`, [...values, limit]);
   }
 
   /**
@@ -289,7 +357,11 @@ export class QueueManager {
     return logMap;
   }
 
-  async saveStoredFiles(kind: 'artifact' | 'cache', ownerKey: string, files: Array<{ path: string; content: string }>): Promise<void> {
+  async saveStoredFiles(
+    kind: "artifact" | "cache",
+    ownerKey: string,
+    files: Array<{ path: string; content: string }>,
+  ): Promise<void> {
     if (this.fileStorage.enabled) return this.fileStorage.save(`${kind}/${ownerKey}`, files);
     for (const file of files) {
       await db.run(
@@ -300,12 +372,33 @@ export class QueueManager {
     }
   }
 
-  async getStoredFiles(kind: 'artifact' | 'cache', ownerKey: string): Promise<Array<{ path: string; content: string }>> {
+  async getStoredFiles(
+    kind: "artifact" | "cache",
+    ownerKey: string,
+  ): Promise<Array<{ path: string; content: string }>> {
     if (this.fileStorage.enabled) return this.fileStorage.load(`${kind}/${ownerKey}`);
-    return db.all('SELECT file_path AS path, content FROM stored_files WHERE kind = ? AND owner_key = ?', [kind, ownerKey]);
+    return db.all("SELECT file_path AS path, content FROM stored_files WHERE kind = ? AND owner_key = ?", [
+      kind,
+      ownerKey,
+    ]);
   }
 
-  async updateWorkerPresence(worker: { id: string; version: string; tags: string[]; concurrency: number; activeJobs: number }): Promise<void> {
+  async getStoredFilesForTeam(
+    teamId: string,
+    kind: "artifact" | "cache",
+    jobId: string | number,
+  ): Promise<Array<{ path: string; content: string }>> {
+    if (!(await this.getJobForTeam(teamId, jobId))) return [];
+    return this.getStoredFiles(kind, String(jobId));
+  }
+
+  async updateWorkerPresence(worker: {
+    id: string;
+    version: string;
+    tags: string[];
+    concurrency: number;
+    activeJobs: number;
+  }): Promise<void> {
     await db.run(
       `INSERT INTO worker_presence (worker_id, version, tags, concurrency, active_jobs, last_seen)
        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -316,11 +409,13 @@ export class QueueManager {
   }
 
   async listWorkerPresence(): Promise<any[]> {
-    const rows = await db.all('SELECT worker_id, version, tags, concurrency, active_jobs, last_seen FROM worker_presence ORDER BY worker_id');
+    const rows = await db.all(
+      "SELECT worker_id, version, tags, concurrency, active_jobs, last_seen FROM worker_presence ORDER BY worker_id",
+    );
     return rows.map((row: any) => ({
       workerId: row.worker_id,
       version: row.version,
-      tags: JSON.parse(row.tags || '[]'),
+      tags: JSON.parse(row.tags || "[]"),
       concurrency: row.concurrency,
       activeJobs: row.active_jobs,
       lastSeen: row.last_seen,
@@ -329,6 +424,10 @@ export class QueueManager {
   }
 
   async saveAiRequest(jobId: string | number, workflowUrl: string, request: unknown): Promise<void> {
-    await db.run('INSERT INTO ai_requests (job_id, workflow_url, request_json) VALUES (?, ?, ?)', [jobId, workflowUrl, JSON.stringify(request)]);
+    await db.run("INSERT INTO ai_requests (job_id, workflow_url, request_json) VALUES (?, ?, ?)", [
+      jobId,
+      workflowUrl,
+      JSON.stringify(request),
+    ]);
   }
 }

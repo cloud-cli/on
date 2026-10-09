@@ -12,6 +12,7 @@
     { "name": "jobs" },
     { "name": "workflows" },
     { "name": "users" },
+    { "name": "teams" },
     { "name": "secrets" },
     { "name": "events" },
     { "name": "webhooks" },
@@ -520,14 +521,14 @@
       "post": {
         "tags": ["notifications"],
         "summary": "Register a Web Push subscription",
-        "security": [],
+        "security": [{ "oidcSessionCookie": [] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
         "responses": { "201": { "description": "Subscription saved" } }
       },
       "delete": {
         "tags": ["notifications"],
         "summary": "Remove a Web Push subscription",
-        "security": [],
+        "security": [{ "oidcSessionCookie": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -554,6 +555,148 @@
           "202": { "description": "Webhook accepted" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" }
+        }
+      }
+    },
+    "/webhooks/team/{webhookToken}/{provider}": {
+      "post": {
+        "tags": ["webhooks"],
+        "summary": "Receive a webhook for one team",
+        "description": "The secret team path selects a single tenant; provider-level signature validation is still applied.",
+        "security": [],
+        "parameters": [
+          { "name": "webhookToken", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "provider", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": {
+          "202": { "description": "Webhook accepted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/teams": {
+      "get": {
+        "tags": ["teams"],
+        "summary": "List the signed-in user's teams",
+        "security": [{ "oidcSessionCookie": [] }],
+        "responses": { "200": { "description": "Teams and membership roles" } }
+      },
+      "post": {
+        "tags": ["teams"],
+        "summary": "Create a team; the creator becomes its admin",
+        "security": [{ "oidcSessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": { "name": { "type": "string", "maxLength": 100 } }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Team and one-time webhook path" } }
+      }
+    },
+    "/api/teams/{teamId}/invitations": {
+      "post": {
+        "tags": ["teams"],
+        "summary": "Create an email-bound team invitation (team admin only)",
+        "security": [{ "oidcSessionCookie": [] }],
+        "parameters": [{ "name": "teamId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email"],
+                "properties": { "email": { "type": "string", "format": "email" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Copyable one-use invite link and expiry" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/teams/{teamId}/members/{subject}": {
+      "put": {
+        "tags": ["teams"],
+        "summary": "Change a team member role (team admin only)",
+        "security": [{ "oidcSessionCookie": [] }],
+        "parameters": [
+          { "name": "teamId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "subject", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["role"],
+                "properties": { "role": { "type": "string", "enum": ["admin", "member"] } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "Role updated" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "description": "Cannot remove the last admin" }
+        }
+      },
+      "delete": {
+        "tags": ["teams"],
+        "summary": "Remove a regular member from a team (team admin only)",
+        "security": [{ "oidcSessionCookie": [] }],
+        "parameters": [
+          { "name": "teamId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "subject", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "204": { "description": "Member removed" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "description": "Team admins cannot be removed here" }
+        }
+      }
+    },
+    "/api/teams/accept": {
+      "post": {
+        "tags": ["teams"],
+        "summary": "Accept an invitation using the signed-in verified email",
+        "security": [{ "oidcSessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "required": ["token"], "properties": { "token": { "type": "string" } } }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Membership granted" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/teams/{teamId}/webhook-token": {
+      "post": {
+        "tags": ["teams"],
+        "summary": "Rotate and reveal a team's webhook path (team admin only)",
+        "security": [{ "oidcSessionCookie": [] }],
+        "parameters": [{ "name": "teamId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "One-time webhook path" },
+          "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
     },

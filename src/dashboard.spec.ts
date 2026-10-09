@@ -82,7 +82,8 @@ describe("dashboard", () => {
     expect(dashboardSetup).toContain("border-blue-300 bg-blue-100 text-blue-800");
     expect(html).toContain("ml-2 inline-flex items-center gap-1 rounded-full");
     expect(html).toContain('role="status"');
-    expect(dashboardSetup).toContain('new EventSource("/api/events")');
+    expect(dashboardSetup).toContain("new EventSource(");
+    expect(dashboardSetup).toContain("/api/events?teamId=");
     expect(dashboardSetup).toContain("/api/push/public-key");
     expect(html).toContain("https://sodium.static.apphor.de/lucide-icon.html");
     expect(html).not.toContain("Runs</h1>");
