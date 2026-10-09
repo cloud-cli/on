@@ -50,8 +50,14 @@ export function renderErrorPage({ status, title, message, action, secondaryActio
       * { box-sizing: border-box; }
       body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 28px 18px; }
       .page { width: min(100%, 520px); }
-      .brand { display: flex; align-items: center; gap: 11px; margin: 0 0 22px 4px; color: #243b2a; font-size: 17px; font-weight: 700; letter-spacing: -.03em; }
-      .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; color: #fff; background: #387045; box-shadow: 0 3px 8px #23492c26; }
+      .brand { display: flex; align-items: center; gap: 11px; margin: 0 0 22px 4px; }
+      .brand-mark { width: 31px; height: 34px; display: flex; flex-direction: column; justify-content: center; gap: 5px; margin-right: 2px; transform: skewY(-13deg); }
+      .brand-mark span { display: block; height: 5px; border-radius: 2px; background: #547d42; }
+      .brand-mark span:nth-child(1) { width: 27px; }
+      .brand-mark span:nth-child(2) { width: 20px; }
+      .brand-mark span:nth-child(3) { width: 13px; }
+      .brand-name { color: #19231e; font-size: 33px; font-weight: 700; line-height: 1; letter-spacing: -1.9px; }
+      .brand-dot { color: #729b5b; }
       .card { padding: clamp(25px, 7vw, 42px); border: 1px solid #dce4da; border-radius: 18px; background: #fff; box-shadow: 0 14px 45px #213a2810; }
       .status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; color: #536457; background: #f1f5ef; font-size: 12px; font-weight: 650; letter-spacing: .035em; }
       .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #b57b30; }
@@ -70,7 +76,10 @@ export function renderErrorPage({ status, title, message, action, secondaryActio
   </head>
   <body>
     <main class="page">
-      <div class="brand"><span class="brand-mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 9.2 17 19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Flow</div>
+      <div class="brand" aria-label="Flow">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span class="brand-name">flow<span class="brand-dot">.</span></span>
+      </div>
       <section class="card" aria-labelledby="error-title">
         <div class="status"><span class="status-dot" aria-hidden="true"></span>ERROR ${status}</div>
         <h1 id="error-title">${escapeHtml(title)}</h1>

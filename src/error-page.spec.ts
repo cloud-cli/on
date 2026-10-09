@@ -13,6 +13,9 @@ describe("renderErrorPage", () => {
 
     expect(html).toContain("<title>502 — Couldn&#39;t complete sign-in · Flow</title>");
     expect(html).toContain('aria-labelledby="error-title"');
+    expect(html).toContain('<span class="brand-name">flow<span class="brand-dot">.</span></span>');
+    expect(html).toContain("background: #547d42");
+    expect(html).not.toContain("<svg");
     expect(html).toContain('href="/auth/login?url=%2Fruns"');
     expect(html).toContain('href="/runs"');
     expect(html).not.toContain("access-token");
