@@ -23,17 +23,17 @@ describe("OpenAPI specification", () => {
     expect(jobStatus.responses["200"].content["application/json"].schema).toEqual({
       $ref: "#/components/schemas/JobStatusDetails",
     });
-    expect(spec.components.schemas.JobStatusDetails.required).toEqual([
-      "id",
-      "status",
-      "createdAt",
-      "lastUpdated",
-    ]);
+    expect(spec.components.schemas.JobStatusDetails.required).toEqual(["id", "status", "createdAt", "lastUpdated"]);
     expect(spec.paths["/api/session"].get.security).toEqual([{ oidcSessionCookie: [] }]);
     expect(spec.paths["/api/workflows/{workflowId}"]).toHaveProperty("put");
     expect(spec.paths["/api/workflows/{workflowId}/run"]).toHaveProperty("post");
     expect(spec.paths["/api/runs/{jobId}/artifacts/{path}"]).toHaveProperty("get");
     expect(spec.paths["/webhooks/{provider}"]).toHaveProperty("post");
+    expect(spec.paths["/webhooks/team/{webhookToken}/{provider}"]).toHaveProperty("post");
+    expect(spec.paths["/api/teams"].get.security).toEqual([{ oidcSessionCookie: [] }]);
+    expect(spec.paths["/api/teams/{teamId}/invitations"]).toHaveProperty("post");
+    expect(spec.paths["/api/teams/{teamId}/members/{subject}"]).toHaveProperty("delete");
+    expect(spec.paths["/api/teams/{teamId}/members/{subject}"]).toHaveProperty("put");
   });
 
   it("documents workflow and secret settings as OIDC-session protected", () => {
