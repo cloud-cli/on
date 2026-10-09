@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appIcon, serviceWorker, webManifest } from "../ui/pwa.js";
+import { appIcon, getAppIcon, serviceWorker, webManifest } from "../ui/pwa.js";
 
 describe("PWA assets", () => {
   it("provides an installable manifest rooted at the dashboard", () => {
@@ -24,5 +24,13 @@ describe("PWA assets", () => {
     expect(serviceWorker).toContain("self.addEventListener('notificationclick'");
     expect(serviceWorker).toContain("self.clients.openWindow(target)");
     expect(serviceWorker).toContain("self.addEventListener('push'");
+  });
+
+  it("uses a dark navy background for beta while leaving the production icon unchanged", () => {
+    expect(getAppIcon()).toBe(appIcon);
+    expect(getAppIcon(false)).toBe(appIcon);
+    expect(getAppIcon(true)).toContain('fill="#101b3f"');
+    expect(getAppIcon(true)).toContain('fill="#c8e6a8"');
+    expect(getAppIcon(true)).not.toContain('fill="#263d32"');
   });
 });

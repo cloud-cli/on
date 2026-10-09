@@ -44,6 +44,7 @@ export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: U
     serverUrl: configFromFile.serverUrl ?? _.RUNNER_SERVER_URL ?? `http://127.0.0.1:${port}`,
     tags: configuredTags.map((tag) => tag.trim()).filter(Boolean),
     storagePath: configFromFile.storagePath ?? _.RUNNER_TMP ?? "/tmp/workspaces",
+    beta: /^(1|true|yes)$/i.test(_.BETA ?? ""),
     env: configFromFile.env ?? {},
     plugins: configFromFile.plugins ?? [],
     push:
