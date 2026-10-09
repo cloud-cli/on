@@ -60,6 +60,8 @@ describe("workflow management UI", () => {
     expect(source).toContain("@app/api-client.mjs");
     expect(source).toContain('import { apiFetch } from "@app/api-client.mjs"');
     expect(source).not.toContain("redirectToLogin");
+    expect(workflowsSetup).toContain("const response = await apiFetch(url");
+    expect(workflowsSetup).toContain('apiFetch("/api/ai/workflow-help"');
     expect(source).toContain("const name = secretName.value.trim().toUpperCase()");
     expect(source).toContain("secretName.value.trim().toUpperCase() === name");
     expect(source).toContain("Secret names must start with a letter");
