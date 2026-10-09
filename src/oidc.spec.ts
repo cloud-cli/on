@@ -16,7 +16,7 @@ describe("OIDC client", () => {
               return { url: 'https://auth.test/authorize?response_type=code&code_challenge_method=S256&scope=' + encodeURIComponent(scope) + '&redirect_uri=' + encodeURIComponent(redirectUri), codeVerifier: 'verifier' };
             },
             async exchangeCode() { return { access_token: 'access-token', expires_in: 900 }; },
-            async getProfile() { return { sub: 'user-1', preferred_username: 'ada', email: 'ada@example.test', picture: 'https://auth.test/ada.png' }; },
+            async getUserInfo() { return { sub: 'user-1', preferred_username: 'ada', email: 'ada@example.test', picture: 'https://auth.test/ada.png' }; },
             async introspectToken() { return { active: true, scope: 'logs:read runs:dispatch' }; },
           };
         }
@@ -62,5 +62,28 @@ describe("OIDC client", () => {
     );
     const client = new OidcClient({ providerUrl: "https://auth.test", clientId: "runner", clientSecret: "secret" });
     await expect(client.scopesForToken("token")).resolves.toEqual(["logs:read", "runs:dispatch"]);
+  });
+
+  it("uses the Node integration's getUserInfo method and handles an empty profile safely", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).endsWith("/node.mjs")) {
+        return new Response(
+          `export function createAuthClient() { return {
+            createAuthorizationRequest: () => ({ url: 'https://auth.test/authorize', codeVerifier: 'verifier' }),
+            exchangeCode: async () => ({ access_token: 'access-token' }),
+            getUserInfo: async () => null,
+          }; }`,
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected request: ${String(input)}`);
+    });
+    const client = new OidcClient({ providerUrl: "https://auth.test", clientId: "runner", clientSecret: "secret" });
+    const loginUrl = await client.loginUrl("https://runner.test/auth/callback", "/runs");
+    const state = new URL(loginUrl).searchParams.get("state");
+
+    await expect(client.completeLogin("code", state!, "https://runner.test/auth/callback")).rejects.toThrow(
+      "OIDC userinfo response was empty",
+    );
   });
 });

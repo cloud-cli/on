@@ -78,10 +78,11 @@ export class OidcClient {
       clientSecret: this.config.clientSecret,
     })) as { access_token?: string; expires_in?: number };
     if (!tokens.access_token) throw new Error("OIDC token response did not include an access token");
-    const userInfo = (await provider.getProfile(tokens.access_token)) as OidcUser & { sub?: string };
+    const userInfo = (await provider.getUserInfo(tokens.access_token)) as (OidcUser & { sub?: string }) | null;
+    if (!userInfo || typeof userInfo !== "object") throw new Error("OIDC userinfo response was empty");
     const user = {
       ...userInfo,
-      id: userInfo.sub || userInfo.id || "",
+      id: typeof userInfo.sub === "string" ? userInfo.sub : userInfo.id || "",
       name: userInfo.name || userInfo.preferred_username,
       photo: userInfo.photo || userInfo.picture,
     };

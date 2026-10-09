@@ -56,6 +56,76 @@ describe("browser admin-route authorization", () => {
   });
 });
 
+describe("OIDC callback and browser error pages", () => {
+  function response() {
+    return { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+  }
+
+  it("shows a friendly error without exposing provider exceptions when callback exchange fails", async () => {
+    const sendHtmlError = vi.fn();
+    const server = {
+      oidc: { enabled: true, completeLogin: vi.fn().mockRejectedValue(new Error("private provider detail")) },
+      oidcRedirectUri: vi.fn(() => "https://flow.test/auth/callback"),
+      sendHtmlError,
+    };
+
+    await (WebhookServer.prototype as any).handleOidcCallback.call(
+      server,
+      { headers: { host: "flow.test" } },
+      response(),
+      new URL("https://flow.test/auth/callback?code=code&state=state"),
+    );
+
+    expect(sendHtmlError).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: 502, title: "Couldn't complete sign-in" }),
+    );
+    expect(JSON.stringify(sendHtmlError.mock.calls)).not.toContain("private provider detail");
+  });
+
+  it("renders a helpful 400 page for malformed callback requests", async () => {
+    const sendHtmlError = vi.fn();
+    const server = { oidc: { enabled: true }, sendHtmlError };
+
+    await (WebhookServer.prototype as any).handleOidcCallback.call(
+      server,
+      {},
+      response(),
+      new URL("https://flow.test/auth/callback?code=only-code"),
+    );
+
+    expect(sendHtmlError).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: 400, title: "Sign-in link is incomplete" }),
+    );
+  });
+
+  it("uses the branded 404 for browser navigation and JSON for API-like requests", async () => {
+    const sendHtmlError = vi.fn();
+    const server = { sendHtmlError };
+    const browserResponse = response();
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      { url: "/missing-page", method: "GET", headers: { host: "flow.test", accept: "text/html" } },
+      browserResponse,
+    );
+    expect(sendHtmlError).toHaveBeenCalledWith(
+      browserResponse,
+      expect.objectContaining({ status: 404, title: "We couldn't find that page" }),
+      false,
+    );
+
+    const apiResponse = response();
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      { url: "/missing-endpoint", method: "GET", headers: { host: "flow.test", accept: "application/json" } },
+      apiResponse,
+    );
+    expect(apiResponse.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json; charset=utf-8" });
+    expect(apiResponse.end).toHaveBeenCalledWith(JSON.stringify({ error: "Endpoint not found" }));
+  });
+});
+
 function invokeRequireAuthenticatedUser(authenticated = false) {
   const response: TestResponse = {
     writeHead: vi.fn().mockReturnThis(),
@@ -203,7 +273,7 @@ describe("workflow and secret settings authentication", () => {
 
     expect(server.requireAdmin).not.toHaveBeenCalled();
     expect(server.renderAppShell).not.toHaveBeenCalled();
-    expect(response.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json" });
+    expect(response.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json; charset=utf-8" });
   });
 });
 

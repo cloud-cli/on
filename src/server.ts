@@ -29,6 +29,7 @@ import { generateWorkflowManagementHtml } from "./workflows-ui.js";
 import { WorkflowRepository } from "./workflows.js";
 import { debug } from "./debug.js";
 import { OidcClient } from "./oidc.js";
+import { renderErrorPage, type ErrorPageOptions } from "./error-page.js";
 import { OidcUserRepository } from "./oidc-user-repository.js";
 import { UserPreferencesRepository } from "./user-preferences.js";
 import apiClientSource from "./api-client.mjs?raw";
@@ -82,7 +83,29 @@ export class WebhookServer {
     ]).then(() => undefined);
 
     this.registerPreprocessor(new GitHubPreprocessor());
-    this.server = http.createServer((req, res) => this.handleRequest(req, res));
+    this.server = http.createServer((req, res) => {
+      void this.handleRequest(req, res).catch((error: unknown) => {
+        if (res.headersSent) {
+          res.destroy(error instanceof Error ? error : undefined);
+          return;
+        }
+        const isBrowserDocument =
+          (req.method === "GET" || req.method === "HEAD") &&
+          !req.url?.startsWith("/api/") &&
+          req.headers.accept?.includes("text/html");
+        if (isBrowserDocument) {
+          this.sendHtmlError(res, {
+            status: 500,
+            title: "Something went wrong",
+            message: "Flow hit an unexpected problem while handling this page. Please try again.",
+            action: { label: "Try again", href: "/runs" },
+          }, req.method === "HEAD");
+          return;
+        }
+        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: "Internal server error" }));
+      });
+    });
   }
 
   registerPreprocessor(preprocessor: WebhookPreprocessor) {
@@ -103,7 +126,12 @@ export class WebhookServer {
     // If OIDC is disabled and this is a protected browser UI route, return 503.
     if (requiresUiAuthentication) {
       if (!this.oidc?.enabled) {
-        return res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" }).end("OIDC is disabled");
+        return this.sendHtmlError(res, {
+          status: 503,
+          title: "Sign-in is unavailable",
+          message: "Authentication is temporarily unavailable. Please try again in a little while.",
+          action: { label: "Try signing in", href: "/auth/login?url=%2Fruns" },
+        });
       }
 
       const user = this.oidc?.userFromCookie(req.headers.cookie);
@@ -517,9 +545,31 @@ export class WebhookServer {
       return this.handleWebhook(provider, req, res);
     }
 
-    // Fallback 404
-    res.writeHead(404, { "Content-Type": "application/json" });
+    // Keep machine-readable errors for APIs, but give browser navigation a helpful not-found page.
+    if ((req.method === "GET" || req.method === "HEAD") && req.headers.accept?.includes("text/html")) {
+      return this.sendHtmlError(
+        res,
+        {
+          status: 404,
+          title: "We couldn't find that page",
+          message: "The link may be out of date, or the page may have moved.",
+          action: { label: "Back to Flow", href: "/runs" },
+        },
+        req.method === "HEAD",
+      );
+    }
+    res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ error: "Endpoint not found" }));
+  }
+
+  private sendHtmlError(res: http.ServerResponse, options: ErrorPageOptions, headOnly = false) {
+    res.writeHead(options.status, {
+      "Cache-Control": "no-store",
+      "Content-Type": "text/html; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+    });
+    return res.end(headOnly ? undefined : renderErrorPage(options));
   }
 
   /**
@@ -793,23 +843,57 @@ export class WebhookServer {
   private async handleOidcLogin(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
     const requestedReturnTo = url.searchParams.get("url") || "/runs";
     const sanitizedReturnTo = safeReturnUrl(requestedReturnTo);
-    if (!this.oidc?.enabled)
-      return res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" }).end("OIDC is disabled");
+    if (!this.oidc?.enabled) {
+      return this.sendHtmlError(res, {
+        status: 503,
+        title: "Sign-in is unavailable",
+        message: "Authentication is not configured on this server. Please contact your administrator.",
+        action: { label: "Back to Flow", href: "/runs" },
+      });
+    }
     try {
       res.writeHead(302, { Location: await this.oidc.loginUrl(this.oidcRedirectUri(req), sanitizedReturnTo) });
       return res.end();
     } catch (error: any) {
-      res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
-      return res.end(`OIDC login is unavailable: ${error.message}`);
+      return this.sendHtmlError(res, {
+        status: 503,
+        title: "Couldn't start sign-in",
+        message: "The authentication service couldn't be reached. Please try again shortly.",
+        action: { label: "Try again", href: `/auth/login?url=${encodeURIComponent(sanitizedReturnTo)}` },
+        secondaryAction: { label: "Back to Flow", href: "/runs" },
+      });
     }
   }
 
   private async handleOidcCallback(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
-    if (!this.oidc?.enabled) return res.writeHead(404).end();
-    if (url.searchParams.get("error")) return res.writeHead(401).end("OIDC sign-in was cancelled");
+    if (!this.oidc?.enabled) {
+      return this.sendHtmlError(res, {
+        status: 503,
+        title: "Sign-in is unavailable",
+        message: "Authentication is not configured on this server. Please contact your administrator.",
+        action: { label: "Back to Flow", href: "/runs" },
+      });
+    }
+    if (url.searchParams.get("error")) {
+      return this.sendHtmlError(res, {
+        status: 401,
+        title: "Sign-in wasn't completed",
+        message: "You cancelled sign-in or the identity provider couldn't authenticate you. You can safely try again.",
+        action: { label: "Try signing in again", href: "/auth/login?url=%2Fruns" },
+        secondaryAction: { label: "Back to Flow", href: "/runs" },
+      });
+    }
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
-    if (!code || !state) return res.writeHead(400).end("Missing OIDC callback parameters");
+    if (!code || !state) {
+      return this.sendHtmlError(res, {
+        status: 400,
+        title: "Sign-in link is incomplete",
+        message: "The identity provider returned an incomplete response. Please start sign-in again.",
+        action: { label: "Try signing in again", href: "/auth/login?url=%2Fruns" },
+        secondaryAction: { label: "Back to Flow", href: "/runs" },
+      });
+    }
     try {
       const result = await this.oidc.completeLogin(code, state, this.oidcRedirectUri(req));
       const user = this.oidc.userFromCookie(result.cookie);
@@ -825,13 +909,25 @@ export class WebhookServer {
       });
       return res.end();
     } catch (error: any) {
-      res.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
-      return res.end(`OIDC sign-in failed: ${error.message}`);
+      return this.sendHtmlError(res, {
+        status: 502,
+        title: "Couldn't complete sign-in",
+        message: "We couldn't verify your identity with the sign-in provider. Please try again. If the problem continues, contact your administrator.",
+        action: { label: "Try signing in again", href: "/auth/login?url=%2Fruns" },
+        secondaryAction: { label: "Back to Flow", href: "/runs" },
+      });
     }
   }
 
   private handleOidcLogout(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.oidc) return res.writeHead(404).end();
+    if (!this.oidc) {
+      return this.sendHtmlError(res, {
+        status: 404,
+        title: "Sign-out is unavailable",
+        message: "This application does not have an active sign-in session to end.",
+        action: { label: "Back to Flow", href: "/runs" },
+      });
+    }
     res.writeHead(302, {
       Location: "/runs",
       "Set-Cookie": `${this.oidc.clearCookie(req.headers.cookie)}${this.isHttps(req) ? "; Secure" : ""}`,
@@ -1292,9 +1388,16 @@ export class WebhookServer {
     const job = await this.queue.getJob(jobId);
 
     if (!job) {
-      const contentType = format === "json" ? "application/json; charset=utf-8" : "text/html; charset=utf-8";
-      res.writeHead(404, { "Content-Type": contentType });
-      return res.end(format === "json" ? JSON.stringify({ error: "Run not found" }) : "<h1>404 - Run Not Found</h1>");
+      if (format === "json") {
+        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+        return res.end(JSON.stringify({ error: "Run not found" }));
+      }
+      return this.sendHtmlError(res, {
+        status: 404,
+        title: "We couldn't find that run",
+        message: "The run may have been removed, or the link may be out of date.",
+        action: { label: "Back to runs", href: "/runs" },
+      });
     }
 
     const logsMap = canViewLogs ? await this.queue.getJobLogs(jobId) : {};
