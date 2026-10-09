@@ -118,6 +118,7 @@ describe("isProtectedUiRoute", () => {
       "/runs/123",
       "/help",
       "/settings",
+      "/teams",
       "/teams/team-1/settings",
       "/settings/secrets",
       "/settings/tokens",

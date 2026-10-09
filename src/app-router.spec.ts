@@ -20,6 +20,7 @@ describe("SPA router", () => {
 
   it("uses /settings as the sole settings route and section anchors for navigation", () => {
     expect(routerSetup).toContain('if (path === "/settings")');
+    expect(routerSetup).toContain('if (path === "/teams")');
     expect(routerSetup).not.toContain("settingsSections");
     expect(routerSetup).not.toMatch(/path === "\/settings\/|path\.startsWith\("\/settings\//);
     expect(routerSetup).toContain('url: "/pages/workflows.html?page=workflows"');
@@ -112,5 +113,11 @@ describe("SPA router", () => {
     expect(serverSetup).toContain('url.pathname === "/pages/team-settings.html"');
     expect(serverSetup).toContain('url.pathname === "/team-settings-ui.mjs"');
     expect(serverSetup).toContain("^\\/teams\\/[^/]+\\/settings$");
+  });
+  it("routes the team landing page through authenticated server delivery", () => {
+    expect(routerSetup).toContain('path === "/teams"');
+    expect(routerSetup).toContain('url: "/pages/teams.html"');
+    expect(serverSetup).toContain('url.pathname === "/pages/teams.html"');
+    expect(serverSetup).toContain('url.pathname === "/teams"');
   });
 });

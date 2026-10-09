@@ -74,6 +74,13 @@
               class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
               ><lucide-icon icon="settings" size="17"></lucide-icon>Settings</a
             >
+            <a
+              href="/teams"
+              on-click="setActive('teams')"
+              attr-aria-current="activeSection === 'teams' ? 'page' : null"
+              class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
+              ><lucide-icon icon="users" size="17"></lucide-icon>Teams</a
+            >
           </nav>
           <template if="userAuthenticated">
             <div
@@ -101,10 +108,11 @@
             </div>
           </template>
           <nav aria-label="Your teams" class="mt-3 space-y-1">
+            <p class="px-3 pt-2 text-[10px] font-semibold uppercase tracking-wider text-flow-muted">Your teams</p>
             <template for="team of teams"
               ><a
                 attr-href="'/teams/' + encodeURIComponent(team.id) + '/settings'"
-                class="block rounded-lg px-3 py-2 text-sm text-flow-secondary no-underline hover:bg-white/70"
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary"
                 ># {{ team.name }}</a
               ></template
             >
@@ -117,7 +125,7 @@
         </div>
         <nav
           aria-label="Mobile navigation"
-          class="fixed inset-x-0 bottom-0 z-50 grid grid-cols-3 border-t border-flow-border bg-flow-sidebar/95 px-2 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)] pt-2 backdrop-blur md:hidden"
+          class="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-flow-border bg-flow-sidebar/95 px-2 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)] pt-2 backdrop-blur md:hidden"
         >
           <a
             href="/runs"
@@ -132,6 +140,13 @@
             attr-aria-current="activeSection === 'workflows' ? 'page' : null"
             class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg text-xs text-flow-secondary no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
             ><lucide-icon icon="workflow" size="17"></lucide-icon>Workflows</a
+          >
+          <a
+            href="/teams"
+            on-click="setActive('teams')"
+            attr-aria-current="activeSection === 'teams' ? 'page' : null"
+            class="flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg text-xs text-flow-secondary no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
+            ><lucide-icon icon="users" size="17"></lucide-icon>Teams</a
           >
           <a
             href="/settings"

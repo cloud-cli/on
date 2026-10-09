@@ -14,6 +14,7 @@ describe("Flow application shell", () => {
     expect(html.match(/href="\/runs"/g)).toHaveLength(3);
     expect(html.match(/href="\/workflows"/g)).toHaveLength(2);
     expect(html.match(/href="\/settings"/g)).toHaveLength(2);
+    expect(html.match(/href="\/teams"/g)).toHaveLength(2);
     expect(html).toContain("activeSection === 'settings' ? 'page' : null");
     expect(html).toContain("focus-visible:ring-2");
     expect(html).toContain('>flow<span class="text-[#729b5b]">.</span>');
@@ -63,6 +64,9 @@ describe("Flow application shell", () => {
     expect(shellSetup).toContain('fetch("/api/teams"');
     expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
     expect(shellSetup).toContain('path.startsWith("/teams/")');
+    expect(html).toContain(">Your teams</p>");
+    expect(html).toContain("px-3 py-2.5 text-sm text-flow-secondary");
+    expect(html).toContain("grid-cols-4");
   });
 
   it("handles Enter and Space on the skip link without triggering browser navigation", () => {

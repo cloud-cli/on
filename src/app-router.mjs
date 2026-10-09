@@ -100,6 +100,7 @@ export default function () {
       return { component: "page-run", url: `/pages/run.html?jobId=${path.split("/").pop()}`, page: "run" };
     if (path === "/help") return { component: "page-help", url: "/pages/help.html", page: "help" };
     if (path === "/settings") return { component: "page-settings", url: "/pages/settings.html", page: "settings" };
+    if (path === "/teams") return { component: "page-teams", url: "/pages/teams.html", page: "teams" };
     const teamSettings = path.match(/^\/teams\/([^/]+)\/settings$/);
     if (teamSettings)
       return {

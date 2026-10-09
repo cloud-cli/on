@@ -23,6 +23,8 @@ describe("settings UI", () => {
     expect(source).not.toContain('href="/settings/workflows"');
     expect(source).toContain('ref="apiKeyForm"');
     expect(source).toContain("key.token");
+    expect(source).toContain('class-hidden="!keys.length"');
+    expect(source).toContain("Active tokens");
     expect(source).toContain("apiKeyForm.value.open = false");
     expect(settingsSetup).toContain("revealedKeys.get(key.id)");
     expect(settingsSetup).toContain("isNew: true");

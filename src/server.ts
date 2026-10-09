@@ -23,6 +23,7 @@ import { buildAiHelpMessages, createAiRequest, streamAiHelp } from "./ai-help.js
 import { workflowDocs } from "./help.js";
 import appHeaderTemplate from "./app-header.html?raw";
 import appShellTemplate from "./app-shell.html?raw";
+import teamsLandingTemplate from "./teams-landing.html?raw";
 import appRouterTemplate from "./app-router.html?raw";
 import { runTemplate } from "./run-view.js";
 import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from "./types.js";
@@ -42,6 +43,7 @@ import dashboardSetup from "./dashboard.mjs?raw";
 import runSetup from "./run.mjs?raw";
 import settingsSetup from "./settings-ui.mjs?raw";
 import teamSettingsSetup from "./team-settings-ui.mjs?raw";
+import teamsLandingSetup from "./teams-landing.mjs?raw";
 import workflowsSetup from "./workflows-ui.mjs?raw";
 import timezoneFormatSource from "./timezone-format.mjs?raw";
 
@@ -217,6 +219,10 @@ export class WebhookServer {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(teamSettingsSetup);
     }
+    if (req.method === "GET" && url.pathname === "/teams-landing.mjs") {
+      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(teamsLandingSetup);
+    }
     if (req.method === "GET" && (url.pathname === "/workflows-ui.mjs" || url.pathname === "/pages/workflows-ui.mjs")) {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(workflowsSetup);
@@ -301,6 +307,10 @@ export class WebhookServer {
       if (!this.requireAuthenticatedUser(req, res)) return;
       return this.renderPageComponent(res, "page-settings", generateSettingsHtml());
     }
+    if (req.method === "GET" && url.pathname === "/pages/teams.html") {
+      if (!this.requireAuthenticatedUser(req, res)) return;
+      return this.renderPageComponent(res, "page-teams", teamsLandingTemplate);
+    }
     if (req.method === "GET" && url.pathname === "/pages/team-settings.html") {
       if (!this.requireAuthenticatedUser(req, res)) return;
       return this.renderPageComponent(res, "page-team-settings", generateTeamSettingsHtml());
@@ -312,6 +322,10 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/settings") {
+      if (!this.requireAuthenticatedUser(req, res)) return;
+      return this.renderAppShell(res);
+    }
+    if (req.method === "GET" && url.pathname === "/teams") {
       if (!this.requireAuthenticatedUser(req, res)) return;
       return this.renderAppShell(res);
     }
@@ -1660,9 +1674,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (body) {
       content = source.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] || source;
     } else {
-      const start = source.indexOf("<template app>");
+      const appTemplate = source.match(/<template\s+app\b[^>]*>/i);
+      const start = appTemplate ? appTemplate.index! + appTemplate[0].length : -1;
       const end = source.lastIndexOf("</template>");
-      if (start !== -1 && end > start) content = source.slice(start + "<template app>".length, end);
+      if (start !== -1 && end > start) content = source.slice(start, end);
     }
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
     return res.end(`<template component="${name}">${components}${styles}${content}</template>`);

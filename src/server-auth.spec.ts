@@ -54,6 +54,15 @@ describe("browser admin-route authorization", () => {
     });
   });
 
+  it("sends signed-out visitors to sign-in from the teams chooser", () => {
+    const { allowed, response } = invokeRequireAdmin({ url: "/teams" });
+
+    expect(allowed).toBe(false);
+    expect(response.writeHead).toHaveBeenCalledWith(302, {
+      Location: "/auth/login?url=%2Fteams",
+    });
+  });
+
   it("allows admins and keeps non-browser API failures as 401", () => {
     const admin = invokeRequireAdmin({ authenticated: true, admin: true });
     expect(admin.allowed).toBe(true);

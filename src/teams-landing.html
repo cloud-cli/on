@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Your teams</title>
+    <script type="importmap">
+      { "imports": { "@app/": "/", "@li3/": "https://at-li3.static.apphor.de/" } }
+    </script>
+    <link rel="stylesheet" href="/on.css" />
+  </head>
+  <body class="min-h-screen bg-flow-background p-4 font-sans text-flow-foreground md:p-6">
+    <template app>
+      <main class="mx-auto max-w-4xl space-y-5 py-6">
+        <p class="text-xs font-semibold uppercase tracking-wider text-flow-muted">Your teams</p>
+        <h1 class="text-2xl font-semibold">Choose a team</h1>
+        <form class="flex flex-wrap gap-2" on-submit.prevent="createTeam($event)">
+          <label class="sr-only" for="new-team-name">New team name</label>
+          <input
+            id="new-team-name"
+            bind-value="newTeamName"
+            on-input="newTeamName = $event.target.value"
+            placeholder="New team name"
+            maxlength="100"
+            class="min-w-48 rounded-lg border border-flow-border px-3 py-2 text-sm"
+          />
+          <button type="submit" class="rounded-lg bg-flow-primary px-4 py-2 text-sm font-medium text-white">
+            Create team
+          </button>
+          <p class="w-full text-sm text-flow-muted" role="status">{{ message }}</p>
+        </form>
+        <ul class="grid gap-3 sm:grid-cols-2">
+          <template for="team of teams"
+            ><li>
+              <a
+                attr-href="'/teams/' + encodeURIComponent(team.id) + '/settings'"
+                class="block rounded-xl border border-flow-border bg-white p-5 text-flow-foreground no-underline hover:border-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary"
+              >
+                <span class="block text-lg font-semibold">{{ team.name }}</span>
+                <span class="mt-1 block text-sm text-flow-muted">{{ team.role }} · Manage team</span>
+              </a>
+            </li></template
+          >
+        </ul>
+      </main>
+      <script setup src="/teams-landing.mjs"></script>
+    </template>
+    <script type="module">
+      import "@li3/web";
+    </script>
+  </body>
+</html>

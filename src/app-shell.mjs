@@ -27,11 +27,13 @@ export default function setup() {
   const syncSection = () => {
     const path = window.location.pathname;
     activeSection.value =
-      path.startsWith("/settings") || path.startsWith("/teams/")
-        ? "settings"
-        : path.startsWith("/workflows")
-          ? "workflows"
-          : "runs";
+      path === "/teams"
+        ? "teams"
+        : path.startsWith("/settings") || path.startsWith("/teams/")
+          ? "settings"
+          : path.startsWith("/workflows")
+            ? "workflows"
+            : "runs";
   };
 
   const setActive = (section) => {
