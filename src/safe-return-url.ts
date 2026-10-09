@@ -105,7 +105,6 @@ export function isExemptFromGlobalOidcAuth(pathname: string, method: string): bo
     "/pages/workflows-ui.mjs",
     "/app-header.html",
     "/app-router.html",
-    "/preview-live.mjs",
     "/timezone-format.mjs",
   ];
   if (staticRoutes.includes(pathname)) {
@@ -137,7 +136,6 @@ export function isProtectedUiRoute(pathname: string, method: string): boolean {
     pathname === "/" ||
     pathname === "/runs" ||
     /^\/runs\/\d+$/.test(pathname) ||
-    pathname === "/preview" ||
     pathname === "/help" ||
     pathname === "/settings" ||
     /^\/settings\/(secrets|tokens|notifications|workers|timezone)$/.test(pathname) ||

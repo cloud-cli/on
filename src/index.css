@@ -1,7 +1,5 @@
 @import "tailwindcss";
 @source "./**/*.{html,mjs,ts}";
-@source "../docs/ui-concept/**/*.{html,js,mjs}";
-
 @theme {
   --color-background: #f3f5f1;
   --color-foreground: #1a1e22;

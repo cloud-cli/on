@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTimestampedLogLine } from "../docs/ui-concept/timezone-format.mjs";
+import { formatTimestampedLogLine } from "./timezone-format.mjs";
 
 describe("log timestamp timezone formatting", () => {
   it("converts an ISO timestamp at the beginning of a line to the chosen timezone", () => {

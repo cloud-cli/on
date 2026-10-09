@@ -85,7 +85,7 @@ describe("isExemptFromGlobalOidcAuth", () => {
     expect(isExemptFromGlobalOidcAuth("/pages/workflows-ui.mjs", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/app-header.html", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/app-router.html", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/preview-live.mjs", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/preview-live.mjs", "GET")).toBe(false);
   });
 
   it("exempts route-specific controls", () => {
@@ -116,7 +116,6 @@ describe("isProtectedUiRoute", () => {
       "/",
       "/runs",
       "/runs/123",
-      "/preview",
       "/help",
       "/settings",
       "/settings/secrets",
@@ -140,6 +139,7 @@ describe("isProtectedUiRoute", () => {
   });
 
   it("leaves unknown paths and non-document requests to normal routing", () => {
+    expect(isProtectedUiRoute("/preview", "GET")).toBe(false);
     expect(isProtectedUiRoute("/unknown", "GET")).toBe(false);
     expect(isProtectedUiRoute("/runs/not-a-number", "GET")).toBe(false);
     expect(isProtectedUiRoute("/", "POST")).toBe(false);

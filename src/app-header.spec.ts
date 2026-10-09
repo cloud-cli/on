@@ -14,9 +14,8 @@ describe("app header", () => {
     );
   });
 
-  it("links to the preview from the header", () => {
-    expect(headerTemplate).toContain('href="/preview"');
-    expect(headerTemplate).toContain('target="_top"');
-    expect(headerTemplate).toMatch(/>\s*Preview\s*<\/a\s*>/);
+  it("does not expose the retired UI preview", () => {
+    expect(headerTemplate).not.toContain('href="/preview"');
+    expect(headerTemplate).not.toContain("Preview</a>");
   });
 });

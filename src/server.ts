@@ -39,9 +39,7 @@ import dashboardSetup from "./dashboard.mjs?raw";
 import runSetup from "./run.mjs?raw";
 import settingsSetup from "./settings-ui.mjs?raw";
 import workflowsSetup from "./workflows-ui.mjs?raw";
-import { uiConceptPage } from "./ui-concept.js";
-import previewLiveSource from "../docs/ui-concept/preview-live.mjs?raw";
-import timezoneFormatSource from "../docs/ui-concept/timezone-format.mjs?raw";
+import timezoneFormatSource from "./timezone-format.mjs?raw";
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -116,15 +114,6 @@ export class WebhookServer {
       }
     }
 
-    if (req.method === "GET" && url.pathname === "/preview") {
-      res.writeHead(200, {
-        "Cache-Control": "no-store",
-        "Content-Type": "text/html; charset=utf-8",
-        "X-Robots-Tag": "noindex, nofollow",
-      });
-      return res.end(uiConceptPage);
-    }
-
     if (req.method === "GET" && url.pathname === "/manifest.webmanifest") {
       res.writeHead(200, { "Cache-Control": "public, max-age=3600", "Content-Type": "application/manifest+json" });
       return res.end(webManifest);
@@ -138,11 +127,6 @@ export class WebhookServer {
     if (req.method === "GET" && url.pathname === "/on.css") {
       res.writeHead(200, { "Cache-Control": "public, max-age=3600", "Content-Type": "text/css" });
       return res.end(fs.readFileSync("./dist/on.css", "utf8"));
-    }
-
-    if (req.method === "GET" && url.pathname === "/preview-live.mjs") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
-      return res.end(previewLiveSource);
     }
 
     if (req.method === "GET" && url.pathname === "/timezone-format.mjs") {
