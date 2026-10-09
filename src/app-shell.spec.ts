@@ -22,6 +22,9 @@ describe("Flow application shell", () => {
     expect(html).toContain("data-skip-to-content");
     expect(html).toContain('id="main-content"');
     expect(html).toContain('tabindex="-1"');
+    expect(html).toContain('class="h-dvh overflow-hidden bg-flow-background');
+    expect(html).toContain("h-dvh overflow-hidden md:grid");
+    expect(html).toContain("h-dvh min-h-0 min-w-0 overflow-y-auto overscroll-y-contain");
     expect(html).toContain("border border-flow-border py-2 px-3 rounded-lg bg-white/20");
     expect(html).not.toContain('<main class="min-h-screen min-w-0');
     expect(html).toContain("<app-router></app-router>");
