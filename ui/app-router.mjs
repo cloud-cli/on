@@ -44,6 +44,7 @@ export default function () {
       event.preventDefault();
       const button = form.querySelector("button");
       const alert = form.querySelector('[role="alert"]');
+      let teamCreated = false;
       const name = new FormData(form).get("name").trim();
       if (!name) {
         return;
@@ -65,6 +66,7 @@ export default function () {
         if (!team.id) {
           throw new Error("Team was created but the response had no team ID. Reload and select your team in Settings.");
         }
+        teamCreated = true;
         localStorage.setItem("runner-team-id", team.id);
         document.body.dataset.teamless = "false";
         window.dispatchEvent(new Event("runner-teams-updated"));
@@ -87,10 +89,12 @@ export default function () {
         success.append(continueButton);
         main.append(success);
       } catch (error) {
-        alert.textContent = error.message || "Unable to create team. Please try again.";
+        alert.textContent = teamCreated
+          ? "Your team was created, but this browser could not save the selected team. Enable browser storage, then reload."
+          : error.message || "Unable to create team. Please try again.";
         alert.classList.remove("hidden");
-        button.disabled = false;
-        button.textContent = "Create team";
+        button.disabled = teamCreated;
+        button.textContent = teamCreated ? "Team created" : "Create team";
       }
     });
     routeMessage = main;
