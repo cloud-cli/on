@@ -23,6 +23,7 @@ import { buildAiHelpMessages, createAiRequest, streamAiHelp } from "./ai-help.js
 import { workflowDocs } from "../ui/help.js";
 import appHeaderTemplate from "../ui/app-header.html?raw";
 import appShellTemplate from "../ui/app-shell.html?raw";
+import teamsLandingTemplate from "./teams-landing.html?raw";
 import appRouterTemplate from "../ui/app-router.html?raw";
 import { runTemplate } from "../ui/run-view.js";
 import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from "./types.js";
@@ -42,6 +43,7 @@ import dashboardSetup from "../ui/dashboard.mjs?raw";
 import runSetup from "../ui/run.mjs?raw";
 import settingsSetup from "../ui/settings-ui.mjs?raw";
 import teamSettingsSetup from "../ui/team-settings-ui.mjs?raw";
+import teamsLandingSetup from "./teams-landing.mjs?raw";
 import workflowsSetup from "../ui/workflows-ui.mjs?raw";
 import timezoneFormatSource from "../ui/timezone-format.mjs?raw";
 
@@ -227,6 +229,10 @@ export class WebhookServer {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(teamSettingsSetup);
     }
+    if (req.method === "GET" && url.pathname === "/teams-landing.mjs") {
+      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(teamsLandingSetup);
+    }
     if (req.method === "GET" && (url.pathname === "/workflows-ui.mjs" || url.pathname === "/pages/workflows-ui.mjs")) {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(workflowsSetup);
@@ -322,6 +328,12 @@ export class WebhookServer {
       }
       return this.renderPageComponent(res, "page-settings", generateSettingsHtml());
     }
+    if (req.method === "GET" && url.pathname === "/pages/teams.html") {
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
+      return this.renderPageComponent(res, "page-teams", teamsLandingTemplate);
+    }
     if (req.method === "GET" && url.pathname === "/pages/team-settings.html") {
       if (!this.requireAuthenticatedUser(req, res)) {
         return;
@@ -337,6 +349,12 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/settings") {
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
+      return this.renderAppShell(res);
+    }
+    if (req.method === "GET" && url.pathname === "/teams") {
       if (!this.requireAuthenticatedUser(req, res)) {
         return;
       }
@@ -2030,10 +2048,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (body) {
       content = source.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] || source;
     } else {
-      const start = source.indexOf("<template app>");
+      const appTemplate = source.match(/<template\s+app\b[^>]*>/i);
+      const start = appTemplate ? appTemplate.index! + appTemplate[0].length : -1;
       const end = source.lastIndexOf("</template>");
       if (start !== -1 && end > start) {
-        content = source.slice(start + "<template app>".length, end);
+        content = source.slice(start, end);
       }
     }
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });

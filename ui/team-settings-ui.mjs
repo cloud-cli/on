@@ -40,17 +40,6 @@ export default function () {
       error.value = reason.message;
     }
   };
-  const createTeam = () =>
-    act(async () => {
-      const { team, webhookPath: path } = await request("/api/teams", {
-        method: "POST",
-        body: JSON.stringify({ name: newTeamName.value }),
-      });
-      newTeamName.value = "";
-      webhookPath.value = `${location.origin}${path}`;
-      message.value = `Created ${team.name}. Save the webhook URL now.`;
-      window.dispatchEvent(new Event("runner-teams-updated"));
-    });
   const createInvitation = () =>
     act(async () => {
       const result = await request(`/api/teams/${encodeURIComponent(teamId)}/invitations`, {
@@ -111,7 +100,6 @@ export default function () {
     webhookPath,
     message,
     error,
-    createTeam,
     createInvitation,
     rotateWebhook,
     copyValue,

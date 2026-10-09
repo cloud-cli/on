@@ -115,6 +115,9 @@ export default function () {
     if (path === "/settings") {
       return { component: "page-settings", url: "/pages/settings.html", page: "settings" };
     }
+    if (path === "/teams") {
+      return { component: "page-teams", url: "/pages/teams.html", page: "teams" };
+    }
     const teamSettings = path.match(/^\/teams\/([^/]+)\/settings$/);
     if (teamSettings) {
       return {
