@@ -22,11 +22,14 @@ describe("Flow application shell", () => {
     expect(html).toContain("data-skip-to-content");
     expect(html).toContain('id="main-content"');
     expect(html).toContain('tabindex="-1"');
-    expect(html).toContain('class="h-dvh overflow-hidden bg-flow-background');
-    expect(html).toContain("h-dvh overflow-hidden md:grid");
-    expect(html).toContain("h-dvh min-h-0 min-w-0 overflow-y-auto overscroll-y-contain");
+    expect(html).toContain('class="min-h-dvh bg-flow-background');
+    expect(html).toContain("min-h-dvh md:grid md:grid-cols-[15rem_minmax(0,1fr)]");
+    expect(html).toContain("sticky top-0 hidden h-dvh self-start overflow-y-auto");
+    expect(html).toContain("min-h-dvh min-w-0 pb-20 md:pb-0");
+    expect(html).not.toContain("overscroll-y-contain");
+    expect(html).not.toContain("overflow-hidden bg-flow-background");
     expect(html).toContain("border border-flow-border py-2 px-3 rounded-lg bg-white/40");
-    expect(html).toContain("md:grid-rows-[minmax(0,1fr)]");
+    expect(html).not.toContain("md:grid-rows-[minmax(0,1fr)]");
     expect(html).not.toContain('<main class="min-h-screen min-w-0');
     expect(html).toContain("<app-router></app-router>");
     expect(html).not.toContain("Workers</a>");

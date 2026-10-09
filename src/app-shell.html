@@ -22,7 +22,7 @@
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
     <title>Flow · Runs</title>
   </head>
-  <body class="h-dvh overflow-hidden bg-flow-background font-sans text-flow-foreground">
+  <body class="min-h-dvh bg-flow-background font-sans text-flow-foreground">
     <template app>
       <a
         href="#main-content"
@@ -31,9 +31,9 @@
       >
         Skip to content
       </a>
-      <div class="h-dvh overflow-hidden md:grid md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]">
+      <div class="min-h-dvh md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
         <aside
-          class="hidden h-full min-h-0 overflow-y-auto border-r border-flow-border bg-flow-sidebar px-4 py-5 md:flex md:flex-col"
+          class="sticky top-0 hidden h-dvh self-start overflow-y-auto border-r border-flow-border bg-flow-sidebar px-4 py-5 md:flex md:flex-col"
         >
           <a
             href="/runs"
@@ -101,7 +101,7 @@
             </div>
           </template>
         </aside>
-        <div class="h-dvh min-h-0 min-w-0 overflow-y-auto overscroll-y-contain pb-20 md:h-full md:pb-0">
+        <div class="min-h-dvh min-w-0 pb-20 md:pb-0">
           <div id="main-content" tabindex="-1" class="min-h-full min-w-0 p-4 sm:p-6 lg:p-8">
             <app-router></app-router>
           </div>
