@@ -214,8 +214,8 @@ describe("run view", () => {
     expect(source).toContain("detailTab !== 'inputs'");
     expect(source).toContain("detailTab !== 'artifacts'");
     expect(source).toContain("detailTab !== 'history'");
-    expect(source).toContain('class-active="tab.isActive"');
-    expect(source).toContain('class-active="step.isSelected"');
+    expect(source).toContain("aria-[selected=true]:bg-flow-green-bg");
+    expect(source).toContain("aria-[pressed=true]:shadow-[0_0_0_1px_#387045,0_1px_3px_#23351214]");
     expect(source).toContain("hover:bg-flow-panel hover:text-flow-primary");
     expect(source).toContain("data-restart-menu");
     expect(source).toContain('addEventListener("pointerdown", handleOutsideRestartMenu)');
@@ -276,12 +276,9 @@ describe("run view", () => {
   });
 
   it("gives the selected tab and step a clear active treatment", () => {
-    const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
+    const html = readFileSync(resolve(process.cwd(), "src/run.html"), "utf8");
 
-    expect(css).toContain(".run-detail-tab.active");
-    expect(css).toContain("background-color: #e8f0e5");
-    expect(css).toContain(".step-button.active");
-    expect(css).toContain("0 0 0 1px #387045");
-    expect(css).toContain("font-weight: 700");
+    expect(html).toContain("attr-aria-selected=\"tab.isActive ? 'true' : 'false'\"");
+    expect(html).toContain("aria-[pressed=true]:font-bold");
   });
 });

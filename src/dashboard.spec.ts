@@ -65,7 +65,8 @@ describe("dashboard", () => {
     expect(dashboardSetup).toContain("if (searchInProgress && !isSearch) return");
     expect(dashboardSetup).toContain("generation !== refreshGeneration");
     expect(html).toContain("Filter runs by status");
-    expect(html).toContain('class-active="tab.isActive"');
+    expect(html).toContain("aria-[pressed=true]:bg-flow-primary");
+    expect(html).toContain("[[aria-pressed=true]_&]:bg-white/20");
     expect(html).toContain("attr-aria-pressed=\"tab.isActive ? 'true' : 'false'\"");
     expect(dashboardSetup).toContain("isActive: statusFilter.value === tab.status");
     expect(dashboardSetup).toContain("const pageSize = 50");
@@ -106,10 +107,9 @@ describe("dashboard", () => {
   });
 
   it("gives the active run filter a strong selected style", () => {
-    const css = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
+    const html = readFileSync(resolve(process.cwd(), "src/dashboard.html"), "utf8");
 
-    expect(css).toContain(".run-status-filter.active");
-    expect(css).toContain("background-color: #387045");
-    expect(css).toContain(".run-status-filter.active .run-status-count");
+    expect(html).toContain("attr-aria-pressed=\"tab.isActive ? 'true' : 'false'\"");
+    expect(html).toContain("aria-[pressed=true]:font-bold");
   });
 });

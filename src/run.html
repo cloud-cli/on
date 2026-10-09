@@ -232,10 +232,9 @@
               <button
                 type="button"
                 role="tab"
-                attr-aria-selected="tab.isActive ? 'true' : 'false'"
                 on-click="selectDetailTab(tab.id)"
-                class="run-detail-tab inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-t-md border-b-2 border-transparent px-2 pb-3 pt-2 text-sm text-flow-secondary transition-colors hover:bg-flow-panel hover:text-flow-primary sm:w-auto sm:justify-start sm:px-3"
-                class-active="tab.isActive"
+                class="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-t-md border-b-2 border-transparent px-2 pb-3 pt-2 text-sm text-flow-secondary transition-colors hover:bg-flow-panel hover:text-flow-primary aria-[selected=true]:border-flow-primary aria-[selected=true]:bg-flow-green-bg aria-[selected=true]:font-bold aria-[selected=true]:text-[#174522] sm:w-auto sm:justify-start sm:px-3"
+                attr-aria-selected="tab.isActive ? 'true' : 'false'"
               >
                 <lucide-icon bind-icon="tab.icon" size="15"></lucide-icon>
                 {{ tab.label }}
@@ -253,8 +252,7 @@
                 </div>
                 <template for="step of steps">
                   <button
-                    class="step-button mb-1 flex w-full cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 py-2.5 text-left text-sm font-medium text-flow-secondary transition-colors hover:bg-flow-background"
-                    class-active="step.isSelected"
+                    class="mb-1 flex w-full cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 py-2.5 text-left text-sm font-medium text-flow-secondary transition-colors hover:bg-flow-background aria-[pressed=true]:border-flow-primary aria-[pressed=true]:bg-white aria-[pressed=true]:font-bold aria-[pressed=true]:text-[#174522] aria-[pressed=true]:shadow-[0_0_0_1px_#387045,0_1px_3px_#23351214]"
                     on-click="selectStep(step.index)"
                     attr-aria-pressed="step.isSelected ? 'true' : 'false'"
                     attr-aria-label="(step.name || step.id || 'Step') + ', ' + upper(step.status)"

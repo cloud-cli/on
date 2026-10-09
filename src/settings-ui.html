@@ -116,7 +116,10 @@
           <h3 class="mt-5 text-xs font-semibold uppercase tracking-wider text-flow-muted">Active tokens</h3>
           <ul class="mt-2 space-y-2" aria-label="Active API keys">
             <template for="key of keys"
-              ><li class="api-key-row rounded-xl border border-flow-border px-4 py-3" class-active="key.isNew">
+              ><li
+                class="rounded-xl border border-flow-border px-4 py-3"
+                bind-class="key.isNew ? 'border-[#38704566].bg-[#e8f0e580].shadow-sm' : ''"
+              >
                 <div class="flex items-center justify-between gap-3">
                   <div>
                     <p class="text-sm font-medium">{{ key.name }}</p>
