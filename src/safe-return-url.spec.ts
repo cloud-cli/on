@@ -118,6 +118,7 @@ describe("isProtectedUiRoute", () => {
       "/runs/123",
       "/help",
       "/settings",
+      "/teams/team-1/settings",
       "/settings/secrets",
       "/settings/tokens",
       "/settings/notifications",
@@ -130,6 +131,7 @@ describe("isProtectedUiRoute", () => {
       "/pages/help.html",
       "/pages/workflows.html",
       "/pages/settings.html",
+      "/pages/team-settings.html",
     ];
 
     for (const path of protectedPaths) {
@@ -146,5 +148,6 @@ describe("isProtectedUiRoute", () => {
     expect(isProtectedUiRoute("/", "OPTIONS")).toBe(false);
     expect(isProtectedUiRoute("/api", "GET")).toBe(false);
     expect(isProtectedUiRoute("/app-router.mjs", "GET")).toBe(false);
+    expect(isProtectedUiRoute("/team-settings-ui.mjs", "GET")).toBe(false);
   });
 });
