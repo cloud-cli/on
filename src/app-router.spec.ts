@@ -76,6 +76,14 @@ describe("SPA router", () => {
     expect(routerSetup).toContain('document.removeEventListener("click", handleClick)');
   });
 
+  it("uses history navigation for app actions instead of reloading the document", () => {
+    expect(routerSetup).toContain("export function navigateTo(path)");
+    expect(routerSetup).toContain('history.pushState(null, "", path)');
+    expect(routerSetup).toContain('window.dispatchEvent(new PopStateEvent("popstate"))');
+    expect(routerSetup).toContain("const handlePopState = () => void navigate()");
+    expect(routerSetup).not.toContain("location.reload()");
+  });
+
   it("mounts run details and workflow editors as disposable route components", () => {
     expect(routerSetup).toContain('!["run", "editor"].includes(current.page)');
     expect(routerSetup).toContain("activeTransientPage?.remove()");

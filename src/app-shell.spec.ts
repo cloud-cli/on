@@ -19,7 +19,10 @@ describe("Flow application shell", () => {
     expect(html).toContain('>flow<span class="text-[#729b5b]">.</span>');
     expect(html).toContain("w-[27px] rounded-[2px] bg-[#547d42]");
     expect(html).toContain('href="#main-content"');
+    expect(html).toContain("data-skip-to-content");
     expect(html).toContain('id="main-content"');
+    expect(html).toContain('tabindex="-1"');
+    expect(html).toContain("border border-flow-border py-2 px-3 rounded-lg bg-white/20");
     expect(html).not.toContain('<main class="min-h-screen min-w-0');
     expect(html).toContain("<app-router></app-router>");
     expect(html).not.toContain("Workers</a>");
@@ -41,6 +44,14 @@ describe("Flow application shell", () => {
     expect(html).toContain("oidcProviderUrl");
     expect(html).toContain('icon="external-link"');
     expect(html).toContain('if="userAuthenticated"');
+  });
+
+  it("handles Enter and Space on the skip link without triggering browser navigation", () => {
+    expect(shellSetup).toContain('["Enter", " "].includes(event.key)');
+    expect(shellSetup).toContain("event.preventDefault()");
+    expect(shellSetup).toContain('getElementById("main-content")');
+    expect(shellSetup).toContain('addEventListener("keydown", handleSkipKeydown)');
+    expect(shellSetup).toContain('removeEventListener("keydown", handleSkipKeydown)');
   });
 
   it("serves the shell setup module referenced by the app shell", async () => {

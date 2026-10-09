@@ -2,6 +2,7 @@ import { computed, onDestroy, onInit, ref } from "@li3/web";
 import { AnsiUp } from "ansi_up";
 import { marked } from "marked";
 import { apiFetch } from "@app/api-client.mjs";
+import { navigateTo } from "@app/app-router.mjs";
 import { formatTimestampedLogLine } from "@app/timezone-format.mjs";
 
 export default function setup() {
@@ -254,7 +255,7 @@ export default function setup() {
     });
     if (response.ok) {
       const { id } = await response.json();
-      location.href = `/runs/${id}`;
+      navigateTo(`/runs/${id}`);
     }
   };
   const openManualRestart = (event) => {
@@ -293,7 +294,7 @@ export default function setup() {
       });
       if (!response.ok) throw new Error(`Restart failed: ${response.status}`);
       const { id } = await response.json();
-      location.href = `/runs/${id}`;
+      navigateTo(`/runs/${id}`);
     } catch (error) {
       aiError.value = error.message;
     } finally {

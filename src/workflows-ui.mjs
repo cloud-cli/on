@@ -1,5 +1,6 @@
 import { onDestroy, onInit, ref, templateRef } from "@li3/web";
 import { diffLines } from "diff";
+import { navigateTo } from "@app/app-router.mjs";
 
 export default function () {
   const params = new URLSearchParams(window.location.search);
@@ -184,7 +185,7 @@ export default function () {
       const id = workflowId.value.trim() || selectedId.value;
       if (!id || !confirm(`Delete ${id} and all of its revisions?`)) return;
       await api(`/api/workflows/${id}`, { method: "DELETE" });
-      window.location.href = "/workflows";
+      navigateTo("/workflows");
     });
   const saveSecret = () =>
     run(async () => {
@@ -273,7 +274,7 @@ export default function () {
     secretValueInput.value?.focus();
   };
   const visitWorkflow = (id) => {
-    window.location.href = `/workflows/${id}`;
+    navigateTo(`/workflows/${id}`);
   };
   const loadHelp = async (event) => {
     if (!event.target.open || helpLoaded.value || helpLoading.value || !helpContent.value) return;

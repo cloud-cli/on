@@ -1,5 +1,10 @@
 import { getElement, load, onDestroy, onInit, templateRef } from "@li3/web";
 
+export function navigateTo(path) {
+  history.pushState(null, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 export default function () {
   const outlet = templateRef("outlet");
   let navigationId = 0;
@@ -103,15 +108,16 @@ export default function () {
     history.pushState(null, "", `${target.pathname}${target.search}${target.hash}`);
     void navigate();
   };
+  const handlePopState = () => void navigate();
   const element = getElement();
   onInit(() => {
     document.addEventListener("click", handleClick);
-    window.addEventListener("popstate", navigate);
+    window.addEventListener("popstate", handlePopState);
     void navigate(true);
   });
   onDestroy(() => {
     document.removeEventListener("click", handleClick);
-    window.removeEventListener("popstate", navigate);
+    window.removeEventListener("popstate", handlePopState);
   });
   return {};
 }
