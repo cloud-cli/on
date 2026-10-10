@@ -22,12 +22,13 @@
       "get": {
         "tags": ["discovery"],
         "summary": "Get this OpenAPI specification",
-        "security": [],
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
         "responses": {
           "200": {
             "description": "OpenAPI JSON document",
             "content": { "application/json": { "schema": { "type": "object" } } }
-          }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
@@ -71,7 +72,7 @@
       "get": {
         "tags": ["jobs"],
         "summary": "List jobs",
-        "security": [],
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/AfterId" },
           { "$ref": "#/components/parameters/BeforeId" },
@@ -83,7 +84,8 @@
           "200": {
             "description": "Dashboard job list",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobList" } } }
-          }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
@@ -122,6 +124,7 @@
       "get": {
         "tags": ["jobs"],
         "summary": "Wait for a job to reach a terminal state",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/JobId" },
           {
@@ -135,6 +138,7 @@
             "description": "Latest job state",
             "content": { "application/json": { "schema": { "type": "object" } } }
           },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -158,7 +162,7 @@
       "get": {
         "tags": ["jobs"],
         "summary": "Get the current status and timestamps for a job",
-        "description": "Requires an authenticated OIDC session or a bearer token with logs:read scope.",
+        "description": "Requires an authenticated OIDC session or a valid bearer token. No scope is required for basic job status metadata.",
         "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
         "responses": {
@@ -190,12 +194,14 @@
       "get": {
         "tags": ["jobs"],
         "summary": "Get a run view",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
         "responses": {
           "200": {
             "description": "Run details",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RunView" } } }
           },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -500,12 +506,13 @@
       "get": {
         "tags": ["events"],
         "summary": "Subscribe to runner events",
-        "security": [],
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
         "responses": {
           "200": {
             "description": "Server-sent event stream",
             "content": { "text/event-stream": { "schema": { "type": "string" } } }
-          }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       },
       "post": {
@@ -520,7 +527,7 @@
       "get": {
         "tags": ["notifications"],
         "summary": "Get the Web Push public key",
-        "security": [],
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
         "responses": {
           "200": {
             "description": "VAPID public key",
@@ -529,7 +536,8 @@
                 "schema": { "type": "object", "properties": { "publicKey": { "type": "string" } } }
               }
             }
-          }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
     },
@@ -537,14 +545,17 @@
       "post": {
         "tags": ["notifications"],
         "summary": "Register a Web Push subscription",
-        "security": [],
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
-        "responses": { "201": { "description": "Subscription saved" } }
+        "responses": {
+          "201": { "description": "Subscription saved" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
       },
       "delete": {
         "tags": ["notifications"],
         "summary": "Remove a Web Push subscription",
-        "security": [],
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -557,7 +568,10 @@
             }
           }
         },
-        "responses": { "204": { "description": "Subscription removed" } }
+        "responses": {
+          "204": { "description": "Subscription removed" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
       }
     },
     "/webhooks/{provider}": {

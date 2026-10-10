@@ -228,6 +228,7 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/api") {
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
       res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify(openApiSpec));
     }
@@ -428,6 +429,7 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/api/jobs") {
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
       const afterIdParam = url.searchParams.get("afterId");
       const beforeIdParam = url.searchParams.get("beforeId");
       const limitParam = url.searchParams.get("limit");
@@ -464,17 +466,28 @@ export class WebhookServer {
     const statusMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/status$/);
     if (req.method === "GET" && statusMatch) return this.handleJobStatus(req, statusMatch[1], res);
     const waitMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/wait$/);
-    if (req.method === "GET" && waitMatch)
+    if (req.method === "GET" && waitMatch) {
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
       return this.handleJobWait(waitMatch[1], url.searchParams.get("timeout"), res);
+    }
 
     if (req.method === "GET" && url.pathname === "/api/events") {
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
       return this.events.subscribe(req, res);
     }
 
-    if (req.method === "GET" && url.pathname === "/api/push/public-key") return this.handlePushPublicKey(res);
-    if (req.method === "POST" && url.pathname === "/api/push/subscriptions") return this.handlePushSubscribe(req, res);
-    if (req.method === "DELETE" && url.pathname === "/api/push/subscriptions")
+    if (req.method === "GET" && url.pathname === "/api/push/public-key") {
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
+      return this.handlePushPublicKey(res);
+    }
+    if (req.method === "POST" && url.pathname === "/api/push/subscriptions") {
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
+      return this.handlePushSubscribe(req, res);
+    }
+    if (req.method === "DELETE" && url.pathname === "/api/push/subscriptions") {
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
       return this.handlePushUnsubscribe(req, res);
+    }
 
     if (url.pathname === "/api/workflows/validate" && req.method === "POST") {
       return this.handleWorkflowValidation(req, res);
@@ -512,10 +525,12 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && /^\/runs\/\d+$/.test(url.pathname)) {
+      if (!this.requireAuthenticatedUser(req, res)) return;
       return this.renderAppShell(res);
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/runs/")) {
+      if (!this.requireAuthenticatedUser(req, res)) return;
       const jobId = url.pathname.replace("/runs/", "");
       return this.renderRunDetails(jobId, res, "html", await this.hasScope(req, "logs:read"));
     }
@@ -524,6 +539,7 @@ export class WebhookServer {
     if (req.method === "POST" && aiHelpMatch) return this.handleAiHelp(req, res, aiHelpMatch[1]);
 
     if (req.method === "GET" && url.pathname.startsWith("/api/runs/")) {
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
       const diagnosticsMatch = url.pathname.match(/^\/api\/runs\/(\d+)\/diagnostics$/);
       if (diagnosticsMatch) return this.handleDiagnostics(req, res, diagnosticsMatch[1]);
       const artifactMatch = url.pathname.match(/^\/api\/runs\/(\d+)\/artifacts\/(.+)$/);
@@ -683,11 +699,7 @@ export class WebhookServer {
   }
 
   private async handleJobStatus(req: http.IncomingMessage, jobId: string, res: http.ServerResponse) {
-    const authenticatedSession = this.oidc?.userFromCookie(req.headers.cookie);
-    if (!authenticatedSession && !(await this.hasScope(req, "logs:read"))) {
-      res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
-      return res.end(JSON.stringify({ error: "Authentication required" }));
-    }
+    if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
     const job = await this.queue.getJob(jobId);
     if (!job) {
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
@@ -859,6 +871,18 @@ export class WebhookServer {
   private requireAuthenticatedUser(req: http.IncomingMessage, res: http.ServerResponse): boolean {
     // Temporary legacy settings policy: any valid OIDC session can manage workflows and secrets.
     if (this.oidc?.userFromCookie(req.headers.cookie)) return true;
+    res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ error: "Authentication required" }));
+    return false;
+  }
+
+  private async requireAuthenticatedApiRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+    if (this.oidc?.userFromCookie(req.headers.cookie)) return true;
+    const bearer = this.oidcBearer(req);
+    if (bearer) {
+      if (this.oidc && (await this.oidc.scopesForToken(bearer)) !== null) return true;
+      if ((await this.apiKeys.scopesForToken(bearer)) !== null) return true;
+    }
     res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ error: "Authentication required" }));
     return false;
@@ -1306,7 +1330,7 @@ export class WebhookServer {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Push notifications are not configured" }));
     }
-    res.writeHead(200, { "Cache-Control": "public, max-age=3600", "Content-Type": "application/json" });
+    res.writeHead(200, { "Cache-Control": "private, no-store", "Content-Type": "application/json" });
     res.end(JSON.stringify({ publicKey: this.push.publicKey }));
   }
 
