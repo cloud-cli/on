@@ -31,7 +31,7 @@ describe("language-neutral runner API client", () => {
     const client = new RunnerApiClient("https://coordinator.example", "runner-secret", fetcher as typeof fetch);
     const events = [];
 
-    for await (const event of client.events(new AbortController().signal)) events.push(event);
+    for await (const event of client.events(new AbortController().signal)) {events.push(event);}
 
     expect(events).toEqual([{ id: "12", event: "jobs.available", data: { teamId: "team-1" } }]);
     const headers = new Headers(fetcher.mock.calls[0][1]?.headers);

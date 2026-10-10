@@ -19,6 +19,7 @@ import {
   JobExecutionContext,
   JobRecord,
   FinalJobStatus,
+  WorkerExecutionQueue,
 } from "./types.js";
 import { setupSignalHandlers } from "./signals.js";
 import { consumeRunnerEvents } from "./events.js";
@@ -33,7 +34,7 @@ export const shutdownState = {
   isStopping: false,
 };
 
-const activeStepHandles = new Set<{ cancel: () => Promise<void> }>();
+const activeStepHandles = new Map<string, Set<{ cancel: () => Promise<void> }>>();
 let eventStreamController: AbortController | null = null;
 let wakeScheduler: (() => void) | null = null;
 
@@ -45,8 +46,18 @@ export async function abortActiveWorkerTask() {
     return;
   }
   console.log("⚡ Cancelling active step execution handles due to worker shutdown...");
-  await Promise.allSettled(Array.from(activeStepHandles, (handle) => handle.cancel()));
+  await Promise.allSettled(
+    [...activeStepHandles.values()].flatMap((handles) => [...handles].map((handle) => handle.cancel())),
+  );
   activeStepHandles.clear();
+}
+
+export async function abortActiveJob(jobId: string | number): Promise<void> {
+  const handles = activeStepHandles.get(String(jobId));
+  if (!handles) {
+    return;
+  }
+  await Promise.allSettled([...handles].map((handle) => handle.cancel()));
 }
 
 export function requestWorkerShutdown() {
@@ -75,6 +86,7 @@ export async function startWorkerScheduler(
   config: RunnerConfig,
 ) {
   const driver = await resolveDriver();
+  const { WorkflowRepository } = await import("./workflows.js");
   const workflows = new WorkflowRepository();
   const activeJobs = new Set<Promise<void>>();
   let wakeVersion = 0;
@@ -591,7 +603,7 @@ async function executeSingleStep(params: {
   attempt: number;
   executionContext: JobExecutionContext;
   driver: ExecutionDriver;
-  queue: QueueManager;
+  queue: WorkerExecutionQueue;
   config: RunnerConfig;
 }): Promise<ExecOutput> {
   const { step, stepIndex, executionContext } = params;
@@ -668,7 +680,7 @@ async function executeSingleStep(params: {
  * In-Process JS `eval:` Step Execution
  */
 async function executeEvalStep(params: {
-  queue: QueueManager;
+  queue: WorkerExecutionQueue;
   stepContext: StepContext;
   executionContext: JobExecutionContext;
 }): Promise<ExecOutput> {
@@ -840,7 +852,7 @@ async function collectStoredFiles(
 }
 
 async function restoreStoredFiles(
-  queue: QueueManager,
+  queue: Pick<WorkerExecutionQueue, "getStoredFiles">,
   kind: "cache",
   ownerKey: string,
   paths: string[],
@@ -891,7 +903,7 @@ async function executeRunStep(params: {
   stepContext: StepContext;
   executionContext: JobExecutionContext;
   driver: ExecutionDriver;
-  queue: QueueManager;
+  queue: WorkerExecutionQueue;
   config: RunnerConfig;
 }): Promise<ExecOutput> {
   const { workerId, jobId, stepContext, executionContext, driver, queue } = params;
@@ -915,21 +927,32 @@ async function executeRunStep(params: {
     };
   }
 
-  activeStepHandles.add(handle);
   let cancelled = false;
+  const managedHandle = {
+    cancel: async () => {
+      cancelled = true;
+      await handle.cancel();
+    },
+  };
+  const handles = activeStepHandles.get(String(jobId)) || new Set();
+  handles.add(managedHandle);
+  activeStepHandles.set(String(jobId), handles);
 
   const cancelCheckInterval = setInterval(async () => {
     if (await queue.isCancelled(jobId)) {
       console.log(`[${workerId}] 🛑 Job #${jobId} was cancelled! Halting execution.`);
       cancelled = true;
       clearInterval(cancelCheckInterval);
-      await handle.cancel();
+      await managedHandle.cancel();
     }
   }, 3000);
 
   const result: StepResult = await handle.done;
   clearInterval(cancelCheckInterval);
-  activeStepHandles.delete(handle);
+  handles.delete(managedHandle);
+  if (!handles.size) {
+    activeStepHandles.delete(String(jobId));
+  }
 
   if (handle.logFilePath && FS.existsSync(handle.logFilePath)) {
     try {
