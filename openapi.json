@@ -154,6 +154,21 @@
         }
       }
     },
+    "/api/jobs/{jobId}/status": {
+      "get": {
+        "tags": ["jobs"],
+        "summary": "Get the current status and timestamps for a job",
+        "security": [],
+        "parameters": [{ "$ref": "#/components/parameters/JobId" }],
+        "responses": {
+          "200": {
+            "description": "Current job status",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobStatusDetails" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/api/jobs/{jobId}/secrets": {
       "get": {
         "tags": ["jobs"],
@@ -667,6 +682,16 @@
         }
       },
       "JobStatus": { "type": "object", "properties": { "id": { "type": "integer" }, "status": { "type": "string" } } },
+      "JobStatusDetails": {
+        "type": "object",
+        "required": ["id", "status", "createdAt", "lastUpdated"],
+        "properties": {
+          "id": { "type": "integer" },
+          "status": { "type": "string", "enum": ["pending", "running", "success", "failed", "cancelled"] },
+          "createdAt": { "type": "string" },
+          "lastUpdated": { "type": "string" }
+        }
+      },
       "JobEvent": { "type": "object", "properties": { "jobId": { "type": "integer" } } },
       "Workflow": {
         "type": "object",

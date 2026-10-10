@@ -21,7 +21,9 @@ export class QueueManager {
     // If a concurrency key is provided, cancel existing pending/running jobs in that group
     if (concurrencyKey) {
       await db.run(
-        `UPDATE jobs SET status = 'cancelled' WHERE concurrency_key = ? AND status IN ('pending', 'running');`,
+        `UPDATE jobs
+         SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+         WHERE concurrency_key = ? AND status IN ('pending', 'running');`,
         [concurrencyKey],
       );
     }
@@ -50,7 +52,8 @@ export class QueueManager {
       SET
         status = 'running',
         worker_id = ?,
-        started_at = CURRENT_TIMESTAMP
+        started_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = (
         SELECT id FROM jobs
         WHERE status = 'pending'
@@ -72,7 +75,9 @@ export class QueueManager {
 
   async releaseJob(jobId: string | number): Promise<void> {
     await db.run(
-      `UPDATE jobs SET status = 'pending', worker_id = NULL, started_at = NULL WHERE id = ? AND status = 'running';`,
+      `UPDATE jobs
+       SET status = 'pending', worker_id = NULL, started_at = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND status = 'running';`,
       [jobId],
     );
   }
@@ -81,7 +86,10 @@ export class QueueManager {
    * Marks a job as completed or failed
    */
   async finishJob(jobId: string | number, status: JobStatus) {
-    await db.run(`UPDATE jobs SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?;`, [status, jobId]);
+    await db.run(
+      `UPDATE jobs SET status = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP WHERE id = ?;`,
+      [status, jobId],
+    );
   }
 
   async completeJob(jobId: string | number, status: JobStatus, report: WorkflowExecutionReport): Promise<void> {
@@ -113,7 +121,10 @@ export class QueueManager {
     if (!job) return;
 
     if (job.status === 'running') {
-      await db.run(`UPDATE jobs SET status = 'cancelled', finished_at = CURRENT_TIMESTAMP WHERE id = ?;`, [jobId]);
+      await db.run(
+        `UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP WHERE id = ?;`,
+        [jobId],
+      );
     }
 
     const activeWorkflow = await db.get('SELECT active_revision FROM workflows WHERE id = ?', [job.workflow_id]);
@@ -150,7 +161,9 @@ export class QueueManager {
 
   async clearStaleJobs() {
     return await db.run(
-      `UPDATE jobs SET status = 'pending', worker_id = NULL WHERE status = 'running' AND started_at < datetime('now', '-1 hour');`,
+      `UPDATE jobs
+       SET status = 'pending', worker_id = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE status = 'running' AND started_at < datetime('now', '-1 hour');`,
     );
   }
 

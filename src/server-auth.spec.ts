@@ -126,6 +126,66 @@ describe("OIDC callback and browser error pages", () => {
   });
 });
 
+describe("job status endpoint", () => {
+  const response = () => ({
+    writeHead: vi.fn().mockReturnThis(),
+    end: vi.fn(),
+  });
+
+  it("returns only the requested status fields", async () => {
+    const server: any = {
+      queue: {
+        getJob: vi.fn(async () => ({
+          id: 42,
+          status: "running",
+          created_at: "2026-10-10 12:00:00",
+          updated_at: "2026-10-10 12:03:00",
+          report: "must not be returned",
+        })),
+      },
+    };
+    server.handleJobStatus = (jobId, res) =>
+      (WebhookServer.prototype as any).handleJobStatus.call(server, jobId, res);
+    const res = response();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      { method: "GET", url: "/api/jobs/42/status", headers: { host: "flow.test" } },
+      res,
+    );
+
+    expect(server.queue.getJob).toHaveBeenCalledWith("42");
+    expect(res.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    expect(res.end).toHaveBeenCalledWith(
+      JSON.stringify({
+        id: 42,
+        status: "running",
+        createdAt: "2026-10-10 12:00:00",
+        lastUpdated: "2026-10-10 12:03:00",
+      }),
+    );
+  });
+
+  it("returns 404 when the job does not exist", async () => {
+    const server: any = { queue: { getJob: vi.fn(async () => null) } };
+    server.handleJobStatus = (jobId, res) =>
+      (WebhookServer.prototype as any).handleJobStatus.call(server, jobId, res);
+    const res = response();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      { method: "GET", url: "/api/jobs/42/status", headers: { host: "flow.test" } },
+      res,
+    );
+
+    expect(res.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json; charset=utf-8" });
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: "Job not found" }));
+  });
+});
+
 function invokeRequireAuthenticatedUser(authenticated = false) {
   const response: TestResponse = {
     writeHead: vi.fn().mockReturnThis(),

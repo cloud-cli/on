@@ -69,6 +69,7 @@ describe('QueueManager.claimNextJob', () => {
     expect(request.m).toBe('get');
     expect(request.s).toContain("json_each(COALESCE(jobs.required_tags, '[]'))");
     expect(request.s).toContain('required_tag.value NOT IN (SELECT value FROM json_each(?))');
+    expect(request.s).toContain('updated_at = CURRENT_TIMESTAMP');
     expect(request.d).toEqual(['build-node', '["linux","docker"]']);
   });
 });

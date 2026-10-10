@@ -6,6 +6,17 @@ describe("OpenAPI specification", () => {
     expect(spec.openapi).toBe("3.0.3");
     expect(spec.paths["/api"]).toHaveProperty("get");
     expect(spec.paths["/api/jobs"]).toHaveProperty("get");
+    const jobStatus = spec.paths["/api/jobs/{jobId}/status"].get;
+    expect(jobStatus.security).toEqual([]);
+    expect(jobStatus.responses["200"].content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/JobStatusDetails",
+    });
+    expect(spec.components.schemas.JobStatusDetails.required).toEqual([
+      "id",
+      "status",
+      "createdAt",
+      "lastUpdated",
+    ]);
     expect(spec.paths["/api/session"].get.security).toEqual([{ oidcSessionCookie: [] }]);
     expect(spec.paths["/api/workflows/{workflowId}"]).toHaveProperty("put");
     expect(spec.paths["/api/workflows/{workflowId}/run"]).toHaveProperty("post");

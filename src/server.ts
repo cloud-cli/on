@@ -461,6 +461,8 @@ export class WebhookServer {
     if (req.method === "POST" && dispatchMatch) return this.handleDispatch(req, res, dispatchMatch[1]);
     const workflowRunMatch = url.pathname.match(/^\/api\/workflows\/([a-z0-9-]+)\/run$/);
     if (req.method === "POST" && workflowRunMatch) return this.handleWorkflowRun(req, res, workflowRunMatch[1]);
+    const statusMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/status$/);
+    if (req.method === "GET" && statusMatch) return this.handleJobStatus(statusMatch[1], res);
     const waitMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/wait$/);
     if (req.method === "GET" && waitMatch)
       return this.handleJobWait(waitMatch[1], url.searchParams.get("timeout"), res);
@@ -676,6 +678,23 @@ export class WebhookServer {
       JSON.stringify({
         job: toDashboardJobs([job])[0],
         terminal: ["success", "failed", "cancelled"].includes(job.status),
+      }),
+    );
+  }
+
+  private async handleJobStatus(jobId: string, res: http.ServerResponse) {
+    const job = await this.queue.getJob(jobId);
+    if (!job) {
+      res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ error: "Job not found" }));
+    }
+    res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+    return res.end(
+      JSON.stringify({
+        id: Number(job.id),
+        status: job.status,
+        createdAt: job.created_at,
+        lastUpdated: job.updated_at,
       }),
     );
   }
