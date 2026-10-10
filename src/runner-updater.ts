@@ -1,4 +1,5 @@
 import { execFile as nodeExecFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { isAbsolute } from "node:path";
 import type { RunnerConfig } from "./types.js";
@@ -47,7 +48,18 @@ export async function applyRunnerUpdate(
   ];
   try {
     await execute("npm", installArgs(version));
-    await execute("systemctl", ["--no-block", "restart", serviceUnit]);
+    // Delay the restart out of this service's cgroup so systemd cannot kill this request before it exits.
+    const restartUnit = `on-runner-update-restart-${randomUUID()}`;
+    await execute("systemd-run", [
+      "--no-block",
+      "--collect",
+      "--on-active=2s",
+      "--property=Type=exec",
+      `--unit=${restartUnit}`,
+      "systemctl",
+      "restart",
+      serviceUnit,
+    ]);
   } catch (error) {
     try {
       if (!isExactSemver(RUNNER_VERSION))
