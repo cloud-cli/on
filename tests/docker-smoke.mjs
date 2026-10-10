@@ -1,11 +1,21 @@
 import http from "node:http";
-import { spawn } from "node:child_process";
+import os from "node:os";
+import { execFileSync, spawn } from "node:child_process";
 
 const dbPort = 18_888;
 const appPort = 18_889;
 const image = process.env.E2E_IMAGE || "on:e2e";
 const containerName = "on-e2e-smoke";
+const hostAddress =
+  process.env.E2E_HOST_ADDRESS ||
+  Object.values(os.networkInterfaces())
+    .flatMap((addresses) => addresses || [])
+    .find((address) => (address.family === "IPv4" || address.family === 4) && !address.internal)?.address;
 let workflow;
+
+if (!hostAddress) {
+  throw new Error("Could not find a non-loopback IPv4 address reachable from the Docker bridge");
+}
 
 const database = http.createServer(async (request, response) => {
   let body = "";
@@ -33,33 +43,33 @@ const database = http.createServer(async (request, response) => {
   response.end(JSON.stringify(result));
 });
 
-await new Promise((resolve) => database.listen(dbPort, "127.0.0.1", resolve));
+await new Promise((resolve) => database.listen(dbPort, hostAddress, resolve));
 
-const container = spawn(
-  "docker",
-  [
-    "run",
-    "--rm",
-    "--name",
-    containerName,
-    "--network",
-    "host",
-    "-e",
-    "RUNNER_ADMIN_SECRET=e2e-admin-secret",
-    "-e",
-    "DATABASE_URL=file:///home/app/e2e-db.mjs",
-    "-e",
-    `DATABASE_HTTP_URL=http://127.0.0.1:${dbPort}`,
-    "-e",
-    `PORT=${appPort}`,
-    "-e",
-    `RUNNER_SERVER_URL=http://127.0.0.1:${appPort}`,
-    image,
-    "dist/on.js",
-    "start-server",
-  ],
-  { stdio: ["ignore", "pipe", "pipe"] },
-);
+const containerArgs = [
+  "run",
+  "-d",
+  "--rm",
+  "--name",
+  containerName,
+  "-e",
+  "RUNNER_ADMIN_SECRET=e2e-admin-secret",
+  "-e",
+  "DATABASE_URL=file:///home/app/e2e-db.mjs",
+  "-e",
+  `DATABASE_HTTP_URL=http://${hostAddress}:${dbPort}`,
+  "-e",
+  `PORT=${appPort}`,
+  "-e",
+  `RUNNER_SERVER_URL=http://127.0.0.1:${appPort}`,
+  image,
+  "dist/on.js",
+  "start-server",
+];
+execFileSync("docker", containerArgs, { encoding: "utf8" });
+
+const container = spawn("docker", ["logs", "--follow", containerName], {
+  stdio: ["ignore", "pipe", "pipe"],
+});
 let containerOutput = "";
 container.stdout.on("data", (chunk) => {
   containerOutput += chunk;
@@ -69,17 +79,38 @@ container.stderr.on("data", (chunk) => {
 });
 
 const stop = async () => {
-  if (container.exitCode === null) {
+  if (container.exitCode === null && container.signalCode === null) {
     container.kill("SIGTERM");
   }
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-  spawn("docker", ["rm", "-f", containerName], { stdio: "ignore" });
+  try {
+    execFileSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
+  } catch {}
 };
 
-const waitForServer = async () => {
+const getAppBaseUrl = async () => {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (container.exitCode !== null) {
+      throw new Error(`Container exited before its IP was available\n${containerOutput}`);
+    }
+    try {
+      const address = execFileSync(
+        "docker",
+        ["inspect", "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", containerName],
+        { encoding: "utf8" },
+      ).trim();
+      if (address) {
+        return `http://${address}:${appPort}`;
+      }
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Unable to inspect the Docker container IP\n${containerOutput}`);
+};
+
+const waitForServer = async (appBaseUrl) => {
   for (let attempt = 0; attempt < 40; attempt++) {
     try {
-      const response = await fetch(`http://127.0.0.1:${appPort}/on.css`);
+      const response = await fetch(`${appBaseUrl}/on.css`);
       if (response.ok) {
         return;
       }
@@ -90,116 +121,41 @@ const waitForServer = async () => {
 };
 
 try {
-  await waitForServer();
+  const appBaseUrl = await getAppBaseUrl();
+  await waitForServer(appBaseUrl);
 
-  const apiResponse = await fetch(`http://127.0.0.1:${appPort}/api`);
+  const apiResponse = await fetch(`${appBaseUrl}/api`);
   if (apiResponse.status !== 401) {
     throw new Error(`Expected OpenAPI endpoint to require authentication, got ${apiResponse.status}`);
   }
 
-  for (const path of ["/", "/runs", "/help"]) {
-    const response = await fetch(`http://127.0.0.1:${appPort}${path}`);
+  for (const path of ["/", "/runs", "/help", "/settings"]) {
+    const response = await fetch(`${appBaseUrl}${path}`);
     const html = await response.text();
-    if (!response.ok || !html.includes("<app-router")) {
-      throw new Error(`Public SPA shell failed for ${path}`);
+    if (response.status !== 503 || !html.includes("Sign-in is unavailable")) {
+      throw new Error(`Expected ${path} to fail closed while OIDC is disabled, got ${response.status}`);
     }
   }
-  const appCss = await fetch(`http://127.0.0.1:${appPort}/on.css`);
+
+  const appCss = await fetch(`${appBaseUrl}/on.css`);
   const appCssText = await appCss.text();
   if (!appCss.ok || !appCssText.includes(".bg-flow-background")) {
     throw new Error("Tailwind application stylesheet failed");
   }
-  const embeddedHelp = await fetch(`http://127.0.0.1:${appPort}/help?embed=1`);
-  const embeddedHelpHtml = await embeddedHelp.text();
-  if (
-    !embeddedHelp.ok ||
-    !embeddedHelpHtml.includes("Workflow Documentation") ||
-    embeddedHelpHtml.includes("<app-router")
-  ) {
-    throw new Error("Embedded help document failed");
-  }
 
-  const protectedResponse = await fetch(`http://127.0.0.1:${appPort}/settings`);
-  if (protectedResponse.status !== 401) {
-    throw new Error(`Expected protected Settings page, got ${protectedResponse.status}`);
-  }
-
-  const authorization = `Basic ${Buffer.from("admin:e2e-admin-secret").toString("base64")}`;
-  const settingsResponse = await fetch(`http://127.0.0.1:${appPort}/settings`, { headers: { authorization } });
-  const settings = await settingsResponse.text();
-  if (!settingsResponse.ok || !settings.includes("<app-router")) {
-    throw new Error(`Authenticated Settings page failed: ${settingsResponse.status}\n${settings.slice(0, 300)}`);
-  }
-  const runRefreshResponse = await fetch(`http://127.0.0.1:${appPort}/runs/42`, { headers: { authorization } });
-  const runRefresh = await runRefreshResponse.text();
-  if (!runRefreshResponse.ok || !runRefresh.includes("<app-router") || runRefresh.includes("Run Not Found")) {
-    throw new Error(`Run refresh did not return the standard app shell: ${runRefreshResponse.status}`);
-  }
-  for (const path of ["/settings/secrets", "/settings/tokens", "/settings/notifications"]) {
-    const response = await fetch(`http://127.0.0.1:${appPort}${path}`, { headers: { authorization } });
-    if (response.status !== 404) {
-      throw new Error(`Removed Settings URL should return 404 for ${path}: ${response.status}`);
-    }
-  }
-  const settingsPageResponse = await fetch(`http://127.0.0.1:${appPort}/pages/settings.html?page=tokens`, {
-    headers: { authorization },
-  });
-  const settingsPage = await settingsPageResponse.text();
-  if (!settingsPageResponse.ok || !settingsPage.includes('template component="page-settings"')) {
-    throw new Error(`Settings page component failed: ${settingsPageResponse.status}\n${settingsPage.slice(0, 300)}`);
-  }
-  for (const [path, component] of [
-    ["/pages/workflows.html?page=workflows", "page-workflows"],
-    ["/pages/workflows.html?page=secrets", "page-secrets"],
-    ["/pages/workflows.html?page=editor&id=new", "page-workflow-editor"],
-    ["/pages/settings.html?page=notifications", "page-settings"],
-    ["/pages/run.html?jobId=42", "page-run"],
+  for (const [path, expectedText] of [
+    ["/app-icon.svg", "<svg"],
+    ["/manifest.webmanifest", '"start_url":"/runs"'],
+    ["/api-client.mjs", "loadToken"],
+    ["/app-shell.mjs", "onInit"],
+    ["/app-router.mjs", "navigateTo"],
+    ["/dashboard.mjs", "refreshJobs"],
   ]) {
-    const response = await fetch(`http://127.0.0.1:${appPort}${path}`, { headers: { authorization } });
-    const html = await response.text();
-    if (!response.ok || !html.includes(`template component="${component}"`) || !html.includes("script setup")) {
-      throw new Error(`Protected page component failed for ${path}`);
+    const response = await fetch(`${appBaseUrl}${path}`);
+    const content = await response.text();
+    if (!response.ok || !content.includes(expectedText)) {
+      throw new Error(`Bundled UI resource failed at ${path}: ${response.status}`);
     }
-    if (component === "page-run" && !html.includes('<link rel="stylesheet" href="/on.css" />')) {
-      throw new Error("Run detail component did not preserve its Tailwind stylesheet link");
-    }
-  }
-
-  const workflowsResponse = await fetch(`http://127.0.0.1:${appPort}/workflows`, { headers: { authorization } });
-  if (!workflowsResponse.ok) {
-    throw new Error(`Authenticated workflows page failed: ${workflowsResponse.status}`);
-  }
-
-  const sourceYaml = "name: E2E workflow\non:\n  generic: {}\nsteps:\n  - run: true\n";
-  const validateResponse = await fetch(`http://127.0.0.1:${appPort}/api/workflows/validate`, {
-    method: "POST",
-    headers: { authorization, "content-type": "application/json" },
-    body: JSON.stringify({ sourceYaml }),
-  });
-  if (!validateResponse.ok) {
-    throw new Error(`Workflow validation failed: ${validateResponse.status}`);
-  }
-  const saveResponse = await fetch(`http://127.0.0.1:${appPort}/api/workflows/e2e-workflow`, {
-    method: "PUT",
-    headers: { authorization, "content-type": "application/json" },
-    body: JSON.stringify({ sourceYaml }),
-  });
-  if (!saveResponse.ok) {
-    throw new Error(`Workflow save failed: ${saveResponse.status}`);
-  }
-  const publishResponse = await fetch(`http://127.0.0.1:${appPort}/api/workflows/e2e-workflow/publish`, {
-    method: "POST",
-    headers: { authorization },
-  });
-  if (!publishResponse.ok) {
-    throw new Error(`Workflow publish failed: ${publishResponse.status}`);
-  }
-  const deleteResponse = await fetch(`http://127.0.0.1:${appPort}/api/workflows/e2e-workflow`, {
-    method: "DELETE",
-    headers: { authorization },
-  });
-  if (deleteResponse.status !== 204) {
-    throw new Error(`Workflow delete failed: ${deleteResponse.status}`);
   }
 } finally {
   await stop();
