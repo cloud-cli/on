@@ -18,20 +18,30 @@ export function safeReturnUrl(requestedReturnTo: string): string {
 
   // ---- Pre-URL-parse validation (the URL parser can sanitize/alter input) ----
   // Reject protocol-relative URLs (starting with //).
-  if (withoutFragment.startsWith("//")) return "/runs";
+  if (withoutFragment.startsWith("//")) {
+    return "/runs";
+  }
 
   // Reject backslash-based authority.
-  if (withoutFragment.includes("\\")) return "/runs";
+  if (withoutFragment.includes("\\")) {
+    return "/runs";
+  }
 
   // Reject full URLs with schemes (containing ://).
-  if (withoutFragment.includes("://")) return "/runs";
+  if (withoutFragment.includes("://")) {
+    return "/runs";
+  }
 
   // Reject CR/LF injection.
-  if (withoutFragment.includes("\r") || withoutFragment.includes("\n")) return "/runs";
+  if (withoutFragment.includes("\r") || withoutFragment.includes("\n")) {
+    return "/runs";
+  }
 
   // Reject paths that do not start with '/' (must be same-origin relative paths).
   // The URL parser will auto-prefix '/' so we check the raw input.
-  if (!withoutFragment.startsWith("/")) return "/runs";
+  if (!withoutFragment.startsWith("/")) {
+    return "/runs";
+  }
 
   let path: string;
   let search: string; // includes leading ?, raw query params
@@ -53,7 +63,9 @@ export function safeReturnUrl(requestedReturnTo: string): string {
   }
 
   // Reject empty path.
-  if (!path) return "/runs";
+  if (!path) {
+    return "/runs";
+  }
 
   // Reconstruct path + query, preserving the raw query string.
   // The caller should apply encodeURIComponent when using this as a query param value.

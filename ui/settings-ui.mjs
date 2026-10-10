@@ -70,7 +70,9 @@ export default function () {
     secrets.value = (await api("/api/secrets")).secrets;
   };
   const runSecretAction = async (action) => {
-    if (busy.value) return;
+    if (busy.value) {
+      return;
+    }
     busy.value = true;
     error.value = "";
     try {
@@ -84,10 +86,12 @@ export default function () {
   const saveSecret = () =>
     runSecretAction(async () => {
       const name = secretName.value.trim().toUpperCase();
-      if (!/^[A-Z][A-Z0-9_]*$/.test(name))
+      if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
         throw new Error("Secret names must start with a letter and contain only letters, numbers, and underscores.");
-      if (fileMode.value ? !secretFileData.value : !secretValue.value)
+      }
+      if (fileMode.value ? !secretFileData.value : !secretValue.value) {
         throw new Error(fileMode.value ? "Choose a file first." : "Set a secret value first.");
+      }
       await api(`/api/secrets/${encodeURIComponent(name)}`, {
         method: "PUT",
         body: JSON.stringify(
@@ -104,7 +108,9 @@ export default function () {
       await loadSecrets();
     });
   const removeSecret = (name) => {
-    if (!confirm(`Delete ${name}?`)) return;
+    if (!confirm(`Delete ${name}?`)) {
+      return;
+    }
     return runSecretAction(async () => {
       await api(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
       await loadSecrets();
@@ -112,11 +118,14 @@ export default function () {
   };
   const setSecretFile = async (event) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      return;
+    }
     const bytes = new Uint8Array(await file.arrayBuffer());
     let binary = "";
-    for (let index = 0; index < bytes.length; index += 0x8000)
+    for (let index = 0; index < bytes.length; index += 0x8000) {
       binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    }
     secretFileName.value = file.name;
     secretFileData.value = btoa(binary);
   };
@@ -133,7 +142,9 @@ export default function () {
     secretName.value = name;
     fileMode.value = false;
     secretValue.value = "";
-    if (secretForm.value) secretForm.value.open = true;
+    if (secretForm.value) {
+      secretForm.value.open = true;
+    }
     secretForm.value?.scrollIntoView({ behavior: "smooth", block: "center" });
     secretValueInput.value?.focus({ preventScroll: true });
   };

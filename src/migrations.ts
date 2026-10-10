@@ -1,4 +1,4 @@
-import db from './db-client.js';
+import db from "./db-client.js";
 
 type Migration = {
   version: string;
@@ -7,16 +7,16 @@ type Migration = {
 
 const migrations: Migration[] = [
   {
-    version: '001_add_workflow_enabled',
+    version: "001_add_workflow_enabled",
     async apply() {
-      const columns = await db.all('PRAGMA table_info(workflows)');
-      if (!columns.some((column: any) => column.name === 'enabled')) {
-        await db.run('ALTER TABLE workflows ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+      const columns = await db.all("PRAGMA table_info(workflows)");
+      if (!columns.some((column: any) => column.name === "enabled")) {
+        await db.run("ALTER TABLE workflows ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1");
       }
     },
   },
   {
-    version: '002_add_push_subscriptions',
+    version: "002_add_push_subscriptions",
     async apply() {
       await db.exec(`
         CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -29,7 +29,7 @@ const migrations: Migration[] = [
     },
   },
   {
-    version: '003_add_push_delivery_history',
+    version: "003_add_push_delivery_history",
     async apply() {
       await db.exec(`
         CREATE TABLE IF NOT EXISTS push_deliveries (
@@ -40,7 +40,7 @@ const migrations: Migration[] = [
     },
   },
   {
-    version: '004_add_ai_requests',
+    version: "004_add_ai_requests",
     async apply() {
       await db.exec(`
         CREATE TABLE IF NOT EXISTS ai_requests (
@@ -64,10 +64,12 @@ export async function runMigrations(): Promise<void> {
     )
   `);
 
-  const applied = new Set((await db.all('SELECT version FROM schema_migrations')).map((row: any) => row.version));
+  const applied = new Set((await db.all("SELECT version FROM schema_migrations")).map((row: any) => row.version));
   for (const migration of migrations) {
-    if (applied.has(migration.version)) continue;
+    if (applied.has(migration.version)) {
+      continue;
+    }
     await migration.apply();
-    await db.run('INSERT INTO schema_migrations (version) VALUES (?)', [migration.version]);
+    await db.run("INSERT INTO schema_migrations (version) VALUES (?)", [migration.version]);
   }
 }

@@ -1,6 +1,6 @@
-import webpush from 'web-push';
-import db from './db-client.js';
-import type { RunnerConfig } from './types.js';
+import webpush from "web-push";
+import db from "./db-client.js";
+import type { RunnerConfig } from "./types.js";
 
 export interface PushSubscriptionInput {
   endpoint: string;
@@ -23,18 +23,22 @@ export class PushRepository {
   }
 
   async remove(endpoint: string): Promise<void> {
-    await db.run('DELETE FROM push_subscriptions WHERE endpoint = ?', [endpoint]);
+    await db.run("DELETE FROM push_subscriptions WHERE endpoint = ?", [endpoint]);
   }
 
   async notify(job: { id: number; workflow_id: string; status: string }): Promise<void> {
-    if (!this.config.push || !['success', 'failed', 'cancelled'].includes(job.status)) return;
+    if (!this.config.push || !["success", "failed", "cancelled"].includes(job.status)) {
+      return;
+    }
     const delivery = await db.get(
-      'INSERT INTO push_deliveries (job_id) VALUES (?) ON CONFLICT(job_id) DO NOTHING RETURNING job_id',
+      "INSERT INTO push_deliveries (job_id) VALUES (?) ON CONFLICT(job_id) DO NOTHING RETURNING job_id",
       [job.id],
     );
-    if (!delivery) return;
+    if (!delivery) {
+      return;
+    }
     webpush.setVapidDetails(this.config.push.subject, this.config.push.publicKey, this.config.push.privateKey);
-    const subscriptions = await db.all('SELECT endpoint, p256dh, auth FROM push_subscriptions');
+    const subscriptions = await db.all("SELECT endpoint, p256dh, auth FROM push_subscriptions");
     const payload = JSON.stringify({
       title: `Job #${job.id} ${job.status}`,
       body: `${job.workflow_id} finished with status ${job.status}.`,
@@ -49,8 +53,11 @@ export class PushRepository {
             payload,
           );
         } catch (error: any) {
-          if (error.statusCode === 404 || error.statusCode === 410) await this.remove(subscription.endpoint);
-          else console.error(`Unable to send push notification to ${subscription.endpoint}:`, error.message);
+          if (error.statusCode === 404 || error.statusCode === 410) {
+            await this.remove(subscription.endpoint);
+          } else {
+            console.error(`Unable to send push notification to ${subscription.endpoint}:`, error.message);
+          }
         }
       }),
     );

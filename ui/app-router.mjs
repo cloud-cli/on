@@ -14,21 +14,29 @@ export default function () {
   const route = () => {
     const url = new URL(window.location.href);
     const path = url.pathname;
-    if (path === "/" || path === "/runs")
+    if (path === "/" || path === "/runs") {
       return { component: "page-dashboard", url: "/pages/dashboard.html", page: "dashboard" };
-    if (path.match(/^\/runs\/\d+$/))
+    }
+    if (path.match(/^\/runs\/\d+$/)) {
       return { component: "page-run", url: `/pages/run.html?jobId=${path.split("/").pop()}`, page: "run" };
-    if (path === "/help") return { component: "page-help", url: "/pages/help.html", page: "help" };
-    if (path === "/settings") return { component: "page-settings", url: "/pages/settings.html", page: "settings" };
-    if (path === "/workflows")
+    }
+    if (path === "/help") {
+      return { component: "page-help", url: "/pages/help.html", page: "help" };
+    }
+    if (path === "/settings") {
+      return { component: "page-settings", url: "/pages/settings.html", page: "settings" };
+    }
+    if (path === "/workflows") {
       return { component: "page-workflows", url: "/pages/workflows.html?page=workflows", page: "workflows" };
+    }
     const legacyEditor = path.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
-    if (legacyEditor)
+    if (legacyEditor) {
       return {
         component: "page-workflow-editor",
         url: `/pages/workflows.html?page=editor&id=${legacyEditor[1]}${url.searchParams.get("revision") ? `&revision=${url.searchParams.get("revision")}` : ""}`,
         page: "editor",
       };
+    }
     return { component: "page-not-found", page: "not-found" };
   };
   const navigate = async (replace = false) => {
@@ -41,7 +49,9 @@ export default function () {
       routeMessage?.remove();
       routeMessage = null;
       if (current.page === "not-found") {
-        for (const page of mountedPages.values()) page.hidden = true;
+        for (const page of mountedPages.values()) {
+          page.hidden = true;
+        }
         routeMessage = document.createElement("main");
         routeMessage.className = "mx-auto max-w-4xl p-8";
         routeMessage.innerHTML =
@@ -53,7 +63,9 @@ export default function () {
         let component = persistentPage ? mountedPages.get(cacheKey) : null;
         if (!component) {
           await load(current.url);
-          if (currentNavigation !== navigationId) return;
+          if (currentNavigation !== navigationId) {
+            return;
+          }
           component = document.createElement(current.component);
           component.dataset.routePage = current.page;
           if (persistentPage) {
@@ -73,10 +85,16 @@ export default function () {
           );
         }
       }
-      if (replace) history.replaceState(null, "", window.location.href);
+      if (replace) {
+        history.replaceState(null, "", window.location.href);
+      }
     } catch (error) {
-      if (currentNavigation !== navigationId) return;
-      for (const page of mountedPages.values()) page.hidden = true;
+      if (currentNavigation !== navigationId) {
+        return;
+      }
+      for (const page of mountedPages.values()) {
+        page.hidden = true;
+      }
       activeTransientPage?.remove();
       activeTransientPage = null;
       routeMessage?.remove();
@@ -94,16 +112,23 @@ export default function () {
   };
   const handleClick = (event) => {
     const anchor = event.target.closest?.("a");
-    if (!anchor || anchor.target || anchor.hasAttribute("download")) return;
+    if (!anchor || anchor.target || anchor.hasAttribute("download")) {
+      return;
+    }
     const target = new URL(anchor.href, window.location.href);
     if (
       target.origin !== window.location.origin ||
       !target.pathname.startsWith("/") ||
       target.pathname.startsWith("/auth/")
-    )
+    ) {
       return;
-    if (target.pathname.startsWith("/api/") || target.pathname.startsWith("/webhooks/")) return;
-    if (target.pathname === window.location.pathname && target.hash) return;
+    }
+    if (target.pathname.startsWith("/api/") || target.pathname.startsWith("/webhooks/")) {
+      return;
+    }
+    if (target.pathname === window.location.pathname && target.hash) {
+      return;
+    }
     event.preventDefault();
     history.pushState(null, "", `${target.pathname}${target.search}${target.hash}`);
     void navigate();

@@ -7,7 +7,7 @@ describe("OIDC client", () => {
   it("performs PKCE login and creates a session from userinfo", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/node.mjs"))
+      if (url.endsWith("/node.mjs")) {
         return new Response(
           `
         export function createAuthClient() {
@@ -23,6 +23,7 @@ describe("OIDC client", () => {
       `,
           { status: 200 },
         );
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     const client = new OidcClient({ providerUrl: "https://auth.test", clientId: "runner", clientSecret: "secret" });

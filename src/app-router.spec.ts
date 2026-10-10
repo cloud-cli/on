@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import routerTemplate from "./app-router.html?raw";
-import routerSetup from "./app-router.mjs?raw";
+import routerTemplate from "../ui/app-router.html?raw";
+import routerSetup from "../ui/app-router.mjs?raw";
 import serverSetup from "./server.ts?raw";
 
 const handleClick = routerSetup.match(/const handleClick = \(event\) => \{([\s\S]*?)\n  \};/)?.[1] ?? "";

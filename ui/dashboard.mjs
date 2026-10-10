@@ -33,10 +33,14 @@ export default function setup() {
   const upper = (value) => String(value || "").toUpperCase();
   const workflowName = (id) => workflows.value.find((workflow) => workflow.id === id)?.name || "Workflow";
   const formatDate = (value) => {
-    if (!value) return "—";
+    if (!value) {
+      return "—";
+    }
     const text = String(value);
     const date = new Date(text.includes("T") ? text : `${text.replace(" ", "T")}Z`);
-    if (Number.isNaN(date.getTime())) return "—";
+    if (Number.isNaN(date.getTime())) {
+      return "—";
+    }
     return new Intl.DateTimeFormat(undefined, {
       dateStyle: "medium",
       timeStyle: "short",
@@ -79,15 +83,21 @@ export default function setup() {
     ].map((tab) => ({ ...tab, isActive: statusFilter.value === tab.status }));
   const loadTimezone = async () => {
     const response = await apiFetch("/api/preferences", { headers: { accept: "application/json" } });
-    if (!response.ok) throw new Error(`Loading timezone preference failed: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`Loading timezone preference failed: ${response.status}`);
+    }
     const preferences = await response.json();
-    if (preferences.timezone) timezone.value = preferences.timezone;
+    if (preferences.timezone) {
+      timezone.value = preferences.timezone;
+    }
   };
   const loadOptions = async () => {
     const load = async (url, key, target, getLabel) => {
       try {
         const response = await apiFetch(url, { headers: { accept: "application/json" } });
-        if (!response.ok) return;
+        if (!response.ok) {
+          return;
+        }
         const items = (await response.json())[key] || [];
         target.value = items.map((item) => ({ id: item.id || item.workerId, name: getLabel(item) }));
       } catch {
@@ -116,7 +126,9 @@ export default function setup() {
     })[status] || "border-slate-300 bg-slate-100 text-slate-700";
   const statusIcon = (status) => statusIcons[status] || "circle-question-mark";
   const notifyCompletedJob = async (job) => {
-    if (!notificationsEnabled.value || pushConfigured.value || !["success", "failed"].includes(job.status)) return;
+    if (!notificationsEnabled.value || pushConfigured.value || !["success", "failed"].includes(job.status)) {
+      return;
+    }
     try {
       const registration = await navigator.serviceWorker.ready;
       await registration.showNotification(
@@ -141,9 +153,13 @@ export default function setup() {
   };
   const enablePushNotifications = async () => {
     try {
-      if (!notificationsSupported.value) return;
+      if (!notificationsSupported.value) {
+        return;
+      }
       const response = await apiFetch("/api/push/public-key", { headers: { accept: "application/json" } });
-      if (!response.ok) return;
+      if (!response.ok) {
+        return;
+      }
       const { publicKey } = await response.json();
       pushConfigured.value = true;
       const registration = await navigator.serviceWorker.ready;
@@ -158,7 +174,9 @@ export default function setup() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(subscription),
       });
-      if (!saved.ok) throw new Error(`Push subscription failed: ${saved.status}`);
+      if (!saved.ok) {
+        throw new Error(`Push subscription failed: ${saved.status}`);
+      }
     } catch (error) {
       console.error("Unable to enable background notifications", error);
     }
@@ -166,7 +184,9 @@ export default function setup() {
   const disablePushNotifications = async () => {
     try {
       const subscription = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
-      if (!subscription) return;
+      if (!subscription) {
+        return;
+      }
       await apiFetch("/api/push/subscriptions", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
@@ -195,10 +215,14 @@ export default function setup() {
       await enablePushNotifications();
       notificationNotice.value =
         "Notifications enabled. Background delivery is available when server push is configured.";
-    } else notificationNotice.value = "Notification permission was not granted.";
+    } else {
+      notificationNotice.value = "Notification permission was not granted.";
+    }
   };
   const refreshJobs = async (isSearch = false) => {
-    if (searchInProgress && !isSearch) return;
+    if (searchInProgress && !isSearch) {
+      return;
+    }
     if (refreshing && !isSearch) {
       refreshPending = true;
       return;
@@ -220,17 +244,22 @@ export default function setup() {
           ? `/api/jobs?limit=100${filterQuery}${workflowQuery}`
           : `/api/jobs?afterId=${afterId}&limit=100${filterQuery}${workflowQuery}`;
       const response = await apiFetch(url, { headers: { accept: "application/json" } });
-      if (!response.ok) throw new Error(`Dashboard refresh failed: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Dashboard refresh failed: ${response.status}`);
+      }
       const data = await response.json();
-      if (generation !== refreshGeneration) return;
+      if (generation !== refreshGeneration) {
+        return;
+      }
       hasMore.value = data.hasMore;
       const previousStatuses = new Map(jobs.value.map((job) => [job.id, job.status]));
       const merged = new Map(jobs.value.map((job) => [job.id, job]));
       for (const job of data.jobs) {
         const previousStatus = previousStatuses.get(job.id);
         merged.set(job.id, job);
-        if (previousStatus && !terminalStatuses.has(previousStatus) && terminalStatuses.has(job.status))
+        if (previousStatus && !terminalStatuses.has(previousStatus) && terminalStatuses.has(job.status)) {
           void notifyCompletedJob(job);
+        }
       }
       jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
       refreshError.value = false;
@@ -246,7 +275,9 @@ export default function setup() {
     }
   };
   const loadMore = async () => {
-    if (loadingMore.value || !hasMore.value || !jobs.value.length) return;
+    if (loadingMore.value || !hasMore.value || !jobs.value.length) {
+      return;
+    }
     loadingMore.value = true;
     try {
       const beforeId = Math.min(...jobs.value.map((job) => Number(job.id)));
@@ -255,10 +286,14 @@ export default function setup() {
       const response = await apiFetch(`/api/jobs?beforeId=${beforeId}${filterQuery}${workflowQuery}`, {
         headers: { accept: "application/json" },
       });
-      if (!response.ok) throw new Error(`Loading older jobs failed: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Loading older jobs failed: ${response.status}`);
+      }
       const data = await response.json();
       const merged = new Map(jobs.value.map((job) => [job.id, job]));
-      for (const job of data.jobs) merged.set(job.id, job);
+      for (const job of data.jobs) {
+        merged.set(job.id, job);
+      }
       jobs.value = Array.from(merged.values()).sort((a, b) => Number(b.id) - Number(a.id));
       hasMore.value = data.hasMore;
     } catch (error) {
@@ -270,10 +305,16 @@ export default function setup() {
   };
   const updateSearchUrl = (value) => {
     const params = new URLSearchParams(window.location.search);
-    if (value) params.set("search", value);
-    else params.delete("search");
-    if (workflowFilter.value) params.set("workflow", workflowFilter.value);
-    else params.delete("workflow");
+    if (value) {
+      params.set("search", value);
+    } else {
+      params.delete("search");
+    }
+    if (workflowFilter.value) {
+      params.set("workflow", workflowFilter.value);
+    } else {
+      params.delete("workflow");
+    }
     const query = params.toString();
     history.pushState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
   };
@@ -343,10 +384,14 @@ export default function setup() {
       page.value += 1;
       return;
     }
-    if (!hasMore.value || loadingMore.value) return;
+    if (!hasMore.value || loadingMore.value) {
+      return;
+    }
     const previousLength = jobs.value.length;
     await loadMore();
-    if (jobs.value.length > previousLength) page.value += 1;
+    if (jobs.value.length > previousLength) {
+      page.value += 1;
+    }
   };
   const hasNextPage = () => page.value < Math.ceil(filteredJobs().length / pageSize) || hasMore.value;
   onInit(() => {
@@ -357,13 +402,16 @@ export default function setup() {
     workflowFilter.value = params.get("workflow") || "";
     void loadOptions();
     void loadTimezone().catch((error) => console.error("Unable to load timezone preference", error));
-    if (notificationsSupported.value)
+    if (notificationsSupported.value) {
       navigator.serviceWorker
         .register("/service-worker.js")
         .then(() => {
-          if (notificationsEnabled.value) void enablePushNotifications();
+          if (notificationsEnabled.value) {
+            void enablePushNotifications();
+          }
         })
         .catch((error) => console.error("Service worker registration failed", error));
+    }
     eventSource = new EventSource("/api/events");
     eventSource.addEventListener("jobs.available", refreshJobs);
     eventSource.addEventListener("jobs.changed", refreshJobs);

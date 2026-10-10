@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderHelpHtml } from "./help.js";
+import { renderHelpHtml } from "../ui/help.js";
 
 describe("workflow help", () => {
   it("renders the living workflow documentation", () => {

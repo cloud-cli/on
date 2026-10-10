@@ -45,7 +45,9 @@ export default function setup() {
 
   const formatDuration = (milliseconds) => {
     const value = Number(milliseconds);
-    if (!Number.isFinite(value) || value < 0) return "—";
+    if (!Number.isFinite(value) || value < 0) {
+      return "—";
+    }
     const seconds = Math.floor(value / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
@@ -53,7 +55,9 @@ export default function setup() {
     return `${hours ? `${hours}h ` : ""}${remainingMinutes ? `${remainingMinutes}m ` : ""}${seconds % 60}s`;
   };
   const parseTimestamp = (value) => {
-    if (!value) return Number.NaN;
+    if (!value) {
+      return Number.NaN;
+    }
     const text = String(value).trim();
     const normalized = text.includes("T") ? text : text.replace(" ", "T");
     const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
@@ -72,7 +76,9 @@ export default function setup() {
   const inputsJson = computed(() => JSON.stringify(report.value.inputs || {}, null, 2));
   const originalInputsJson = computed(() => JSON.stringify(report.value.inputs || {}, null, 2));
   const timing = computed(() => {
-    if (report.value.status === "pending") return "—";
+    if (report.value.status === "pending") {
+      return "—";
+    }
     if (report.value.status === "running") {
       return formatDuration(Math.max(0, now.value - parseTimestamp(report.value.startedAt)));
     }
@@ -89,10 +95,14 @@ export default function setup() {
     selectedStep.value = Number(index);
   };
   const formatDate = (value) => {
-    if (!value) return "—";
+    if (!value) {
+      return "—";
+    }
     const text = String(value);
     const date = new Date(text.includes("T") ? text : `${text.replace(" ", "T")}Z`);
-    if (Number.isNaN(date.getTime())) return "—";
+    if (Number.isNaN(date.getTime())) {
+      return "—";
+    }
     return new Intl.DateTimeFormat(undefined, {
       dateStyle: "medium",
       timeStyle: "short",
@@ -101,10 +111,14 @@ export default function setup() {
   };
   const copyLogs = async () => {
     const content = selectedStepReport.value?.logContent;
-    if (content && navigator.clipboard?.writeText) await navigator.clipboard.writeText(content);
+    if (content && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(content);
+    }
   };
   const copyRunUrl = async () => {
-    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(window.location.href);
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(window.location.href);
+    }
   };
   const downloadLogs = () => {
     const content = (report.value.steps || [])
@@ -137,13 +151,19 @@ export default function setup() {
   });
   const loadTimezone = async () => {
     const response = await apiFetch("/api/preferences", { headers: { accept: "application/json" } });
-    if (!response.ok) throw new Error(`Loading timezone preference failed: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`Loading timezone preference failed: ${response.status}`);
+    }
     const preferences = await response.json();
-    if (preferences.timezone) timezone.value = preferences.timezone;
+    if (preferences.timezone) {
+      timezone.value = preferences.timezone;
+    }
   };
   const loadAdminRole = async () => {
     const response = await apiFetch("/api/session", { headers: { accept: "application/json" } });
-    if (!response.ok) return;
+    if (!response.ok) {
+      return;
+    }
     const session = await response.json();
     isAdmin.value = session.user?.role === "admin";
   };
@@ -151,7 +171,9 @@ export default function setup() {
   const downloadArtifact = async (event, path) => {
     event.preventDefault();
     const response = await apiFetch(artifactUrl(path));
-    if (!response.ok) return;
+    if (!response.ok) {
+      return;
+    }
     const link = document.createElement("a");
     link.href = URL.createObjectURL(await response.blob());
     link.download = path.split("/").pop() || "artifact";
@@ -159,14 +181,18 @@ export default function setup() {
     URL.revokeObjectURL(link.href);
   };
   const loadPreviousRuns = async () => {
-    if (previousRunsLoaded || !report.value.parentId) return;
+    if (previousRunsLoaded || !report.value.parentId) {
+      return;
+    }
     const lineage = [];
     const visited = new Set();
     let parentId = report.value.parentId;
     while (parentId && !visited.has(String(parentId)) && lineage.length < 50) {
       visited.add(String(parentId));
       const response = await apiFetch(`/api/runs/${parentId}`, { headers: { accept: "application/json" } });
-      if (!response.ok) throw new Error(`Previous run request failed: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Previous run request failed: ${response.status}`);
+      }
       const parent = await response.json();
       lineage.push({ id: parent.jobId, status: parent.status, startedAt: parent.startedAt });
       parentId = parent.parentId;
@@ -175,15 +201,22 @@ export default function setup() {
     previousRunsLoaded = true;
   };
   const stepLog = (step) => {
-    if (step.status === "skipped") return "";
-    if (step.status === "running")
+    if (step.status === "skipped") {
+      return "";
+    }
+    if (step.status === "running") {
       return '<span class="text-indigo-400">Step is running. Logs will appear after it finishes.</span>';
-    if (step.status === "pending") return '<span class="text-gray-500">Waiting to run.</span>';
+    }
+    if (step.status === "pending") {
+      return '<span class="text-gray-500">Waiting to run.</span>';
+    }
     if (step.logContent) {
       const query = logSearch.value.trim().toLocaleLowerCase();
       const lines = step.logContent.split("\n");
       const matchingLines = query ? lines.filter((line) => line.toLocaleLowerCase().includes(query)) : lines;
-      if (query && matchingLines.length === 0) return '<span class="text-gray-400">No matching log lines.</span>';
+      if (query && matchingLines.length === 0) {
+        return '<span class="text-gray-400">No matching log lines.</span>';
+      }
       const localized = matchingLines.map((line) => formatTimestampedLogLine(line, timezone.value)).join("\n");
       return ansiUp.ansi_to_html(localized);
     }
@@ -194,9 +227,12 @@ export default function setup() {
     parsed.querySelectorAll("script,style,iframe,object,embed,form").forEach((node) => node.remove());
     parsed.querySelectorAll("*").forEach((element) => {
       [...element.attributes].forEach((attribute) => {
-        if (attribute.name.toLowerCase().startsWith("on")) element.removeAttribute(attribute.name);
-        if (["href", "src"].includes(attribute.name.toLowerCase()) && /^(javascript|data):/i.test(attribute.value))
+        if (attribute.name.toLowerCase().startsWith("on")) {
           element.removeAttribute(attribute.name);
+        }
+        if (["href", "src"].includes(attribute.name.toLowerCase()) && /^(javascript|data):/i.test(attribute.value)) {
+          element.removeAttribute(attribute.name);
+        }
       });
     });
     return parsed.body.innerHTML;
@@ -228,13 +264,17 @@ export default function setup() {
       let buffer = "";
       while (true) {
         const chunk = await reader.read();
-        if (chunk.done) break;
+        if (chunk.done) {
+          break;
+        }
         buffer += decoder.decode(chunk.value, { stream: true });
         const events = buffer.split("\n\n");
         buffer = events.pop() || "";
         for (const event of events) {
           const line = event.split("\n").find((value) => value.startsWith("data: "));
-          if (!line) continue;
+          if (!line) {
+            continue;
+          }
           const data = JSON.parse(line.slice(6));
           if (data.delta) {
             const messages = [...aiMessages.value];
@@ -244,12 +284,16 @@ export default function setup() {
             };
             aiMessages.value = messages;
           }
-          if (data.error) throw new Error(data.error);
+          if (data.error) {
+            throw new Error(data.error);
+          }
         }
       }
       const messages = [...aiMessages.value];
       const answer = messages.at(-1);
-      if (answer) messages[messages.length - 1] = { ...answer, html: renderAiMarkdown(answer.content) };
+      if (answer) {
+        messages[messages.length - 1] = { ...answer, html: renderAiMarkdown(answer.content) };
+      }
       aiMessages.value = messages;
     } catch (error) {
       aiError.value = error.message;
@@ -259,7 +303,9 @@ export default function setup() {
   };
   const askFollowup = async () => {
     const question = aiQuestion.value.trim();
-    if (!question || !aiStepId.value) return;
+    if (!question || !aiStepId.value) {
+      return;
+    }
     aiQuestion.value = "";
     await requestAiHelp(aiStepId.value, question);
   };
@@ -308,7 +354,9 @@ export default function setup() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ inputs }),
       });
-      if (!response.ok) throw new Error(`Restart failed: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Restart failed: ${response.status}`);
+      }
       const { id } = await response.json();
       navigateTo(`/runs/${id}`);
     } catch (error) {
@@ -318,11 +366,15 @@ export default function setup() {
     }
   };
   const cancelJob = async () => {
-    if (cancelling.value || report.value.status !== "running") return;
+    if (cancelling.value || report.value.status !== "running") {
+      return;
+    }
     cancelling.value = true;
     try {
       const response = await apiFetch(`/api/jobs/${report.value.jobId}/cancel`, { method: "POST" });
-      if (!response.ok) throw new Error(`Cancel failed: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Cancel failed: ${response.status}`);
+      }
       await refreshRun();
     } catch (error) {
       console.error(error);
@@ -341,13 +393,17 @@ export default function setup() {
       const response = await apiFetch(`/api/runs/${jobId}`, {
         headers: { accept: "application/json" },
       });
-      if (!response.ok) throw new Error(`Run refresh failed: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Run refresh failed: ${response.status}`);
+      }
       const previousStatus = report.value.status;
       const nextReport = await response.json();
       report.value = nextReport;
       if (previousStatus !== "failed" && nextReport.status === "failed") {
         const failedIndex = (nextReport.steps || []).findIndex((step) => step.status === "failed");
-        if (failedIndex >= 0) selectedStep.value = failedIndex;
+        if (failedIndex >= 0) {
+          selectedStep.value = failedIndex;
+        }
       }
       document.title = `Run #${nextReport.jobId} - ${nextReport.workflowName}`;
       void loadPreviousRuns();
@@ -385,11 +441,15 @@ export default function setup() {
   };
   const handleJobChange = (event) => {
     const data = JSON.parse(event.data || "{}");
-    if (!data.jobId || String(data.jobId) === String(report.value.jobId)) void refreshRun();
+    if (!data.jobId || String(data.jobId) === String(report.value.jobId)) {
+      void refreshRun();
+    }
   };
   const handleOutsideRestartMenu = (event) => {
     const menu = document.querySelector("[data-restart-menu]");
-    if (menu?.open && !menu.contains(event.target)) menu.open = false;
+    if (menu?.open && !menu.contains(event.target)) {
+      menu.open = false;
+    }
   };
 
   onInit(() => {
@@ -404,7 +464,9 @@ export default function setup() {
     eventSource = new EventSource("/api/events");
     eventSource.addEventListener("jobs.changed", handleJobChange);
     refreshTimer = setInterval(() => {
-      if (active.value) void refreshRun();
+      if (active.value) {
+        void refreshRun();
+      }
     }, 60000);
     clockTimer = setInterval(() => {
       now.value = Date.now();

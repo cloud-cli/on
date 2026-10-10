@@ -1,13 +1,15 @@
 import runTemplate from "./run.html?raw";
 export { runTemplate };
-import type { JobPayload, JobRecord, StepReport, WorkflowExecutionReport, WorkflowStep } from "./types.js";
+import type { JobPayload, JobRecord, StepReport, WorkflowExecutionReport, WorkflowStep } from "../src/types.js";
 
 const SENSITIVE_KEY =
   /(?:^|[_-])auth(?:entication)?(?:$|[_-])|access[_-]?key|api[_-]?key|authorization|cookie|credential|passphrase|password|private[_-]?key|secret|session(?:id)?|signing[_-]?key|token/i;
 
 function normalizeTimestamp(value: string): string {
   const text = String(value || "").trim();
-  if (!text) return text;
+  if (!text) {
+    return text;
+  }
   const normalized = text.includes("T") ? text : text.replace(" ", "T");
   return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`;
 }
@@ -118,9 +120,15 @@ function buildPendingReport(
 }
 
 function sanitizeValue(value: unknown, redact: (value: string) => string): unknown {
-  if (typeof value === "string") return redact(value);
-  if (Array.isArray(value)) return value.map((entry) => sanitizeValue(entry, redact));
-  if (!value || typeof value !== "object") return value;
+  if (typeof value === "string") {
+    return redact(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeValue(entry, redact));
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
 
   return Object.fromEntries(
     Object.entries(value)

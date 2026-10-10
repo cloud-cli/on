@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { WebhookServer } from "./server.js";
-import shellSetup from "./app-shell.mjs?raw";
+import shellSetup from "../ui/app-shell.mjs?raw";
 
-const html = readFileSync(new URL("./app-shell.html", import.meta.url), "utf8");
+const html = readFileSync(new URL("../ui/app-shell.html", import.meta.url), "utf8");
 
 describe("Flow application shell", () => {
   it("provides responsive, accessible navigation around the mounted router", () => {

@@ -141,7 +141,9 @@ export class SystemdDriver implements ExecutionDriver {
       let isResolved = false;
 
       const safeResolve = (result: StepResult) => {
-        if (isResolved) return; // Prevent double-resolution
+        if (isResolved) {
+          return;
+        } // Prevent double-resolution
         isResolved = true;
 
         logWriter?.end(() => {

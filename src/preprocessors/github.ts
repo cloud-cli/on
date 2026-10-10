@@ -1,8 +1,8 @@
-import crypto from 'node:crypto';
-import type { PreprocessedWebhook, WebhookPreprocessor, WorkflowTrigger } from '../types.js';
+import crypto from "node:crypto";
+import type { PreprocessedWebhook, WebhookPreprocessor, WorkflowTrigger } from "../types.js";
 
 function matchesGlob(value: string, pattern: string): boolean {
-  const expression = pattern.replace(/[|\\{}()[\]^$+?.]/g, '\\$&').replace(/\*/g, '.*');
+  const expression = pattern.replace(/[|\\{}()[\]^$+?.]/g, "\\$&").replace(/\*/g, ".*");
   return new RegExp(`^${expression}$`).test(value);
 }
 
@@ -10,10 +10,10 @@ const toArray = (v: any) => (Array.isArray(v) ? v : [v]);
 
 function matchesValue(value: string, expected: string | string[]): boolean {
   const values = toArray(expected);
-  const included = values.filter((pattern) => !pattern.startsWith('!'));
+  const included = values.filter((pattern) => !pattern.startsWith("!"));
 
   return (
-    !values.some((pattern) => pattern.startsWith('!') && pattern.slice(1) === value) &&
+    !values.some((pattern) => pattern.startsWith("!") && pattern.slice(1) === value) &&
     (included.length === 0 || included.includes(value))
   );
 }
@@ -30,28 +30,28 @@ interface GithubWorkflowTrigger extends WorkflowTrigger {
 }
 
 export class GitHubPreprocessor implements WebhookPreprocessor {
-  name = 'github';
-  private readonly apiUrl = 'https://api.github.com';
+  name = "github";
+  private readonly apiUrl = "https://api.github.com";
 
   parse(headers: Record<string, string>, rawBodyBuffer: Buffer, secret?: string): PreprocessedWebhook {
     let isValid = false;
     let inputs: any = null;
-    const signature = headers['x-hub-signature-256'];
+    const signature = headers["x-hub-signature-256"];
 
     if (secret && signature) {
-      const hmac = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBodyBuffer).digest('hex');
+      const hmac = "sha256=" + crypto.createHmac("sha256", secret).update(rawBodyBuffer).digest("hex");
       const signatureBuffer = Buffer.from(signature);
       const hmacBuffer = Buffer.from(hmac);
       isValid = signatureBuffer.length === hmacBuffer.length && crypto.timingSafeEqual(signatureBuffer, hmacBuffer);
     }
 
     if (isValid) {
-      const body = JSON.parse(rawBodyBuffer.toString('utf-8'));
-      const event = headers['x-github-event'] || 'unknown';
-      const ref = body.ref || '';
-      const branch = !ref.includes('refs/heads') ? '' : ref.replace('refs/heads/', '');
-      const tag = !ref.includes('refs/tags') ? '' : ref.replace('refs/tags/', '');
-      const [owner, repo] = (body.repository?.full_name || '').split('/');
+      const body = JSON.parse(rawBodyBuffer.toString("utf-8"));
+      const event = headers["x-github-event"] || "unknown";
+      const ref = body.ref || "";
+      const branch = !ref.includes("refs/heads") ? "" : ref.replace("refs/heads/", "");
+      const tag = !ref.includes("refs/tags") ? "" : ref.replace("refs/tags/", "");
+      const [owner, repo] = (body.repository?.full_name || "").split("/");
       const commits = body.commits || (body.head_commit ? [body.head_commit] : []);
 
       inputs = {
@@ -88,30 +88,44 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
   filter(inputs: Record<string, any>, trigger: GithubWorkflowTrigger): PreprocessedWebhook {
     let isValid = true;
 
-    if (trigger.events && !trigger.events.includes(inputs.event)) isValid = false;
-    if (trigger.owner && !matchesValue(inputs.owner, trigger.owner)) isValid = false;
-    if (trigger.repo && !matchesValue(inputs.repo, trigger.repo)) isValid = false;
-    if (trigger.name && !matchesValue(inputs.full_name, trigger.name)) isValid = false;
+    if (trigger.events && !trigger.events.includes(inputs.event)) {
+      isValid = false;
+    }
+    if (trigger.owner && !matchesValue(inputs.owner, trigger.owner)) {
+      isValid = false;
+    }
+    if (trigger.repo && !matchesValue(inputs.repo, trigger.repo)) {
+      isValid = false;
+    }
+    if (trigger.name && !matchesValue(inputs.full_name, trigger.name)) {
+      isValid = false;
+    }
 
     if (
       trigger.branches &&
       inputs.ref &&
       !toArray(trigger.branches).some((pattern) => matchesGlob(inputs.ref, String(pattern)))
-    )
+    ) {
       isValid = false;
+    }
 
     if (
       trigger.refs &&
       inputs.ref &&
       !toArray(trigger.refs).some((pattern) => matchesGlob(inputs.ref, String(pattern)))
-    )
+    ) {
       isValid = false;
+    }
 
-    if (trigger.tag !== undefined && Boolean(inputs.tag) !== trigger.tag) isValid = false;
+    if (trigger.tag !== undefined && Boolean(inputs.tag) !== trigger.tag) {
+      isValid = false;
+    }
 
     if (trigger.paths) {
       const changes = Array.isArray(inputs.changes) ? inputs.changes : [];
-      if (!changes.some((path) => trigger.paths?.some((pattern) => matchesGlob(path, pattern)))) isValid = false;
+      if (!changes.some((path) => trigger.paths?.some((pattern) => matchesGlob(path, pattern)))) {
+        isValid = false;
+      }
     }
 
     return { isValid, inputs };
@@ -121,21 +135,30 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
     return {
       github: {
         fileExists: async (path: string) => {
-          if (typeof path !== 'string' || !path || path.startsWith('/') || path.split('/').includes('..')) return false;
-          const owner = encodeURIComponent(String(inputs.owner || ''));
-          const repo = encodeURIComponent(String(inputs.repo || ''));
-          const ref = encodeURIComponent(String(inputs.ref || inputs.commit_sha || ''));
-          if (!owner || !repo || !ref) return false;
-          const encodedPath = path.split('/').map((part) => encodeURIComponent(part)).join('/');
+          if (typeof path !== "string" || !path || path.startsWith("/") || path.split("/").includes("..")) {
+            return false;
+          }
+          const owner = encodeURIComponent(String(inputs.owner || ""));
+          const repo = encodeURIComponent(String(inputs.repo || ""));
+          const ref = encodeURIComponent(String(inputs.ref || inputs.commit_sha || ""));
+          if (!owner || !repo || !ref) {
+            return false;
+          }
+          const encodedPath = path
+            .split("/")
+            .map((part) => encodeURIComponent(part))
+            .join("/");
           const headers: Record<string, string> = {
-            Accept: 'application/vnd.github+json',
-            'User-Agent': '@cloud-cli/on',
-            'X-GitHub-Api-Version': '2022-11-28',
+            Accept: "application/vnd.github+json",
+            "User-Agent": "@cloud-cli/on",
+            "X-GitHub-Api-Version": "2022-11-28",
           };
           const token = secrets.GITHUB_TOKEN || process.env.GITHUB_TOKEN || process.env.GITHUB_API_TOKEN;
-          if (token) headers.Authorization = `Bearer ${token}`;
+          if (token) {
+            headers.Authorization = `Bearer ${token}`;
+          }
           const response = await fetch(`${this.apiUrl}/repos/${owner}/${repo}/contents/${encodedPath}?ref=${ref}`, {
-            method: 'HEAD',
+            method: "HEAD",
             headers,
             signal: AbortSignal.timeout(10_000),
           });

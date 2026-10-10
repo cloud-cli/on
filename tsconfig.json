@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "rootDir": "./src/",
+    "rootDir": ".",
     "outDir": "dist/",
     "lib": ["dom", "esnext"],
     "noImplicitAny": false,
@@ -14,8 +14,8 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "types": ["node", "vite/client"],
+    "types": ["node", "vite/client"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["**/dist/**/*", "node_modules", "src/**/*.spec.ts"],
+  "include": ["src/**/*.ts", "ui/**/*.ts"],
+  "exclude": ["**/dist/**/*", "node_modules", "src/**/*.spec.ts"]
 }

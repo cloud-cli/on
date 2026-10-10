@@ -8,7 +8,9 @@ export default function setup() {
   const userInitial = ref("U");
 
   const handleSkipKeydown = (event) => {
-    if (!event.target.closest?.("[data-skip-to-content]") || !["Enter", " "].includes(event.key)) return;
+    if (!event.target.closest?.("[data-skip-to-content]") || !["Enter", " "].includes(event.key)) {
+      return;
+    }
     event.preventDefault();
     const mainContent = document.getElementById("main-content");
     mainContent?.focus({ preventScroll: true });
@@ -35,7 +37,9 @@ export default function setup() {
     void fetch("/api/auth/session", { credentials: "same-origin", headers: { accept: "application/json" } })
       .then((response) => (response.ok ? response.json() : null))
       .then((session) => {
-        if (!session?.authenticated || !session.user) return;
+        if (!session?.authenticated || !session.user) {
+          return;
+        }
         user.value = session.user;
         oidcProviderUrl.value = session.providerUrl || "";
         userAuthenticated.value = true;

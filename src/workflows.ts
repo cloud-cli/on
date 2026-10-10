@@ -1,7 +1,7 @@
-import YAML from 'yaml';
-import db from './db-client.js';
-import { runMigrations } from './migrations.js';
-import type { WorkflowDefinition, WorkflowRevision } from './types.js';
+import YAML from "yaml";
+import db from "./db-client.js";
+import { runMigrations } from "./migrations.js";
+import type { WorkflowDefinition, WorkflowRevision } from "./types.js";
 
 export const DEFAULT_STEP_TIMEOUT_MS = 30_000;
 
@@ -10,70 +10,115 @@ export interface StoredWorkflow {
   name: string;
   sourceYaml: string;
   revision: number;
-  status: 'draft' | 'published' | 'archived';
+  status: "draft" | "published" | "archived";
   enabled: boolean;
 }
 
 function workflowId(value: unknown): string {
-  const id = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/^-+|-+$/g, '');
-  if (!id) throw new Error('Workflow requires a name or id');
+  const id = String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!id) {
+    throw new Error("Workflow requires a name or id");
+  }
   return id;
 }
 
 /** Parses the portable, DB-stored YAML format. Includes are deliberately unsupported. */
 export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
   const parsed = YAML.parse(sourceYaml);
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Workflow must be a YAML object');
-  if (parsed.includes) throw new Error('includes is not supported for database workflows');
-  if (typeof parsed.name !== 'string' || !parsed.name.trim()) throw new Error('Workflow name is required');
-  if (!Array.isArray(parsed.steps) || !parsed.steps.length) throw new Error('Workflow requires at least one step');
-  if (!parsed.on || typeof parsed.on !== 'object') throw new Error('Workflow requires an on block');
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Workflow must be a YAML object");
+  }
+  if (parsed.includes) {
+    throw new Error("includes is not supported for database workflows");
+  }
+  if (typeof parsed.name !== "string" || !parsed.name.trim()) {
+    throw new Error("Workflow name is required");
+  }
+  if (!Array.isArray(parsed.steps) || !parsed.steps.length) {
+    throw new Error("Workflow requires at least one step");
+  }
+  if (!parsed.on || typeof parsed.on !== "object") {
+    throw new Error("Workflow requires an on block");
+  }
 
-  const webhook = Object.entries(parsed.on).find(([name]) => name !== 'schedule' && name !== 'solar');
-  const [provider, trigger] = webhook || ['generic', {}];
+  const webhook = Object.entries(parsed.on).find(([name]) => name !== "schedule" && name !== "solar");
+  const [provider, trigger] = webhook || ["generic", {}];
   if (parsed.retries !== undefined && (!Number.isInteger(parsed.retries) || parsed.retries < 0)) {
-    throw new Error('retries must be a non-negative integer');
+    throw new Error("retries must be a non-negative integer");
   }
   const steps = parsed.steps.map((step: any) => {
     const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
-    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new Error('step.timeoutMs must be a positive integer');
-    const volumes = step.volumes === undefined ? undefined : Array.isArray(step.volumes) ? step.volumes : [step.volumes];
-    const dockerArgs = step.dockerArgs === undefined ? undefined : Array.isArray(step.dockerArgs) ? step.dockerArgs : [step.dockerArgs];
-    if (volumes?.some((volume: unknown) => typeof volume !== 'string' || !volume.trim())) throw new Error('step.volumes must contain non-empty strings');
-    if (dockerArgs?.some((arg: unknown) => typeof arg !== 'string')) throw new Error('step.dockerArgs must contain strings');
+    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+      throw new Error("step.timeoutMs must be a positive integer");
+    }
+    const volumes =
+      step.volumes === undefined ? undefined : Array.isArray(step.volumes) ? step.volumes : [step.volumes];
+    const dockerArgs =
+      step.dockerArgs === undefined ? undefined : Array.isArray(step.dockerArgs) ? step.dockerArgs : [step.dockerArgs];
+    if (volumes?.some((volume: unknown) => typeof volume !== "string" || !volume.trim())) {
+      throw new Error("step.volumes must contain non-empty strings");
+    }
+    if (dockerArgs?.some((arg: unknown) => typeof arg !== "string")) {
+      throw new Error("step.dockerArgs must contain strings");
+    }
     return { ...step, timeoutMs, volumes, dockerArgs };
   });
-  const artifacts = parsed.artifacts === undefined ? undefined : {
-    paths: Array.isArray(parsed.artifacts.paths) ? parsed.artifacts.paths : [],
-  };
-  const cache = parsed.cache === undefined ? undefined : {
-    key: parsed.cache.key,
-    paths: Array.isArray(parsed.cache.paths) ? parsed.cache.paths : [],
-  };
-  if (artifacts && artifacts.paths.some((path: unknown) => typeof path !== 'string' || !path.trim())) {
-    throw new Error('artifacts.paths must contain non-empty strings');
+  const artifacts =
+    parsed.artifacts === undefined
+      ? undefined
+      : {
+          paths: Array.isArray(parsed.artifacts.paths) ? parsed.artifacts.paths : [],
+        };
+  const cache =
+    parsed.cache === undefined
+      ? undefined
+      : {
+          key: parsed.cache.key,
+          paths: Array.isArray(parsed.cache.paths) ? parsed.cache.paths : [],
+        };
+  if (artifacts && artifacts.paths.some((path: unknown) => typeof path !== "string" || !path.trim())) {
+    throw new Error("artifacts.paths must contain non-empty strings");
   }
-  if (cache && (typeof cache.key !== 'string' || !cache.key.trim() || cache.paths.some((path: unknown) => typeof path !== 'string' || !path.trim()))) {
-    throw new Error('cache requires a non-empty key and paths');
+  if (
+    cache &&
+    (typeof cache.key !== "string" ||
+      !cache.key.trim() ||
+      cache.paths.some((path: unknown) => typeof path !== "string" || !path.trim()))
+  ) {
+    throw new Error("cache requires a non-empty key and paths");
   }
 
-  return [{
-    id: workflowId(parsed.id || parsed.name),
-    name: parsed.name,
-    matrix: parsed.matrix,
-    on: { ...(trigger as object), provider },
-    schedule: Array.isArray(parsed.on.schedule) ? parsed.on.schedule : undefined,
-    solar: Array.isArray(parsed.on.solar) ? parsed.on.solar : undefined,
-    concurrency: parsed.concurrency,
-    steps,
-    retries: parsed.retries ?? 0,
-    env: parsed.env,
-    artifacts,
-    cache,
-    secretFiles: parsed.secretFiles,
-    plugins: Array.isArray(parsed.plugins) ? parsed.plugins : undefined,
-    tags: Array.isArray(parsed.tags) ? [...new Set((parsed.tags as unknown[]).filter((tag): tag is string => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean))] : undefined,
-  }];
+  return [
+    {
+      id: workflowId(parsed.id || parsed.name),
+      name: parsed.name,
+      matrix: parsed.matrix,
+      on: { ...(trigger as object), provider },
+      schedule: Array.isArray(parsed.on.schedule) ? parsed.on.schedule : undefined,
+      solar: Array.isArray(parsed.on.solar) ? parsed.on.solar : undefined,
+      concurrency: parsed.concurrency,
+      steps,
+      retries: parsed.retries ?? 0,
+      env: parsed.env,
+      artifacts,
+      cache,
+      secretFiles: parsed.secretFiles,
+      plugins: Array.isArray(parsed.plugins) ? parsed.plugins : undefined,
+      tags: Array.isArray(parsed.tags)
+        ? [
+            ...new Set(
+              (parsed.tags as unknown[])
+                .filter((tag): tag is string => typeof tag === "string")
+                .map((tag) => tag.trim())
+                .filter(Boolean),
+            ),
+          ]
+        : undefined,
+    },
+  ];
 }
 
 export class WorkflowRepository {
@@ -102,10 +147,14 @@ export class WorkflowRepository {
     const workflows = parseWorkflow(sourceYaml);
     for (const workflow of workflows) {
       for (const schedule of workflow.schedule || []) {
-        if (typeof schedule.cron !== 'string' || schedule.cron.trim().split(/\s+/).length !== 5) throw new Error('schedule.cron must have five fields');
+        if (typeof schedule.cron !== "string" || schedule.cron.trim().split(/\s+/).length !== 5) {
+          throw new Error("schedule.cron must have five fields");
+        }
       }
       for (const solar of workflow.solar || []) {
-        if (!solar.event || !Number.isFinite(solar.latitude) || !Number.isFinite(solar.longitude)) throw new Error('solar triggers require event, latitude, and longitude');
+        if (!solar.event || !Number.isFinite(solar.latitude) || !Number.isFinite(solar.longitude)) {
+          throw new Error("solar triggers require event, latitude, and longitude");
+        }
       }
     }
     return workflows;
@@ -113,53 +162,109 @@ export class WorkflowRepository {
 
   async saveDraft(id: string, sourceYaml: string, enabled = true): Promise<StoredWorkflow> {
     const workflows = this.validate(sourceYaml);
-    if (workflows.length !== 1) throw new Error('Workflow must contain exactly one definition');
+    if (workflows.length !== 1) {
+      throw new Error("Workflow must contain exactly one definition");
+    }
     const canonicalId = workflowId(id);
     workflows[0].id = canonicalId;
-    const previous = await db.get('SELECT COALESCE(MAX(revision), 0) AS revision FROM workflow_revisions WHERE workflow_id = ?', [canonicalId]);
+    const previous = await db.get(
+      "SELECT COALESCE(MAX(revision), 0) AS revision FROM workflow_revisions WHERE workflow_id = ?",
+      [canonicalId],
+    );
     const revision = Number(previous?.revision || 0) + 1;
-    await db.run(`INSERT INTO workflows (id, name, source_yaml, status, enabled) VALUES (?, ?, ?, 'draft', ?)
-      ON CONFLICT(id) DO UPDATE SET name = excluded.name, source_yaml = excluded.source_yaml, status = 'draft', enabled = excluded.enabled, updated_at = CURRENT_TIMESTAMP`, [canonicalId, workflows[0].name, sourceYaml, enabled ? 1 : 0]);
-    await db.run('INSERT INTO workflow_revisions (workflow_id, revision, source_yaml, normalized_json) VALUES (?, ?, ?, ?)', [canonicalId, revision, sourceYaml, JSON.stringify(workflows[0])]);
-    return { id: canonicalId, name: workflows[0].name, sourceYaml, revision, status: 'draft', enabled };
+    await db.run(
+      `INSERT INTO workflows (id, name, source_yaml, status, enabled) VALUES (?, ?, ?, 'draft', ?)
+      ON CONFLICT(id) DO UPDATE SET name = excluded.name, source_yaml = excluded.source_yaml, status = 'draft', enabled = excluded.enabled, updated_at = CURRENT_TIMESTAMP`,
+      [canonicalId, workflows[0].name, sourceYaml, enabled ? 1 : 0],
+    );
+    await db.run(
+      "INSERT INTO workflow_revisions (workflow_id, revision, source_yaml, normalized_json) VALUES (?, ?, ?, ?)",
+      [canonicalId, revision, sourceYaml, JSON.stringify(workflows[0])],
+    );
+    return { id: canonicalId, name: workflows[0].name, sourceYaml, revision, status: "draft", enabled };
   }
 
   async publish(id: string): Promise<StoredWorkflow | null> {
-    const workflow = await db.get('SELECT * FROM workflows WHERE id = ?', [id]);
-    if (!workflow) return null;
+    const workflow = await db.get("SELECT * FROM workflows WHERE id = ?", [id]);
+    if (!workflow) {
+      return null;
+    }
     this.validate(workflow.source_yaml);
-    const revision = await db.get('SELECT MAX(revision) AS revision FROM workflow_revisions WHERE workflow_id = ?', [id]);
-    await db.run("UPDATE workflows SET status = 'published', active_revision = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [revision.revision, id]);
-    return { id, name: workflow.name, sourceYaml: workflow.source_yaml, revision: Number(revision.revision), status: 'published', enabled: Boolean(workflow.enabled) };
+    const revision = await db.get("SELECT MAX(revision) AS revision FROM workflow_revisions WHERE workflow_id = ?", [
+      id,
+    ]);
+    await db.run(
+      "UPDATE workflows SET status = 'published', active_revision = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [revision.revision, id],
+    );
+    return {
+      id,
+      name: workflow.name,
+      sourceYaml: workflow.source_yaml,
+      revision: Number(revision.revision),
+      status: "published",
+      enabled: Boolean(workflow.enabled),
+    };
   }
 
   async list(): Promise<StoredWorkflow[]> {
-    const rows = await db.all('SELECT id, name, source_yaml, COALESCE(active_revision, 0) AS revision, status, enabled FROM workflows ORDER BY name');
-    return rows.map((row: any) => ({ id: row.id, name: row.name, sourceYaml: row.source_yaml, revision: Number(row.revision), status: row.status, enabled: Boolean(row.enabled) }));
+    const rows = await db.all(
+      "SELECT id, name, source_yaml, COALESCE(active_revision, 0) AS revision, status, enabled FROM workflows ORDER BY name",
+    );
+    return rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      sourceYaml: row.source_yaml,
+      revision: Number(row.revision),
+      status: row.status,
+      enabled: Boolean(row.enabled),
+    }));
   }
 
   async get(id: string): Promise<StoredWorkflow | null> {
-    const row = await db.get('SELECT id, name, source_yaml, COALESCE(active_revision, 0) AS revision, status, enabled FROM workflows WHERE id = ?', [id]);
-    return row ? { id: row.id, name: row.name, sourceYaml: row.source_yaml, revision: Number(row.revision), status: row.status, enabled: Boolean(row.enabled) } : null;
+    const row = await db.get(
+      "SELECT id, name, source_yaml, COALESCE(active_revision, 0) AS revision, status, enabled FROM workflows WHERE id = ?",
+      [id],
+    );
+    return row
+      ? {
+          id: row.id,
+          name: row.name,
+          sourceYaml: row.source_yaml,
+          revision: Number(row.revision),
+          status: row.status,
+          enabled: Boolean(row.enabled),
+        }
+      : null;
   }
 
   async delete(id: string): Promise<boolean> {
     const workflow = await this.get(id);
-    if (!workflow) return false;
-    await db.run('DELETE FROM scheduled_runs WHERE workflow_id = ?', [id]);
-    await db.run('DELETE FROM workflow_revisions WHERE workflow_id = ?', [id]);
-    await db.run('DELETE FROM workflows WHERE id = ?', [id]);
+    if (!workflow) {
+      return false;
+    }
+    await db.run("DELETE FROM scheduled_runs WHERE workflow_id = ?", [id]);
+    await db.run("DELETE FROM workflow_revisions WHERE workflow_id = ?", [id]);
+    await db.run("DELETE FROM workflows WHERE id = ?", [id]);
     return true;
   }
 
   async published(): Promise<WorkflowRevision[]> {
-    const rows = await db.all(`SELECT w.id AS workflow_id, r.revision, r.normalized_json FROM workflows w JOIN workflow_revisions r
+    const rows =
+      await db.all(`SELECT w.id AS workflow_id, r.revision, r.normalized_json FROM workflows w JOIN workflow_revisions r
       ON r.workflow_id = w.id AND r.revision = w.active_revision WHERE w.status = 'published' AND w.enabled = 1`);
-    return rows.map((row: any) => ({ workflowId: row.workflow_id, revision: Number(row.revision), definition: JSON.parse(row.normalized_json) }));
+    return rows.map((row: any) => ({
+      workflowId: row.workflow_id,
+      revision: Number(row.revision),
+      definition: JSON.parse(row.normalized_json),
+    }));
   }
 
   async getRevision(workflowId: string, revision: number): Promise<WorkflowDefinition | null> {
-    const row = await db.get('SELECT normalized_json FROM workflow_revisions WHERE workflow_id = ? AND revision = ?', [workflowId, revision]);
+    const row = await db.get("SELECT normalized_json FROM workflow_revisions WHERE workflow_id = ? AND revision = ?", [
+      workflowId,
+      revision,
+    ]);
     return row ? JSON.parse(row.normalized_json) : null;
   }
 
@@ -179,21 +284,26 @@ export class WorkflowRepository {
        WHERE w.id = ? AND r.revision = ?`,
       [workflowId, revision],
     );
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
     const definition = JSON.parse(row.normalized_json) as WorkflowDefinition;
     return {
       id: row.id,
       name: definition.name,
       sourceYaml: row.source_yaml,
       revision,
-      status: 'archived',
+      status: "archived",
       enabled: Boolean(row.enabled),
     };
   }
 
   async claimScheduledRun(workflowId: string, triggerId: string, scheduledFor: string): Promise<boolean> {
-    const row = await db.get(`INSERT INTO scheduled_runs (workflow_id, trigger_id, scheduled_for) VALUES (?, ?, ?)
-      ON CONFLICT(workflow_id, trigger_id, scheduled_for) DO NOTHING RETURNING workflow_id`, [workflowId, triggerId, scheduledFor]);
+    const row = await db.get(
+      `INSERT INTO scheduled_runs (workflow_id, trigger_id, scheduled_for) VALUES (?, ?, ?)
+      ON CONFLICT(workflow_id, trigger_id, scheduled_for) DO NOTHING RETURNING workflow_id`,
+      [workflowId, triggerId, scheduledFor],
+    );
     return Boolean(row);
   }
 }

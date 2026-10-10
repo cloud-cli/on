@@ -3,44 +3,44 @@ import fs from "node:fs";
 import http from "node:http";
 import { URL } from "node:url";
 import { isProtectedUiRoute, safeReturnUrl } from "./safe-return-url.js";
-import { dashboardTemplate, generateDashboardHtml, toDashboardJobs } from "./dashboard.js";
+import { dashboardTemplate, generateDashboardHtml, toDashboardJobs } from "../ui/dashboard.js";
 import { EventBroker } from "./events.js";
 import { GitHubPreprocessor } from "./preprocessors/github.js";
-import { appIcon, serviceWorker, webManifest } from "./pwa.js";
+import { appIcon, serviceWorker, webManifest } from "../ui/pwa.js";
 import { QueueManager } from "./queue.js";
-import { buildRunView, renderRunHtml } from "./run-view.js";
+import { buildRunView, renderRunHtml } from "../ui/run-view.js";
 import { SafeExpressionEvaluator } from "./safe-eval.js";
 import { expandMatrix, resolveMatrixTags } from "./parser/matrix-expander.js";
 import { SecretRepository } from "./secret-repository.js";
 import { SecretStore } from "./secrets.js";
 import { PushRepository } from "./push.js";
-import { renderHelpHtml } from "./help.js";
+import { renderHelpHtml } from "../ui/help.js";
 import openApiSpec from "../openapi.json" with { type: "json" };
 import { ApiKeyRepository } from "./api-key-repository.js";
-import { generateSettingsHtml } from "./settings-ui.js";
+import { generateSettingsHtml } from "../ui/settings-ui.js";
 import { buildAiHelpMessages, createAiRequest, streamAiHelp } from "./ai-help.js";
-import { workflowDocs } from "./help.js";
-import appHeaderTemplate from "./app-header.html?raw";
-import appShellTemplate from "./app-shell.html?raw";
-import appRouterTemplate from "./app-router.html?raw";
-import { runTemplate } from "./run-view.js";
+import { workflowDocs } from "../ui/help.js";
+import appHeaderTemplate from "../ui/app-header.html?raw";
+import appShellTemplate from "../ui/app-shell.html?raw";
+import appRouterTemplate from "../ui/app-router.html?raw";
+import { runTemplate } from "../ui/run-view.js";
 import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from "./types.js";
-import { generateWorkflowManagementHtml } from "./workflows-ui.js";
+import { generateWorkflowManagementHtml } from "../ui/workflows-ui.js";
 import { WorkflowRepository } from "./workflows.js";
 import { debug } from "./debug.js";
 import { OidcClient } from "./oidc.js";
-import { renderErrorPage, type ErrorPageOptions } from "./error-page.js";
+import { renderErrorPage, type ErrorPageOptions } from "../ui/error-page.js";
 import { OidcUserRepository } from "./oidc-user-repository.js";
 import { UserPreferencesRepository } from "./user-preferences.js";
-import apiClientSource from "./api-client.mjs?raw";
-import appShellSetup from "./app-shell.mjs?raw";
-import appHeaderSetup from "./app-header.mjs?raw";
-import appRouterSetup from "./app-router.mjs?raw";
-import dashboardSetup from "./dashboard.mjs?raw";
-import runSetup from "./run.mjs?raw";
-import settingsSetup from "./settings-ui.mjs?raw";
-import workflowsSetup from "./workflows-ui.mjs?raw";
-import timezoneFormatSource from "./timezone-format.mjs?raw";
+import apiClientSource from "../ui/api-client.mjs?raw";
+import appShellSetup from "../ui/app-shell.mjs?raw";
+import appHeaderSetup from "../ui/app-header.mjs?raw";
+import appRouterSetup from "../ui/app-router.mjs?raw";
+import dashboardSetup from "../ui/dashboard.mjs?raw";
+import runSetup from "../ui/run.mjs?raw";
+import settingsSetup from "../ui/settings-ui.mjs?raw";
+import workflowsSetup from "../ui/workflows-ui.mjs?raw";
+import timezoneFormatSource from "../ui/timezone-format.mjs?raw";
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -94,12 +94,16 @@ export class WebhookServer {
           !req.url?.startsWith("/api/") &&
           req.headers.accept?.includes("text/html");
         if (isBrowserDocument) {
-          this.sendHtmlError(res, {
-            status: 500,
-            title: "Something went wrong",
-            message: "Flow hit an unexpected problem while handling this page. Please try again.",
-            action: { label: "Try again", href: "/runs" },
-          }, req.method === "HEAD");
+          this.sendHtmlError(
+            res,
+            {
+              status: 500,
+              title: "Something went wrong",
+              message: "Flow hit an unexpected problem while handling this page. Please try again.",
+              action: { label: "Try again", href: "/runs" },
+            },
+            req.method === "HEAD",
+          );
           return;
         }
         res.writeHead(500, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
@@ -167,11 +171,21 @@ export class WebhookServer {
       return res.end(serviceWorker);
     }
 
-    if (req.method === "GET" && url.pathname === "/auth/login") return this.handleOidcLogin(req, res, url);
-    if (req.method === "GET" && url.pathname === "/auth/callback") return this.handleOidcCallback(req, res, url);
-    if (req.method === "GET" && url.pathname === "/auth/logout") return this.handleOidcLogout(req, res);
-    if (req.method === "GET" && url.pathname === "/api/auth/session") return this.handleOidcSession(req, res);
-    if (req.method === "GET" && url.pathname === "/api/auth/token") return this.handleOidcToken(req, res);
+    if (req.method === "GET" && url.pathname === "/auth/login") {
+      return this.handleOidcLogin(req, res, url);
+    }
+    if (req.method === "GET" && url.pathname === "/auth/callback") {
+      return this.handleOidcCallback(req, res, url);
+    }
+    if (req.method === "GET" && url.pathname === "/auth/logout") {
+      return this.handleOidcLogout(req, res);
+    }
+    if (req.method === "GET" && url.pathname === "/api/auth/session") {
+      return this.handleOidcSession(req, res);
+    }
+    if (req.method === "GET" && url.pathname === "/api/auth/token") {
+      return this.handleOidcToken(req, res);
+    }
     if (req.method === "GET" && url.pathname === "/api-client.mjs") {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(apiClientSource);
@@ -228,7 +242,9 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/api") {
-      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) {
+        return;
+      }
       res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify(openApiSpec));
     }
@@ -239,7 +255,9 @@ export class WebhookServer {
         return;
       }
       const body = await this.readJson(req, res);
-      if (!body || body.workerId !== req.headers["x-runner-worker-id"]) return;
+      if (!body || body.workerId !== req.headers["x-runner-worker-id"]) {
+        return;
+      }
       await this.queue.updateWorkerPresence({
         id: body.workerId,
         version: String(body.version || "unknown"),
@@ -251,7 +269,9 @@ export class WebhookServer {
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/workers") {
-      if (!(await this.hasScope(req, "workers:read"))) return this.requireScope(req, res, "workers:read");
+      if (!(await this.hasScope(req, "workers:read"))) {
+        return this.requireScope(req, res, "workers:read");
+      }
       res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify({ workers: await this.queue.listWorkerPresence() }));
     }
@@ -266,7 +286,9 @@ export class WebhookServer {
       return this.renderPageComponent(res, "page-help", renderHelpHtml(false), true);
     }
     if (req.method === "GET" && url.pathname === "/pages/workflows.html") {
-      if (!this.requireAuthenticatedUser(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
       const page =
         url.searchParams.get("page") === "secrets"
           ? "secrets"
@@ -282,29 +304,39 @@ export class WebhookServer {
       );
     }
     if (req.method === "GET" && url.pathname === "/pages/settings.html") {
-      if (!this.requireAuthenticatedUser(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
       return this.renderPageComponent(res, "page-settings", generateSettingsHtml());
     }
 
     if (req.method === "GET" && url.pathname === "/workflows") {
-      if (!this.requireAuthenticatedUser(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
       return this.renderAppShell(res);
     }
 
     if (req.method === "GET" && url.pathname === "/settings") {
-      if (!this.requireAuthenticatedUser(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
       return this.renderAppShell(res);
     }
 
     if (req.method === "GET" && /^\/settings\/workflows(?:\/|$)/.test(url.pathname)) {
-      if (!this.requireAuthenticatedUser(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
       const destination = url.pathname.replace(/^\/settings\/workflows/, "/workflows") + url.search;
       res.writeHead(302, { Location: destination });
       return res.end();
     }
 
     if (url.pathname === "/api/session" && req.method === "GET") {
-      if (!this.requireAuthenticatedUser(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
       const user = this.oidc?.userFromCookie(req.headers.cookie);
       if (!user) {
         res.writeHead(401, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
@@ -317,19 +349,29 @@ export class WebhookServer {
     }
 
     if (url.pathname === "/api/preferences" && req.method === "GET") {
-      if (!this.requireAuthenticatedUser(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
       const user = this.oidc?.userFromCookie(req.headers.cookie);
-      if (!user) return;
+      if (!user) {
+        return;
+      }
       res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify({ timezone: await this.userPreferences.getTimezone(user.id) }));
     }
 
     if (url.pathname === "/api/preferences" && req.method === "PUT") {
-      if (!this.requireAuthenticatedUser(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
       const user = this.oidc?.userFromCookie(req.headers.cookie);
-      if (!user) return;
+      if (!user) {
+        return;
+      }
       const body = await this.readJson(req, res);
-      if (!body || res.headersSent) return;
+      if (!body || res.headersSent) {
+        return;
+      }
       const timezone = typeof body.timezone === "string" ? body.timezone.trim() : "";
       if (!timezone || timezone.length > 100) {
         res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
@@ -347,7 +389,9 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/api/users") {
-      if (!this.requireAdminSession(req, res)) return;
+      if (!this.requireAdminSession(req, res)) {
+        return;
+      }
       await this.workflowsLoaded;
       res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify({ users: await this.oidcUsers.list() }));
@@ -355,9 +399,13 @@ export class WebhookServer {
 
     const userRoleMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/role$/);
     if (req.method === "PUT" && userRoleMatch) {
-      if (!this.requireAdminSession(req, res)) return;
+      if (!this.requireAdminSession(req, res)) {
+        return;
+      }
       const body = await this.readJson(req, res);
-      if (!body || res.headersSent) return;
+      if (!body || res.headersSent) {
+        return;
+      }
       if (body.role !== "user" && body.role !== "admin") {
         res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
         return res.end(JSON.stringify({ error: 'role must be either "user" or "admin"' }));
@@ -385,17 +433,22 @@ export class WebhookServer {
     }
 
     if (url.pathname === "/api/api-keys") {
-      if (!this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req))
+      if (!this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req)) {
         return this.requireAdmin(req, res);
+      }
       if (req.method === "GET") {
         const providerKeys = await this.listOidcTokens(req);
-        if (providerKeys) return res.end(JSON.stringify({ keys: providerKeys }));
+        if (providerKeys) {
+          return res.end(JSON.stringify({ keys: providerKeys }));
+        }
         return res.end(JSON.stringify({ keys: await this.apiKeys.list() }));
       }
       if (req.method === "POST") {
         if (this.oidc?.userFromCookie(req.headers.cookie) || this.oidcBearer(req)) {
           const providerKey = await this.issueOidcToken(req, res);
-          if (providerKey) return res.end(JSON.stringify(providerKey));
+          if (providerKey) {
+            return res.end(JSON.stringify(providerKey));
+          }
           return;
         }
         const body = await this.readJson(req, res);
@@ -411,11 +464,14 @@ export class WebhookServer {
     }
     const apiKeyMatch = url.pathname.match(/^\/api\/api-keys\/([^/]+)$/);
     if (apiKeyMatch && req.method === "DELETE") {
-      if (!this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req))
+      if (!this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req)) {
         return this.requireAdmin(req, res);
+      }
       if (this.oidc?.userFromCookie(req.headers.cookie) || this.oidcBearer(req)) {
         const providerResponse = await this.revokeOidcToken(req, apiKeyMatch[1]);
-        if (providerResponse) return res.writeHead(providerResponse.status).end();
+        if (providerResponse) {
+          return res.writeHead(providerResponse.status).end();
+        }
       }
       const revoked = await this.apiKeys.revoke(apiKeyMatch[1]);
       res.writeHead(revoked ? 204 : 404).end();
@@ -424,12 +480,16 @@ export class WebhookServer {
 
     const workflowEditorMatch = url.pathname.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
     if (req.method === "GET" && workflowEditorMatch) {
-      if (!this.requireAuthenticatedUser(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
       return this.renderAppShell(res);
     }
 
     if (req.method === "GET" && url.pathname === "/api/jobs") {
-      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) {
+        return;
+      }
       const afterIdParam = url.searchParams.get("afterId");
       const beforeIdParam = url.searchParams.get("beforeId");
       const limitParam = url.searchParams.get("limit");
@@ -460,32 +520,48 @@ export class WebhookServer {
     }
 
     const dispatchMatch = url.pathname.match(/^\/api\/dispatch\/([a-z0-9-]+)$/);
-    if (req.method === "POST" && dispatchMatch) return this.handleDispatch(req, res, dispatchMatch[1]);
+    if (req.method === "POST" && dispatchMatch) {
+      return this.handleDispatch(req, res, dispatchMatch[1]);
+    }
     const workflowRunMatch = url.pathname.match(/^\/api\/workflows\/([a-z0-9-]+)\/run$/);
-    if (req.method === "POST" && workflowRunMatch) return this.handleWorkflowRun(req, res, workflowRunMatch[1]);
+    if (req.method === "POST" && workflowRunMatch) {
+      return this.handleWorkflowRun(req, res, workflowRunMatch[1]);
+    }
     const statusMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/status$/);
-    if (req.method === "GET" && statusMatch) return this.handleJobStatus(req, statusMatch[1], res);
+    if (req.method === "GET" && statusMatch) {
+      return this.handleJobStatus(req, statusMatch[1], res);
+    }
     const waitMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/wait$/);
     if (req.method === "GET" && waitMatch) {
-      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) {
+        return;
+      }
       return this.handleJobWait(waitMatch[1], url.searchParams.get("timeout"), res);
     }
 
     if (req.method === "GET" && url.pathname === "/api/events") {
-      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) {
+        return;
+      }
       return this.events.subscribe(req, res);
     }
 
     if (req.method === "GET" && url.pathname === "/api/push/public-key") {
-      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) {
+        return;
+      }
       return this.handlePushPublicKey(res);
     }
     if (req.method === "POST" && url.pathname === "/api/push/subscriptions") {
-      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) {
+        return;
+      }
       return this.handlePushSubscribe(req, res);
     }
     if (req.method === "DELETE" && url.pathname === "/api/push/subscriptions") {
-      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) {
+        return;
+      }
       return this.handlePushUnsubscribe(req, res);
     }
 
@@ -493,14 +569,24 @@ export class WebhookServer {
       return this.handleWorkflowValidation(req, res);
     }
 
-    if (url.pathname === "/api/secrets" && req.method === "GET") return this.handleSecretList(req, res);
+    if (url.pathname === "/api/secrets" && req.method === "GET") {
+      return this.handleSecretList(req, res);
+    }
     const secretMatch = url.pathname.match(/^\/api\/secrets\/([A-Z][A-Z0-9_]*)$/);
-    if (secretMatch && req.method === "PUT") return this.handleSecretSave(req, res, secretMatch[1]);
-    if (secretMatch && req.method === "DELETE") return this.handleSecretDelete(req, res, secretMatch[1]);
+    if (secretMatch && req.method === "PUT") {
+      return this.handleSecretSave(req, res, secretMatch[1]);
+    }
+    if (secretMatch && req.method === "DELETE") {
+      return this.handleSecretDelete(req, res, secretMatch[1]);
+    }
     const jobSecretsMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/secrets$/);
-    if (jobSecretsMatch && req.method === "GET") return this.handleJobSecrets(req, res, jobSecretsMatch[1]);
+    if (jobSecretsMatch && req.method === "GET") {
+      return this.handleJobSecrets(req, res, jobSecretsMatch[1]);
+    }
     const cancelJobMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/cancel$/);
-    if (cancelJobMatch && req.method === "POST") return this.handleCancelJob(req, res, cancelJobMatch[1]);
+    if (cancelJobMatch && req.method === "POST") {
+      return this.handleCancelJob(req, res, cancelJobMatch[1]);
+    }
 
     if (url.pathname === "/api/workflows" && req.method === "GET") {
       return this.handleWorkflowList(req, res);
@@ -509,11 +595,18 @@ export class WebhookServer {
     const workflowMatch = url.pathname.match(/^\/api\/workflows\/([a-z0-9-]+)(\/publish)?$/);
     if (workflowMatch) {
       const [, workflowId, publish] = workflowMatch;
-      if (req.method === "GET" && !publish)
+      if (req.method === "GET" && !publish) {
         return this.handleWorkflowGet(req, res, workflowId, url.searchParams.get("revision"));
-      if (req.method === "PUT" && !publish) return this.handleWorkflowSave(req, res, workflowId);
-      if (req.method === "DELETE" && !publish) return this.handleWorkflowDelete(req, res, workflowId);
-      if (req.method === "POST" && publish) return this.handleWorkflowPublish(req, res, workflowId);
+      }
+      if (req.method === "PUT" && !publish) {
+        return this.handleWorkflowSave(req, res, workflowId);
+      }
+      if (req.method === "DELETE" && !publish) {
+        return this.handleWorkflowDelete(req, res, workflowId);
+      }
+      if (req.method === "POST" && publish) {
+        return this.handleWorkflowPublish(req, res, workflowId);
+      }
     }
 
     if (req.method === "POST" && url.pathname === "/api/events") {
@@ -525,26 +618,37 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && /^\/runs\/\d+$/.test(url.pathname)) {
-      if (!this.requireAuthenticatedUser(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
       return this.renderAppShell(res);
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/runs/")) {
-      if (!this.requireAuthenticatedUser(req, res)) return;
+      if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
       const jobId = url.pathname.replace("/runs/", "");
       return this.renderRunDetails(jobId, res, "html", await this.hasScope(req, "logs:read"));
     }
 
     const aiHelpMatch = url.pathname.match(/^\/api\/runs\/(\d+)\/ai-help$/);
-    if (req.method === "POST" && aiHelpMatch) return this.handleAiHelp(req, res, aiHelpMatch[1]);
+    if (req.method === "POST" && aiHelpMatch) {
+      return this.handleAiHelp(req, res, aiHelpMatch[1]);
+    }
 
     if (req.method === "GET" && url.pathname.startsWith("/api/runs/")) {
-      if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
+      if (!(await this.requireAuthenticatedApiRequest(req, res))) {
+        return;
+      }
       const diagnosticsMatch = url.pathname.match(/^\/api\/runs\/(\d+)\/diagnostics$/);
-      if (diagnosticsMatch) return this.handleDiagnostics(req, res, diagnosticsMatch[1]);
+      if (diagnosticsMatch) {
+        return this.handleDiagnostics(req, res, diagnosticsMatch[1]);
+      }
       const artifactMatch = url.pathname.match(/^\/api\/runs\/(\d+)\/artifacts\/(.+)$/);
-      if (artifactMatch)
+      if (artifactMatch) {
         return this.handleArtifactDownload(req, res, artifactMatch[1], decodeURIComponent(artifactMatch[2]));
+      }
       const jobId = url.pathname.replace("/api/runs/", "");
       return this.renderRunDetails(jobId, res, "json", await this.hasScope(req, "logs:read"));
     }
@@ -585,7 +689,8 @@ export class WebhookServer {
       "Cache-Control": "no-store",
       "Content-Type": "text/html; charset=utf-8",
       "X-Content-Type-Options": "nosniff",
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy":
+        "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
     });
     return res.end(headOnly ? undefined : renderErrorPage(options));
   }
@@ -597,7 +702,9 @@ export class WebhookServer {
     try {
       const { rawBuffer, headers } = await this.readRequest(req, res);
 
-      if (res.headersSent || !rawBuffer) return;
+      if (res.headersSent || !rawBuffer) {
+        return;
+      }
 
       const { isValid, inputs, secretValues } = await this.preprocess(provider, headers, rawBuffer);
 
@@ -620,9 +727,13 @@ export class WebhookServer {
   }
 
   private async handleDispatch(req: http.IncomingMessage, res: http.ServerResponse, provider: string) {
-    if (!(await this.requireScope(req, res, "runs:dispatch"))) return;
+    if (!(await this.requireScope(req, res, "runs:dispatch"))) {
+      return;
+    }
     const body = await this.readJson(req, res);
-    if (!body || typeof body !== "object" || Array.isArray(body)) return;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return;
+    }
     const jobs = await this.matchWorkflows(
       provider,
       body,
@@ -634,9 +745,13 @@ export class WebhookServer {
   }
 
   private async handleWorkflowRun(req: http.IncomingMessage, res: http.ServerResponse, workflowId: string) {
-    if (!this.requireAuthenticatedUser(req, res)) return;
+    if (!this.requireAuthenticatedUser(req, res)) {
+      return;
+    }
     const body = await this.readJson(req, res);
-    if (body === null && res.headersSent) return;
+    if (body === null && res.headersSent) {
+      return;
+    }
     if (body !== null && (typeof body !== "object" || Array.isArray(body))) {
       res.writeHead(400, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Request body must be an object" }));
@@ -668,7 +783,9 @@ export class WebhookServer {
         requiredTags,
         "",
       );
-      if (jobId) jobs.push(jobId);
+      if (jobId) {
+        jobs.push(jobId);
+      }
       this.events.publish("jobs.available", { tags: requiredTags });
     }
 
@@ -682,7 +799,9 @@ export class WebhookServer {
     let job;
     do {
       job = await this.queue.getJob(jobId);
-      if (!job || ["success", "failed", "cancelled"].includes(job.status) || Date.now() - started >= timeout) break;
+      if (!job || ["success", "failed", "cancelled"].includes(job.status) || Date.now() - started >= timeout) {
+        break;
+      }
       await new Promise((resolve) => setTimeout(resolve, 500));
     } while (true);
     if (!job) {
@@ -699,7 +818,9 @@ export class WebhookServer {
   }
 
   private async handleJobStatus(req: http.IncomingMessage, jobId: string, res: http.ServerResponse) {
-    if (!(await this.requireAuthenticatedApiRequest(req, res))) return;
+    if (!(await this.requireAuthenticatedApiRequest(req, res))) {
+      return;
+    }
     const job = await this.queue.getJob(jobId);
     if (!job) {
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
@@ -717,7 +838,9 @@ export class WebhookServer {
   }
 
   private async handleDiagnostics(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
-    if (!(await this.hasScope(req, "logs:read"))) return this.requireScope(req, res, "logs:read");
+    if (!(await this.hasScope(req, "logs:read"))) {
+      return this.requireScope(req, res, "logs:read");
+    }
     const job = await this.queue.getJob(jobId);
     if (!job) {
       res.writeHead(404, { "Content-Type": "application/json" });
@@ -773,7 +896,9 @@ export class WebhookServer {
     try {
       dbSecrets = await this.secretRepository.getAll();
     } catch (error) {
-      if (process.env.RUNNER_MASTER_KEY || process.env.CREDENTIALS_DIRECTORY) throw error;
+      if (process.env.RUNNER_MASTER_KEY || process.env.CREDENTIALS_DIRECTORY) {
+        throw error;
+      }
     }
     const secret =
       dbSecrets[`${provider.toUpperCase()}_WEBHOOK_SECRET`] ||
@@ -801,7 +926,9 @@ export class WebhookServer {
   ) {
     const jobIds: number[] = [];
     for (const { definition: workflow, revision } of workflows) {
-      if (workflow.on.provider !== provider) continue;
+      if (workflow.on.provider !== provider) {
+        continue;
+      }
 
       const preprocessor = this.preprocessors.get(provider);
       if (preprocessor?.filter && !preprocessor.filter(inputs, workflow.on).isValid) {
@@ -840,7 +967,9 @@ export class WebhookServer {
         };
 
         const jobId = await this.queue.enqueue(workflow.id, revision, jobPayload, requiredTags, concurrencyKey);
-        if (jobId) jobIds.push(jobId);
+        if (jobId) {
+          jobIds.push(jobId);
+        }
         this.events.publish("jobs.available", { tags: requiredTags });
       }
     }
@@ -856,13 +985,19 @@ export class WebhookServer {
   }
 
   private async hasScope(req: http.IncomingMessage, scope: string): Promise<boolean> {
-    if (this.isAdmin(req)) return true;
+    if (this.isAdmin(req)) {
+      return true;
+    }
     const authorization = req.headers.authorization || "";
-    if (!authorization.startsWith("Bearer ")) return false;
+    if (!authorization.startsWith("Bearer ")) {
+      return false;
+    }
     if (this.oidc) {
       const token = authorization.slice(7);
       const scopes = await this.oidc.scopesForToken(token);
-      if (scopes?.includes(scope) || (scope === "logs:read" && token.split(".").length === 3)) return true;
+      if (scopes?.includes(scope) || (scope === "logs:read" && token.split(".").length === 3)) {
+        return true;
+      }
     }
     const scopes = await this.apiKeys.scopesForToken(authorization.slice(7));
     return Boolean(scopes?.includes(scope));
@@ -870,18 +1005,26 @@ export class WebhookServer {
 
   private requireAuthenticatedUser(req: http.IncomingMessage, res: http.ServerResponse): boolean {
     // Temporary legacy settings policy: any valid OIDC session can manage workflows and secrets.
-    if (this.oidc?.userFromCookie(req.headers.cookie)) return true;
+    if (this.oidc?.userFromCookie(req.headers.cookie)) {
+      return true;
+    }
     res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ error: "Authentication required" }));
     return false;
   }
 
   private async requireAuthenticatedApiRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
-    if (this.oidc?.userFromCookie(req.headers.cookie)) return true;
+    if (this.oidc?.userFromCookie(req.headers.cookie)) {
+      return true;
+    }
     const bearer = this.oidcBearer(req);
     if (bearer) {
-      if (this.oidc && (await this.oidc.scopesForToken(bearer)) !== null) return true;
-      if ((await this.apiKeys.scopesForToken(bearer)) !== null) return true;
+      if (this.oidc && (await this.oidc.scopesForToken(bearer)) !== null) {
+        return true;
+      }
+      if ((await this.apiKeys.scopesForToken(bearer)) !== null) {
+        return true;
+      }
     }
     res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ error: "Authentication required" }));
@@ -960,7 +1103,8 @@ export class WebhookServer {
       return this.sendHtmlError(res, {
         status: 502,
         title: "Couldn't complete sign-in",
-        message: "We couldn't verify your identity with the sign-in provider. Please try again. If the problem continues, contact your administrator.",
+        message:
+          "We couldn't verify your identity with the sign-in provider. Please try again. If the problem continues, contact your administrator.",
         action: { label: "Try signing in again", href: "/auth/login?url=%2Fruns" },
         secondaryAction: { label: "Back to Flow", href: "/runs" },
       });
@@ -1027,7 +1171,9 @@ export class WebhookServer {
         {},
         this.oidcBearer(req),
       );
-      if (!response || !response.ok) return undefined;
+      if (!response || !response.ok) {
+        return undefined;
+      }
       const payload = (await response.json()) as any[] | { tokens?: any[] };
       const tokens = Array.isArray(payload) ? payload : payload.tokens || [];
       return tokens.map((token) => ({
@@ -1042,9 +1188,13 @@ export class WebhookServer {
   }
 
   private async issueOidcToken(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req)) return undefined;
+    if (!this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req)) {
+      return undefined;
+    }
     const body = await this.readJson(req, res);
-    if (!body) return null;
+    if (!body) {
+      return null;
+    }
     const response = await this.oidc!.tokenApiRequest(
       req.headers.cookie,
       `/api-tokens/${this.oidcClientId()}`,
@@ -1055,7 +1205,9 @@ export class WebhookServer {
       },
       this.oidcBearer(req),
     );
-    if (!response) return undefined;
+    if (!response) {
+      return undefined;
+    }
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
       res.writeHead(response.status, { "Content-Type": "application/json" });
@@ -1071,7 +1223,9 @@ export class WebhookServer {
   }
 
   private async revokeOidcToken(req: http.IncomingMessage, label: string) {
-    if (!this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req)) return undefined;
+    if (!this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req)) {
+      return undefined;
+    }
     const response = await this.oidc!.tokenApiRequest(
       req.headers.cookie,
       `/api-tokens/${this.oidcClientId()}/${encodeURIComponent(label)}`,
@@ -1091,22 +1245,30 @@ export class WebhookServer {
   }
 
   private async requireScope(req: http.IncomingMessage, res: http.ServerResponse, scope: string): Promise<boolean> {
-    if (await this.hasScope(req, scope)) return true;
+    if (await this.hasScope(req, scope)) {
+      return true;
+    }
     res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ error: `Missing scope: ${scope}` }));
     return false;
   }
 
   private matchesToken(req: http.IncomingMessage, token: string, allowBasic: boolean): boolean {
-    if (!token) return false;
+    if (!token) {
+      return false;
+    }
     const auth = req.headers.authorization || "";
     const matches = (value: string) => {
       const expected = Buffer.from(token);
       const received = Buffer.from(value);
       return expected.length === received.length && crypto.timingSafeEqual(expected, received);
     };
-    if (auth.startsWith("Bearer ") && matches(auth.slice(7))) return true;
-    if (!allowBasic || !auth.startsWith("Basic ")) return false;
+    if (auth.startsWith("Bearer ") && matches(auth.slice(7))) {
+      return true;
+    }
+    if (!allowBasic || !auth.startsWith("Basic ")) {
+      return false;
+    }
     try {
       const decoded = Buffer.from(auth.slice(6), "base64").toString("utf8");
       const separator = decoded.indexOf(":");
@@ -1117,7 +1279,9 @@ export class WebhookServer {
   }
 
   private requireAdmin(req: http.IncomingMessage, res: http.ServerResponse): boolean {
-    if (this.isAdmin(req)) return true;
+    if (this.isAdmin(req)) {
+      return true;
+    }
     const path = (req.url || "/").split("?")[0];
     if (req.method === "GET" && !path.startsWith("/api/")) {
       if (this.oidc?.userFromCookie(req.headers.cookie)) {
@@ -1138,7 +1302,9 @@ export class WebhookServer {
   }
 
   private requireAdminSession(req: http.IncomingMessage, res: http.ServerResponse): boolean {
-    if (this.isAdmin(req)) return true;
+    if (this.isAdmin(req)) {
+      return true;
+    }
     const authenticated = Boolean(this.oidc?.userFromCookie(req.headers.cookie));
     res.writeHead(authenticated ? 403 : 401, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ error: authenticated ? "Administrator role required" : "Authentication required" }));
@@ -1147,7 +1313,9 @@ export class WebhookServer {
 
   private async readJson(req: http.IncomingMessage, res: http.ServerResponse): Promise<any | null> {
     const { rawBuffer } = await this.readRequest(req, res);
-    if (!rawBuffer || res.headersSent) return null;
+    if (!rawBuffer || res.headersSent) {
+      return null;
+    }
     try {
       return JSON.parse(rawBuffer.toString("utf8"));
     } catch {
@@ -1158,9 +1326,13 @@ export class WebhookServer {
   }
 
   private async handleWorkflowValidation(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.requireAuthenticatedUser(req, res)) return;
+    if (!this.requireAuthenticatedUser(req, res)) {
+      return;
+    }
     const body = await this.readJson(req, res);
-    if (!body) return;
+    if (!body) {
+      return;
+    }
     try {
       const workflows = this.workflows.validate(body.sourceYaml);
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -1172,7 +1344,9 @@ export class WebhookServer {
   }
 
   private async handleWorkflowList(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.requireAuthenticatedUser(req, res)) return;
+    if (!this.requireAuthenticatedUser(req, res)) {
+      return;
+    }
     await this.workflowsLoaded;
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ workflows: await this.workflows.list() }));
@@ -1184,7 +1358,9 @@ export class WebhookServer {
     id: string,
     revisionParam: string | null = null,
   ) {
-    if (!this.requireAuthenticatedUser(req, res)) return;
+    if (!this.requireAuthenticatedUser(req, res)) {
+      return;
+    }
     const revision = revisionParam === null ? undefined : Number(revisionParam);
     const workflow =
       revision !== undefined && Number.isSafeInteger(revision) && revision > 0
@@ -1199,13 +1375,16 @@ export class WebhookServer {
   }
 
   private async handleWorkflowSave(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
-    if (!this.requireAuthenticatedUser(req, res)) return;
+    if (!this.requireAuthenticatedUser(req, res)) {
+      return;
+    }
     const body = await this.readJson(req, res);
     if (!body || typeof body.sourceYaml !== "string") {
-      if (!res.headersSent)
+      if (!res.headersSent) {
         res
           .writeHead(400, { "Content-Type": "application/json" })
           .end(JSON.stringify({ error: "sourceYaml is required" }));
+      }
       return;
     }
     try {
@@ -1219,7 +1398,9 @@ export class WebhookServer {
   }
 
   private async handleWorkflowDelete(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
-    if (!this.requireAuthenticatedUser(req, res)) return;
+    if (!this.requireAuthenticatedUser(req, res)) {
+      return;
+    }
     if (!(await this.workflows.delete(id))) {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Workflow not found" }));
@@ -1228,7 +1409,9 @@ export class WebhookServer {
   }
 
   private async handleWorkflowPublish(req: http.IncomingMessage, res: http.ServerResponse, id: string) {
-    if (!this.requireAuthenticatedUser(req, res)) return;
+    if (!this.requireAuthenticatedUser(req, res)) {
+      return;
+    }
     const workflow = await this.workflows.publish(id);
     if (!workflow) {
       res.writeHead(404, { "Content-Type": "application/json" });
@@ -1239,17 +1422,22 @@ export class WebhookServer {
   }
 
   private async handleSecretList(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.requireAuthenticatedUser(req, res)) return;
+    if (!this.requireAuthenticatedUser(req, res)) {
+      return;
+    }
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ secrets: await this.secretRepository.names() }));
   }
 
   private async handleSecretSave(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
-    if (!this.requireAuthenticatedUser(req, res)) return;
+    if (!this.requireAuthenticatedUser(req, res)) {
+      return;
+    }
     const body = await this.readJson(req, res);
     if (!body || typeof body.value !== "string") {
-      if (!res.headersSent)
+      if (!res.headersSent) {
         res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "value is required" }));
+      }
       return;
     }
     try {
@@ -1262,7 +1450,9 @@ export class WebhookServer {
   }
 
   private async handleSecretDelete(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
-    if (!this.requireAuthenticatedUser(req, res)) return;
+    if (!this.requireAuthenticatedUser(req, res)) {
+      return;
+    }
     if (!(await this.secretRepository.delete(name))) {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Secret not found" }));
@@ -1288,7 +1478,9 @@ export class WebhookServer {
    * Handles Zero-Downtime Secret Reload
    */
   private async handleSecretReload(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!(await this.requireScope(req, res, "secrets:write"))) return;
+    if (!(await this.requireScope(req, res, "secrets:write"))) {
+      return;
+    }
 
     // Trigger in-memory secret reload
     this.secrets.reload();
@@ -1305,13 +1497,17 @@ export class WebhookServer {
     }
 
     const { rawBuffer } = await this.readRequest(req, res);
-    if (!rawBuffer || res.headersSent) return;
+    if (!rawBuffer || res.headersSent) {
+      return;
+    }
 
     let jobId: number | undefined;
     try {
       const payload = rawBuffer.length ? JSON.parse(rawBuffer.toString("utf8")) : {};
       const parsedJobId = Number(payload.jobId);
-      if (Number.isSafeInteger(parsedJobId) && parsedJobId > 0) jobId = parsedJobId;
+      if (Number.isSafeInteger(parsedJobId) && parsedJobId > 0) {
+        jobId = parsedJobId;
+      }
     } catch {
       res.writeHead(400, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Invalid event payload" }));
@@ -1320,7 +1516,9 @@ export class WebhookServer {
     this.events.publish("jobs.changed", jobId ? { jobId } : {});
     if (jobId) {
       const job = await this.queue.getJob(jobId);
-      if (job) void this.push.notify(job);
+      if (job) {
+        void this.push.notify(job);
+      }
     }
     res.writeHead(202).end();
   }
@@ -1336,7 +1534,9 @@ export class WebhookServer {
 
   private async handlePushSubscribe(req: http.IncomingMessage, res: http.ServerResponse) {
     const body = await this.readJson(req, res);
-    if (!body) return;
+    if (!body) {
+      return;
+    }
     if (
       !this.push.publicKey ||
       typeof body.endpoint !== "string" ||
@@ -1344,10 +1544,11 @@ export class WebhookServer {
       typeof body.keys.p256dh !== "string" ||
       typeof body.keys.auth !== "string"
     ) {
-      if (!res.headersSent)
+      if (!res.headersSent) {
         res
           .writeHead(400, { "Content-Type": "application/json" })
           .end(JSON.stringify({ error: "Invalid push subscription" }));
+      }
       return;
     }
     await this.push.save(body);
@@ -1356,12 +1557,15 @@ export class WebhookServer {
 
   private async handlePushUnsubscribe(req: http.IncomingMessage, res: http.ServerResponse) {
     const body = await this.readJson(req, res);
-    if (!body) return;
+    if (!body) {
+      return;
+    }
     if (typeof body.endpoint !== "string") {
-      if (!res.headersSent)
+      if (!res.headersSent) {
         res
           .writeHead(400, { "Content-Type": "application/json" })
           .end(JSON.stringify({ error: "endpoint is required" }));
+      }
       return;
     }
     await this.push.remove(body.endpoint);
@@ -1394,7 +1598,9 @@ export class WebhookServer {
     } else {
       const start = source.indexOf("<template app>");
       const end = source.lastIndexOf("</template>");
-      if (start !== -1 && end > start) content = source.slice(start + "<template app>".length, end);
+      if (start !== -1 && end > start) {
+        content = source.slice(start + "<template app>".length, end);
+      }
     }
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
     return res.end(`<template component="${name}">${components}${styles}${content}</template>`);
@@ -1474,9 +1680,13 @@ export class WebhookServer {
   }
 
   private async handleRestartJob(req: http.IncomingMessage, jobId: string, res: http.ServerResponse) {
-    if (!(await this.requireScope(req, res, "runs:control"))) return;
+    if (!(await this.requireScope(req, res, "runs:control"))) {
+      return;
+    }
     const body = req.headers["content-length"] || req.headers["transfer-encoding"] ? await this.readJson(req, res) : {};
-    if (!body || (body.inputs !== undefined && (typeof body.inputs !== "object" || Array.isArray(body.inputs)))) return;
+    if (!body || (body.inputs !== undefined && (typeof body.inputs !== "object" || Array.isArray(body.inputs)))) {
+      return;
+    }
     const id = await this.queue.restartJob(jobId, body.inputs || {});
 
     if (id) {
@@ -1496,7 +1706,9 @@ export class WebhookServer {
     jobId: string,
     filePath: string,
   ) {
-    if (!(await this.requireScope(req, res, "artifacts:read"))) return;
+    if (!(await this.requireScope(req, res, "artifacts:read"))) {
+      return;
+    }
     const file = (await this.queue.getStoredFiles("artifact", jobId)).find((entry) => entry.path === filePath);
     if (!file) {
       res.writeHead(404, { "Content-Type": "application/json" });
@@ -1511,7 +1723,9 @@ export class WebhookServer {
   }
 
   private async handleAiHelp(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
-    if (!(await this.hasScope(req, "logs:read"))) return this.requireScope(req, res, "logs:read");
+    if (!(await this.hasScope(req, "logs:read"))) {
+      return this.requireScope(req, res, "logs:read");
+    }
     const apiKey = await this.currentSecrets().then((secrets) => secrets.OPENAI_API_KEY || process.env.OPENAI_API_KEY);
     const model = process.env.OPENAI_API_MODEL;
     const apiUrl = process.env.OPENAI_API_URL;
@@ -1577,21 +1791,25 @@ export class WebhookServer {
   }
 
   private async handleWorkflowAiHelp(req: http.IncomingMessage, res: http.ServerResponse) {
-    if (!this.requireAuthenticatedUser(req, res)) return;
+    if (!this.requireAuthenticatedUser(req, res)) {
+      return;
+    }
     const body = await this.readJson(req, res);
     const request = typeof body?.request === "string" ? body.request.trim() : "";
     const sourceYaml = typeof body?.sourceYaml === "string" ? body.sourceYaml : "";
     const apiKey = (await this.currentSecrets()).OPENAI_API_KEY || process.env.OPENAI_API_KEY;
     const model = process.env.OPENAI_API_MODEL;
     const apiUrl = process.env.OPENAI_API_URL;
-    if (!request)
+    if (!request) {
       return res
         .writeHead(400, { "Content-Type": "application/json" })
         .end(JSON.stringify({ error: "request is required" }));
-    if (!model || !apiUrl)
+    }
+    if (!model || !apiUrl) {
       return res
         .writeHead(503, { "Content-Type": "application/json" })
         .end(JSON.stringify({ error: "AI help is not configured" }));
+    }
 
     const requestBody = createAiRequest(model, [
       {
@@ -1613,13 +1831,17 @@ export class WebhookServer {
       res.write('data: {"done":true}\n\n');
       res.end();
     } catch (error: any) {
-      if (res.headersSent) return res.end(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      if (res.headersSent) {
+        return res.end(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      }
       res.writeHead(502, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
     }
   }
 
   private async handleCancelJob(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
-    if (!(await this.requireScope(req, res, "runs:control"))) return;
+    if (!(await this.requireScope(req, res, "runs:control"))) {
+      return;
+    }
 
     const result = await this.queue.cancelJob(jobId);
     if (result === "not_found") {
@@ -1640,7 +1862,9 @@ export class WebhookServer {
     try {
       return await this.secretRepository.getAll();
     } catch (error) {
-      if (process.env.RUNNER_MASTER_KEY || process.env.CREDENTIALS_DIRECTORY) throw error;
+      if (process.env.RUNNER_MASTER_KEY || process.env.CREDENTIALS_DIRECTORY) {
+        throw error;
+      }
       return this.secrets.getAll();
     }
   }

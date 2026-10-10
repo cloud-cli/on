@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderErrorPage } from "./error-page.js";
+import { renderErrorPage } from "../ui/error-page.js";
 
 describe("renderErrorPage", () => {
   it("renders an accessible branded error with safe actions", () => {

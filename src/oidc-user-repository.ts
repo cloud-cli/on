@@ -39,8 +39,12 @@ export class OidcUserRepository {
 
   async setRole(subject: string, role: OidcRole): Promise<"updated" | "not-found" | "last-admin"> {
     const current = await db.get("SELECT role FROM oidc_users WHERE subject = ?", [subject]);
-    if (!current) return "not-found";
-    if (current.role === role) return "updated";
+    if (!current) {
+      return "not-found";
+    }
+    if (current.role === role) {
+      return "updated";
+    }
 
     // Keep the last-admin check inside the UPDATE predicate so concurrent role
     // changes cannot demote the final administrator.
@@ -50,7 +54,9 @@ export class OidcUserRepository {
          (SELECT COUNT(*) FROM oidc_users WHERE role = 'admin') > 1)`,
       [role, subject, role],
     );
-    if (Number(result?.changes || 0) > 0) return "updated";
+    if (Number(result?.changes || 0) > 0) {
+      return "updated";
+    }
 
     const stillExists = await db.get("SELECT subject FROM oidc_users WHERE subject = ?", [subject]);
     return stillExists ? "last-admin" : "not-found";

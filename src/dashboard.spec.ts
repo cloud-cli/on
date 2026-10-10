@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { generateDashboardHtml, toDashboardJobs } from "./dashboard.js";
-import dashboardSetup from "./dashboard.mjs?raw";
+import { generateDashboardHtml, toDashboardJobs } from "../ui/dashboard.js";
+import dashboardSetup from "../ui/dashboard.mjs?raw";
 
 const row = {
   id: 7,
@@ -62,7 +62,7 @@ describe("dashboard", () => {
     expect(html).toContain("All workflows");
     expect(dashboardSetup).toContain("encodeURIComponent(activeFilter.value)");
     expect(dashboardSetup).toContain("/^[A-Za-z0-9_-]+:.+$/.test(activeFilter.value)");
-    expect(dashboardSetup).toContain("if (searchInProgress && !isSearch) return");
+    expect(dashboardSetup).toContain("if (searchInProgress && !isSearch) {");
     expect(dashboardSetup).toContain("generation !== refreshGeneration");
     expect(html).toContain("Filter runs by status");
     expect(html).toContain("aria-[pressed=true]:bg-flow-primary");
@@ -108,7 +108,7 @@ describe("dashboard", () => {
   });
 
   it("keeps status filter pill font weight stable when selected", () => {
-    const html = readFileSync(resolve(process.cwd(), "src/dashboard.html"), "utf8");
+    const html = readFileSync(resolve(process.cwd(), "ui/dashboard.html"), "utf8");
 
     expect(html).toContain("attr-aria-pressed=\"tab.isActive ? 'true' : 'false'\"");
     const buttonClass = html.match(/on-click="setStatusFilter\(tab\.status\)"[\s\S]*?class="([^"]+)"/)?.[1];

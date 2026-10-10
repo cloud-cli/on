@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { generateSettingsHtml } from "./settings-ui.js";
-import settingsSetup from "./settings-ui.mjs?raw";
+import { generateSettingsHtml } from "../ui/settings-ui.js";
+import settingsSetup from "../ui/settings-ui.mjs?raw";
 import serverSetup from "./server.ts?raw";
-import { generateWorkflowManagementHtml } from "./workflows-ui.js";
+import { generateWorkflowManagementHtml } from "../ui/workflows-ui.js";
 
 describe("settings UI", () => {
   it("provides token, notifications, and worker settings without a duplicate workflows link", () => {

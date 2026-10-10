@@ -6,7 +6,13 @@ export default [
     ignores: ["dist/**", "node_modules/**"],
   },
   {
-    files: ["**/src/*.ts"],
+    files: ["**/*.{js,mjs,cjs,ts,tsx}"],
+    rules: {
+      curly: ["error", "all"],
+    },
+  },
+  {
+    files: ["**/*.ts"],
     plugins: {
       "@typescript-eslint": eslintTypescriptPlugin,
     },

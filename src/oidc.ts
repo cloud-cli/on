@@ -68,7 +68,9 @@ export class OidcClient {
 
   async completeLogin(code: string, state: string, redirectUri: string): Promise<{ returnTo: string; cookie: string }> {
     const loginState = this.parseState(state);
-    if (!loginState || loginState.expiresAt <= Date.now()) throw new Error("OIDC login state is invalid or expired");
+    if (!loginState || loginState.expiresAt <= Date.now()) {
+      throw new Error("OIDC login state is invalid or expired");
+    }
 
     const provider = await this.providerClient();
     const tokens = (await provider.exchangeCode({
@@ -77,16 +79,22 @@ export class OidcClient {
       redirectUri,
       clientSecret: this.config.clientSecret,
     })) as { access_token?: string; expires_in?: number };
-    if (!tokens.access_token) throw new Error("OIDC token response did not include an access token");
+    if (!tokens.access_token) {
+      throw new Error("OIDC token response did not include an access token");
+    }
     const userInfo = (await provider.getUserInfo(tokens.access_token)) as (OidcUser & { sub?: string }) | null;
-    if (!userInfo || typeof userInfo !== "object") throw new Error("OIDC userinfo response was empty");
+    if (!userInfo || typeof userInfo !== "object") {
+      throw new Error("OIDC userinfo response was empty");
+    }
     const user = {
       ...userInfo,
       id: typeof userInfo.sub === "string" ? userInfo.sub : userInfo.id || "",
       name: userInfo.name || userInfo.preferred_username,
       photo: userInfo.photo || userInfo.picture,
     };
-    if (!user.id) throw new Error("OIDC userinfo response did not include a user id");
+    if (!user.id) {
+      throw new Error("OIDC userinfo response did not include a user id");
+    }
 
     const sessionToken = randomUrlSafe(32);
     const now = Date.now();
@@ -111,12 +119,16 @@ export class OidcClient {
   setRole(cookieHeader: string, role: "user" | "admin") {
     const token = this.cookieToken(cookieHeader);
     const session = token ? this.sessions.get(token) : undefined;
-    if (session) session.role = role;
+    if (session) {
+      session.role = role;
+    }
   }
 
   setRoleForUser(subject: string, role: "user" | "admin") {
     for (const session of this.sessions.values()) {
-      if (session.user.id === subject) session.role = role;
+      if (session.user.id === subject) {
+        session.role = role;
+      }
     }
   }
 
@@ -126,7 +138,9 @@ export class OidcClient {
 
   accessTokenFromCookie(cookieHeader: string | undefined) {
     const session = this.sessionFromCookie(cookieHeader);
-    if (!session || session.accessTokenExpiresAt <= Date.now()) return undefined;
+    if (!session || session.accessTokenExpiresAt <= Date.now()) {
+      return undefined;
+    }
     return { accessToken: session.accessToken, expiresAt: session.accessTokenExpiresAt };
   }
 
@@ -137,7 +151,9 @@ export class OidcClient {
         scope?: string | string[];
         scopes?: string[];
       };
-      if (!result.active) return null;
+      if (!result.active) {
+        return null;
+      }
       return (
         result.scopes || (Array.isArray(result.scope) ? result.scope : result.scope?.split(/\s+/).filter(Boolean) || [])
       );
@@ -149,7 +165,9 @@ export class OidcClient {
   async tokenApiRequest(cookieHeader: string | undefined, path: string, init: RequestInit = {}, accessToken?: string) {
     const session = this.sessionFromCookie(cookieHeader);
     const bearer = accessToken || session?.accessToken;
-    if (!bearer) return undefined;
+    if (!bearer) {
+      return undefined;
+    }
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${bearer}`);
     headers.set("x-auth-audience", this.config.clientId);
@@ -158,13 +176,17 @@ export class OidcClient {
 
   clearCookie(cookieHeader: string | undefined) {
     const token = this.cookieToken(cookieHeader);
-    if (token) this.sessions.delete(token);
+    if (token) {
+      this.sessions.delete(token);
+    }
     return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
   }
 
   private sessionFromCookie(cookieHeader: string | undefined) {
     const token = this.cookieToken(cookieHeader);
-    if (!token) return undefined;
+    if (!token) {
+      return undefined;
+    }
     const session = this.sessions.get(token);
     if (!session || session.expiresAt <= Date.now()) {
       this.sessions.delete(token);
@@ -184,7 +206,9 @@ export class OidcClient {
     if (!this.providerClientPromise) {
       this.providerClientPromise = fetch(new URL("/node.mjs", `${this.config.providerUrl.replace(/\/$/, "")}/`)).then(
         async (response) => {
-          if (!response.ok) throw new Error(`OIDC client module failed: ${response.status}`);
+          if (!response.ok) {
+            throw new Error(`OIDC client module failed: ${response.status}`);
+          }
           const source = await response.text();
           const module = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
           return module.createAuthClient({
@@ -200,7 +224,11 @@ export class OidcClient {
 
   private prune() {
     const now = Date.now();
-    for (const [key, session] of this.sessions) if (session.expiresAt <= now) this.sessions.delete(key);
+    for (const [key, session] of this.sessions) {
+      if (session.expiresAt <= now) {
+        this.sessions.delete(key);
+      }
+    }
   }
 
   private signState(state: LoginState) {
@@ -211,14 +239,19 @@ export class OidcClient {
 
   private parseState(value: string): LoginState {
     const [payload, signature] = value.split(".");
-    if (!payload || !signature) throw new Error("OIDC login state is invalid or expired");
+    if (!payload || !signature) {
+      throw new Error("OIDC login state is invalid or expired");
+    }
     const expected = crypto.createHmac("sha256", this.config.clientSecret).update(payload).digest("base64url");
     const valid =
       signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
-    if (!valid) throw new Error("OIDC login state is invalid or expired");
-    const state = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as LoginState;
-    if (!state.verifier || !state.returnTo || state.expiresAt <= Date.now())
+    if (!valid) {
       throw new Error("OIDC login state is invalid or expired");
+    }
+    const state = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as LoginState;
+    if (!state.verifier || !state.returnTo || state.expiresAt <= Date.now()) {
+      throw new Error("OIDC login state is invalid or expired");
+    }
     return state;
   }
 }

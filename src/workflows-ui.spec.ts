@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { generateWorkflowManagementHtml } from "./workflows-ui.js";
-import workflowsSetup from "./workflows-ui.mjs?raw";
+import { generateWorkflowManagementHtml } from "../ui/workflows-ui.js";
+import workflowsSetup from "../ui/workflows-ui.mjs?raw";
 import { WebhookServer } from "./server.js";
 
 describe("workflow management UI", () => {
@@ -34,7 +34,7 @@ describe("workflow management UI", () => {
     const sourceDir = new URL(".", import.meta.url).pathname;
     const pageFiles = readdirSync(sourceDir).filter((file) => file.endsWith(".html"));
     const pageSource = pageFiles.map((file) => readFileSync(join(sourceDir, file), "utf8")).join("\n");
-    const theme = readFileSync(join(sourceDir, "index.css"), "utf8");
+    const theme = readFileSync(join(process.cwd(), "ui/index.css"), "utf8");
     const tokens = new Set([...theme.matchAll(/--color-flow-([a-z-]+)\s*:/g)].map((match) => match[1]));
     const usedTokens = new Set(
       [...pageSource.matchAll(/(?:bg|text|border|divide|ring|shadow)-flow-([a-z-]+)/g)].map((match) => match[1]),

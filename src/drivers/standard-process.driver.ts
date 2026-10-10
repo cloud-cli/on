@@ -115,10 +115,14 @@ export class StandardProcessDriver implements ExecutionDriver {
       let isResolved = false;
 
       const safeResolve = (result: StepResult) => {
-        if (isResolved) return; // Prevent double-resolution
+        if (isResolved) {
+          return;
+        } // Prevent double-resolution
         isResolved = true;
 
-        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (timeoutTimer) {
+          clearTimeout(timeoutTimer);
+        }
 
         logWriter?.end(() => {
           try {

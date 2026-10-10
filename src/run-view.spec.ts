@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { buildRunView, renderRunHtml, type RunView } from "./run-view.js";
+import { buildRunView, renderRunHtml, type RunView } from "../ui/run-view.js";
 import type { WorkflowExecutionReport } from "./types.js";
-import runSetup from "./run.mjs?raw";
+import runSetup from "../ui/run.mjs?raw";
 
 function report(status: WorkflowExecutionReport["status"]): WorkflowExecutionReport {
   return {
@@ -281,7 +281,7 @@ describe("run view", () => {
   });
 
   it("gives the selected tab and step a clear active treatment", () => {
-    const html = readFileSync(resolve(process.cwd(), "src/run.html"), "utf8");
+    const html = readFileSync(resolve(process.cwd(), "ui/run.html"), "utf8");
 
     expect(html).toContain("attr-aria-selected=\"tab.isActive ? 'true' : 'false'\"");
     expect(html).toContain("aria-[pressed=true]:font-bold");

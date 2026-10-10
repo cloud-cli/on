@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import "./index.css";
+import "../ui/index.css";
 
 import { loadFromArgs, printHelp } from "./config.js";
 import { installTimestampedConsole } from "./logger.js";
@@ -36,10 +36,14 @@ async function main() {
   ]);
 
   if (command === "promote-admin") {
-    if (!subject) throw new Error("Usage: on promote-admin --subject <oidc-subject>");
+    if (!subject) {
+      throw new Error("Usage: on promote-admin --subject <oidc-subject>");
+    }
     const users = new OidcUserRepository();
     await users.init();
-    if (!(await users.promote(subject))) throw new Error(`OIDC user not found: ${subject}`);
+    if (!(await users.promote(subject))) {
+      throw new Error(`OIDC user not found: ${subject}`);
+    }
     console.log(`Promoted OIDC user ${subject} to admin.`);
     return;
   }

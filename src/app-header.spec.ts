@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import headerTemplate from "./app-header.html?raw";
+import headerTemplate from "../ui/app-header.html?raw";
 
 describe("app header", () => {
   it("unauthenticated header shows user-round icon linking to /settings", () => {

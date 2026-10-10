@@ -69,14 +69,20 @@ export default function () {
         ...(options.headers || {}),
       },
     });
-    if (response.status === 401) redirectToLogin();
+    if (response.status === 401) {
+      redirectToLogin();
+    }
     const body = response.status === 204 ? null : await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.error || `Request failed: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(body.error || `Request failed: ${response.status}`);
+    }
     return body;
   };
 
   const run = async (action) => {
-    if (busy.value) return;
+    if (busy.value) {
+      return;
+    }
 
     busy.value = true;
 
@@ -117,7 +123,9 @@ export default function () {
   };
 
   const validate = (ms = 1000) => {
-    if (page !== "editor") return;
+    if (page !== "editor") {
+      return;
+    }
 
     clearTimeout(validationTimer);
     validationTimer = setTimeout(() => {
@@ -154,12 +162,16 @@ export default function () {
       savedEnabled.value = enabled.value;
       revision.value = workflow.revision;
       showNotice(`Saved draft revision ${workflow.revision}.`);
-      if (!initialId) history.replaceState(null, "", `/workflows/${workflow.id}`);
+      if (!initialId) {
+        history.replaceState(null, "", `/workflows/${workflow.id}`);
+      }
     });
   const publish = () =>
     run(async () => {
       const id = workflowId.value.trim() || selectedId.value;
-      if (!id) throw new Error("Save a workflow before publishing it.");
+      if (!id) {
+        throw new Error("Save a workflow before publishing it.");
+      }
       const workflow = await api(`/api/workflows/${id}/publish`, { method: "POST" });
       selectedId.value = workflow.id;
       revision.value = workflow.revision;
@@ -168,8 +180,12 @@ export default function () {
   const runNow = () =>
     run(async () => {
       const id = workflowId.value.trim() || selectedId.value;
-      if (!id) throw new Error("Save the workflow before running it.");
-      if (source.value !== savedSource.value) throw new Error("Save the latest draft before running it.");
+      if (!id) {
+        throw new Error("Save the workflow before running it.");
+      }
+      if (source.value !== savedSource.value) {
+        throw new Error("Save the latest draft before running it.");
+      }
       const result = await api(`/api/workflows/${id}/run`, {
         method: "POST",
         body: JSON.stringify({}),
@@ -183,18 +199,22 @@ export default function () {
   const remove = () =>
     run(async () => {
       const id = workflowId.value.trim() || selectedId.value;
-      if (!id || !confirm(`Delete ${id} and all of its revisions?`)) return;
+      if (!id || !confirm(`Delete ${id} and all of its revisions?`)) {
+        return;
+      }
       await api(`/api/workflows/${id}`, { method: "DELETE" });
       navigateTo("/workflows");
     });
   const saveSecret = () =>
     run(async () => {
       const name = secretName.value.trim().toUpperCase();
-      if (!/^[A-Z][A-Z0-9_]*$/.test(name))
+      if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
         throw new Error("Secret names must start with a letter and contain only letters, numbers, and underscores.");
+      }
       secretName.value = name;
-      if (!name || (fileMode.value ? !secretFileData.value : !secretValue.value))
+      if (!name || (fileMode.value ? !secretFileData.value : !secretValue.value)) {
         throw new Error(fileMode.value ? "Choose a file first." : "Set a secret value first.");
+      }
       await api(`/api/secrets/${name}`, {
         method: "PUT",
         body: JSON.stringify(
@@ -207,15 +227,21 @@ export default function () {
       secretFileName.value = "";
       secretFileData.value = "";
       fileMode.value = false;
-      if (secretFileInput.value) secretFileInput.value.value = "";
-      if (secretForm.value) secretForm.value.open = false;
+      if (secretFileInput.value) {
+        secretFileInput.value.value = "";
+      }
+      if (secretForm.value) {
+        secretForm.value.open = false;
+      }
       await loadSecrets();
       showNotice(`Saved ${name}.`);
     });
   const removeSecret = (requestedName = "") =>
     run(async () => {
       const name = (requestedName || secretName.value.trim()).toUpperCase();
-      if (!name || !confirm(`Delete ${name}?`)) return;
+      if (!name || !confirm(`Delete ${name}?`)) {
+        return;
+      }
       await api(`/api/secrets/${name}`, { method: "DELETE" });
       if (secretName.value.trim().toUpperCase() === name) {
         secretName.value = "";
@@ -223,7 +249,9 @@ export default function () {
         secretFileName.value = "";
         secretFileData.value = "";
         fileMode.value = false;
-        if (secretFileInput.value) secretFileInput.value.value = "";
+        if (secretFileInput.value) {
+          secretFileInput.value.value = "";
+        }
       }
       await loadSecrets();
       showNotice(`Deleted ${name}.`);
@@ -244,7 +272,9 @@ export default function () {
     if (secretValue.value) {
       secretFileName.value = "";
       secretFileData.value = "";
-      if (secretFileInput.value) secretFileInput.value.value = "";
+      if (secretFileInput.value) {
+        secretFileInput.value.value = "";
+      }
     }
   };
   const setFileMode = (event) => {
@@ -252,14 +282,18 @@ export default function () {
     if (!fileMode.value) {
       secretFileName.value = "";
       secretFileData.value = "";
-      if (secretFileInput.value) secretFileInput.value.value = "";
+      if (secretFileInput.value) {
+        secretFileInput.value.value = "";
+      }
     } else {
       secretValue.value = "";
     }
   };
   const setSecretFile = async (event) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      return;
+    }
     const bytes = new Uint8Array(await file.arrayBuffer());
     let binary = "";
     for (let index = 0; index < bytes.length; index += 0x8000) {
@@ -277,12 +311,16 @@ export default function () {
     navigateTo(`/workflows/${id}`);
   };
   const loadHelp = async (event) => {
-    if (!event.target.open || helpLoaded.value || helpLoading.value || !helpContent.value) return;
+    if (!event.target.open || helpLoaded.value || helpLoading.value || !helpContent.value) {
+      return;
+    }
     helpLoading.value = true;
     helpContent.value.textContent = "Loading workflow syntax help...";
     try {
       const response = await fetch("/help?embed=1", { headers: { accept: "text/html" } });
-      if (!response.ok) throw new Error(`Help request failed: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Help request failed: ${response.status}`);
+      }
       const html = await response.text();
       const parsed = new DOMParser().parseFromString(html, "text/html");
       const sourceNodes = [...Array.from(parsed.head.querySelectorAll("style")), ...Array.from(parsed.body.childNodes)];
@@ -303,8 +341,9 @@ export default function () {
       (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] || "",
     );
   const renderRevisionDiff = (previousSource, currentSource) => {
-    if (previousSource === null)
+    if (previousSource === null) {
       return `<span class="text-emerald-300">+ ${escapeRevisionHtml(currentSource)}</span>\n`;
+    }
     return diffLines(previousSource, currentSource)
       .map((part) => {
         const className = part.added
@@ -322,7 +361,9 @@ export default function () {
       .join("");
   };
   const openRevisionDialog = async () => {
-    if (!revision.value) return;
+    if (!revision.value) {
+      return;
+    }
     revisionNumber.value = revision.value;
     revisionDiffHtml.value = "";
     revisionError.value = "";
@@ -346,9 +387,13 @@ export default function () {
     }
   };
   const navigateRevision = async (offset) => {
-    if (!selectedId.value || revisionLoading.value) return;
+    if (!selectedId.value || revisionLoading.value) {
+      return;
+    }
     const target = revisionNumber.value + offset;
-    if (target < 1 || target > revision.value) return;
+    if (target < 1 || target > revision.value) {
+      return;
+    }
     revisionNumber.value = target;
     await loadRevisionDiff(target);
   };
@@ -360,10 +405,14 @@ export default function () {
     aiDialogOpen.value = true;
   };
   const closeAiHelp = () => {
-    if (!aiLoading.value) aiDialogOpen.value = false;
+    if (!aiLoading.value) {
+      aiDialogOpen.value = false;
+    }
   };
   const requestAiHelp = async () => {
-    if (!aiRequest.value.trim() || aiLoading.value) return;
+    if (!aiRequest.value.trim() || aiLoading.value) {
+      return;
+    }
     aiLoading.value = true;
     aiError.value = "";
     aiDiffHtml.value = "";
@@ -374,7 +423,9 @@ export default function () {
         headers: { accept: "text/event-stream", "content-type": "application/json" },
         body: JSON.stringify({ sourceYaml: source.value, request: aiRequest.value }),
       });
-      if (response.status === 401) redirectToLogin();
+      if (response.status === 401) {
+        redirectToLogin();
+      }
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.error || `AI help failed: ${response.status}`);
@@ -385,16 +436,24 @@ export default function () {
       let suggestion = "";
       while (true) {
         const chunk = await reader.read();
-        if (chunk.done) break;
+        if (chunk.done) {
+          break;
+        }
         buffer += decoder.decode(chunk.value, { stream: true });
         const events = buffer.split("\n\n");
         buffer = events.pop() || "";
         for (const event of events) {
           const line = event.split("\n").find((value) => value.startsWith("data: "));
-          if (!line) continue;
+          if (!line) {
+            continue;
+          }
           const data = JSON.parse(line.slice(6));
-          if (data.error) throw new Error(data.error);
-          if (data.delta) suggestion += data.delta;
+          if (data.error) {
+            throw new Error(data.error);
+          }
+          if (data.delta) {
+            suggestion += data.delta;
+          }
         }
       }
       suggestion = suggestion

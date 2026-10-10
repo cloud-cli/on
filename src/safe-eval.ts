@@ -1,10 +1,10 @@
-import * as acorn from 'acorn';
-import FS from 'node:fs';
-import Path from 'node:path';
-import { debug } from './debug.js';
+import * as acorn from "acorn";
+import FS from "node:fs";
+import Path from "node:path";
+import { debug } from "./debug.js";
 
 export const BUILTIN_HELPERS: Record<string, any> = {
-  String: (val: any) => String(val ?? ''),
+  String: (val: any) => String(val ?? ""),
   Number: (val: any) => Number(val),
   Boolean: (val: any) => Boolean(val),
   JSON: {
@@ -18,13 +18,14 @@ export function workspaceFiles(workingDir: string) {
   const root = Path.resolve(workingDir);
   const resolve = (...parts: string[]) => {
     const target = Path.resolve(root, ...parts);
-    if (target !== root && !target.startsWith(`${root}${Path.sep}`))
-      throw new Error('Workspace file path escapes working directory');
+    if (target !== root && !target.startsWith(`${root}${Path.sep}`)) {
+      throw new Error("Workspace file path escapes working directory");
+    }
     return target;
   };
   return {
     exists: (path: string) => FS.existsSync(resolve(path)),
-    readFile: (path: string) => FS.readFileSync(resolve(path), 'utf8'),
+    readFile: (path: string) => FS.readFileSync(resolve(path), "utf8"),
     join: (...paths: string[]) => resolve(...paths),
   };
 }
@@ -37,12 +38,12 @@ export class SafeExpressionEvaluator {
    * - Strings WITH `${` are evaluated strictly as ES Template Literals.
    */
   static async evaluateValue(val: any, context: Record<string, any> = {}): Promise<any> {
-    if (typeof val !== 'string') {
+    if (typeof val !== "string") {
       return val;
     }
 
     // 1. Literal Passthrough: String does not contain `${`
-    if (!val.includes('${')) {
+    if (!val.includes("${")) {
       return val;
     }
 
@@ -57,14 +58,14 @@ export class SafeExpressionEvaluator {
    * Throws an explicit AST Parse Error on invalid syntax (fails fast and loud).
    */
   static async evaluateConditions(conditions: string | string[], context: Record<string, any> = {}): Promise<boolean> {
-    if (typeof conditions === 'string') {
+    if (typeof conditions === "string") {
       conditions = [conditions];
     }
 
     for (const c of conditions) {
       const result = await this.evaluateExpression(c, context);
 
-      debug('condition', result, c, context);
+      debug("condition", result, c, context);
 
       if (result) {
         return true;
@@ -78,7 +79,7 @@ export class SafeExpressionEvaluator {
    * Evaluates direct JS code (Used for `eval:` steps or internal expression resolution).
    */
   static async evaluateExpression(code: string, context: Record<string, any> = {}): Promise<any> {
-    if (!code || typeof code !== 'string') {
+    if (!code || typeof code !== "string") {
       return code;
     }
 
@@ -103,24 +104,30 @@ export class SafeExpressionEvaluator {
   private static async evalNodeAsync(node: any, ctx: Record<string, any>): Promise<any> {
     switch (node.type) {
       // Primitive Literals: 123, "hello", true, null
-      case 'Literal':
+      case "Literal":
         return node.value;
 
       // Variables / Identifiers: inputs, steps, String
-      case 'Identifier':
-        if (node.name in ctx) return ctx[node.name];
-        if (node.name in BUILTIN_HELPERS) return BUILTIN_HELPERS[node.name];
+      case "Identifier":
+        if (node.name in ctx) {
+          return ctx[node.name];
+        }
+        if (node.name in BUILTIN_HELPERS) {
+          return BUILTIN_HELPERS[node.name];
+        }
         return undefined;
 
       // Property Access: inputs.branch or secrets["TOKEN"]
-      case 'MemberExpression': {
+      case "MemberExpression": {
         const object = await this.evalNodeAsync(node.object, ctx);
-        if (object == null) return undefined;
+        if (object == null) {
+          return undefined;
+        }
 
         const property = node.computed ? await this.evalNodeAsync(node.property, ctx) : node.property.name;
 
         // SECURITY GUARD: Block Prototype Pollution Escapes
-        if (['constructor', '__proto__', 'prototype'].includes(property)) {
+        if (["constructor", "__proto__", "prototype"].includes(property)) {
           throw new Error(`Security Guard Violation: Access to '${property}' is blocked.`);
         }
 
@@ -128,36 +135,36 @@ export class SafeExpressionEvaluator {
       }
 
       // Function & Method Calls: slack_notify(...) or url.replace(...)
-      case 'CallExpression': {
+      case "CallExpression": {
         let fn: Function | undefined;
         let targetObj: any = null;
 
-        if (node.callee.type === 'MemberExpression') {
+        if (node.callee.type === "MemberExpression") {
           targetObj = await this.evalNodeAsync(node.callee.object, ctx);
           const prop = node.callee.computed
             ? await this.evalNodeAsync(node.callee.property, ctx)
             : node.callee.property.name;
 
-          if (['constructor', '__proto__', 'prototype'].includes(prop)) {
+          if (["constructor", "__proto__", "prototype"].includes(prop)) {
             throw new Error(`Security Guard Violation: Invoking method '${prop}' is blocked.`);
           }
 
-          if (targetObj != null && typeof targetObj[prop] === 'function') {
+          if (targetObj != null && typeof targetObj[prop] === "function") {
             fn = targetObj[prop];
           } else {
             throw new Error(`Property '${prop}' is not a callable function on target object.`);
           }
-        } else if (node.callee.type === 'Identifier') {
+        } else if (node.callee.type === "Identifier") {
           const fnName = node.callee.name;
           fn = ctx[fnName] ?? BUILTIN_HELPERS[fnName];
 
-          if (!fn || typeof fn !== 'function') {
+          if (!fn || typeof fn !== "function") {
             throw new Error(`Unknown function helper '${fnName}'.`);
           }
         }
 
         if (!fn) {
-          throw new Error('Invalid function invocation target.');
+          throw new Error("Invalid function invocation target.");
         }
 
         const args = await Promise.all(node.arguments.map((arg: any) => this.evalNodeAsync(arg, ctx)));
@@ -166,32 +173,32 @@ export class SafeExpressionEvaluator {
       }
 
       // Binary Operators: a === b, x + y, p > q
-      case 'BinaryExpression': {
+      case "BinaryExpression": {
         const left = await this.evalNodeAsync(node.left, ctx);
         const right = await this.evalNodeAsync(node.right, ctx);
 
         switch (node.operator) {
-          case '===':
-          case '==':
+          case "===":
+          case "==":
             return left == right;
-          case '!==':
-          case '!=':
+          case "!==":
+          case "!=":
             return left != right;
-          case '>':
+          case ">":
             return left > right;
-          case '<':
+          case "<":
             return left < right;
-          case '>=':
+          case ">=":
             return left >= right;
-          case '<=':
+          case "<=":
             return left <= right;
-          case '+':
+          case "+":
             return left + right;
-          case '-':
+          case "-":
             return left - right;
-          case '*':
+          case "*":
             return left * right;
-          case '/':
+          case "/":
             return left / right;
           default:
             throw new Error(`Unsupported binary operator: ${node.operator}`);
@@ -199,52 +206,58 @@ export class SafeExpressionEvaluator {
       }
 
       // Logical Operators: a && b, x || y
-      case 'LogicalExpression': {
+      case "LogicalExpression": {
         const left = await this.evalNodeAsync(node.left, ctx);
-        if (node.operator === '&&') {
+        if (node.operator === "&&") {
           return left ? await this.evalNodeAsync(node.right, ctx) : left;
         }
-        if (node.operator === '||') {
+        if (node.operator === "||") {
           return left ? left : await this.evalNodeAsync(node.right, ctx);
         }
         throw new Error(`Unsupported logical operator: ${node.operator}`);
       }
 
       // Unary Operators: !x, -y
-      case 'UnaryExpression': {
+      case "UnaryExpression": {
         const argument = await this.evalNodeAsync(node.argument, ctx);
-        if (node.operator === '!') return !argument;
-        if (node.operator === '-') return -argument;
-        if (node.operator === '+') return +argument;
+        if (node.operator === "!") {
+          return !argument;
+        }
+        if (node.operator === "-") {
+          return -argument;
+        }
+        if (node.operator === "+") {
+          return +argument;
+        }
         throw new Error(`Unsupported unary operator: ${node.operator}`);
       }
 
       // Template Strings: `node:${matrix.version}-alpine`
-      case 'TemplateLiteral': {
+      case "TemplateLiteral": {
         const quasis = node.quasis.map((q: any) => q.value.cooked);
         const expressions = await Promise.all(node.expressions.map((e: any) => this.evalNodeAsync(e, ctx)));
 
-        let result = '';
+        let result = "";
         for (let i = 0; i < quasis.length; i++) {
           result += quasis[i];
           if (i < expressions.length) {
-            result += expressions[i] ?? '';
+            result += expressions[i] ?? "";
           }
         }
         return result;
       }
 
       // Array Literals: [1, 2, "three"]
-      case 'ArrayExpression': {
+      case "ArrayExpression": {
         return Promise.all(node.elements.map((elem: any) => this.evalNodeAsync(elem, ctx)));
       }
 
       // Object Literals: { a: 1, b: "hello" }
-      case 'ObjectExpression': {
+      case "ObjectExpression": {
         const obj: Record<string, any> = {};
         for (const prop of node.properties) {
-          if (prop.type === 'Property') {
-            const key = prop.key.type === 'Identifier' ? prop.key.name : await this.evalNodeAsync(prop.key, ctx);
+          if (prop.type === "Property") {
+            const key = prop.key.type === "Identifier" ? prop.key.name : await this.evalNodeAsync(prop.key, ctx);
             obj[key] = await this.evalNodeAsync(prop.value, ctx);
           }
         }
@@ -252,12 +265,12 @@ export class SafeExpressionEvaluator {
       }
 
       // Optional Chaining: inputs?.repo
-      case 'ChainExpression': {
+      case "ChainExpression": {
         return this.evalNodeAsync(node.expression, ctx);
       }
 
       // Ternary operator
-      case 'ConditionalExpression': {
+      case "ConditionalExpression": {
         const test = await this.evalNodeAsync(node.test, ctx);
         return test ? await this.evalNodeAsync(node.consequent, ctx) : await this.evalNodeAsync(node.alternate, ctx);
       }
