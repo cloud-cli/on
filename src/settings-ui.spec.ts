@@ -129,5 +129,6 @@ describe("settings UI", () => {
     expect(settingsSetup).toContain("/update");
     expect(settingsSetup).toContain("JSON.stringify({ version })");
     expect(settingsSetup).toContain("updatingRunnerId.value");
+    expect(settingsSetup).toContain("isRunnerUpdateDisabled");
   });
 });

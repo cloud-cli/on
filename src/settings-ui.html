@@ -286,7 +286,7 @@
                         <button
                           type="button"
                           on-click="updateRunner(runner)"
-                          bind-disabled="Boolean(updatingRunnerId) || !pinnedVersion.trim() || runner.status !== 'online' || runner.activeJobs > 0 || runner.updateStatus === 'pending'"
+                          bind-disabled="isRunnerUpdateDisabled(runner)"
                           class="mr-2 rounded-lg border border-flow-primary/60 px-3 py-1.5 text-flow-primary disabled:opacity-50"
                         >
                           {{ updatingRunnerId === runner.id ? 'Updating…' : 'Update' }}

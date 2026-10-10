@@ -219,6 +219,12 @@ export default function () {
       updatingRunnerId.value = "";
     }
   };
+  const isRunnerUpdateDisabled = (runner) =>
+    Boolean(updatingRunnerId.value) ||
+    !pinnedVersion.value.trim() ||
+    runner.status !== "online" ||
+    runner.activeJobs > 0 ||
+    runner.updateStatus === "pending";
   const loadUsers = async () => {
     try {
       users.value = (await api("/api/users")).users;
@@ -410,6 +416,7 @@ export default function () {
     updatingRunnerId,
     setPinnedVersion,
     updateRunner,
+    isRunnerUpdateDisabled,
     users,
     usersForbidden,
     usersLoaded,
