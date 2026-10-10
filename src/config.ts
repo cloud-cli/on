@@ -19,11 +19,13 @@ export async function loadConfig(values): Promise<RunnerConfig | null> {
 
   const config = resolveConfig(configFromFile, configFromCli);
 
-  if (!config.database) {
+  const command = values.command;
+  const apiOnly = command === "start-workers";
+  if (!apiOnly && !config.database) {
     console.error("DATABASE_URL is required. Set DATABASE_URL or pass --database.");
     return null;
   }
-  process.env.DATABASE_URL = config.database;
+  if (config.database) process.env.DATABASE_URL = config.database;
 
   return config;
 }
@@ -39,6 +41,10 @@ export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: U
     port,
     adminToken: configFromFile.adminToken ?? _.RUNNER_ADMIN_SECRET ?? "",
     workerToken: configFromFile.workerToken ?? _.RUNNER_WORKER_SECRET ?? "",
+    runnerId: configFromFile.runnerId ?? _.RUNNER_ID,
+    runnerCredential: configFromFile.runnerCredential ?? _.RUNNER_CREDENTIAL,
+    runnerCredentialPath: configFromFile.runnerCredentialPath ?? _.RUNNER_CREDENTIAL_FILE,
+    runnerEnrollCode: configFromFile.runnerEnrollCode ?? _.RUNNER_ENROLLMENT_CODE,
     database: configFromFile.database ?? configFromCli.database ?? _.DATABASE_URL ?? "",
     workers: Number(configFromFile.workers ?? configFromCli.workers ?? _.RUNNER_WORKERS ?? 5),
     serverUrl: configFromFile.serverUrl ?? _.RUNNER_SERVER_URL ?? `http://127.0.0.1:${port}`,
@@ -79,7 +85,8 @@ Usage:
 Commands:
     start-server    Runs Webhook Ingress Server only (API Gateway mode)
     start-scheduler Runs cron and solar workflow triggers
-    start-workers   Runs event-driven workers (Scalable Worker mode)
+    start-workers   Runs API-only worker (no DATABASE_URL required)
+    start-workers-legacy Runs the legacy database-connected worker
     promote-admin   Promote an existing OIDC user (requires --subject)
 
 Options:
@@ -94,7 +101,9 @@ Options:
   `);
 }
 
-export async function loadFromArgs(): Promise<{ config: RunnerConfig | null; command: string; subject?: string }> {
+export async function loadFromArgs(
+  defaultCommand = "start",
+): Promise<{ config: RunnerConfig | null; command: string; subject?: string }> {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
@@ -112,11 +121,12 @@ export async function loadFromArgs(): Promise<{ config: RunnerConfig | null; com
     process.exit(0);
   }
 
-  const config = await loadConfig(values);
+  const command = positionals[0] || defaultCommand;
+  const config = await loadConfig({ ...values, command });
 
   return {
     config,
-    command: positionals[0] || "start",
+    command,
     subject: values.subject,
   };
 }

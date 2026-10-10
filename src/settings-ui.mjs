@@ -8,6 +8,12 @@ export default function () {
   const workers = ref([]);
   const workersForbidden = ref(false);
   const workersLoaded = ref(false);
+  const runners = ref([]);
+  const runnersForbidden = ref(false);
+  const runnersLoaded = ref(false);
+  const enrollmentCode = ref("");
+  const enrollmentExpiresAt = ref("");
+  const runnerMessage = ref("");
   const users = ref([]);
   const usersForbidden = ref(false);
   const usersLoaded = ref(false);
@@ -150,6 +156,44 @@ export default function () {
       throw reason;
     } finally {
       workersLoaded.value = true;
+    }
+  };
+  const loadRunners = async () => {
+    try {
+      runners.value = (await api("/api/v1/runners")).runners;
+      runnersForbidden.value = false;
+    } catch (reason) {
+      if (reason.status === 403) {
+        runnersForbidden.value = true;
+        return;
+      }
+      throw reason;
+    } finally {
+      runnersLoaded.value = true;
+    }
+  };
+  const createEnrollment = async () => {
+    enrollmentCode.value = "";
+    runnerMessage.value = "";
+    try {
+      const result = await api("/api/v1/runner-enrollments", {
+        method: "POST",
+        body: JSON.stringify({ scope: "shared" }),
+      });
+      enrollmentCode.value = result.code;
+      enrollmentExpiresAt.value = result.expiresAt;
+    } catch (reason) {
+      runnerMessage.value = reason.message;
+    }
+  };
+  const revokeRunner = async (runner) => {
+    if (!confirm(`Revoke runner ${runner.name}?`)) return;
+    try {
+      await api(`/api/v1/runners/${encodeURIComponent(runner.id)}`, { method: "DELETE" });
+      runnerMessage.value = `Runner ${runner.name} revoked.`;
+      await loadRunners();
+    } catch (reason) {
+      runnerMessage.value = reason.message;
     }
   };
   const loadUsers = async () => {
@@ -302,6 +346,9 @@ export default function () {
     loadWorkers().catch((reason) => {
       error.value = reason.message;
     });
+    loadRunners().catch((reason) => {
+      error.value = reason.message;
+    });
     loadUsers().catch((reason) => {
       error.value = reason.message;
     });
@@ -327,6 +374,15 @@ export default function () {
     workers,
     workersForbidden,
     workersLoaded,
+    runners,
+    runnersForbidden,
+    runnersLoaded,
+    enrollmentCode,
+    enrollmentExpiresAt,
+    runnerMessage,
+    loadRunners,
+    createEnrollment,
+    revokeRunner,
     users,
     usersForbidden,
     usersLoaded,

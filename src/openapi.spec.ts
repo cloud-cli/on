@@ -28,4 +28,16 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api/secrets"].get.security).toEqual([{ oidcSessionCookie: [] }]);
     expect(spec.paths["/api/ai/workflow-help"].post.security).toEqual([{ oidcSessionCookie: [] }]);
   });
+
+  it("documents runner enrollment, inventory, team grants, and lease endpoints", () => {
+    expect(spec.paths["/api/v1/runner-enrollments"].post.security).toEqual([{ oidcSessionCookie: [] }]);
+    expect(spec.paths["/api/v1/runners/enroll"].post.security).toEqual([]);
+    expect(spec.paths["/api/v1/runners"].get.security).toEqual([{ oidcAdminSession: [] }]);
+    expect(spec.paths["/api/v1/runners/{runnerId}"].delete).toBeDefined();
+    expect(spec.paths["/api/v1/teams/{teamId}/runners/{runnerId}"]).toHaveProperty("post");
+    expect(spec.paths["/api/v1/runner/heartbeat"].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(spec.paths["/api/v1/runner/events"].get.responses["200"].content).toHaveProperty("text/event-stream");
+    expect(spec.paths["/api/v1/runner/leases"].post.responses).toHaveProperty("204");
+    expect(spec.paths["/api/v1/runner/leases/{leaseId}/{action}"]).toHaveProperty("put");
+  });
 });

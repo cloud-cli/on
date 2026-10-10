@@ -80,6 +80,62 @@ describe("QueueManager.claimNextJob", () => {
   });
 });
 
+describe("API runner lease fencing", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("claims only within granted teams and the runner concurrency ceiling", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 8 }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await new QueueManager("runner-1").claimNextForRunner("runner-1", ["linux"], ["team-a"], "lease-1", "hash", 90, 2);
+
+    const query = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(query.s).toContain("team_id IN (SELECT value FROM json_each(?))");
+    expect(query.s).toContain("claiming_runner.revoked_at IS NULL");
+    expect(query.s).toContain("active.worker_id = ?");
+    expect(query.s).toContain("lease_fenced = 0");
+    expect(query.d).toEqual([
+      "runner-1",
+      "lease-1",
+      "hash",
+      "+90 seconds",
+      '["team-a"]',
+      "runner-1",
+      "runner-1",
+      2,
+      '["linux"]',
+    ]);
+  });
+
+  it("fences active jobs instead of making them immediately claimable on revocation", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => [{ jobId: 8, teamId: "team-a", leaseId: "lease-1" }] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(new QueueManager("runner-1").revokeRunnerLeases("runner-1")).resolves.toEqual([
+      { jobId: 8, teamId: "team-a", leaseId: "lease-1" },
+    ]);
+    const query = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(query.s).toContain("status = 'cancelled', lease_fenced = 1");
+    expect(query.s).not.toContain("status = 'pending'");
+    expect(query.s).toContain("RETURNING id AS jobId");
+  });
+
+  it("eventually frees capacity for a cancelled job whose runner lease expired", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ changes: 1 }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await new QueueManager("runner-1").clearStaleJobs();
+
+    const cancellationCleanup = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(cancellationCleanup.s).toContain("SET lease_completed = 1");
+    expect(cancellationCleanup.s).toContain("status = 'cancelled' AND lease_fenced = 0");
+    const staleCleanup = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(staleCleanup.s).toContain("status = 'cancelled' AND lease_fenced = 1");
+  });
+});
+
 describe("QueueManager.restartJob", () => {
   afterEach(() => vi.unstubAllGlobals());
 

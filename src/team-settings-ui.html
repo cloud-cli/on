@@ -110,6 +110,77 @@
               </li></template
             >
           </ul>
+          <section class="mt-8 border-t border-flow-border pt-5" aria-labelledby="team-runners-title">
+            <h2 id="team-runners-title" class="text-lg font-semibold">Runners</h2>
+            <p class="mt-1 text-sm text-flow-muted">Team-scoped runners and shared runners available to this team.</p>
+            <button
+              type="button"
+              on-click="createRunnerEnrollment()"
+              class-hidden="!isAdmin"
+              class="mt-3 rounded-lg border border-flow-border px-4 py-2 text-sm"
+            >
+              Create team runner enrollment code
+            </button>
+            <template if="enrollmentCode"
+              ><p class="mt-2 break-all rounded-lg bg-flow-panel p-3 text-sm">
+                One-time enrollment code: <code>{{ enrollmentCode }}</code>
+                <span class="mt-1 block text-xs text-flow-muted"
+                  >Expires {{ enrollmentExpiresAt }}. Copy it now; it cannot be viewed again.</span
+                >
+              </p></template
+            >
+            <h3 class="mt-5 text-xs font-semibold uppercase tracking-wider text-flow-muted">Team-scoped runners</h3>
+            <ul class="mt-2 space-y-2">
+              <template for="runner of teamRunners"
+                ><li class="rounded-lg border border-flow-border px-3 py-2 text-sm">
+                  {{ runner.name }}
+                  <span class="text-xs text-flow-muted"
+                    >· {{ runner.status }} · {{ runner.activeJobs }} / {{ runner.concurrency }} · {{ runner.version
+                    }}</span
+                  >
+                </li></template
+              >
+            </ul>
+            <h3 class="mt-5 text-xs font-semibold uppercase tracking-wider text-flow-muted">Active shared runners</h3>
+            <ul class="mt-2 space-y-2">
+              <template for="runner of sharedRunners"
+                ><li class="flex items-center justify-between rounded-lg border border-flow-border px-3 py-2 text-sm">
+                  <span
+                    >{{ runner.name }}
+                    <span class="text-xs text-flow-muted"
+                      >· {{ runner.status }} · {{ runner.activeJobs }} / {{ runner.concurrency }}</span
+                    ></span
+                  >
+                  <button
+                    type="button"
+                    on-click="setSharedRunner(runner, false)"
+                    class-hidden="!isAdmin"
+                    class="text-xs underline"
+                  >
+                    Deactivate
+                  </button>
+                </li></template
+              >
+            </ul>
+            <h3 class="mt-5 text-xs font-semibold uppercase tracking-wider text-flow-muted">
+              Available shared runners
+            </h3>
+            <ul class="mt-2 space-y-2">
+              <template for="runner of availableRunners"
+                ><li class="flex items-center justify-between rounded-lg border border-flow-border px-3 py-2 text-sm">
+                  {{ runner.name }}
+                  <button
+                    type="button"
+                    on-click="setSharedRunner(runner, true)"
+                    class-hidden="!isAdmin"
+                    class="text-xs underline"
+                  >
+                    Activate
+                  </button>
+                </li></template
+              >
+            </ul>
+          </section>
         </section>
         <p class="text-sm text-rose-700" role="alert" class-hidden="!error">{{ error }}</p>
       </main>

@@ -16,7 +16,8 @@
     { "name": "secrets" },
     { "name": "events" },
     { "name": "webhooks" },
-    { "name": "notifications" }
+    { "name": "notifications" },
+    { "name": "runners" }
   ],
   "paths": {
     "/api": {
@@ -29,6 +30,192 @@
             "description": "OpenAPI JSON document",
             "content": { "application/json": { "schema": { "type": "object" } } }
           }
+        }
+      }
+    },
+    "/api/v1/runner-enrollments": {
+      "post": {
+        "tags": ["runners"],
+        "summary": "Create a one-time runner enrollment code",
+        "security": [{ "oidcSessionCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["scope"],
+                "properties": {
+                  "scope": { "type": "string", "enum": ["shared", "team"] },
+                  "teamId": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "One-time enrollment code" }, "403": { "description": "Forbidden" } }
+      }
+    },
+    "/api/v1/runners/enroll": {
+      "post": {
+        "tags": ["runners"],
+        "summary": "Exchange a one-time code for a runner credential",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["code", "name"],
+                "properties": {
+                  "code": { "type": "string" },
+                  "name": { "type": "string" },
+                  "runtime": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Runner identity and credential" },
+          "400": { "description": "Invalid enrollment code" }
+        }
+      }
+    },
+    "/api/v1/runner/heartbeat": {
+      "post": {
+        "tags": ["runners"],
+        "summary": "Report runner health and capacity",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "204": { "description": "Heartbeat accepted" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/api/v1/runner/events": {
+      "get": {
+        "tags": ["runners"],
+        "summary": "Subscribe to authenticated runner events",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Authenticated SSE stream",
+            "content": { "text/event-stream": { "schema": { "type": "string" } } }
+          },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/runner/leases": {
+      "post": {
+        "tags": ["runners"],
+        "summary": "Claim the next eligible job",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Lease, job, and immutable workflow" },
+          "204": { "description": "No eligible job" }
+        }
+      }
+    },
+    "/api/v1/runners": {
+      "get": {
+        "tags": ["runners"],
+        "summary": "List registered runners (server administrator)",
+        "security": [{ "oidcAdminSession": [] }],
+        "responses": {
+          "200": { "description": "Runner inventory" },
+          "403": { "description": "Administrator required" }
+        }
+      }
+    },
+    "/api/v1/runners/{runnerId}": {
+      "delete": {
+        "tags": ["runners"],
+        "summary": "Revoke a runner and fence active jobs",
+        "security": [{ "oidcAdminSession": [] }],
+        "parameters": [{ "name": "runnerId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "204": { "description": "Runner revoked" }, "404": { "description": "Runner not found" } }
+      }
+    },
+    "/api/v1/teams/{teamId}/runners": {
+      "get": {
+        "tags": ["runners"],
+        "summary": "List team, granted shared, and available shared runners",
+        "security": [{ "oidcSessionCookie": [] }],
+        "parameters": [{ "name": "teamId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Team runner inventory" },
+          "403": { "description": "Team membership required" }
+        }
+      }
+    },
+    "/api/v1/teams/{teamId}/runners/{runnerId}": {
+      "parameters": [
+        { "name": "teamId", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "runnerId", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "post": {
+        "tags": ["runners"],
+        "summary": "Grant a shared runner to this team",
+        "security": [{ "oidcSessionCookie": [] }],
+        "responses": { "204": { "description": "Runner granted" }, "403": { "description": "Team admin required" } }
+      },
+      "delete": {
+        "tags": ["runners"],
+        "summary": "Revoke a shared runner grant",
+        "security": [{ "oidcSessionCookie": [] }],
+        "responses": {
+          "204": { "description": "Grant revoked; active leases are fenced" },
+          "403": { "description": "Team admin required" }
+        }
+      }
+    },
+    "/api/v1/runner/leases/{leaseId}": {
+      "get": {
+        "tags": ["runners"],
+        "summary": "Read authoritative lease status",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "leaseId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Lease state" },
+          "409": { "description": "Lease expired, fenced, or unowned" }
+        }
+      }
+    },
+    "/api/v1/runner/leases/{leaseId}/{action}": {
+      "parameters": [
+        { "name": "leaseId", "in": "path", "required": true, "schema": { "type": "string" } },
+        {
+          "name": "action",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["renew", "workflow", "secrets", "report", "logs", "files", "complete", "release"]
+          }
+        }
+      ],
+      "get": {
+        "tags": ["runners"],
+        "summary": "Read a lease-scoped workflow or secret resource",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Lease resource" }, "409": { "description": "Lease expired or fenced" } }
+      },
+      "post": {
+        "tags": ["runners"],
+        "summary": "Renew, upload logs/files, complete, or release a lease",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "204": { "description": "Operation accepted" },
+          "409": { "description": "Lease expired or fenced" }
+        }
+      },
+      "put": {
+        "tags": ["runners"],
+        "summary": "Submit a fenced job report",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "204": { "description": "Report accepted" },
+          "409": { "description": "Lease expired or fenced" }
         }
       }
     },

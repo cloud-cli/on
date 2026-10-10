@@ -17,6 +17,12 @@ async function main() {
     return;
   }
 
+  if (command === "start-workers") {
+    const { startApiWorkers } = await import("./api-worker.js");
+    await startApiWorkers(config);
+    return;
+  }
+
   const [
     { QueueManager },
     { SecretStore },
@@ -55,7 +61,7 @@ async function main() {
       break;
     }
 
-    case "start-workers": {
+    case "start-workers-legacy": {
       console.log(`⚙️ Starting worker scheduler with ${config.workers} concurrent slot(s)...`);
       await queue.init();
       startWorkers(config.workers, queue, secrets, config);

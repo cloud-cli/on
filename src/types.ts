@@ -1,4 +1,4 @@
-import { QueueManager } from "./queue.js";
+import type { QueueManager } from "./queue.js";
 import { SecretStore } from "./secrets.js";
 
 // types can be grouped in 4 different layers
@@ -14,6 +14,11 @@ export interface RunnerConfig {
   adminToken: string;
   /** Shared worker credential for job lifecycle and secret retrieval APIs */
   workerToken: string;
+  /** Enrolled API runner identity and credential. */
+  runnerId?: string;
+  runnerCredential?: string;
+  runnerCredentialPath?: string;
+  runnerEnrollCode?: string;
   /** SQLite Database connection URL / path */
   database: string;
   /** Maximum number of jobs executed concurrently on this node */
@@ -200,6 +205,11 @@ export interface JobRecord {
   concurrency_key: string | null;
   status: JobStatus;
   worker_id: string | null;
+  team_id?: string;
+  lease_id?: string | null;
+  lease_token_hash?: string | null;
+  lease_expires_at?: string | null;
+  lease_completed?: number;
   payload: string; // JSON string of dynamic trigger inputs only
   created_at: string;
 }
@@ -268,11 +278,24 @@ export interface WorkflowExecutionReport {
 export interface Processable {
   workerId: string;
   job: JobRecord;
-  queue: QueueManager;
+  queue: WorkerExecutionQueue;
   secrets: SecretStore;
   config: RunnerConfig;
   driver: ExecutionDriver;
   workflow?: WorkflowDefinition;
+}
+
+export interface WorkerExecutionQueue {
+  saveReport(jobId: string | number, report: WorkflowExecutionReport): Promise<void>;
+  completeJob(jobId: string | number, status: JobStatus, report: WorkflowExecutionReport): Promise<void>;
+  saveStepLog(jobId: string | number, stepId: string, content: string): Promise<void>;
+  saveStoredFiles(
+    kind: "artifact" | "cache",
+    ownerKey: string,
+    files: Array<{ path: string; content: string }>,
+  ): Promise<void>;
+  getStoredFiles(kind: "artifact" | "cache", ownerKey: string): Promise<Array<{ path: string; content: string }>>;
+  isCancelled(jobId: string | number): Promise<boolean>;
 }
 
 export interface ContextualizedProcessable extends Processable {

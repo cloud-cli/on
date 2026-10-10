@@ -4,6 +4,18 @@ import { timestampLogLines } from "./timestamped-log.js";
 import { FileStorage } from "./file-storage.js";
 import { ensureTeamDataSchema } from "./team-data-schema.js";
 
+const CURRENT_RUNNER_AUTHORIZATION = `EXISTS (
+  SELECT 1 FROM runners AS authorized_runner
+  WHERE authorized_runner.id = jobs.worker_id AND authorized_runner.revoked_at IS NULL
+    AND (
+      (authorized_runner.scope = 'team' AND authorized_runner.team_id = jobs.team_id)
+      OR (authorized_runner.scope = 'shared' AND EXISTS (
+        SELECT 1 FROM runner_team_grants AS authorized_grant
+        WHERE authorized_grant.runner_id = authorized_runner.id AND authorized_grant.team_id = jobs.team_id
+      ))
+    )
+)`;
+
 export class QueueManager {
   private readonly fileStorage = new FileStorage();
 
@@ -84,9 +96,73 @@ export class QueueManager {
     return result ? (result as JobRecord) : null;
   }
 
+  /** Atomically claims an API job only for teams granted to the authenticated runner. */
+  async claimNextForRunner(
+    runnerId: string,
+    workerTags: string[],
+    teamIds: string[],
+    leaseId: string,
+    leaseTokenHash: string,
+    leaseSeconds: number,
+    maxActiveJobs: number,
+  ): Promise<JobRecord | null> {
+    if (!teamIds.length) return null;
+    const result = await db.get(
+      `UPDATE jobs
+       SET status = 'running', worker_id = ?, started_at = CURRENT_TIMESTAMP,
+           lease_id = ?, lease_token_hash = ?, lease_expires_at = datetime('now', ?), lease_fenced = 0, lease_completed = 0
+       WHERE id = (
+          SELECT id FROM jobs
+          WHERE status = 'pending'
+            AND team_id IN (SELECT value FROM json_each(?))
+            AND EXISTS (
+              SELECT 1 FROM runners AS claiming_runner
+              WHERE claiming_runner.id = ? AND claiming_runner.revoked_at IS NULL
+                AND ((claiming_runner.scope = 'team' AND claiming_runner.team_id = jobs.team_id)
+                  OR (claiming_runner.scope = 'shared' AND EXISTS (
+                    SELECT 1 FROM runner_team_grants AS claiming_grant
+                    WHERE claiming_grant.runner_id = claiming_runner.id AND claiming_grant.team_id = jobs.team_id
+                  )))
+            )
+            AND (SELECT COUNT(*) FROM jobs active WHERE active.worker_id = ? AND
+              (active.status = 'running' OR (active.status = 'cancelled' AND active.lease_completed = 0))) < ?
+           AND NOT EXISTS (
+             SELECT 1 FROM json_each(COALESCE(jobs.required_tags, '[]')) AS required_tag
+             WHERE required_tag.value NOT IN (SELECT value FROM json_each(?))
+           )
+         ORDER BY created_at ASC
+         LIMIT 1
+       )
+       RETURNING *`,
+      [
+        runnerId,
+        leaseId,
+        leaseTokenHash,
+        `+${leaseSeconds} seconds`,
+        JSON.stringify(teamIds),
+        runnerId,
+        runnerId,
+        maxActiveJobs,
+        JSON.stringify(workerTags),
+      ],
+    );
+    return result ? (result as JobRecord) : null;
+  }
+
+  async leaseIsCurrent(jobId: string | number, runnerId: string, leaseId: string, leaseTokenHash: string) {
+    const lease = await db.get(
+      `SELECT 1 AS valid FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ?
+       AND lease_token_hash = ? AND status = 'running' AND lease_fenced = 0 AND lease_completed = 0
+       AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [jobId, runnerId, leaseId, leaseTokenHash],
+    );
+    return Boolean(lease);
+  }
+
   async releaseJob(jobId: string | number): Promise<void> {
     await db.run(
-      `UPDATE jobs SET status = 'pending', worker_id = NULL, started_at = NULL WHERE id = ? AND status = 'running';`,
+      `UPDATE jobs SET status = 'pending', worker_id = NULL, started_at = NULL, lease_id = NULL,
+       lease_token_hash = NULL, lease_expires_at = NULL WHERE id = ? AND status = 'running';`,
       [jobId],
     );
   }
@@ -102,10 +178,41 @@ export class QueueManager {
     await db.run(
       `UPDATE jobs
        SET status = CASE WHEN status = 'cancelled' THEN 'cancelled' ELSE ? END,
-           report = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP
+           report = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP,
+           lease_id = NULL, lease_token_hash = NULL, lease_expires_at = NULL, lease_completed = 1
        WHERE id = ?;`,
       [status, JSON.stringify(report), jobId],
     );
+  }
+
+  async completeJobForRunner(
+    jobId: string | number,
+    runnerId: string,
+    leaseId: string,
+    leaseTokenHash: string,
+    status: JobStatus,
+    report: WorkflowExecutionReport,
+  ): Promise<boolean> {
+    const result = await db.run(
+      `UPDATE jobs SET status = CASE WHEN status = 'cancelled' THEN 'cancelled' ELSE ? END,
+       report = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP, lease_completed = 1
+       WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ? AND status IN ('running', 'cancelled')
+         AND lease_fenced = 0 AND lease_completed = 0 AND julianday(lease_expires_at) > julianday('now')
+         AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [status, JSON.stringify(report), jobId, runnerId, leaseId, leaseTokenHash],
+    );
+    if (Number(result?.changes || 0) === 1) return true;
+    const completed = await db.get(
+      `SELECT status, report FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
+        AND lease_fenced = 0 AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [jobId, runnerId, leaseId, leaseTokenHash],
+    );
+    if (!completed || completed.status !== status) return false;
+    try {
+      return JSON.stringify(JSON.parse(completed.report)) === JSON.stringify(report);
+    } catch {
+      return false;
+    }
   }
 
   async cancelJob(jobId: string | number): Promise<"cancelled" | "not_found" | "not_active"> {
@@ -166,9 +273,84 @@ export class QueueManager {
     return job?.status === "cancelled";
   }
 
+  async leaseState(jobId: string | number, runnerId: string, leaseId: string, leaseTokenHash: string) {
+    return db.get(
+      `SELECT status, lease_expires_at AS expiresAt FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ?
+       AND lease_token_hash = ? AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [jobId, runnerId, leaseId, leaseTokenHash],
+    );
+  }
+
+  async getLeasedJob(leaseId: string, runnerId: string, leaseTokenHash: string): Promise<JobRecord | null> {
+    return db.get(
+      `SELECT * FROM jobs WHERE lease_id = ? AND worker_id = ? AND lease_token_hash = ?
+       AND status IN ('running', 'cancelled', 'success', 'failed') AND julianday(lease_expires_at) > julianday('now')
+       AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [leaseId, runnerId, leaseTokenHash],
+    );
+  }
+
+  async renewRunnerLease(
+    leaseId: string,
+    runnerId: string,
+    leaseTokenHash: string,
+    leaseSeconds: number,
+  ): Promise<boolean> {
+    const result = await db.run(
+      `UPDATE jobs SET lease_expires_at = datetime('now', ?), updated_at = CURRENT_TIMESTAMP
+       WHERE lease_id = ? AND worker_id = ? AND lease_token_hash = ?
+         AND status = 'running' AND lease_fenced = 0 AND lease_completed = 0
+         AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [`+${leaseSeconds} seconds`, leaseId, runnerId, leaseTokenHash],
+    );
+    return Number(result?.changes || 0) === 1;
+  }
+
+  async releaseRunnerLease(leaseId: string, runnerId: string, leaseTokenHash: string): Promise<boolean> {
+    const result = await db.run(
+      `UPDATE jobs SET status = 'pending', worker_id = NULL, lease_id = NULL, lease_token_hash = NULL,
+       lease_expires_at = NULL, started_at = NULL, lease_completed = 0, updated_at = CURRENT_TIMESTAMP
+       WHERE lease_id = ? AND worker_id = ? AND lease_token_hash = ? AND status = 'running'
+       AND lease_fenced = 0 AND lease_completed = 0
+        AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [leaseId, runnerId, leaseTokenHash],
+    );
+    return Number(result?.changes || 0) === 1;
+  }
+
+  async revokeRunnerLeasesForTeam(
+    runnerId: string,
+    teamId: string,
+  ): Promise<Array<{ jobId: number; teamId: string; leaseId: string }>> {
+    return db.all(
+      `UPDATE jobs SET status = 'cancelled', lease_fenced = 1, updated_at = CURRENT_TIMESTAMP
+       WHERE worker_id = ? AND team_id = ? AND status IN ('running', 'cancelled') AND lease_completed = 0 AND lease_id IS NOT NULL
+       RETURNING id AS jobId, team_id AS teamId, lease_id AS leaseId`,
+      [runnerId, teamId],
+    );
+  }
+
+  async revokeRunnerLeases(runnerId: string): Promise<Array<{ jobId: number; teamId: string; leaseId: string }>> {
+    return db.all(
+      `UPDATE jobs SET status = 'cancelled', lease_fenced = 1, updated_at = CURRENT_TIMESTAMP
+       WHERE worker_id = ? AND status IN ('running', 'cancelled') AND lease_completed = 0 AND lease_id IS NOT NULL
+       RETURNING id AS jobId, team_id AS teamId, lease_id AS leaseId`,
+      [runnerId],
+    );
+  }
+
   async clearStaleJobs() {
+    await db.run(
+      `UPDATE jobs SET lease_completed = 1, updated_at = CURRENT_TIMESTAMP
+       WHERE status = 'cancelled' AND lease_fenced = 0 AND lease_completed = 0 AND lease_id IS NOT NULL
+         AND lease_expires_at IS NOT NULL AND julianday(lease_expires_at) <= julianday('now')`,
+    );
     return await db.run(
-      `UPDATE jobs SET status = 'pending', worker_id = NULL WHERE status = 'running' AND started_at < datetime('now', '-1 hour');`,
+      `UPDATE jobs SET status = 'pending', worker_id = NULL, lease_id = NULL, lease_token_hash = NULL,
+       lease_expires_at = NULL, lease_fenced = 0, lease_completed = 0
+       WHERE (status = 'running' AND lease_id IS NOT NULL AND (lease_expires_at IS NULL OR julianday(lease_expires_at) <= julianday('now')))
+          OR (status = 'cancelled' AND lease_fenced = 1 AND lease_expires_at IS NOT NULL AND julianday(lease_expires_at) <= julianday('now'))
+          OR (status = 'running' AND lease_id IS NULL AND started_at < datetime('now', '-1 hour'));`,
     );
   }
 
@@ -188,7 +370,12 @@ export class QueueManager {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        finished_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        finished_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        lease_id TEXT,
+        lease_token_hash TEXT,
+        lease_expires_at DATETIME,
+        lease_fenced INTEGER NOT NULL DEFAULT 0,
+        lease_completed INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS step_logs (
@@ -227,6 +414,11 @@ export class QueueManager {
         last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await db.run("ALTER TABLE jobs ADD COLUMN lease_id TEXT").catch(() => {});
+    await db.run("ALTER TABLE jobs ADD COLUMN lease_token_hash TEXT").catch(() => {});
+    await db.run("ALTER TABLE jobs ADD COLUMN lease_expires_at DATETIME").catch(() => {});
+    await db.run("ALTER TABLE jobs ADD COLUMN lease_fenced INTEGER NOT NULL DEFAULT 0").catch(() => {});
+    await db.run("ALTER TABLE jobs ADD COLUMN lease_completed INTEGER NOT NULL DEFAULT 0").catch(() => {});
   }
 
   /**
@@ -333,6 +525,22 @@ export class QueueManager {
     ]);
   }
 
+  async saveReportForRunner(
+    jobId: string | number,
+    runnerId: string,
+    leaseId: string,
+    leaseTokenHash: string,
+    report: WorkflowExecutionReport,
+  ): Promise<boolean> {
+    const result = await db.run(
+      `UPDATE jobs SET report = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND worker_id = ? AND lease_id = ?
+         AND lease_token_hash = ? AND status IN ('running', 'cancelled') AND lease_fenced = 0 AND lease_completed = 0
+         AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [JSON.stringify(report), jobId, runnerId, leaseId, leaseTokenHash],
+    );
+    return Number(result?.changes || 0) === 1;
+  }
+
   /** Save or replace the durable log snapshot for a step. */
   async saveStepLog(jobId: string | number, stepId: string, logContent: string): Promise<void> {
     await db.run(
@@ -342,6 +550,27 @@ export class QueueManager {
          created_at = CURRENT_TIMESTAMP`,
       [jobId, stepId, timestampLogLines(logContent)],
     );
+  }
+
+  async saveStepLogForRunner(
+    jobId: string | number,
+    runnerId: string,
+    leaseId: string,
+    leaseTokenHash: string,
+    stepId: string,
+    logContent: string,
+  ): Promise<boolean> {
+    const result = await db.run(
+      `INSERT INTO step_logs (job_id, step_id, log_content)
+       SELECT ?, ?, ? WHERE EXISTS (
+         SELECT 1 FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
+          AND status IN ('running', 'cancelled') AND lease_fenced = 0 AND lease_completed = 0
+           AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
+       )
+       ON CONFLICT(job_id, step_id) DO UPDATE SET log_content = excluded.log_content, created_at = CURRENT_TIMESTAMP`,
+      [jobId, stepId, timestampLogLines(logContent), jobId, runnerId, leaseId, leaseTokenHash],
+    );
+    return Number(result?.changes || 0) === 1;
   }
 
   /**
@@ -383,13 +612,60 @@ export class QueueManager {
     ]);
   }
 
+  async saveStoredFilesForRunner(
+    kind: "artifact" | "cache",
+    ownerKey: string,
+    files: Array<{ path: string; content: string }>,
+    jobId: string | number,
+    runnerId: string,
+    leaseId: string,
+    leaseTokenHash: string,
+  ): Promise<boolean> {
+    for (const file of files) {
+      const result = await db.run(
+        `INSERT INTO stored_files (kind, owner_key, file_path, content)
+         SELECT ?, ?, ?, ? WHERE EXISTS (
+           SELECT 1 FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
+           AND status = 'running' AND lease_fenced = 0 AND lease_completed = 0
+           AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
+         )
+         ON CONFLICT(kind, owner_key, file_path) DO UPDATE SET content = excluded.content, created_at = CURRENT_TIMESTAMP`,
+        [kind, ownerKey, file.path, file.content, jobId, runnerId, leaseId, leaseTokenHash],
+      );
+      if (Number(result?.changes || 0) !== 1) return false;
+    }
+    return true;
+  }
+
+  async getStoredFilesForRunner(
+    kind: "artifact" | "cache",
+    ownerKey: string,
+    jobId: string | number,
+    runnerId: string,
+    leaseId: string,
+    leaseTokenHash: string,
+  ): Promise<Array<{ path: string; content: string }>> {
+    return db.all(
+      `SELECT file_path AS path, content FROM stored_files WHERE kind = ? AND owner_key = ? AND EXISTS (
+         SELECT 1 FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
+         AND status = 'running' AND lease_fenced = 0 AND lease_completed = 0
+         AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
+       )`,
+      [kind, ownerKey, jobId, runnerId, leaseId, leaseTokenHash],
+    );
+  }
+
   async getStoredFilesForTeam(
     teamId: string,
     kind: "artifact" | "cache",
     jobId: string | number,
   ): Promise<Array<{ path: string; content: string }>> {
     if (!(await this.getJobForTeam(teamId, jobId))) return [];
-    return this.getStoredFiles(kind, String(jobId));
+    const runnerFiles = await db.all(
+      "SELECT file_path AS path, content FROM stored_files WHERE kind = ? AND owner_key = ?",
+      [kind, String(jobId)],
+    );
+    return runnerFiles.length ? runnerFiles : this.getStoredFiles(kind, String(jobId));
   }
 
   async updateWorkerPresence(worker: {

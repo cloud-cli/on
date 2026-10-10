@@ -1,13 +1,23 @@
 import type http from "node:http";
 
-export type RunnerEvent = "jobs.available" | "jobs.changed";
+export type RunnerEvent = "jobs.available" | "jobs.changed" | "lease.cancelled" | "runner.drain" | "runner.update";
 
 export class EventBroker {
-  private clients = new Map<http.ServerResponse, { heartbeat: NodeJS.Timeout; teamId?: string; worker: boolean }>();
+  private clients = new Map<
+    http.ServerResponse,
+    { heartbeat: NodeJS.Timeout; teamId?: string; worker: boolean; runnerTeamIds?: Set<string>; runnerId?: string }
+  >();
   private nextId = 1;
   private readonly maxClients = 1000;
 
-  subscribe(req: http.IncomingMessage, res: http.ServerResponse, teamId?: string, worker = false): void {
+  subscribe(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    teamId?: string,
+    worker = false,
+    runnerTeamIds?: string[],
+    runnerId?: string,
+  ): void {
     if (this.clients.size >= this.maxClients) {
       res.writeHead(503, { "Content-Type": "application/json", "Retry-After": "5" });
       res.end(JSON.stringify({ error: "Too many event stream clients" }));
@@ -23,17 +33,35 @@ export class EventBroker {
     res.write("retry: 2000\n\n");
     const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 30_000);
     heartbeat.unref();
-    this.clients.set(res, { heartbeat, teamId, worker });
-    req.once("close", () => {
+    this.clients.set(res, {
+      heartbeat,
+      teamId,
+      worker,
+      runnerTeamIds: runnerTeamIds ? new Set(runnerTeamIds) : undefined,
+      runnerId,
+    });
+    const cleanup = () => {
       clearInterval(heartbeat);
       this.clients.delete(res);
-    });
+    };
+    req.once("aborted", cleanup);
+    res.once("close", cleanup);
+  }
+
+  closeRunnerStreams(runnerId: string): void {
+    for (const [client, clientContext] of this.clients) {
+      if (clientContext.runnerId !== runnerId) continue;
+      clearInterval(clientContext.heartbeat);
+      this.clients.delete(client);
+      client.end();
+    }
   }
 
   publish(event: RunnerEvent, data: Record<string, unknown> = {}): void {
     const message = `id: ${this.nextId++}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const [client, clientContext] of this.clients) {
-      if (clientContext.worker && event !== "jobs.available") continue;
+      if (clientContext.worker && !clientContext.runnerTeamIds && event !== "jobs.available") continue;
+      if (clientContext.runnerTeamIds && data.teamId && !clientContext.runnerTeamIds.has(String(data.teamId))) continue;
       if (!clientContext.worker && data.teamId && clientContext.teamId !== data.teamId) continue;
       if (client.write(message)) continue;
       clearInterval(clientContext.heartbeat);

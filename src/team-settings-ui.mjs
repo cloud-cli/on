@@ -12,6 +12,11 @@ export default function () {
   const webhookPath = ref("");
   const message = ref("");
   const error = ref("");
+  const teamRunners = ref([]);
+  const sharedRunners = ref([]);
+  const availableRunners = ref([]);
+  const enrollmentCode = ref("");
+  const enrollmentExpiresAt = ref("");
   const request = async (url, options = {}) => {
     const response = await apiFetch(url, {
       ...options,
@@ -29,6 +34,10 @@ export default function () {
   const load = async () => {
     const { members: results = [] } = await request(`/api/teams/${encodeURIComponent(teamId)}/members`);
     members.value = results;
+    const runners = await request(`/api/v1/teams/${encodeURIComponent(teamId)}/runners`);
+    teamRunners.value = runners.team || [];
+    sharedRunners.value = runners.shared || [];
+    availableRunners.value = runners.available || [];
   };
   const act = async (action) => {
     error.value = "";
@@ -57,6 +66,30 @@ export default function () {
     await navigator.clipboard.writeText(value);
     message.value = "Copied to clipboard.";
   };
+  const createRunnerEnrollment = () =>
+    act(async () => {
+      const result = await request("/api/v1/runner-enrollments", {
+        method: "POST",
+        body: JSON.stringify({ scope: "team", teamId }),
+      });
+      enrollmentCode.value = result.code;
+      enrollmentExpiresAt.value = result.expiresAt;
+      message.value = "Enrollment code created. It can be used once.";
+    });
+  const setSharedRunner = (runner, active) =>
+    act(async () => {
+      if (
+        !active &&
+        !confirm(
+          `Deactivate ${runner.name} for this team? Its current team jobs will be canceled and retried after the lease expires.`,
+        )
+      )
+        return;
+      await request(`/api/v1/teams/${encodeURIComponent(teamId)}/runners/${encodeURIComponent(runner.id)}`, {
+        method: active ? "POST" : "DELETE",
+      });
+      await load();
+    });
   const toggleMemberRole = (member) =>
     act(async () => {
       const role = member.role === "admin" ? "member" : "admin";
@@ -101,5 +134,12 @@ export default function () {
     copyValue,
     toggleMemberRole,
     removeMember,
+    teamRunners,
+    sharedRunners,
+    availableRunners,
+    enrollmentCode,
+    enrollmentExpiresAt,
+    createRunnerEnrollment,
+    setSharedRunner,
   };
 }

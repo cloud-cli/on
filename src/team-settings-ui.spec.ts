@@ -27,6 +27,19 @@ describe("team settings UI", () => {
     expect(generateTeamSettingsHtml()).toContain("Team members share workflows");
     expect(setup).not.toContain('request("/api/teams",');
   });
+
+  it("shows team and shared runner management with admin-only mutations", () => {
+    const html = generateTeamSettingsHtml();
+    expect(html).toContain("Team-scoped runners");
+    expect(html).toContain("Active shared runners");
+    expect(html).toContain("Available shared runners");
+    expect(html).toContain("One-time enrollment code");
+    expect(html).toContain('class-hidden="!isAdmin"');
+    expect(html).not.toContain("Update runner");
+    expect(setup).toContain('JSON.stringify({ scope: "team", teamId })');
+    expect(setup).toContain('method: active ? "POST" : "DELETE"');
+    expect(setup).toContain("/api/v1/teams/${encodeURIComponent(teamId)}/runners");
+  });
   it("offers team selection links from the landing UI", async () => {
     const { readFileSync } = await import("node:fs");
     const html = readFileSync(new URL("./teams-landing.html", import.meta.url), "utf8");

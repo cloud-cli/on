@@ -35,6 +35,17 @@ import { renderErrorPage, type ErrorPageOptions } from "./error-page.js";
 import { OidcUserRepository } from "./oidc-user-repository.js";
 import { UserPreferencesRepository } from "./user-preferences.js";
 import { TeamRepository } from "./teams.js";
+import { RunnerRegistry } from "./runner-registry.js";
+
+function isSafeRunnerFilePath(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= 500 &&
+    !value.includes("\\") &&
+    !value.includes("\0") &&
+    value.split("/").every((part) => part !== "" && part !== "." && part !== "..")
+  );
+}
 import apiClientSource from "./api-client.mjs?raw";
 import appShellSetup from "./app-shell.mjs?raw";
 import appHeaderSetup from "./app-header.mjs?raw";
@@ -66,6 +77,7 @@ export class WebhookServer {
   private userPreferences = new UserPreferencesRepository();
   private teams = new TeamRepository();
   private events = new EventBroker();
+  private runners = new RunnerRegistry();
   private workflowsLoaded: Promise<void>;
 
   static async withPort(options: WebhookServerOptions & { port: number }) {
@@ -88,6 +100,7 @@ export class WebhookServer {
       this.apiKeys.init(),
       this.oidcUsers.init(),
       this.userPreferences.init(),
+      this.runners.init(),
     ]).then(() => undefined);
 
     this.registerPreprocessor(new GitHubPreprocessor());
@@ -134,6 +147,7 @@ export class WebhookServer {
     // Exempt routes have their own authorization logic (API, static, auth flow, route-specific controls).
     const method = (req.method || "GET").toUpperCase();
     const requiresUiAuthentication = isProtectedUiRoute(url.pathname, method);
+    if (url.pathname.startsWith("/api/v1/")) await this.workflowsLoaded;
 
     // If OIDC is disabled and this is a protected browser UI route, return 503.
     if (requiresUiAuthentication) {
@@ -276,6 +290,401 @@ export class WebhookServer {
       if (!(await this.hasScope(req, "workers:read"))) return this.requireScope(req, res, "workers:read");
       res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify({ workers: await this.queue.listWorkerPresence() }));
+    }
+
+    if (url.pathname === "/api/v1/runner-enrollments" && req.method === "POST") {
+      if (!this.requireSameOrigin(req, res) || !this.requireAuthenticatedUser(req, res)) return;
+      const user = this.oidc?.userFromCookie(req.headers.cookie);
+      if (!user) return;
+      const body = await this.readJson(req, res);
+      if (!body || (body.scope !== "shared" && body.scope !== "team")) {
+        res
+          .writeHead(400, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Invalid runner scope" }));
+        return;
+      }
+      const role = await this.oidcUsers.role(user.id);
+      const teamId = body.scope === "team" && typeof body.teamId === "string" ? body.teamId : null;
+      if (body.scope === "shared" && role !== "admin") {
+        res
+          .writeHead(403, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Server admin required" }));
+        return;
+      }
+      if (body.scope === "team" && (!teamId || !(await this.teams.isAdmin(teamId, user.id)))) {
+        res
+          .writeHead(403, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Team admin required" }));
+        return;
+      }
+      try {
+        const enrollment = await this.runners.createEnrollment(body.scope, teamId, user.id);
+        res
+          .writeHead(201, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify(enrollment));
+      } catch (error: any) {
+        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
+      }
+      return;
+    }
+    if (url.pathname === "/api/v1/runners/enroll" && req.method === "POST") {
+      const body = await this.readJson(req, res);
+      if (!body || typeof body.code !== "string" || typeof body.name !== "string") {
+        res
+          .writeHead(400, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Code and runner name required" }));
+        return;
+      }
+      try {
+        const enrolled = await this.runners.redeemEnrollment(body.code, body.name, String(body.runtime || "unknown"));
+        if (!enrolled) {
+          res
+            .writeHead(400, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+            .end(JSON.stringify({ error: "Enrollment code is invalid, expired, or already used" }));
+          return;
+        }
+        res
+          .writeHead(201, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify(enrolled));
+      } catch (error: any) {
+        res
+          .writeHead(400, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: error.message }));
+      }
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/v1/runners") {
+      if (!this.requireAuthenticatedUser(req, res)) return;
+      const user = this.oidc?.userFromCookie(req.headers.cookie);
+      if (!user || (await this.oidcUsers.role(user.id)) !== "admin") {
+        res
+          .writeHead(403, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Server admin required" }));
+        return;
+      }
+      res
+        .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+        .end(JSON.stringify({ runners: await this.runners.list() }));
+      return;
+    }
+    const teamRunnersMatch = url.pathname.match(/^\/api\/v1\/teams\/([^/]+)\/runners$/);
+    if (req.method === "GET" && teamRunnersMatch) {
+      if (!this.requireAuthenticatedUser(req, res)) return;
+      const user = this.oidc?.userFromCookie(req.headers.cookie);
+      const teamId = decodeURIComponent(teamRunnersMatch[1]);
+      if (!user || !(await this.teams.isMember(teamId, user.id))) {
+        res
+          .writeHead(403, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Team membership required" }));
+        return;
+      }
+      res
+        .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+        .end(JSON.stringify(await this.runners.listForTeam(teamId)));
+      return;
+    }
+    const teamRunnerGrantMatch = url.pathname.match(/^\/api\/v1\/teams\/([^/]+)\/runners\/([^/]+)$/);
+    if (teamRunnerGrantMatch && (req.method === "POST" || req.method === "DELETE")) {
+      if (!this.requireSameOrigin(req, res) || !this.requireAuthenticatedUser(req, res)) return;
+      const user = this.oidc?.userFromCookie(req.headers.cookie);
+      const teamId = decodeURIComponent(teamRunnerGrantMatch[1]);
+      const runnerId = decodeURIComponent(teamRunnerGrantMatch[2]);
+      if (!user || !(await this.teams.isAdmin(teamId, user.id))) {
+        res
+          .writeHead(403, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Team admin required" }));
+        return;
+      }
+      if (req.method === "POST") {
+        const success = await this.runners.grantTeam(runnerId, teamId, user.id);
+        if (!success) {
+          res
+            .writeHead(409, { "Content-Type": "application/json" })
+            .end(JSON.stringify({ error: "Only shared runners can be granted" }));
+          return;
+        }
+        this.events.closeRunnerStreams(runnerId);
+      } else {
+        if (!(await this.runners.revokeTeamGrant(runnerId, teamId))) {
+          res
+            .writeHead(404, { "Content-Type": "application/json" })
+            .end(JSON.stringify({ error: "Runner grant not found" }));
+          return;
+        }
+        const fencedLeases = await this.queue.revokeRunnerLeasesForTeam(runnerId, teamId);
+        for (const lease of fencedLeases) {
+          this.events.publish("lease.cancelled", { jobId: lease.jobId, leaseId: lease.leaseId, teamId });
+        }
+        this.events.closeRunnerStreams(runnerId);
+      }
+      res.writeHead(204, { "Cache-Control": "no-store" }).end();
+      return;
+    }
+    const revokeRunnerMatch = url.pathname.match(/^\/api\/v1\/runners\/([^/]+)$/);
+    if (req.method === "DELETE" && revokeRunnerMatch) {
+      if (!this.requireSameOrigin(req, res) || !this.requireAuthenticatedUser(req, res)) return;
+      const user = this.oidc?.userFromCookie(req.headers.cookie);
+      if (!user || (await this.oidcUsers.role(user.id)) !== "admin") {
+        res
+          .writeHead(403, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Server admin required" }));
+        return;
+      }
+      const runnerId = decodeURIComponent(revokeRunnerMatch[1]);
+      const revoked = await this.runners.revoke(runnerId);
+      if (revoked) {
+        const fencedLeases = await this.queue.revokeRunnerLeases(runnerId);
+        for (const lease of fencedLeases) {
+          this.events.publish("lease.cancelled", { jobId: lease.jobId, leaseId: lease.leaseId, teamId: lease.teamId });
+        }
+        this.events.closeRunnerStreams(runnerId);
+      }
+      res.writeHead(revoked ? 204 : 404, { "Cache-Control": "no-store" }).end();
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/v1/runner/heartbeat") {
+      const principal = await this.authenticateRunner(req, res);
+      if (!principal) return;
+      const body = await this.readJson(req, res);
+      if (!body) return;
+      const updated = await this.runners.heartbeat(principal.runnerId, body);
+      res.writeHead(updated ? 204 : 401, { "Cache-Control": "no-store" }).end();
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/v1/runner/events") {
+      const principal = await this.authenticateRunner(req, res);
+      if (!principal) return;
+      const context = await this.runners.claimContext(principal.runnerId);
+      if (!context) {
+        res.writeHead(401, { "Cache-Control": "no-store" }).end();
+        return;
+      }
+      return this.events.subscribe(req, res, undefined, true, context.teamIds, principal.runnerId);
+    }
+    if (req.method === "POST" && url.pathname === "/api/v1/runner/leases") {
+      const principal = await this.authenticateRunner(req, res);
+      if (!principal) return;
+      const context = await this.runners.claimContext(principal.runnerId);
+      if (!context) {
+        res.writeHead(401, { "Cache-Control": "no-store" }).end();
+        return;
+      }
+      await this.queue.clearStaleJobs();
+      const leaseId = crypto.randomUUID();
+      const leaseToken = crypto.randomBytes(32).toString("base64url");
+      const job = await this.queue.claimNextForRunner(
+        principal.runnerId,
+        context.tags,
+        context.teamIds,
+        leaseId,
+        crypto.createHash("sha256").update(leaseToken).digest("hex"),
+        90,
+        context.concurrency,
+      );
+      if (!job) {
+        res.writeHead(204, { "Cache-Control": "no-store" }).end();
+        return;
+      }
+      const workflow = await this.workflows.getRevision(job.workflow_id, job.workflow_revision);
+      if (!workflow) {
+        await this.queue.releaseJob(job.id);
+        res
+          .writeHead(500, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Claimed workflow revision is unavailable" }));
+        return;
+      }
+      res
+        .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+        .end(JSON.stringify({ leaseId, leaseToken, expiresInSeconds: 90, job, workflow }));
+      return;
+    }
+    const runnerLeaseMatch = url.pathname.match(
+      /^\/api\/v1\/runner\/leases\/([^/]+)(?:\/(renew|workflow|secrets|report|logs|files|complete|release))?$/,
+    );
+    if (runnerLeaseMatch) {
+      const [, leaseId, action] = runnerLeaseMatch;
+      const principal = await this.authenticateRunner(req, res);
+      if (!principal) return;
+      const leaseToken = String(req.headers["x-runner-lease-token"] || "");
+      const leaseTokenHash = crypto.createHash("sha256").update(leaseToken).digest("hex");
+      const job = await this.queue.getLeasedJob(leaseId, principal.runnerId, leaseTokenHash);
+      if (!job) {
+        res
+          .writeHead(409, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Lease is expired, revoked, or not assigned to this runner" }));
+        return;
+      }
+      if (req.method === "GET" && !action) {
+        res
+          .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ leaseId, jobId: job.id, status: job.status, expiresAt: job.lease_expires_at }));
+        return;
+      }
+      if (job.lease_completed && !(req.method === "POST" && action === "complete")) {
+        res.writeHead(409, { "Cache-Control": "no-store" }).end();
+        return;
+      }
+      if (req.method === "GET" && action === "workflow") {
+        if (job.status !== "running") {
+          res.writeHead(409, { "Cache-Control": "no-store" }).end();
+          return;
+        }
+        const workflow = await this.workflows.getRevision(job.workflow_id, job.workflow_revision);
+        if (!workflow) {
+          res.writeHead(404, { "Cache-Control": "no-store" }).end();
+          return;
+        }
+        res
+          .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ workflowId: job.workflow_id, revision: job.workflow_revision, definition: workflow }));
+        return;
+      }
+      if (req.method === "GET" && action === "secrets") {
+        if (job.status !== "running") {
+          res.writeHead(409, { "Cache-Control": "no-store" }).end();
+          return;
+        }
+        res
+          .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ secrets: await this.secretRepository.getAllForJob(job.team_id || "default") }));
+        return;
+      }
+      if (req.method === "POST" && action === "renew") {
+        const renewed = await this.queue.renewRunnerLease(leaseId, principal.runnerId, leaseTokenHash, 90);
+        res.writeHead(renewed ? 204 : 409, { "Cache-Control": "no-store" }).end();
+        return;
+      }
+      if (req.method === "PUT" && action === "report") {
+        const body = await this.readJson(req, res);
+        if (!body || body.jobId !== job.id || typeof body.status !== "string") {
+          res
+            .writeHead(400, { "Content-Type": "application/json" })
+            .end(JSON.stringify({ error: "Invalid job report" }));
+          return;
+        }
+        const saved = await this.queue.saveReportForRunner(job.id, principal.runnerId, leaseId, leaseTokenHash, body);
+        res.writeHead(saved ? 204 : 409, { "Cache-Control": "no-store" }).end();
+        return;
+      }
+      if (req.method === "POST" && action === "logs") {
+        const body = await this.readJson(req, res);
+        if (
+          !body ||
+          typeof body.stepId !== "string" ||
+          typeof body.content !== "string" ||
+          body.content.length > 1_000_000
+        ) {
+          res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Invalid step log" }));
+          return;
+        }
+        const saved = await this.queue.saveStepLogForRunner(
+          job.id,
+          principal.runnerId,
+          leaseId,
+          leaseTokenHash,
+          body.stepId,
+          body.content,
+        );
+        res.writeHead(saved ? 204 : 409, { "Cache-Control": "no-store" }).end();
+        return;
+      }
+      if (req.method === "POST" && action === "files") {
+        const body = await this.readJson(req, res);
+        if (!body || (body.kind !== "artifact" && body.kind !== "cache") || job.status !== "running") {
+          res
+            .writeHead(400, { "Content-Type": "application/json" })
+            .end(JSON.stringify({ error: "Invalid file operation" }));
+          return;
+        }
+        const cacheKey = typeof body.cacheKey === "string" ? body.cacheKey.slice(0, 200) : "";
+        const ownerKey =
+          body.kind === "artifact" ? String(job.id) : `${job.team_id || "default"}:${job.workflow_id}:${cacheKey}`;
+        if (body.action === "load") {
+          const files = await this.queue.getStoredFilesForRunner(
+            body.kind,
+            ownerKey,
+            job.id,
+            principal.runnerId,
+            leaseId,
+            leaseTokenHash,
+          );
+          res
+            .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+            .end(JSON.stringify({ files }));
+          return;
+        }
+        if (body.action === "save" && Array.isArray(body.files) && body.files.length <= 1000) {
+          const totalSize = body.files.reduce(
+            (total: number, file: any) => total + (typeof file?.content === "string" ? file.content.length : 0),
+            0,
+          );
+          if (
+            totalSize > 4_000_000 ||
+            body.files.some(
+              (file: any) =>
+                typeof file.path !== "string" || !isSafeRunnerFilePath(file.path) || typeof file.content !== "string",
+            )
+          ) {
+            res
+              .writeHead(400, { "Content-Type": "application/json" })
+              .end(JSON.stringify({ error: "Invalid stored file" }));
+            return;
+          }
+          const saved = await this.queue.saveStoredFilesForRunner(
+            body.kind,
+            ownerKey,
+            body.files,
+            job.id,
+            principal.runnerId,
+            leaseId,
+            leaseTokenHash,
+          );
+          res.writeHead(saved ? 204 : 409, { "Cache-Control": "no-store" }).end();
+          return;
+        }
+        res
+          .writeHead(400, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Invalid file operation" }));
+        return;
+      }
+      if (req.method === "POST" && action === "complete") {
+        const body = await this.readJson(req, res);
+        if (
+          !body ||
+          body.jobId !== job.id ||
+          !["success", "failed", "cancelled"].includes(body.status) ||
+          !body.report ||
+          typeof body.report !== "object"
+        ) {
+          res
+            .writeHead(400, { "Content-Type": "application/json" })
+            .end(JSON.stringify({ error: "Invalid completion" }));
+          return;
+        }
+        const saved = await this.queue.completeJobForRunner(
+          job.id,
+          principal.runnerId,
+          leaseId,
+          leaseTokenHash,
+          body.status,
+          body.report,
+        );
+        if (saved) this.events.publish("jobs.changed", { jobId: job.id, teamId: job.team_id || "default" });
+        res.writeHead(saved ? 204 : 409, { "Cache-Control": "no-store" }).end();
+        return;
+      }
+      if (req.method === "POST" && action === "release") {
+        const released = await this.queue.releaseRunnerLease(leaseId, principal.runnerId, leaseTokenHash);
+        if (released)
+          this.events.publish("jobs.available", {
+            tags: job.required_tags ? JSON.parse(job.required_tags) : [],
+            teamId: job.team_id || "default",
+          });
+        res.writeHead(released ? 204 : 409, { "Cache-Control": "no-store" }).end();
+        return;
+      }
+      res.writeHead(405, { Allow: "GET, POST, PUT" }).end();
+      return;
     }
 
     if (req.method === "GET" && url.pathname === "/pages/dashboard.html") {
@@ -929,6 +1338,22 @@ sessionStorage.removeItem('runner-pending-team-invite');
 
   private isWorker(req: http.IncomingMessage): boolean {
     return this.matchesToken(req, this.workerToken, false);
+  }
+
+  private async authenticateRunner(req: http.IncomingMessage, res: http.ServerResponse) {
+    const authorization = req.headers.authorization || "";
+    const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+    const runner = await this.runners.authenticate(token);
+    if (!runner) {
+      res.writeHead(401, {
+        "Cache-Control": "no-store",
+        "WWW-Authenticate": "Bearer",
+        "Content-Type": "application/json",
+      });
+      res.end(JSON.stringify({ error: "Runner credential is invalid or revoked" }));
+      return null;
+    }
+    return runner;
   }
 
   private async hasScope(req: http.IncomingMessage, scope: string): Promise<boolean> {
@@ -1768,7 +2193,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (!(await this.requireScope(req, res, "runs:control"))) return;
     const teamId = await this.requireTeam(req, res);
     if (!teamId) return;
-    if (!(await this.queue.getJobForTeam(teamId, jobId))) {
+    const job = await this.queue.getJobForTeam(teamId, jobId);
+    if (!job) {
       res.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Job not found" }));
       return;
     }
@@ -1928,7 +2354,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (!(await this.requireScope(req, res, "runs:control"))) return;
     const teamId = await this.requireTeam(req, res);
     if (!teamId) return;
-    if (!(await this.queue.getJobForTeam(teamId, jobId))) {
+    const job = await this.queue.getJobForTeam(teamId, jobId);
+    if (!job) {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Job not found" }));
     }
@@ -1944,6 +2371,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     }
 
     this.events.publish("jobs.changed", { jobId: Number(jobId), teamId });
+    if (job.lease_id) this.events.publish("lease.cancelled", { jobId: Number(jobId), leaseId: job.lease_id, teamId });
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ id: Number(jobId), status: "cancelled" }));
   }
