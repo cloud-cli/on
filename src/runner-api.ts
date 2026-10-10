@@ -11,6 +11,13 @@ export interface RunnerLeaseState {
   expiresAt: string;
 }
 
+export interface RunnerUpdateRequest {
+  id: string;
+  runnerId: string;
+  version: string;
+  status: "pending";
+}
+
 /** Authenticated HTTP adapter for the coordinator's runner lease protocol. */
 export class RunnerApi {
   constructor(
@@ -64,6 +71,18 @@ export class RunnerApi {
     activeJobs: number;
   }): Promise<unknown> {
     return this.request("/api/v1/runner/heartbeat", "POST", report);
+  }
+
+  async pendingUpdate(): Promise<RunnerUpdateRequest | null> {
+    const result = await this.request("/api/v1/runner/update", "GET");
+    return result?.update || null;
+  }
+
+  reportUpdate(updateId: string, status: "failed"): Promise<unknown> {
+    return this.request("/api/v1/runner/update/status", "POST", {
+      updateId,
+      status,
+    });
   }
 
   async secrets(lease: RunnerLease): Promise<Record<string, string>> {

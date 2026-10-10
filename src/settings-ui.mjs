@@ -14,6 +14,8 @@ export default function () {
   const enrollmentCode = ref("");
   const enrollmentExpiresAt = ref("");
   const runnerMessage = ref("");
+  const pinnedVersion = ref("");
+  const updatingRunnerId = ref("");
   const users = ref([]);
   const usersForbidden = ref(false);
   const usersLoaded = ref(false);
@@ -194,6 +196,27 @@ export default function () {
       await loadRunners();
     } catch (reason) {
       runnerMessage.value = reason.message;
+    }
+  };
+  const setPinnedVersion = (event) => {
+    pinnedVersion.value = event.target.value;
+  };
+  const updateRunner = async (runner) => {
+    const version = pinnedVersion.value.trim();
+    if (updatingRunnerId.value || !version || !runner.capabilities?.includes("updater")) return;
+    updatingRunnerId.value = runner.id;
+    runnerMessage.value = "";
+    try {
+      await api(`/api/v1/runners/${encodeURIComponent(runner.id)}/update`, {
+        method: "POST",
+        body: JSON.stringify({ version }),
+      });
+      runnerMessage.value = `Update to ${version} requested for ${runner.name}.`;
+      await loadRunners();
+    } catch (reason) {
+      runnerMessage.value = reason.message;
+    } finally {
+      updatingRunnerId.value = "";
     }
   };
   const loadUsers = async () => {
@@ -383,6 +406,10 @@ export default function () {
     loadRunners,
     createEnrollment,
     revokeRunner,
+    pinnedVersion,
+    updatingRunnerId,
+    setPinnedVersion,
+    updateRunner,
     users,
     usersForbidden,
     usersLoaded,

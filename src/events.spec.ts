@@ -65,4 +65,21 @@ describe("EventBroker team and worker subscriptions", () => {
     expect(runner.end).toHaveBeenCalledOnce();
     broker.close();
   });
+
+  it("delivers update instructions only to the selected runner stream", () => {
+    const broker = new EventBroker();
+    const response = () => ({ writeHead: vi.fn(), write: vi.fn(() => true), end: vi.fn(), once: vi.fn() });
+    const target = response();
+    const other = response();
+    broker.subscribe({ once: vi.fn() } as any, target as any, undefined, true, [], "runner-1");
+    broker.subscribe({ once: vi.fn() } as any, other as any, undefined, true, [], "runner-2");
+    target.write.mockClear();
+    other.write.mockClear();
+
+    broker.publishRunner("runner-1", "runner.update", { updateId: "u1", version: "1.2.3" });
+
+    expect(target.write).toHaveBeenCalledOnce();
+    expect(other.write).not.toHaveBeenCalled();
+    broker.close();
+  });
 });

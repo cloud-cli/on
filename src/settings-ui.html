@@ -221,6 +221,15 @@
             Enroll and manage registered runners. Refresh to see current status and capacity.
           </p>
           <div class="mt-4 flex flex-wrap items-center gap-3">
+            <label for="pinned-runner-version" class="text-sm">Pinned release version</label>
+            <input
+              id="pinned-runner-version"
+              type="text"
+              bind-value="pinnedVersion"
+              on-input="setPinnedVersion($event)"
+              placeholder="e.g. 1.2.3"
+              class="rounded-lg border border-flow-border px-3 py-2 text-sm"
+            />
             <button
               type="button"
               on-click="createEnrollment()"
@@ -256,6 +265,7 @@
                   <th class="px-4 py-3">Runtime</th>
                   <th class="px-4 py-3">Version</th>
                   <th class="px-4 py-3">Tags</th>
+                  <th class="px-4 py-3">Desired release / status</th>
                   <th class="px-4 py-3">Action</th>
                 </tr>
               </thead>
@@ -269,6 +279,19 @@
                     <td class="px-4 py-3">{{ runner.version }}</td>
                     <td class="px-4 py-3">{{ runner.capabilities.join(', ') }}</td>
                     <td class="px-4 py-3">
+                      {{ runner.desiredVersion || '—' }} · {{ runner.updateStatus || runner.status }}
+                    </td>
+                    <td class="px-4 py-3">
+                      <template if="runner.capabilities.includes('updater')">
+                        <button
+                          type="button"
+                          on-click="updateRunner(runner)"
+                          bind-disabled="Boolean(updatingRunnerId) || !pinnedVersion.trim() || runner.status !== 'online' || runner.activeJobs > 0 || runner.updateStatus === 'pending'"
+                          class="mr-2 rounded-lg border border-flow-primary/60 px-3 py-1.5 text-flow-primary disabled:opacity-50"
+                        >
+                          {{ updatingRunnerId === runner.id ? 'Updating…' : 'Update' }}
+                        </button>
+                      </template>
                       <button
                         type="button"
                         on-click="revokeRunner(runner)"

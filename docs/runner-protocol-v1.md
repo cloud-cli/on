@@ -48,15 +48,15 @@ Use SSE event IDs, retry hints, and keepalives. Initial v1 event delivery is not
 
 - `GET /runners` and `GET /teams/{teamId}/runners` list registered runners, team grants, last heartbeat, active leases, runtime, current/desired version, and update state.
 - `POST /teams/{teamId}/runners/{runnerId}` and `DELETE` on that resource grant/revoke an opted-in shared runner for that team; runner credentials do not change when a grant changes.
-- `POST /runners/{runnerId}/updates` requests an update for one runner at a time with a pinned release version/digest. The coordinator persists an update state machine: `requested -> draining -> installing -> verifying -> succeeded`, or `failed/rolled-back`.
-- The coordinator sends `runner.drain`/`runner.update` events and records progress reported by the runner. The runner's runtime adapter installs/restarts itself and reports the exact version/digest and health. UI never directly contacts a runner or runs systemd/Docker/Kubernetes commands.
-- Update UI is available only when that runner reports a supported updater/runtime capability. Do not target a moving `latest` tag. Keep the previous release for rollback; enforce one active update at a time so stable runners continue serving jobs.
+- `POST /runners/{runnerId}/update` requests an exact semantic release for one online, idle runner that advertises an updater capability. Only one update may be pending globally; new claims are fenced for the target until the runner reports failure or a heartbeat confirms the requested version.
+- The coordinator sends `runner.update` as a wake-up hint and serves the pending request through authenticated REST. An adapter uses its runtime's package channel, attempts to restore the currently running release if installation/restart scheduling fails, and reports installation failures. The UI never directly contacts a runner or runs systemd/Docker/Kubernetes commands.
+- Update UI is available only when that runner reports a supported updater/runtime capability. Moving `latest` tags and ranges are rejected. Current systemd/npm support is opt-in and confirms success by matching heartbeat version; containers, Kubernetes, bare-process, and Go updater adapters are not implemented.
 
 Enrollment, team grants, updates, and audit actions are separate operations. An update request affects only the selected runner, not every runner of a label or team.
 
 ## UI surfaces
 
-- **Settings → Runners**: global runner inventory, enroll a shared runner, view health/capacity/version, and request/update one compatible runner with visible drain/install/verify/rollback progress.
+- **Settings → Runners**: global runner inventory, enroll a shared runner, view capacity/version/update state, and request an exact version for one compatible runner.
 - **Team settings → Runners**: team-scoped enrollment and runner status, plus an “Available shared runners” list with explicit activate/deactivate controls.
 - Keep the team's webhook URL in Team settings and rotate it independently from runner credentials.
 

@@ -118,6 +118,7 @@ export class QueueManager {
             AND EXISTS (
               SELECT 1 FROM runners AS claiming_runner
               WHERE claiming_runner.id = ? AND claiming_runner.revoked_at IS NULL
+                AND claiming_runner.current_update_id IS NULL
                 AND ((claiming_runner.scope = 'team' AND claiming_runner.team_id = jobs.team_id)
                   OR (claiming_runner.scope = 'shared' AND EXISTS (
                     SELECT 1 FROM runner_team_grants AS claiming_grant

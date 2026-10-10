@@ -19,6 +19,7 @@ export interface RunnerConfig {
   runnerCredential?: string;
   runnerCredentialPath?: string;
   runnerEnrollCode?: string;
+  runnerUpdateAdapter?: string;
   /** SQLite Database connection URL / path */
   database: string;
   /** Maximum number of jobs executed concurrently on this node */

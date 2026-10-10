@@ -122,6 +122,12 @@ describe("settings UI", () => {
     expect(html).toContain("runner.runtime");
     expect(html).toContain("runner.capabilities.join");
     expect(html).toContain('on-click="loadRunners()"');
-    expect(html).not.toContain("updateRunner");
+    expect(html).toContain('id="pinned-runner-version"');
+    expect(html).toContain("runner.desiredVersion");
+    expect(html).toContain("runner.capabilities.includes('updater')");
+    expect(html).toContain('on-click="updateRunner(runner)"');
+    expect(settingsSetup).toContain("/update");
+    expect(settingsSetup).toContain("JSON.stringify({ version })");
+    expect(settingsSetup).toContain("updatingRunnerId.value");
   });
 });

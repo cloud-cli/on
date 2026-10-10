@@ -5,7 +5,13 @@ export type RunnerEvent = "jobs.available" | "jobs.changed" | "lease.cancelled" 
 export class EventBroker {
   private clients = new Map<
     http.ServerResponse,
-    { heartbeat: NodeJS.Timeout; teamId?: string; worker: boolean; runnerTeamIds?: Set<string>; runnerId?: string }
+    {
+      heartbeat: NodeJS.Timeout;
+      teamId?: string;
+      worker: boolean;
+      runnerTeamIds?: Set<string>;
+      runnerId?: string;
+    }
   >();
   private nextId = 1;
   private readonly maxClients = 1000;
@@ -19,7 +25,10 @@ export class EventBroker {
     runnerId?: string,
   ): void {
     if (this.clients.size >= this.maxClients) {
-      res.writeHead(503, { "Content-Type": "application/json", "Retry-After": "5" });
+      res.writeHead(503, {
+        "Content-Type": "application/json",
+        "Retry-After": "5",
+      });
       res.end(JSON.stringify({ error: "Too many event stream clients" }));
       return;
     }
@@ -65,6 +74,17 @@ export class EventBroker {
       if (!clientContext.worker && data.teamId && clientContext.teamId !== data.teamId) continue;
       if (client.write(message)) continue;
       clearInterval(clientContext.heartbeat);
+      this.clients.delete(client);
+      client.end();
+    }
+  }
+
+  publishRunner(runnerId: string, event: RunnerEvent, data: Record<string, unknown> = {}): void {
+    const message = `id: ${this.nextId++}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const [client, context] of this.clients) {
+      if (context.runnerId !== runnerId) continue;
+      if (client.write(message)) continue;
+      clearInterval(context.heartbeat);
       this.clients.delete(client);
       client.end();
     }

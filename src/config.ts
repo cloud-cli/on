@@ -45,6 +45,7 @@ export function resolveConfig(configFromFile: UserRunnerConfig, configFromCli: U
     runnerCredential: configFromFile.runnerCredential ?? _.RUNNER_CREDENTIAL,
     runnerCredentialPath: configFromFile.runnerCredentialPath ?? _.RUNNER_CREDENTIAL_FILE,
     runnerEnrollCode: configFromFile.runnerEnrollCode ?? _.RUNNER_ENROLLMENT_CODE,
+    runnerUpdateAdapter: configFromFile.runnerUpdateAdapter ?? _.RUNNER_UPDATE_ADAPTER,
     database: configFromFile.database ?? configFromCli.database ?? _.DATABASE_URL ?? "",
     workers: Number(configFromFile.workers ?? configFromCli.workers ?? _.RUNNER_WORKERS ?? 5),
     serverUrl: configFromFile.serverUrl ?? _.RUNNER_SERVER_URL ?? `http://127.0.0.1:${port}`,

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import db from "./db-client.js";
+import { isExactSemver } from "./semver.js";
 
 export type RunnerScope = "shared" | "team";
 export type RunnerRecord = {
@@ -13,8 +14,16 @@ export type RunnerRecord = {
   concurrency: number;
   activeJobs: number;
   lastSeen: string | null;
-  status: "available" | "online" | "offline" | "revoked";
+  status: "available" | "online" | "offline" | "updating" | "revoked";
   desiredVersion: string | null;
+  updateStatus: "pending" | "complete" | "failed" | null;
+};
+
+export type RunnerUpdate = {
+  id: string;
+  runnerId: string;
+  version: string;
+  status: "pending" | "complete" | "failed";
 };
 
 const digest = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
@@ -62,7 +71,42 @@ export class RunnerRegistry {
       );
       CREATE INDEX IF NOT EXISTS idx_runner_enrollments_expiry ON runner_enrollments(expires_at, redeemed_at);
       CREATE INDEX IF NOT EXISTS idx_runner_grants_team ON runner_team_grants(team_id, runner_id);
+      CREATE TABLE IF NOT EXISTS runner_updates (
+        id TEXT PRIMARY KEY, runner_id TEXT NOT NULL, desired_version TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'complete', 'failed')),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, completed_at DATETIME
+      );
     `);
+    await this.recoverStaleUpdates();
+    // Repair any duplicate pending rows from interrupted/older deployments before enforcing serialization.
+    await db.run(
+      `UPDATE runner_updates SET status = 'failed', completed_at = CURRENT_TIMESTAMP
+       WHERE status = 'pending' AND id NOT IN (
+         SELECT id FROM runner_updates WHERE status = 'pending' ORDER BY created_at DESC, id DESC LIMIT 1
+       )`,
+    );
+    await db.run(
+      `UPDATE runners SET current_update_id = NULL, desired_version = NULL,
+         status = CASE WHEN revoked_at IS NULL THEN 'offline' ELSE status END
+       WHERE current_update_id IS NOT NULL AND current_update_id NOT IN
+         (SELECT id FROM runner_updates WHERE status = 'pending')`,
+    );
+    await db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_runner_updates_single_active ON runner_updates(status) WHERE status = 'pending'",
+    );
+  }
+
+  private async recoverStaleUpdates(): Promise<void> {
+    await db.run(
+      `UPDATE runner_updates SET status = 'failed', completed_at = CURRENT_TIMESTAMP
+       WHERE status = 'pending' AND julianday(created_at) <= julianday('now', '-30 minutes')`,
+    );
+    await db.run(
+      `UPDATE runners SET current_update_id = NULL, desired_version = NULL,
+         status = CASE WHEN revoked_at IS NULL THEN 'offline' ELSE status END
+       WHERE current_update_id IS NOT NULL AND current_update_id NOT IN
+         (SELECT id FROM runner_updates WHERE status = 'pending')`,
+    );
   }
 
   async createEnrollment(scope: RunnerScope, teamId: string | null, createdBy: string, ttlMs = 10 * 60_000) {
@@ -112,9 +156,11 @@ export class RunnerRegistry {
     };
   }
 
-  async authenticate(
-    credential: string,
-  ): Promise<{ runnerId: string; scope: RunnerScope; teamId: string | null } | null> {
+  async authenticate(credential: string): Promise<{
+    runnerId: string;
+    scope: RunnerScope;
+    teamId: string | null;
+  } | null> {
     if (!credential || credential.length > 256) return null;
     const row = await db.get(`SELECT id, scope, team_id FROM runners WHERE token_hash = ? AND revoked_at IS NULL`, [
       digest(credential),
@@ -124,7 +170,13 @@ export class RunnerRegistry {
 
   async heartbeat(
     runnerId: string,
-    report: { runtime?: string; version?: string; capabilities?: unknown; concurrency?: number; activeJobs?: number },
+    report: {
+      runtime?: string;
+      version?: string;
+      capabilities?: unknown;
+      concurrency?: number;
+      activeJobs?: number;
+    },
   ): Promise<boolean> {
     const capabilities = Array.isArray(report.capabilities)
       ? [
@@ -149,13 +201,115 @@ export class RunnerRegistry {
         runnerId,
       ],
     );
+    if (report.version) {
+      await db.run(
+        `UPDATE runner_updates SET status = 'complete', completed_at = CURRENT_TIMESTAMP
+         WHERE id = (SELECT current_update_id FROM runners WHERE id = ? AND revoked_at IS NULL)
+           AND runner_id = ? AND status = 'pending' AND desired_version = ?`,
+        [runnerId, runnerId, String(report.version).slice(0, 100)],
+      );
+      await db.run(
+        `UPDATE runners SET current_update_id = NULL, desired_version = NULL, status = 'online'
+         WHERE id = ? AND revoked_at IS NULL AND current_update_id IN
+           (SELECT id FROM runner_updates WHERE runner_id = ? AND status = 'complete')`,
+        [runnerId, runnerId],
+      );
+    }
     return Number(result?.changes || 0) === 1;
+  }
+
+  async requestUpdate(runnerId: string, version: string): Promise<RunnerUpdate | null> {
+    await this.recoverStaleUpdates();
+    if (!isExactSemver(version)) {
+      throw new Error("version must be an exact semantic version");
+    }
+    const updateId = crypto.randomUUID();
+    const reserved = await db.get(
+      `UPDATE runners SET current_update_id = ?, desired_version = ?, status = 'updating'
+       WHERE id = ? AND revoked_at IS NULL AND current_update_id IS NULL
+         AND last_seen IS NOT NULL AND julianday(last_seen) > julianday('now', '-45 seconds')
+         AND EXISTS (SELECT 1 FROM json_each(capabilities) WHERE value = 'updater')
+         AND active_jobs = 0
+         AND NOT EXISTS (
+           SELECT 1 FROM jobs j WHERE j.worker_id = runners.id
+             AND (j.status = 'running' OR (j.status = 'cancelled' AND j.lease_completed = 0))
+         )
+         AND NOT EXISTS (SELECT 1 FROM runner_updates WHERE status = 'pending')
+         AND NOT EXISTS (SELECT 1 FROM runners WHERE current_update_id IS NOT NULL)
+       RETURNING id`,
+      [updateId, version, runnerId],
+    );
+    if (!reserved) return null;
+    try {
+      const inserted = await db.run(
+        `INSERT INTO runner_updates (id, runner_id, desired_version, status)
+         SELECT ?, id, ?, 'pending' FROM runners
+         WHERE id = ? AND revoked_at IS NULL AND current_update_id = ?`,
+        [updateId, version, runnerId, updateId],
+      );
+      if (Number(inserted?.changes || 0) !== 1) {
+        await db.run(
+          "UPDATE runners SET current_update_id = NULL, desired_version = NULL, status = 'online' WHERE id = ? AND current_update_id = ?",
+          [runnerId, updateId],
+        );
+        return null;
+      }
+    } catch (error) {
+      await db.run(
+        "UPDATE runners SET current_update_id = NULL, desired_version = NULL, status = 'online' WHERE id = ? AND current_update_id = ?",
+        [runnerId, updateId],
+      );
+      throw error;
+    }
+    return {
+      id: updateId,
+      runnerId,
+      version,
+      status: "pending" as const,
+    };
+  }
+
+  async currentUpdate(runnerId: string): Promise<RunnerUpdate | null> {
+    await this.recoverStaleUpdates();
+    const row = await db.get(
+      `SELECT u.id, u.runner_id, u.desired_version AS version, u.status FROM runner_updates u
+       JOIN runners r ON r.id = u.runner_id WHERE r.id = ? AND r.revoked_at IS NULL
+       AND r.current_update_id = u.id AND u.status = 'pending'`,
+      [runnerId],
+    );
+    return row
+      ? {
+          id: row.id,
+          runnerId: row.runner_id,
+          version: row.version,
+          status: row.status,
+        }
+      : null;
+  }
+
+  async reportUpdate(runnerId: string, updateId: string, status: "failed"): Promise<boolean> {
+    const row = await db.get(
+      `UPDATE runner_updates SET status = ?, completed_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND runner_id = ? AND status = 'pending'
+         AND EXISTS (SELECT 1 FROM runners WHERE id = ? AND revoked_at IS NULL AND current_update_id = ?)
+       RETURNING id`,
+      [status, updateId, runnerId, runnerId, updateId],
+    );
+    if (!row) return false;
+    await db.run(
+      "UPDATE runners SET desired_version = NULL, current_update_id = NULL, status = 'online' WHERE id = ? AND revoked_at IS NULL",
+      [runnerId],
+    );
+    return true;
   }
 
   async list(): Promise<RunnerRecord[]> {
     const rows = await db.all(
       `SELECT id, name, scope, team_id, runtime, version, capabilities, concurrency, active_jobs,
-       last_seen, status, desired_version FROM runners WHERE revoked_at IS NULL ORDER BY created_at DESC`,
+       last_seen, status, desired_version, current_update_id,
+       (SELECT status FROM runner_updates WHERE runner_id = runners.id ORDER BY created_at DESC LIMIT 1) AS update_status,
+       COALESCE(desired_version, (SELECT desired_version FROM runner_updates WHERE runner_id = runners.id ORDER BY created_at DESC LIMIT 1)) AS shown_desired_version
+       FROM runners WHERE revoked_at IS NULL ORDER BY created_at DESC`,
     );
     return rows.map((row: any) => ({
       id: row.id,
@@ -168,18 +322,23 @@ export class RunnerRegistry {
       concurrency: row.concurrency,
       activeJobs: row.active_jobs,
       lastSeen: row.last_seen,
-      status: row.last_seen
-        ? Date.now() - Date.parse(`${row.last_seen}Z`) < 45_000
-          ? "online"
-          : "offline"
-        : row.status,
-      desiredVersion: row.desired_version,
+      status: row.current_update_id
+        ? "updating"
+        : row.last_seen
+          ? Date.now() - Date.parse(`${row.last_seen}Z`) < 45_000
+            ? "online"
+            : "offline"
+          : row.status,
+      desiredVersion: row.shown_desired_version,
+      updateStatus: row.update_status,
     }));
   }
 
-  async listForTeam(
-    teamId: string,
-  ): Promise<{ team: RunnerRecord[]; shared: RunnerRecord[]; available: RunnerRecord[] }> {
+  async listForTeam(teamId: string): Promise<{
+    team: RunnerRecord[];
+    shared: RunnerRecord[];
+    available: RunnerRecord[];
+  }> {
     const runners = await this.list();
     const grants = await db.all("SELECT runner_id FROM runner_team_grants WHERE team_id = ?", [teamId]);
     const grantedIds = new Set(grants.map((row: any) => row.runner_id));
@@ -220,7 +379,11 @@ export class RunnerRegistry {
     return rows.map((row: any) => row.team_id);
   }
 
-  async claimContext(runnerId: string): Promise<{ tags: string[]; teamIds: string[]; concurrency: number } | null> {
+  async claimContext(runnerId: string): Promise<{
+    tags: string[];
+    teamIds: string[];
+    concurrency: number;
+  } | null> {
     const runner = await db.get(
       "SELECT scope, team_id, capabilities, concurrency FROM runners WHERE id = ? AND revoked_at IS NULL",
       [runnerId],
@@ -234,6 +397,10 @@ export class RunnerRegistry {
   }
 
   async revoke(runnerId: string): Promise<boolean> {
+    await db.run(
+      "UPDATE runner_updates SET status = 'failed', completed_at = CURRENT_TIMESTAMP WHERE runner_id = ? AND status = 'pending'",
+      [runnerId],
+    );
     const result = await db.run(
       `UPDATE runners SET revoked_at = CURRENT_TIMESTAMP, status = 'revoked', token_hash = ?
        WHERE id = ? AND revoked_at IS NULL`,

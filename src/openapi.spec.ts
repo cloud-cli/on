@@ -39,5 +39,12 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api/v1/runner/events"].get.responses["200"].content).toHaveProperty("text/event-stream");
     expect(spec.paths["/api/v1/runner/leases"].post.responses).toHaveProperty("204");
     expect(spec.paths["/api/v1/runner/leases/{leaseId}/{action}"]).toHaveProperty("put");
+    expect(spec.paths["/api/v1/runners/{runnerId}/update"].post.security).toEqual([{ oidcAdminSession: [] }]);
+    expect(spec.paths["/api/v1/runner/update"].get.security).toEqual([{ bearerAuth: [] }]);
+    expect(spec.paths["/api/v1/runner/update/status"].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(
+      spec.paths["/api/v1/runner/update/status"].post.requestBody.content["application/json"].schema.properties.status
+        .enum,
+    ).toEqual(["failed"]);
   });
 });
