@@ -21,7 +21,7 @@ function ensureDialog() {
   dialog.id = "runner-auth-dialog";
   dialog.setAttribute("aria-labelledby", "runner-auth-title");
   dialog.className =
-    "max-w-[calc(100vw-2rem)] rounded-xl border border-flow-border bg-flow-sidebar p-6 text-flow-foreground shadow-xl backdrop:bg-black/50";
+    "fixed inset-0 m-auto max-w-[calc(100vw-2rem)] rounded-xl border border-flow-border bg-flow-sidebar p-6 text-flow-foreground shadow-xl backdrop:bg-black/50";
   dialog.innerHTML = `<form method="dialog" class="max-w-md space-y-4"><h2 id="runner-auth-title" class="text-lg font-semibold">Sign in required</h2><p>Your session expired. Sign in to continue; this page and its unsaved work will stay open.</p><p role="status" data-auth-status class="text-sm text-flow-secondary"></p><div class="flex justify-end gap-3"><button type="button" data-auth-cancel class="rounded-md border border-flow-border px-4 py-2">Cancel</button><button type="button" data-auth-login class="rounded-md bg-flow-primary px-4 py-2 font-medium text-white">Sign in</button></div></form>`;
   dialog.querySelector("[data-auth-login]").addEventListener("click", () => startLogin());
   dialog.querySelector("[data-auth-cancel]").addEventListener("click", () => {
