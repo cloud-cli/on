@@ -11,10 +11,16 @@ type BrowserLocation = {
 
 function installBrowser(responses: Response[]) {
   const values = new Map<string, string>();
+  const localValues = new Map<string, string>();
   const sessionStorage = {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => values.set(key, String(value)),
     removeItem: (key: string) => values.delete(key),
+  };
+  const localStorage = {
+    getItem: (key: string) => localValues.get(key) ?? null,
+    setItem: (key: string, value: string) => localValues.set(key, String(value)),
+    removeItem: (key: string) => localValues.delete(key),
   };
   const location: BrowserLocation = {
     origin: "https://flow.example.test",
@@ -27,9 +33,10 @@ function installBrowser(responses: Response[]) {
   const fetch = vi.fn(async () => responses.shift() ?? new Response(null, { status: 204 }));
 
   vi.stubGlobal("sessionStorage", sessionStorage);
+  vi.stubGlobal("localStorage", localStorage);
   vi.stubGlobal("window", { location, fetch });
 
-  return { fetch, location, sessionStorage };
+  return { fetch, location, localStorage, sessionStorage };
 }
 
 async function importClient() {
@@ -100,10 +107,9 @@ describe("browser API client sign-in recovery", () => {
         status: 401,
         headers: { "content-type": "application/json" },
       });
-    const { fetch } = installBrowser([
+    const { fetch, localStorage } = installBrowser([
       new Response(JSON.stringify({ access_token: "expired-token", expires_at: Date.now() + 60_000 })),
       authRequired(),
-      new Response(JSON.stringify({ configured: true, authenticated: false }), { status: 401 }),
       new Response(JSON.stringify({ configured: true, authenticated: true }), { status: 200 }),
       new Response(JSON.stringify({ access_token: "fresh-token", expires_at: Date.now() + 60_000 })),
       new Response("ok", { status: 200 }),
@@ -140,6 +146,7 @@ describe("browser API client sign-in recovery", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(dialog.showModal).toHaveBeenCalledOnce();
     expect(window.open).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(2);
 
     callbacks.get("login")?.();
     expect(window.open).toHaveBeenCalledWith(
@@ -147,14 +154,21 @@ describe("browser API client sign-in recovery", () => {
       "runner-auth",
       expect.any(String),
     );
-    expect(fetch.mock.calls[2][0]).toBe("/api/auth/session");
+    const popupUrl = new URL(window.open.mock.calls[0][0], "https://flow.example.test");
+    const returnUrl = new URL(popupUrl.searchParams.get("url") || "", "https://flow.example.test");
+    const nonce = returnUrl.searchParams.get("__runner_auth_nonce");
+    expect(nonce).toBeTruthy();
+    expect(localStorage.getItem(`runner-auth-recovery:${nonce}`)).toBe("pending");
+    expect(fetch).toHaveBeenCalledTimes(2);
+    localStorage.setItem(`runner-auth-recovery:${nonce}`, "complete");
     await windowEvents.get("focus")?.();
 
     const response = await request;
     expect(response.status).toBe(200);
-    expect(fetch).toHaveBeenCalledTimes(6);
-    expect(new Headers(fetch.mock.calls[5][1]?.headers).get("authorization")).toBe("Bearer fresh-token");
+    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(new Headers(fetch.mock.calls[4][1]?.headers).get("authorization")).toBe("Bearer fresh-token");
     expect(dialog.close).toHaveBeenCalledOnce();
+    expect(localStorage.getItem(`runner-auth-recovery:${nonce}`)).toBeNull();
   });
 
   it("does not retry a missing-scope 401", async () => {
@@ -175,13 +189,14 @@ describe("browser API client sign-in recovery", () => {
   });
 
   it("closes a marked login popup only after the runner session check succeeds", async () => {
-    const { fetch, location } = installBrowser([
+    const { fetch, location, localStorage } = installBrowser([
       new Response(JSON.stringify({ configured: true, authenticated: true }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
     ]);
     location.href = "https://flow.example.test/settings/tokens?tab=active&__runner_auth_nonce=attempt-123#keys";
+    localStorage.setItem("runner-auth-recovery:attempt-123", "pending");
     const popupWindow = globalThis.window as unknown as { opener: object; close: ReturnType<typeof vi.fn> };
     popupWindow.opener = {};
     popupWindow.close = vi.fn();
@@ -195,5 +210,6 @@ describe("browser API client sign-in recovery", () => {
       headers: { accept: "application/json" },
     });
     expect(popupWindow.close).toHaveBeenCalledOnce();
+    expect(localStorage.getItem("runner-auth-recovery:attempt-123")).toBe("complete");
   });
 });

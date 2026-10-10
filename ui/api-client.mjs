@@ -8,6 +8,10 @@ function loginUrl(nonce) {
   return `/auth/login?url=${encodeURIComponent(`${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`)}`;
 }
 
+function recoveryFlag(nonce) {
+  return `runner-auth-recovery:${nonce}`;
+}
+
 function ensureDialog() {
   let dialog = document.getElementById("runner-auth-dialog");
   if (dialog) {
@@ -41,6 +45,9 @@ let checkingSession;
 function finishPending(success) {
   clearInterval(pollTimer);
   clearInterval(closePollTimer);
+  if (activeNonce) {
+    localStorage.removeItem(recoveryFlag(activeNonce));
+  }
   if (!success && popup && !popup.closed) {
     popup.close();
   }
@@ -59,7 +66,15 @@ function startLogin() {
     return;
   }
   const status = ensureDialog().querySelector("[data-auth-status]");
-  popup = window.open(loginUrl(activeNonce), "runner-auth", "popup,width=520,height=720");
+  const width = 520;
+  const height = 720;
+  const left = Math.max(0, (window.screenX || 0) + ((window.outerWidth || width) - width) / 2);
+  const top = Math.max(0, (window.screenY || 0) + ((window.outerHeight || height) - height) / 2);
+  popup = window.open(
+    loginUrl(activeNonce),
+    "runner-auth",
+    `popup,width=${width},height=${height},left=${left},top=${top}`,
+  );
   if (!popup) {
     status.textContent = "The sign-in window was blocked. Allow pop-ups, then try again.";
     return;
@@ -76,7 +91,7 @@ function startLogin() {
 }
 
 async function checkRecoverySession() {
-  if (!activeNonce || checkingSession) {
+  if (!activeNonce || checkingSession || localStorage.getItem(recoveryFlag(activeNonce)) !== "complete") {
     return;
   }
   checkingSession = (async () => {
@@ -109,6 +124,7 @@ function recover() {
     });
   }
   activeNonce = crypto.randomUUID();
+  localStorage.setItem(recoveryFlag(activeNonce), "pending");
   const dialog = ensureDialog();
   dialog.querySelector("[data-auth-status]").textContent = "";
   dialog.showModal();
@@ -119,16 +135,22 @@ function recover() {
   });
 }
 
-// The nonce only marks the popup's return URL; the RP cookie remains the authentication proof.
+// The popup may close only after its login callback confirms the RP session.
 const callbackUrl = new URL(window.location.href);
 const callbackNonce = callbackUrl.searchParams.get("__runner_auth_nonce");
-if (callbackNonce && window.opener && window.opener !== window) {
+if (
+  callbackNonce &&
+  window.opener &&
+  window.opener !== window &&
+  localStorage.getItem(recoveryFlag(callbackNonce)) === "pending"
+) {
   callbackUrl.searchParams.delete("__runner_auth_nonce");
   history.replaceState(null, "", `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
   rawFetch("/api/auth/session", { credentials: "same-origin", headers: { accept: "application/json" } })
     .then((response) => (response.ok ? response.json() : null))
     .then((session) => {
-      if (session?.authenticated) {
+      if (session?.authenticated && localStorage.getItem(recoveryFlag(callbackNonce)) === "pending") {
+        localStorage.setItem(recoveryFlag(callbackNonce), "complete");
         window.close();
       }
     })
