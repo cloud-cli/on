@@ -34,4 +34,19 @@ describe("RunnerApi", () => {
     const lease = { leaseId: "lease-1", leaseToken: "fence", job: { id: 3 }, workflow: {} };
     await expect(api.secrets(lease)).resolves.toEqual({ DEPLOY_TOKEN: "redacted" });
   });
+
+  it("treats update events as hints and uses the authenticated REST update protocol", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ update: { id: "update-1", version: "1.2.3" } })))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const api = new RunnerApi("https://runner.example", "credential", fetcher as typeof fetch);
+
+    await expect(api.pendingUpdate()).resolves.toMatchObject({ id: "update-1", version: "1.2.3" });
+    await api.reportUpdate("update-1", "failed");
+
+    expect(fetcher.mock.calls[0][0]).toEqual(new URL("https://runner.example/api/v1/runner/update"));
+    expect(fetcher.mock.calls[1][0]).toEqual(new URL("https://runner.example/api/v1/runner/update/status"));
+    expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({ updateId: "update-1", status: "failed" });
+  });
 });

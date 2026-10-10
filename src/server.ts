@@ -392,6 +392,44 @@ export class WebhookServer {
         .end(JSON.stringify({ runners: await this.runners.list() }));
       return;
     }
+    const runnerUpdateRequest = url.pathname.match(/^\/api\/v1\/runners\/([^/]+)\/update$/);
+    if (req.method === "POST" && runnerUpdateRequest) {
+      if (!this.requireSameOrigin(req, res) || !this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
+      const user = this.oidc?.userFromCookie(req.headers.cookie);
+      if (!user || (await this.oidcUsers.role(user.id)) !== "admin") {
+        res
+          .writeHead(403, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Server admin required" }));
+        return;
+      }
+      const body = await this.readJson(req, res);
+      if (!body || typeof body.version !== "string") {
+        res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "version required" }));
+        return;
+      }
+      let update;
+      try {
+        update = await this.runners.requestUpdate(decodeURIComponent(runnerUpdateRequest[1]), body.version);
+      } catch (error) {
+        res
+          .writeHead(400, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: (error as Error).message }));
+        return;
+      }
+      if (!update) {
+        res
+          .writeHead(409, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Runner unavailable, busy, or another update is active" }));
+        return;
+      }
+      this.events.publishRunner(update.runnerId, "runner.update", { updateId: update.id, version: update.version });
+      res
+        .writeHead(202, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+        .end(JSON.stringify(update));
+      return;
+    }
     const teamRunnersMatch = url.pathname.match(/^\/api\/v1\/teams\/([^/]+)\/runners$/);
     if (req.method === "GET" && teamRunnersMatch) {
       if (!this.requireAuthenticatedUser(req, res)) {
@@ -484,6 +522,32 @@ export class WebhookServer {
       }
       const updated = await this.runners.heartbeat(principal.runnerId, body);
       res.writeHead(updated ? 204 : 401, { "Cache-Control": "no-store" }).end();
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/v1/runner/update") {
+      const principal = await this.authenticateRunner(req, res);
+      if (!principal) {
+        return;
+      }
+      res
+        .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+        .end(JSON.stringify({ update: await this.runners.currentUpdate(principal.runnerId) }));
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/v1/runner/update/status") {
+      const principal = await this.authenticateRunner(req, res);
+      if (!principal) {
+        return;
+      }
+      const body = await this.readJson(req, res);
+      if (!body || typeof body.updateId !== "string" || body.status !== "failed") {
+        res
+          .writeHead(400, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Invalid update status" }));
+        return;
+      }
+      const accepted = await this.runners.reportUpdate(principal.runnerId, body.updateId, body.status);
+      res.writeHead(accepted ? 204 : 409, { "Cache-Control": "no-store" }).end();
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/v1/runner/events") {

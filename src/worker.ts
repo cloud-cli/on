@@ -29,36 +29,11 @@ import { debug } from "./debug.js";
 import { expandMatrix } from "./parser/matrix-expander.js";
 import { createWorkflowPlugin } from "./plugins/workflow-registry.js";
 import { RUNNER_VERSION } from "./version.js";
+import { activeStepHandles, shutdownState } from "./worker-state.js";
+export { abortActiveJob, abortActiveWorkerTask, shutdownState } from "./worker-state.js";
 
-export const shutdownState = {
-  isStopping: false,
-};
-
-const activeStepHandles = new Map<string, Set<{ cancel: () => Promise<void> }>>();
 let eventStreamController: AbortController | null = null;
 let wakeScheduler: (() => void) | null = null;
-
-/**
- * Called by signal handlers in index.ts during graceful shutdown
- */
-export async function abortActiveWorkerTask() {
-  if (!activeStepHandles.size) {
-    return;
-  }
-  console.log("⚡ Cancelling active step execution handles due to worker shutdown...");
-  await Promise.allSettled(
-    [...activeStepHandles.values()].flatMap((handles) => [...handles].map((handle) => handle.cancel())),
-  );
-  activeStepHandles.clear();
-}
-
-export async function abortActiveJob(jobId: string | number): Promise<void> {
-  const handles = activeStepHandles.get(String(jobId));
-  if (!handles) {
-    return;
-  }
-  await Promise.allSettled([...handles].map((handle) => handle.cancel()));
-}
 
 export function requestWorkerShutdown() {
   shutdownState.isStopping = true;
