@@ -134,6 +134,7 @@ describe("job status endpoint", () => {
 
   it("returns only the requested status fields", async () => {
     const server: any = {
+      oidc: { userFromCookie: vi.fn(() => ({ id: "user-1" })) },
       queue: {
         getJob: vi.fn(async () => ({
           id: 42,
@@ -144,8 +145,9 @@ describe("job status endpoint", () => {
         })),
       },
     };
-    server.handleJobStatus = (jobId, res) =>
-      (WebhookServer.prototype as any).handleJobStatus.call(server, jobId, res);
+    server.hasScope = vi.fn(async () => false);
+    server.handleJobStatus = (req, jobId, res) =>
+      (WebhookServer.prototype as any).handleJobStatus.call(server, req, jobId, res);
     const res = response();
 
     await (WebhookServer.prototype as any).handleRequest.call(
@@ -170,9 +172,13 @@ describe("job status endpoint", () => {
   });
 
   it("returns 404 when the job does not exist", async () => {
-    const server: any = { queue: { getJob: vi.fn(async () => null) } };
-    server.handleJobStatus = (jobId, res) =>
-      (WebhookServer.prototype as any).handleJobStatus.call(server, jobId, res);
+    const server: any = {
+      oidc: { userFromCookie: vi.fn(() => ({ id: "user-1" })) },
+      queue: { getJob: vi.fn(async () => null) },
+      hasScope: vi.fn(async () => false),
+    };
+    server.handleJobStatus = (req, jobId, res) =>
+      (WebhookServer.prototype as any).handleJobStatus.call(server, req, jobId, res);
     const res = response();
 
     await (WebhookServer.prototype as any).handleRequest.call(
@@ -183,6 +189,41 @@ describe("job status endpoint", () => {
 
     expect(res.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json; charset=utf-8" });
     expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: "Job not found" }));
+  });
+
+  it("accepts a logs:read bearer token without an OIDC session", async () => {
+    const server: any = {
+      oidc: { userFromCookie: vi.fn(() => undefined) },
+      hasScope: vi.fn(async (_req: unknown, scope: string) => scope === "logs:read"),
+      queue: { getJob: vi.fn(async () => null) },
+    };
+    server.handleJobStatus = (req, jobId, res) =>
+      (WebhookServer.prototype as any).handleJobStatus.call(server, req, jobId, res);
+    const res = response();
+    const req = { method: "GET", url: "/api/jobs/42/status", headers: { host: "flow.test" } };
+
+    await (WebhookServer.prototype as any).handleRequest.call(server, req, res);
+
+    expect(server.hasScope).toHaveBeenCalledWith(req, "logs:read");
+    expect(res.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json; charset=utf-8" });
+  });
+
+  it("rejects requests without an OIDC session or logs:read scope", async () => {
+    const server: any = {
+      oidc: { userFromCookie: vi.fn(() => undefined) },
+      hasScope: vi.fn(async () => false),
+      queue: { getJob: vi.fn() },
+    };
+    server.handleJobStatus = (req, jobId, res) =>
+      (WebhookServer.prototype as any).handleJobStatus.call(server, req, jobId, res);
+    const res = response();
+    const req = { method: "GET", url: "/api/jobs/42/status", headers: { host: "flow.test" } };
+
+    await (WebhookServer.prototype as any).handleRequest.call(server, req, res);
+
+    expect(res.writeHead).toHaveBeenCalledWith(401, { "Content-Type": "application/json; charset=utf-8" });
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: "Authentication required" }));
+    expect(server.queue.getJob).not.toHaveBeenCalled();
   });
 });
 

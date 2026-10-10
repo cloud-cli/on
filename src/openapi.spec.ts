@@ -7,7 +7,7 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api"]).toHaveProperty("get");
     expect(spec.paths["/api/jobs"]).toHaveProperty("get");
     const jobStatus = spec.paths["/api/jobs/{jobId}/status"].get;
-    expect(jobStatus.security).toEqual([]);
+    expect(jobStatus.security).toEqual([{ oidcSessionCookie: [] }, { bearerAuth: [] }]);
     expect(jobStatus.responses["200"].content["application/json"].schema).toEqual({
       $ref: "#/components/schemas/JobStatusDetails",
     });

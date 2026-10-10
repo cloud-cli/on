@@ -462,7 +462,7 @@ export class WebhookServer {
     const workflowRunMatch = url.pathname.match(/^\/api\/workflows\/([a-z0-9-]+)\/run$/);
     if (req.method === "POST" && workflowRunMatch) return this.handleWorkflowRun(req, res, workflowRunMatch[1]);
     const statusMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/status$/);
-    if (req.method === "GET" && statusMatch) return this.handleJobStatus(statusMatch[1], res);
+    if (req.method === "GET" && statusMatch) return this.handleJobStatus(req, statusMatch[1], res);
     const waitMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/wait$/);
     if (req.method === "GET" && waitMatch)
       return this.handleJobWait(waitMatch[1], url.searchParams.get("timeout"), res);
@@ -682,7 +682,12 @@ export class WebhookServer {
     );
   }
 
-  private async handleJobStatus(jobId: string, res: http.ServerResponse) {
+  private async handleJobStatus(req: http.IncomingMessage, jobId: string, res: http.ServerResponse) {
+    const authenticatedSession = this.oidc?.userFromCookie(req.headers.cookie);
+    if (!authenticatedSession && !(await this.hasScope(req, "logs:read"))) {
+      res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ error: "Authentication required" }));
+    }
     const job = await this.queue.getJob(jobId);
     if (!job) {
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });

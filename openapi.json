@@ -158,13 +158,15 @@
       "get": {
         "tags": ["jobs"],
         "summary": "Get the current status and timestamps for a job",
-        "security": [],
+        "description": "Requires an authenticated OIDC session or a bearer token with logs:read scope.",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/JobId" }],
         "responses": {
           "200": {
             "description": "Current job status",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobStatusDetails" } } }
           },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
