@@ -126,6 +126,55 @@ describe("OIDC callback and browser error pages", () => {
   });
 });
 
+describe("OIDC session status endpoint", () => {
+  it("returns 401 with an unauthenticated session state when no runner session exists", () => {
+    const res = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    const server = { oidc: { userFromCookie: () => undefined, roleFromCookie: () => undefined, enabled: true } };
+
+    (WebhookServer.prototype as any).handleOidcSession.call(server, { headers: {} }, res);
+
+    expect(res.writeHead).toHaveBeenCalledWith(401, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    expect(res.end).toHaveBeenCalledWith(
+      JSON.stringify({ configured: true, authenticated: false, error: "Authentication required" }),
+    );
+  });
+
+  it("returns the authenticated user and role when the runner session is valid", () => {
+    const res = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    const user = { id: "user-1", name: "Runner", role: "user" };
+    const server = {
+      oidc: {
+        userFromCookie: () => user,
+        roleFromCookie: () => "admin",
+        enabled: true,
+        providerUrl: "https://auth.test",
+      },
+    };
+
+    (WebhookServer.prototype as any).handleOidcSession.call(
+      server,
+      { headers: { cookie: "runner_oidc_session=x" } },
+      res,
+    );
+
+    expect(res.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    expect(res.end).toHaveBeenCalledWith(
+      JSON.stringify({
+        configured: true,
+        authenticated: true,
+        user: { ...user, role: "admin" },
+        providerUrl: "https://auth.test",
+      }),
+    );
+  });
+});
+
 describe("job status endpoint", () => {
   const response = () => ({
     writeHead: vi.fn().mockReturnThis(),

@@ -44,14 +44,14 @@ afterEach(() => {
 });
 
 describe("browser API client sign-in recovery", () => {
-  it("redirects to sign-in when the OIDC token endpoint returns 401 without a cached token", async () => {
+  it("does not redirect for a token endpoint 401 that lacks the known auth contract", async () => {
     const { location, fetch } = installBrowser([new Response("Unauthorized", { status: 401 })]);
     const { loadToken } = await importClient();
 
     await expect(loadToken()).resolves.toBe("");
 
     expect(fetch).toHaveBeenCalledWith("/api/auth/token", { headers: { accept: "application/json" } });
-    expect(location.assign).toHaveBeenCalledWith("/auth/login?url=%2Fsettings%2Ftokens%3Ftab%3Dactive%23keys");
+    expect(location.assign).not.toHaveBeenCalled();
   });
 
   it("does not redirect for non-401 token endpoint errors", async () => {
@@ -92,5 +92,108 @@ describe("browser API client sign-in recovery", () => {
     await expect(loadToken()).resolves.toBe("manual-api-key");
     expect(fetch).not.toHaveBeenCalled();
     expect(sessionStorage.getItem("runner-api-token")).toBe("manual-api-key");
+  });
+
+  it("waits for a user-initiated popup and the session endpoint before retrying once", async () => {
+    const authRequired = () =>
+      new Response(JSON.stringify({ error: "Authentication required" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    const { fetch } = installBrowser([
+      new Response(JSON.stringify({ access_token: "expired-token", expires_at: Date.now() + 60_000 })),
+      authRequired(),
+      new Response(JSON.stringify({ configured: true, authenticated: false }), { status: 401 }),
+      new Response(JSON.stringify({ configured: true, authenticated: true }), { status: 200 }),
+      new Response(JSON.stringify({ access_token: "fresh-token", expires_at: Date.now() + 60_000 })),
+      new Response("ok", { status: 200 }),
+    ]);
+    const status = { textContent: "" };
+    const callbacks = new Map<string, () => void>();
+    const loginButton = { addEventListener: (_type: string, callback: () => void) => callbacks.set("login", callback) };
+    const cancelButton = {
+      addEventListener: (_type: string, callback: () => void) => callbacks.set("cancel", callback),
+    };
+    const dialog = {
+      setAttribute: vi.fn(),
+      addEventListener: vi.fn(),
+      showModal: vi.fn(),
+      close: vi.fn(),
+      querySelector: (selector: string) =>
+        selector === "[data-auth-status]" ? status : selector === "[data-auth-login]" ? loginButton : cancelButton,
+    };
+    const windowEvents = new Map<string, () => void>();
+    const popup = { closed: false };
+    const window = globalThis.window as unknown as { addEventListener: typeof vi.fn; open: typeof vi.fn };
+    window.addEventListener = vi.fn((type: string, callback: () => void) => windowEvents.set(type, callback));
+    (window as unknown as { removeEventListener: typeof vi.fn }).removeEventListener = vi.fn();
+    window.open = vi.fn(() => popup);
+    let dialogAdded = false;
+    vi.stubGlobal("document", {
+      body: { append: vi.fn(() => (dialogAdded = true)) },
+      createElement: vi.fn(() => dialog),
+      getElementById: vi.fn(() => (dialogAdded ? dialog : null)),
+    });
+    const { apiFetch } = await importClient();
+
+    const request = apiFetch("/api/jobs");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(dialog.showModal).toHaveBeenCalledOnce();
+    expect(window.open).not.toHaveBeenCalled();
+
+    callbacks.get("login")?.();
+    expect(window.open).toHaveBeenCalledWith(
+      expect.stringContaining("/auth/login?url="),
+      "runner-auth",
+      expect.any(String),
+    );
+    expect(fetch.mock.calls[2][0]).toBe("/api/auth/session");
+    await windowEvents.get("focus")?.();
+
+    const response = await request;
+    expect(response.status).toBe(200);
+    expect(fetch).toHaveBeenCalledTimes(6);
+    expect(new Headers(fetch.mock.calls[5][1]?.headers).get("authorization")).toBe("Bearer fresh-token");
+    expect(dialog.close).toHaveBeenCalledOnce();
+  });
+
+  it("does not retry a missing-scope 401", async () => {
+    const { fetch, location } = installBrowser([
+      new Response(JSON.stringify({ access_token: "token", expires_at: Date.now() + 60_000 })),
+      new Response(JSON.stringify({ error: "Missing scope: logs:read" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      }),
+    ]);
+    const { apiFetch } = await importClient();
+
+    const response = await apiFetch("/api/runs/1");
+
+    expect(response.status).toBe(401);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(location.assign).not.toHaveBeenCalled();
+  });
+
+  it("closes a marked login popup only after the runner session check succeeds", async () => {
+    const { fetch, location } = installBrowser([
+      new Response(JSON.stringify({ configured: true, authenticated: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    ]);
+    location.href = "https://flow.example.test/settings/tokens?tab=active&__runner_auth_nonce=attempt-123#keys";
+    const popupWindow = globalThis.window as unknown as { opener: object; close: ReturnType<typeof vi.fn> };
+    popupWindow.opener = {};
+    popupWindow.close = vi.fn();
+    vi.stubGlobal("history", { replaceState: vi.fn() });
+
+    await importClient();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetch).toHaveBeenCalledWith("/api/auth/session", {
+      credentials: "same-origin",
+      headers: { accept: "application/json" },
+    });
+    expect(popupWindow.close).toHaveBeenCalledOnce();
   });
 });

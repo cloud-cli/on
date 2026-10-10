@@ -1,4 +1,5 @@
 import { onDestroy, onInit, ref } from "@li3/web";
+import "@app/api-client.mjs";
 
 export default function setup() {
   const activeSection = ref("runs");

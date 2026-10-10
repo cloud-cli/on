@@ -1,6 +1,7 @@
 import { onDestroy, onInit, ref, templateRef } from "@li3/web";
 import { diffLines } from "diff";
 import { navigateTo } from "@app/app-router.mjs";
+import { apiFetch } from "@app/api-client.mjs";
 
 export default function () {
   const params = new URLSearchParams(window.location.search);
@@ -54,13 +55,8 @@ export default function () {
     noticeLink.value = showRunsLink;
   };
 
-  const redirectToLogin = () => {
-    const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-    window.location.assign(`/auth/login?url=${encodeURIComponent(returnTo)}`);
-  };
-
   const api = async (url, options = {}) => {
-    const response = await fetch(url, {
+    const response = await apiFetch(url, {
       ...options,
       credentials: "same-origin",
       headers: {
@@ -69,9 +65,6 @@ export default function () {
         ...(options.headers || {}),
       },
     });
-    if (response.status === 401) {
-      redirectToLogin();
-    }
     const body = response.status === 204 ? null : await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(body.error || `Request failed: ${response.status}`);
@@ -417,15 +410,12 @@ export default function () {
     aiError.value = "";
     aiDiffHtml.value = "";
     try {
-      const response = await fetch("/api/ai/workflow-help", {
+      const response = await apiFetch("/api/ai/workflow-help", {
         method: "POST",
         credentials: "same-origin",
         headers: { accept: "text/event-stream", "content-type": "application/json" },
         body: JSON.stringify({ sourceYaml: source.value, request: aiRequest.value }),
       });
-      if (response.status === 401) {
-        redirectToLogin();
-      }
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.error || `AI help failed: ${response.status}`);

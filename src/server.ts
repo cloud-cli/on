@@ -1130,13 +1130,14 @@ export class WebhookServer {
   private handleOidcSession(req: http.IncomingMessage, res: http.ServerResponse) {
     const user = this.oidc?.userFromCookie(req.headers.cookie);
     const role = this.oidc?.roleFromCookie(req.headers.cookie) ?? user?.role;
-    res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+    res.writeHead(user ? 200 : 401, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
     return res.end(
       JSON.stringify({
         configured: Boolean(this.oidc?.enabled),
         authenticated: Boolean(user),
         user: user && { ...user, role },
         providerUrl: this.oidc?.providerUrl,
+        ...(!user ? { error: "Authentication required" } : {}),
       }),
     );
   }

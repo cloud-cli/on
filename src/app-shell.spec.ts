@@ -7,6 +7,7 @@ const html = readFileSync(new URL("../ui/app-shell.html", import.meta.url), "utf
 
 describe("Flow application shell", () => {
   it("provides responsive, accessible navigation around the mounted router", () => {
+    expect(shellSetup).toContain('import "@app/api-client.mjs"');
     expect(html).toContain('aria-label="Primary navigation"');
     expect(html).toContain('aria-label="Mobile navigation"');
     expect(html).toContain("bottom-0 z-50");

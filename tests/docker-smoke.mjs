@@ -128,6 +128,15 @@ try {
   if (apiResponse.status !== 401) {
     throw new Error(`Expected OpenAPI endpoint to require authentication, got ${apiResponse.status}`);
   }
+  const sessionResponse = await fetch(`${appBaseUrl}/api/auth/session`);
+  const session = await sessionResponse.json();
+  if (
+    sessionResponse.status !== 401 ||
+    session.authenticated !== false ||
+    session.error !== "Authentication required"
+  ) {
+    throw new Error(`Expected the session check to return an unauthenticated 401, got ${sessionResponse.status}`);
+  }
 
   for (const path of ["/", "/runs", "/help", "/settings"]) {
     const response = await fetch(`${appBaseUrl}${path}`);
