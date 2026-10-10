@@ -107,4 +107,21 @@ describe("settings UI", () => {
     expect(generateSettingsHtml()).not.toContain("section-teams");
     expect(settingsSetup).not.toContain("/api/teams");
   });
+
+  it("provides admin runner inventory, shared enrollment, revoke, and refresh controls", () => {
+    const html = generateSettingsHtml() + settingsSetup;
+    expect(html).toContain('href="#section-runners"');
+    expect(html).toContain('id="section-runners"');
+    expect(settingsSetup).toContain('api("/api/v1/runners")');
+    expect(settingsSetup).toContain('api("/api/v1/runner-enrollments"');
+    expect(settingsSetup).toContain('JSON.stringify({ scope: "shared" })');
+    expect(settingsSetup).toContain('method: "DELETE"');
+    expect(html).toContain("enrollmentCode");
+    expect(html).toContain("enrollmentExpiresAt");
+    expect(html).toContain("runner.activeJobs");
+    expect(html).toContain("runner.runtime");
+    expect(html).toContain("runner.capabilities.join");
+    expect(html).toContain('on-click="loadRunners()"');
+    expect(html).not.toContain("updateRunner");
+  });
 });

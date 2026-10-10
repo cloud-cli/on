@@ -36,6 +36,12 @@
             >Workers</a
           >
           <a
+            href="#section-runners"
+            class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-background"
+            class-hidden="!runnersLoaded || runnersForbidden"
+            >Runners</a
+          >
+          <a
             href="#section-users"
             class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-background"
             class-hidden="!usersLoaded || usersForbidden"
@@ -203,6 +209,80 @@
             <p class="p-5 text-sm text-flow-muted" class-hidden="workers.length > 0">
               No worker heartbeats received yet.
             </p>
+          </div>
+        </section>
+        <section
+          id="section-runners"
+          class="scroll-mt-6 rounded-xl border border-flow-border bg-white p-5"
+          class-hidden="!runnersLoaded || runnersForbidden"
+        >
+          <h2 class="text-lg font-semibold">Runner management</h2>
+          <p class="mt-1 text-sm text-flow-muted">
+            Enroll and manage registered runners. Refresh to see current status and capacity.
+          </p>
+          <div class="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              on-click="createEnrollment()"
+              class="rounded-lg border border-flow-primary/60 px-3 py-2 text-sm font-medium text-flow-primary"
+            >
+              Create shared enrollment code
+            </button>
+            <button
+              type="button"
+              on-click="loadRunners()"
+              class="rounded-lg border border-flow-border px-3 py-2 text-sm"
+            >
+              Refresh runners
+            </button>
+          </div>
+          <div
+            class="mt-4 rounded-lg border border-flow-primary/20 bg-flow-panel p-3"
+            role="alert"
+            class-hidden="!enrollmentCode"
+          >
+            <p class="text-sm font-semibold">Copy this enrollment code now. It is shown only once.</p>
+            <code class="mt-2 block select-all break-all font-mono text-sm">{{ enrollmentCode }}</code>
+            <p class="mt-2 text-xs text-flow-muted">Expires {{ formatTimestamp(enrollmentExpiresAt) }}</p>
+          </div>
+          <p class="mt-3 text-sm text-flow-muted" role="status">{{ runnerMessage }}</p>
+          <div class="mt-4 overflow-x-auto rounded-xl border border-flow-border">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-flow-background text-xs uppercase text-flow-muted">
+                <tr>
+                  <th class="px-4 py-3">Runner</th>
+                  <th class="px-4 py-3">Status</th>
+                  <th class="px-4 py-3">Capacity</th>
+                  <th class="px-4 py-3">Runtime</th>
+                  <th class="px-4 py-3">Version</th>
+                  <th class="px-4 py-3">Tags</th>
+                  <th class="px-4 py-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template for="runner of runners"
+                  ><tr class="border-t border-flow-border">
+                    <td class="px-4 py-3">{{ runner.name }}</td>
+                    <td class="px-4 py-3">{{ runner.status }}</td>
+                    <td class="px-4 py-3">{{ runner.activeJobs }} / {{ runner.concurrency }}</td>
+                    <td class="px-4 py-3">{{ runner.runtime }}</td>
+                    <td class="px-4 py-3">{{ runner.version }}</td>
+                    <td class="px-4 py-3">{{ runner.capabilities.join(', ') }}</td>
+                    <td class="px-4 py-3">
+                      <button
+                        type="button"
+                        on-click="revokeRunner(runner)"
+                        attr-aria-label="'Revoke ' + runner.name"
+                        class="rounded-lg border border-rose-300 px-3 py-1.5 text-rose-700"
+                      >
+                        Revoke
+                      </button>
+                    </td>
+                  </tr></template
+                >
+              </tbody>
+            </table>
+            <p class="p-5 text-sm text-flow-muted" class-hidden="runners.length > 0">No registered runners.</p>
           </div>
         </section>
         <section

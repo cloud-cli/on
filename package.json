@@ -27,6 +27,8 @@
   "scripts": {
     "ci": "pnpm build && pnpm lint && pnpm test",
     "build": "vite build && tsc --emitDeclarationOnly --declaration",
+    "build:worker": "vite build --config vite.worker.config.ts",
+    "test:worker-artifact": "pnpm build:worker && node tests/worker-artifact-smoke.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "docker build --no-cache -t on:e2e . && node tests/docker-smoke.mjs",

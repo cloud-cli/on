@@ -36,7 +36,7 @@ All endpoints below are under `/api/v1`. Runner endpoints require `Authorization
 | `GET /runner/update`                      | Read the runner's desired release and update command/state.                                     |
 | `POST /runner/update-status`              | Report drain/install/restart/verification progress and installed digest.                        |
 
-The current codebase has not yet implemented these coordinator routes or an API-only worker execution path. This document is a proposed contract, not a description of deployed behavior.
+Coordinator routes now implement enrollment, runner inventory/grants, heartbeats, authenticated team-filtered SSE, job claims, lease fencing, workflow/secret/log/report/file operations, cancellation and revocation. `start-workers` uses the API path without importing the coordinator database modules; `start-workers-legacy` remains available during the lab migration. This document remains a protocol design: update-request APIs, runtime self-update adapters, and the lab canary have not been implemented or verified yet.
 
 Claim requests contain runner protocol version and may include locally available capabilities; coordinator-side identity and team grants determine eligibility. A claim response includes a lease ID, opaque fencing token, server expiry, authoritative job/team identity, payload, and immutable workflow revision. Persist lease owner/expiry/generation in the coordinator database. Every renewal, secret/log/report/artifact write, and completion is conditional on the current fencing token. Stale workers cannot write after expiry/reclaim. Expect at-least-once execution; workflows with external side effects need idempotency of their own.
 

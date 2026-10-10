@@ -40,15 +40,15 @@ export class RunnerApiClient {
 
   async json<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await this.request(path, init);
-    if (response.status === 204) return undefined as T;
+    if (response.status === 204) {return undefined as T;}
     return (await response.json()) as T;
   }
 
   async *events(signal: AbortSignal, lastEventId?: string): AsyncGenerator<RunnerEvent> {
     const headers = new Headers({ Accept: "text/event-stream" });
-    if (lastEventId) headers.set("Last-Event-ID", lastEventId);
+    if (lastEventId) {headers.set("Last-Event-ID", lastEventId);}
     const response = await this.request("runner/events", { headers, signal });
-    if (!response.body) throw new Error("Runner coordinator returned an empty event stream");
+    if (!response.body) {throw new Error("Runner coordinator returned an empty event stream");}
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -56,7 +56,7 @@ export class RunnerApiClient {
     try {
       while (!signal.aborted) {
         const { value, done } = await reader.read();
-        if (done) return;
+        if (done) {return;}
         buffer += decoder.decode(value, { stream: true }).replaceAll("\r\n", "\n");
         let boundary = buffer.indexOf("\n\n");
         while (boundary !== -1) {
@@ -64,7 +64,7 @@ export class RunnerApiClient {
           buffer = buffer.slice(boundary + 2);
           boundary = buffer.indexOf("\n\n");
           const event = parseRunnerEvent(frame);
-          if (event) yield event;
+          if (event) {yield event;}
         }
       }
     } finally {
@@ -90,18 +90,18 @@ function parseRunnerEvent(frame: string): RunnerEvent | undefined {
   let event: string | undefined;
   const data: string[] = [];
   for (const line of frame.split("\n")) {
-    if (!line || line.startsWith(":")) continue;
+    if (!line || line.startsWith(":")) {continue;}
     const separator = line.indexOf(":");
     const field = separator === -1 ? line : line.slice(0, separator);
     const value = separator === -1 ? "" : line.slice(separator + 1).replace(/^ /, "");
-    if (field === "id") id = value;
-    if (field === "event") event = value;
-    if (field === "data") data.push(value);
+    if (field === "id") {id = value;}
+    if (field === "event") {event = value;}
+    if (field === "data") {data.push(value);}
   }
-  if (!event || !["jobs.available", "lease.cancelled", "runner.drain", "runner.update"].includes(event)) return;
+  if (!event || !["jobs.available", "lease.cancelled", "runner.drain", "runner.update"].includes(event)) {return;}
   try {
     const parsed = data.length ? JSON.parse(data.join("\n")) : {};
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {return;}
     return { id, event: event as RunnerEventName, data: parsed as Record<string, unknown> };
   } catch {
     return;

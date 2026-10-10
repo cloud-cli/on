@@ -32,7 +32,7 @@ describe("consumeRunnerEvents", () => {
 describe("EventBroker team and worker subscriptions", () => {
   it("broadcasts availability to workers but keeps job changes tenant-scoped", () => {
     const broker = new EventBroker();
-    const response = () => ({ writeHead: vi.fn(), write: vi.fn(() => true), end: vi.fn() });
+    const response = () => ({ writeHead: vi.fn(), write: vi.fn(() => true), end: vi.fn(), once: vi.fn() });
     const teamA = response();
     const worker = response();
     broker.subscribe({ once: vi.fn() } as any, teamA as any, "team-a");
@@ -46,6 +46,23 @@ describe("EventBroker team and worker subscriptions", () => {
     expect(teamA.write).not.toHaveBeenCalled();
     expect(worker.write).toHaveBeenCalledOnce();
     expect(worker.write.mock.calls[0][0]).toContain("event: jobs.available");
+    broker.close();
+  });
+
+  it("limits runner events to authorized teams and closes streams after grant changes", () => {
+    const broker = new EventBroker();
+    const response = () => ({ writeHead: vi.fn(), write: vi.fn(() => true), end: vi.fn(), once: vi.fn() });
+    const runner = response();
+    broker.subscribe({ once: vi.fn() } as any, runner as any, undefined, true, ["team-a"], "runner-1");
+    runner.write.mockClear();
+
+    broker.publish("lease.cancelled", { jobId: 1, teamId: "team-b" });
+    broker.publish("lease.cancelled", { jobId: 2, teamId: "team-a" });
+    expect(runner.write).toHaveBeenCalledOnce();
+    expect(runner.write.mock.calls[0][0]).toContain('"jobId":2');
+
+    broker.closeRunnerStreams("runner-1");
+    expect(runner.end).toHaveBeenCalledOnce();
     broker.close();
   });
 });
