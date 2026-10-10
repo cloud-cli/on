@@ -19,16 +19,37 @@
     }
   ],
   "tags": [
-    { "name": "discovery" },
-    { "name": "jobs" },
-    { "name": "workflows" },
-    { "name": "users" },
-    { "name": "secrets" },
-    { "name": "events" },
-    { "name": "webhooks" },
-    { "name": "notifications" },
-    { "name": "teams", "description": "Team management" },
-    { "name": "runners" }
+    {
+      "name": "discovery"
+    },
+    {
+      "name": "jobs"
+    },
+    {
+      "name": "workflows"
+    },
+    {
+      "name": "users"
+    },
+    {
+      "name": "secrets"
+    },
+    {
+      "name": "events"
+    },
+    {
+      "name": "webhooks"
+    },
+    {
+      "name": "notifications"
+    },
+    {
+      "name": "teams",
+      "description": "Team management"
+    },
+    {
+      "name": "runners"
+    }
   ],
   "paths": {
     "/api": {
@@ -64,7 +85,11 @@
       "post": {
         "tags": ["runners"],
         "summary": "Create a one-time runner enrollment code",
-        "security": [{ "oidcSessionCookie": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -73,14 +98,26 @@
                 "type": "object",
                 "required": ["scope"],
                 "properties": {
-                  "scope": { "type": "string", "enum": ["shared", "team"] },
-                  "teamId": { "type": "string" }
+                  "scope": {
+                    "type": "string",
+                    "enum": ["shared", "team"]
+                  },
+                  "teamId": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
-        "responses": { "201": { "description": "One-time enrollment code" }, "403": { "description": "Forbidden" } }
+        "responses": {
+          "201": {
+            "description": "One-time enrollment code"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
       }
     },
     "/api/v1/runners/enroll": {
@@ -96,17 +133,27 @@
                 "type": "object",
                 "required": ["code", "name"],
                 "properties": {
-                  "code": { "type": "string" },
-                  "name": { "type": "string" },
-                  "runtime": { "type": "string" }
+                  "code": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "runtime": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "201": { "description": "Runner identity and credential" },
-          "400": { "description": "Invalid enrollment code" }
+          "201": {
+            "description": "Runner identity and credential"
+          },
+          "400": {
+            "description": "Invalid enrollment code"
+          }
         }
       }
     },
@@ -114,21 +161,44 @@
       "post": {
         "tags": ["runners"],
         "summary": "Report runner health and capacity",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "204": { "description": "Heartbeat accepted" }, "401": { "description": "Unauthorized" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Heartbeat accepted"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
       }
     },
     "/api/v1/runner/events": {
       "get": {
         "tags": ["runners"],
         "summary": "Subscribe to authenticated runner events",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Authenticated SSE stream",
-            "content": { "text/event-stream": { "schema": { "type": "string" } } }
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
-          "401": { "description": "Unauthorized" }
+          "401": {
+            "description": "Unauthorized"
+          }
         }
       }
     },
@@ -136,10 +206,18 @@
       "post": {
         "tags": ["runners"],
         "summary": "Claim the next eligible job",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
-          "200": { "description": "Lease, job, and immutable workflow" },
-          "204": { "description": "No eligible job" }
+          "200": {
+            "description": "Lease, job, and immutable workflow"
+          },
+          "204": {
+            "description": "No eligible job"
+          }
         }
       }
     },
@@ -147,10 +225,18 @@
       "get": {
         "tags": ["runners"],
         "summary": "List registered runners (server administrator)",
-        "security": [{ "oidcAdminSession": [] }],
+        "security": [
+          {
+            "oidcAdminSession": []
+          }
+        ],
         "responses": {
-          "200": { "description": "Runner inventory" },
-          "403": { "description": "Administrator required" }
+          "200": {
+            "description": "Runner inventory"
+          },
+          "403": {
+            "description": "Administrator required"
+          }
         }
       }
     },
@@ -158,41 +244,111 @@
       "delete": {
         "tags": ["runners"],
         "summary": "Revoke a runner and fence active jobs",
-        "security": [{ "oidcAdminSession": [] }],
-        "parameters": [{ "name": "runnerId", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "204": { "description": "Runner revoked" }, "404": { "description": "Runner not found" } }
+        "security": [
+          {
+            "oidcAdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "runnerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Runner revoked"
+          },
+          "404": {
+            "description": "Runner not found"
+          }
+        }
       }
     },
     "/api/v1/teams/{teamId}/runners": {
       "get": {
         "tags": ["runners"],
         "summary": "List team, granted shared, and available shared runners",
-        "security": [{ "oidcSessionCookie": [] }],
-        "parameters": [{ "name": "teamId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Team runner inventory" },
-          "403": { "description": "Team membership required" }
+          "200": {
+            "description": "Team runner inventory"
+          },
+          "403": {
+            "description": "Team membership required"
+          }
         }
       }
     },
     "/api/v1/teams/{teamId}/runners/{runnerId}": {
       "parameters": [
-        { "name": "teamId", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "name": "runnerId", "in": "path", "required": true, "schema": { "type": "string" } }
+        {
+          "name": "teamId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "runnerId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
       ],
       "post": {
         "tags": ["runners"],
         "summary": "Grant a shared runner to this team",
-        "security": [{ "oidcSessionCookie": [] }],
-        "responses": { "204": { "description": "Runner granted" }, "403": { "description": "Team admin required" } }
+        "security": [
+          {
+            "oidcSessionCookie": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Runner granted"
+          },
+          "403": {
+            "description": "Team admin required"
+          }
+        }
       },
       "delete": {
         "tags": ["runners"],
         "summary": "Revoke a shared runner grant",
-        "security": [{ "oidcSessionCookie": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          }
+        ],
         "responses": {
-          "204": { "description": "Grant revoked; active leases are fenced" },
-          "403": { "description": "Team admin required" }
+          "204": {
+            "description": "Grant revoked; active leases are fenced"
+          },
+          "403": {
+            "description": "Team admin required"
+          }
         }
       }
     },
@@ -200,17 +356,41 @@
       "get": {
         "tags": ["runners"],
         "summary": "Read authoritative lease status",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "leaseId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "leaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Lease state" },
-          "409": { "description": "Lease expired, fenced, or unowned" }
+          "200": {
+            "description": "Lease state"
+          },
+          "409": {
+            "description": "Lease expired, fenced, or unowned"
+          }
         }
       }
     },
     "/api/v1/runner/leases/{leaseId}/{action}": {
       "parameters": [
-        { "name": "leaseId", "in": "path", "required": true, "schema": { "type": "string" } },
+        {
+          "name": "leaseId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
         {
           "name": "action",
           "in": "path",
@@ -224,25 +404,52 @@
       "get": {
         "tags": ["runners"],
         "summary": "Read a lease-scoped workflow or secret resource",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "200": { "description": "Lease resource" }, "409": { "description": "Lease expired or fenced" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lease resource"
+          },
+          "409": {
+            "description": "Lease expired or fenced"
+          }
+        }
       },
       "post": {
         "tags": ["runners"],
         "summary": "Renew, upload logs/files, complete, or release a lease",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
-          "204": { "description": "Operation accepted" },
-          "409": { "description": "Lease expired or fenced" }
+          "204": {
+            "description": "Operation accepted"
+          },
+          "409": {
+            "description": "Lease expired or fenced"
+          }
         }
       },
       "put": {
         "tags": ["runners"],
         "summary": "Submit a fenced job report",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
-          "204": { "description": "Report accepted" },
-          "409": { "description": "Lease expired or fenced" }
+          "204": {
+            "description": "Report accepted"
+          },
+          "409": {
+            "description": "Lease expired or fenced"
+          }
         }
       }
     },
@@ -446,11 +653,11 @@
           "400": {
             "$ref": "#/components/responses/ValidationError"
           },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -1857,6 +2064,123 @@
         "responses": {
           "201": {
             "description": "Webhook configured"
+          }
+        }
+      }
+    },
+    "/api/v1/runners/{runnerId}/update": {
+      "post": {
+        "tags": ["runners"],
+        "summary": "Request an exact-version update for an online idle runner (server administrator)",
+        "security": [
+          {
+            "oidcAdminSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "runnerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["version"],
+                "properties": {
+                  "version": {
+                    "type": "string",
+                    "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Update requested"
+          },
+          "400": {
+            "description": "Invalid version"
+          },
+          "403": {
+            "description": "Administrator required"
+          },
+          "409": {
+            "description": "Runner unavailable, busy, or another update is active"
+          }
+        }
+      }
+    },
+    "/api/v1/runner/update": {
+      "get": {
+        "tags": ["runners"],
+        "summary": "Reconcile the authenticated runner's pending update",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending update or null"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/runner/update/status": {
+      "post": {
+        "tags": ["runners"],
+        "summary": "Report update installation failure; success is confirmed by heartbeat",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["updateId", "status"],
+                "properties": {
+                  "updateId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["failed"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Status accepted"
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "description": "No matching pending update"
           }
         }
       }
