@@ -117,6 +117,9 @@ export default function () {
     if (path === "/settings") {
       return { component: "page-settings", url: "/pages/settings.html", page: "settings" };
     }
+    if (path === "/operations") {
+      return { component: "page-operations", url: "/pages/operations.html", page: "operations" };
+    }
     if (path === "/teams" || path === "/workspaces") {
       return { component: "page-teams", url: "/pages/workspaces.html", page: "workspaces" };
     }

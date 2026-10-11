@@ -225,6 +225,126 @@
               >
             </ul>
           </section>
+          <section
+            class="mt-8 border-t border-flow-border pt-5"
+            class-hidden="!isAdmin"
+            aria-labelledby="workspace-api-keys-title"
+          >
+            <h2 id="workspace-api-keys-title" class="text-lg font-semibold">Workspace API keys</h2>
+            <p class="mt-1 text-sm text-flow-muted">
+              Keys are limited to this workspace. Give each key only the scopes its automation needs.
+            </p>
+            <div class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <label class="sr-only" for="workspace-key-name">Key name</label>
+              <input
+                id="workspace-key-name"
+                bind-value="keyName"
+                on-input="keyName = $event.target.value"
+                placeholder="Deploy bot"
+                class="rounded-lg border border-flow-border px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                on-click="issueKey()"
+                class="rounded-lg border border-flow-primary/60 px-3 py-2 text-sm font-medium text-flow-primary"
+              >
+                Generate key
+              </button>
+            </div>
+            <fieldset class="mt-4 grid gap-2 sm:grid-cols-2">
+              <legend class="mb-2 text-xs font-semibold uppercase tracking-wider text-flow-muted">Scopes</legend>
+              <template for="scope of scopeOptions"
+                ><label class="flex items-center gap-2 text-sm"
+                  ><input type="checkbox" bind-checked="scope.selected" on-change="setScope(scope, $event)" /> {{
+                  scope.label }}</label
+                ></template
+              >
+            </fieldset>
+            <div
+              class="mt-4 rounded-lg border border-flow-primary/20 bg-flow-panel p-3"
+              role="alert"
+              class-hidden="!keyToken"
+            >
+              <p class="text-sm font-semibold">Copy this key now. It cannot be shown again.</p>
+              <code class="mt-2 block select-all break-all font-mono text-xs">{{ keyToken }}</code>
+              <button type="button" on-click="keyToken = ''" class="mt-2 text-xs underline">Hide key</button>
+            </div>
+            <ul class="mt-4 space-y-2" aria-label="Workspace API keys">
+              <template for="key of keys"
+                ><li
+                  class="flex items-center justify-between gap-3 rounded-lg border border-flow-border px-3 py-2 text-sm"
+                >
+                  <span class="min-w-0"
+                    ><strong>{{ key.name }}</strong
+                    ><span class="block break-words text-xs text-flow-muted">{{ key.scopes.join(', ') }}</span></span
+                  ><button type="button" on-click="revokeKey(key)" class="shrink-0 text-rose-700 underline">
+                    Revoke
+                  </button>
+                </li></template
+              >
+            </ul>
+            <section class="mt-8 border-t border-flow-border pt-5" aria-labelledby="workspace-secrets-title">
+              <h2 id="workspace-secrets-title" class="text-lg font-semibold">Workspace secrets</h2>
+              <p class="mt-1 text-sm text-flow-muted">
+                Encrypted, write-only values available to workflows in this workspace.
+              </p>
+              <div class="mt-4 grid gap-3">
+                <label class="sr-only" for="workspace-secret-name">Secret name</label>
+                <input
+                  id="workspace-secret-name"
+                  bind-value="secretName"
+                  on-input="secretName = $event.target.value"
+                  placeholder="NPM_TOKEN"
+                  class="rounded-lg border border-flow-border px-3 py-2 font-mono text-sm uppercase"
+                />
+                <label class="flex items-center gap-2 text-sm"
+                  ><input type="checkbox" bind-checked="fileMode" on-change="fileMode = $event.target.checked" /> Binary
+                  file secret</label
+                >
+                <template if="!fileMode"
+                  ><label class="sr-only" for="workspace-secret-value">Secret value</label
+                  ><input
+                    id="workspace-secret-value"
+                    bind-value="secretValue"
+                    on-input="secretValue = $event.target.value"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder="Secret value"
+                    class="rounded-lg border border-flow-border px-3 py-2 font-mono text-sm"
+                /></template>
+                <template if="fileMode"
+                  ><label class="sr-only" for="workspace-secret-file">Secret file</label
+                  ><input
+                    id="workspace-secret-file"
+                    on-change="setSecretFile($event)"
+                    type="file"
+                    class="rounded-lg border border-flow-border px-3 py-2 text-sm"
+                  /><span class="text-xs text-flow-muted">{{ secretFileName }}</span></template
+                >
+                <div>
+                  <button
+                    type="button"
+                    on-click="saveSecret()"
+                    class="rounded-lg border border-flow-primary/60 px-3 py-2 text-sm font-medium text-flow-primary"
+                  >
+                    Save secret
+                  </button>
+                </div>
+              </div>
+              <ul class="mt-4 space-y-2" aria-label="Workspace secrets">
+                <template for="secret of secrets"
+                  ><li
+                    class="flex items-center justify-between gap-3 rounded-lg border border-flow-border px-3 py-2 text-sm"
+                  >
+                    <code>{{ secret }}</code
+                    ><button type="button" on-click="deleteSecret(secret)" class="text-rose-700 underline">
+                      Delete
+                    </button>
+                  </li></template
+                >
+              </ul>
+            </section>
+          </section>
         </section>
         <p class="text-sm text-rose-700" role="alert" class-hidden="!error">{{ error }}</p>
       </main>

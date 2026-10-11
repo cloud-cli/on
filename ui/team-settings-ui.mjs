@@ -20,6 +20,26 @@ export default function () {
   const availableRunners = ref([]);
   const enrollmentCode = ref("");
   const enrollmentExpiresAt = ref("");
+  const keys = ref([]);
+  const keyName = ref("");
+  const keyToken = ref("");
+  const scopeOptions = ref([
+    { name: "workflows:read", label: "Read workflows", selected: true },
+    { name: "workflows:write", label: "Modify workflows", selected: false },
+    { name: "logs:read", label: "Read logs", selected: false },
+    { name: "artifacts:read", label: "Read artifacts", selected: false },
+    { name: "runs:control", label: "Control runs", selected: false },
+    { name: "runs:dispatch", label: "Dispatch runs", selected: false },
+    { name: "workers:read", label: "Read workers", selected: false },
+    { name: "secrets:read", label: "Read secret names", selected: false },
+    { name: "secrets:write", label: "Manage secrets", selected: false },
+  ]);
+  const secrets = ref([]);
+  const secretName = ref("");
+  const secretValue = ref("");
+  const fileMode = ref(false);
+  const secretFileName = ref("");
+  const secretFileData = ref("");
   const request = async (url, options = {}) => {
     const response = await apiFetch(url, {
       ...options,
@@ -45,7 +65,84 @@ export default function () {
     teamRunners.value = runners.team || [];
     sharedRunners.value = runners.shared || [];
     availableRunners.value = runners.available || [];
+    keys.value = isAdmin.value
+      ? (await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/api-keys`)).keys || []
+      : [];
+    secrets.value = (await request("/api/v1/secrets")).secrets || [];
   };
+  const issueKey = () =>
+    act(async () => {
+      const result = await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/api-keys`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: keyName.value,
+          scopes: scopeOptions.value.filter((scope) => scope.selected).map((scope) => scope.name),
+        }),
+      });
+      keyToken.value = result.token;
+      keyName.value = "";
+      await load();
+    });
+  const revokeKey = (key) =>
+    act(async () => {
+      if (!confirm(`Revoke ${key.name}? Any automation using it will stop working.`)) {
+        return;
+      }
+      await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/api-keys/${encodeURIComponent(key.id)}`, {
+        method: "DELETE",
+      });
+      await load();
+    });
+  const setScope = (scope, event) => {
+    scope.selected = event.target.checked;
+  };
+  const setSecretFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    }
+    secretFileName.value = file.name;
+    secretFileData.value = btoa(binary);
+  };
+  const saveSecret = () =>
+    act(async () => {
+      const name = secretName.value.trim().toUpperCase();
+      if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
+        throw new Error("Secret names must start with a letter and contain only letters, numbers, and underscores.");
+      }
+      if (fileMode.value ? !secretFileData.value : !secretValue.value) {
+        throw new Error(fileMode.value ? "Choose a file first." : "Set a secret value first.");
+      }
+      await request(`/api/v1/secrets/${encodeURIComponent(name)}`, {
+        method: "PUT",
+        body: JSON.stringify(
+          fileMode.value
+            ? { value: secretFileData.value, encoding: "base64", originalName: secretFileName.value }
+            : { value: secretValue.value, encoding: "utf8" },
+        ),
+      });
+      secretName.value = "";
+      secretValue.value = "";
+      secretFileName.value = "";
+      secretFileData.value = "";
+      fileMode.value = false;
+      await load();
+      message.value = `Saved ${name}.`;
+    });
+  const deleteSecret = (secret) =>
+    act(async () => {
+      if (!confirm(`Delete secret ${secret}?`)) {
+        return;
+      }
+      await request(`/api/v1/secrets/${encodeURIComponent(secret)}`, { method: "DELETE" });
+      await load();
+      message.value = `Deleted ${secret}.`;
+    });
   const act = async (action) => {
     error.value = "";
     try {
@@ -175,5 +272,20 @@ export default function () {
     enrollmentExpiresAt,
     createRunnerEnrollment,
     setSharedRunner,
+    keys,
+    keyName,
+    keyToken,
+    scopeOptions,
+    issueKey,
+    revokeKey,
+    setScope,
+    secrets,
+    secretName,
+    secretValue,
+    fileMode,
+    secretFileName,
+    setSecretFile,
+    saveSecret,
+    deleteSecret,
   };
 }

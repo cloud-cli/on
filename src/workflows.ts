@@ -3,8 +3,9 @@ import db from "./db-client.js";
 import { runMigrations } from "./migrations.js";
 import type { WorkflowDefinition, WorkflowRevision } from "./types.js";
 import { ensureTeamDataSchema } from "./team-data-schema.js";
+import { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
 
-export const DEFAULT_STEP_TIMEOUT_MS = 30_000;
+export { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
 
 export interface StoredWorkflow {
   id: string;

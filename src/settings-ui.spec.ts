@@ -2,133 +2,26 @@ import { describe, expect, it } from "vitest";
 import { generateSettingsHtml } from "../ui/settings-ui.js";
 import settingsSetup from "../ui/settings-ui.mjs?raw";
 import serverSetup from "./server.ts?raw";
-import { generateWorkflowManagementHtml } from "../ui/workflows-ui.js";
 
-describe("settings UI", () => {
-  it("provides token, notifications, and worker settings without a duplicate workflows link", () => {
-    const source = generateSettingsHtml() + settingsSetup;
-    expect(source).toContain("/api/v1/api-keys");
-    expect(source).toContain("New API key");
-    expect(source).toContain("Generate API key");
-    expect(source).toContain("workflows:write");
-    expect(source).toContain("Notifications");
-    expect(source).toContain("Workers");
-    expect(source).toContain('href="#section-workers"');
-    expect(source).toContain('id="section-keys"');
-    expect(source).toContain('id="section-notifications"');
-    expect(source).toContain('class="sticky top-0 z-20');
-    expect(source).not.toContain("-mx-1");
-    expect(source).toContain("{{ scope.label }}");
-    expect(source).not.toContain("{{\n                      scope.label");
-    expect(source).not.toContain('href="/settings/workflows"');
-    expect(source).toContain('ref="apiKeyForm"');
-    expect(source).toContain("key.token");
-    expect(source).toContain('class-hidden="!keys.length"');
-    expect(source).toContain("Active tokens");
-    expect(source).toContain('id="section-keys"');
-    expect(source).toContain('class="scroll-mt-6 rounded-xl border border-flow-border bg-white p-5"');
-    expect(source).toContain('class="rounded-lg border border-flow-border px-4 py-3"');
-    expect(source).toContain("rounded-lg border border-flow-border p-4");
-    expect(source).not.toContain('icon="key-round" size="18"');
-    expect(source).toContain("apiKeyForm.value.open = false");
-    expect(settingsSetup).toContain("revealedKeys.get(key.id)");
-    expect(settingsSetup).toContain("isNew: true");
-    expect(source).toContain("bg-white");
-    expect(source).not.toContain("bg-gray-950");
-    expect(source).not.toContain("<app-header");
+describe("personal settings UI", () => {
+  it("contains only personal timezone and device notification preferences", () => {
+    const html = generateSettingsHtml();
+    expect(html).toContain('data-page="settings"');
+    expect(html).toContain('id="section-timezone"');
+    expect(html).toContain('id="section-notifications"');
+    expect(html).toContain("Your timezone");
+    expect(html).toContain("Notifications");
+    expect(html).not.toMatch(/section-(keys|secrets|workers|runners|users)/);
+    expect(settingsSetup).toContain("/api/v1/preferences");
+    expect(settingsSetup).toContain("Notification.requestPermission()");
+    expect(settingsSetup).not.toMatch(/api-keys|\/api\/v1\/secrets|\/api\/v1\/runners|\/api\/v1\/users/);
   });
 
-  it("loads and saves the user's timezone and formats worker/key timestamps", () => {
-    const html = generateSettingsHtml() + settingsSetup;
-    expect(settingsSetup).toContain("/api/v1/preferences");
+  it("validates and persists the user's IANA timezone", () => {
     expect(settingsSetup).toContain('method: "PUT"');
     expect(settingsSetup).toContain("Intl.DateTimeFormat");
-    expect(html).toContain('type="text"');
-    expect(html).toContain('list="timezone-options"');
-    expect(html).toContain('<datalist id="timezone-options">');
-    expect(html).not.toContain("<select");
     expect(settingsSetup).toContain("new Intl.DateTimeFormat(undefined, { timeZone: selectedTimezone })");
     expect(settingsSetup).toContain("timezone.value = saved.timezone");
-    expect(settingsSetup).not.toContain("setApiToken");
-    expect(settingsSetup).toContain('new Date(text.includes("T") ? text : `${text.replace(" ", "T")}Z`)');
-    expect(html).toContain("formatTimestamp(worker.lastSeen)");
-    expect(html).toContain("formatTimestamp(key.created_at)");
-    expect(html).toContain('attr-title="worker.workerId"');
-    const secrets = generateWorkflowManagementHtml("secrets");
-    expect(secrets).toContain("grid-cols-[minmax(0,1fr)_2rem]");
-    expect(secrets).toContain("grid-cols-[2rem_minmax(0,1fr)_auto_1rem]");
-  });
-
-  it("hides worker and user sections when access is forbidden", () => {
-    const html = generateSettingsHtml() + settingsSetup;
-    expect(html).toContain("/api/v1/users");
-    expect(html).toContain("/role");
-    expect(html).toContain("confirm(");
-    expect(html).toContain("usersForbidden");
-    expect(html).toContain("workersLoaded.value = true");
-    expect(html).toContain("usersLoaded.value = true");
-    expect(html.match(/class-hidden="!workersLoaded \|\| workersForbidden"/g)).toHaveLength(2);
-    expect(html.match(/class-hidden="!usersLoaded \|\| usersForbidden"/g)).toHaveLength(2);
-    expect(html).not.toContain("administrators only");
-    expect(html).not.toContain("does not have permission to view worker status");
-  });
-
-  it("keeps the unified settings document independent of legacy route parameters", () => {
-    expect(generateSettingsHtml()).toContain('data-page="settings"');
-    expect(serverSetup).not.toContain('rawPage === "workers"');
     expect(serverSetup).toContain("generateSettingsHtml()");
-  });
-
-  it("exposes secrets on the unified settings page with anchored deep links", () => {
-    const html = generateSettingsHtml();
-    for (const section of ["timezone", "keys", "notifications", "workers", "users", "secrets"]) {
-      expect(html).toContain(`id="section-${section}"`);
-      expect(html).toContain(`href="#section-${section}"`);
-    }
-    expect(html).toContain('id="secret-value"');
-    expect(html).toContain('id="secret-file"');
-    expect(html).not.toContain('aria-label="Secret count"');
-    expect(html).not.toContain("<app-header");
-    expect(settingsSetup).toContain('const secretForm = templateRef("secretForm")');
-    expect(settingsSetup).toContain("secretForm.value.open = true");
-    expect(settingsSetup).toContain('scrollIntoView({ behavior: "smooth", block: "center" })');
-    expect(settingsSetup).toContain("secretValueInput.value?.focus({ preventScroll: true })");
-    expect(html).toContain("attr-aria-label=\"'Delete secret ' + name\"");
-    expect(settingsSetup).toContain("loadWorkers()");
-    expect(settingsSetup).toContain("workersForbidden.value = true");
-    expect(settingsSetup).toContain("loadUsers()");
-    expect(settingsSetup).toContain('api("/api/v1/secrets")');
-    expect(settingsSetup).toContain('method: "PUT"');
-    expect(settingsSetup).toContain('method: "DELETE"');
-    expect(settingsSetup).toContain('encoding: "base64"');
-  });
-
-  it("keeps team APIs out of general settings", () => {
-    expect(generateSettingsHtml()).not.toContain("section-teams");
-    expect(settingsSetup).not.toContain("/api/v1/teams");
-  });
-
-  it("provides admin runner inventory, shared enrollment, revoke, and refresh controls", () => {
-    const html = generateSettingsHtml() + settingsSetup;
-    expect(html).toContain('href="#section-runners"');
-    expect(html).toContain('id="section-runners"');
-    expect(settingsSetup).toContain('api("/api/v1/runners")');
-    expect(settingsSetup).toContain('api("/api/v1/runner-enrollments"');
-    expect(settingsSetup).toContain('JSON.stringify({ scope: "shared" })');
-    expect(settingsSetup).toContain('method: "DELETE"');
-    expect(html).toContain("enrollmentCode");
-    expect(html).toContain("enrollmentExpiresAt");
-    expect(html).toContain("runner.activeJobs");
-    expect(html).toContain("runner.runtime");
-    expect(html).toContain("runner.capabilities.join");
-    expect(html).toContain('on-click="loadRunners()"');
-    expect(html).toContain('id="pinned-runner-version"');
-    expect(html).toContain("runner.desiredVersion");
-    expect(html).toContain("runner.capabilities.includes('updater')");
-    expect(html).toContain('on-click="updateRunner(runner)"');
-    expect(settingsSetup).toContain("/update");
-    expect(settingsSetup).toContain("JSON.stringify({ version })");
-    expect(settingsSetup).toContain("updatingRunnerId.value");
-    expect(settingsSetup).toContain("isRunnerUpdateDisabled");
   });
 });

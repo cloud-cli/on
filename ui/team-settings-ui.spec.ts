@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { generateTeamSettingsHtml } from "./team-settings-ui.js";
+import { generateSettingsHtml } from "./settings-ui.js";
 import setup from "./team-settings-ui.mjs?raw";
 import { WebhookServer } from "../src/server.js";
 
@@ -26,6 +27,18 @@ describe("team settings UI", () => {
   it("keeps team settings focused on the selected team", () => {
     expect(generateTeamSettingsHtml()).toContain("Workspace members share workflows");
     expect(setup).not.toContain('request("/api/v1/teams",');
+  });
+
+  it("manages workspace secrets and scoped API keys in workspace settings only", () => {
+    const html = generateTeamSettingsHtml();
+    expect(html).toContain("Workspace API keys");
+    expect(html).toContain("Workspace secrets");
+    expect(html).toContain("Copy this key now. It cannot be shown again.");
+    expect(setup).toContain("/api/v1/workspaces/${encodeURIComponent(teamId)}/api-keys");
+    expect(setup).toContain("/api/v1/secrets/");
+    expect(setup).toContain('"X-Team-ID": teamId');
+    expect(generateSettingsHtml()).not.toContain("API keys");
+    expect(generateSettingsHtml()).not.toContain("Secrets");
   });
 
   it("shows team and shared runner management with admin-only mutations", () => {

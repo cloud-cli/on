@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import headerTemplate from "../ui/app-header.html?raw";
+import headerSetup from "../ui/app-header.mjs?raw";
 
 describe("app header", () => {
   it("unauthenticated header shows user-round icon linking to /settings", () => {
@@ -17,5 +18,11 @@ describe("app header", () => {
   it("does not expose the retired UI preview", () => {
     expect(headerTemplate).not.toContain('href="/preview"');
     expect(headerTemplate).not.toContain("Preview</a>");
+  });
+
+  it("shows Operations only when the session role is admin", () => {
+    expect(headerTemplate).toContain('href="/operations"');
+    expect(headerTemplate).toContain("userRole !== 'admin'");
+    expect(headerSetup).toContain('userRole.value = session.user?.role || ""');
   });
 });
