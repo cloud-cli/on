@@ -19,11 +19,34 @@ Select the active team from the header. When using browser APIs, the client send
 server checks the signed-in user's membership on every team-scoped request. Scoped machine tokens
 alone do not bypass team membership checks.
 
-Each team has a unique, unguessable webhook path. Create or rotate it from **Settings → Teams**;
+Each team has a unique, unguessable webhook path. Create or rotate it from **Settings → Workspaces**;
 the path is displayed once, so store it securely. Configure provider webhooks using
 `/webhooks/team/<secret>/<provider>` (for example, `.../github`). Provider signature validation
-continues to apply. Legacy `/webhooks/<provider>` routes target only the migrated `Default` team.
+continues to apply. After legacy-data adoption, legacy `/webhooks/<provider>` routes continue to
+target the adopted workspace until the provider webhook is switched to its workspace-specific URL.
 Rotating a team's webhook token immediately invalidates its previous URL.
+
+### Adopting legacy data
+
+After creating the destination workspace and upgrading the isolated clone's schema, set `DATABASE_URL`
+to that clone's database module and review the migration first:
+
+```sh
+pnpm workspace:adopt --workspace-id <workspace-id> --dry-run
+pnpm workspace:adopt --workspace-id <workspace-id> --apply
+```
+
+The one-off adoption preserves workflow/job identifiers and history, revisions, logs, stored-file
+references, encrypted secret ciphertext, API-key hashes, memberships, and existing workspace webhook
+registrations. It aborts for active jobs, conflicting secret values, or invalid references; all
+ownership changes and the completion marker are committed in one SQLite transaction. The marker
+makes a repeat invocation a no-op. User preferences remain personal. Test this against an isolated
+clone before any separately approved rollout; never point the command at a live database as a test.
+
+The old `/webhooks/github` endpoint continues to accept `GITHUB_WEBHOOK_SECRET` and temporarily routes
+to the adopted workspace. Create a workspace-scoped GitHub webhook, switch GitHub to its new URL and
+signing secret, and verify delivery before rotating the old secret. Workspace webhook signing secrets
+are stored encrypted and are not exposed to workflow jobs.
 
 A self-hosted, lightweight, high-performance CI/CD runner engine built for Node.js.
 

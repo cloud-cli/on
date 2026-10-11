@@ -1,0 +1,52 @@
+<div data-page="operations" class="mx-auto max-w-6xl space-y-5 py-6">
+  <main class="space-y-5">
+    <header>
+      <h1 class="text-2xl font-semibold">Operations</h1>
+      <p class="text-sm text-flow-muted">Global runner and user administration.</p>
+    </header>
+    <section class="rounded-xl border border-flow-border bg-white p-5" aria-labelledby="workers-title">
+      <h2 id="workers-title" class="text-lg font-semibold">Worker presence</h2>
+      <ul class="mt-3 space-y-2 text-sm">
+        <template for="worker of workers"
+          ><li>
+            {{ worker.workerId }} · {{ worker.online ? 'online' : 'offline' }} · {{ worker.version }} · {{
+            worker.lastSeen || '' }}
+          </li></template
+        >
+      </ul>
+      <p class="text-sm text-flow-muted" class-hidden="workers.length">No workers currently reporting.</p>
+    </section>
+    <section class="rounded-xl border border-flow-border bg-white p-5" aria-labelledby="runners-title">
+      <h2 id="runners-title" class="text-lg font-semibold">Runners</h2>
+      <button class="mt-3 rounded-lg bg-flow-primary px-3 py-2 text-sm font-medium text-white" on-click="enroll()">
+        Create enrollment code
+      </button>
+      <p class="mt-2 font-mono text-sm" role="status">{{ enrollmentMessage }}</p>
+      <ul class="mt-3 space-y-3">
+        <template for="runner of runners"
+          ><li class="flex flex-wrap items-center gap-3 text-sm">
+            <span>{{ runner.name }} · {{ runner.status }} · {{ runner.runtime }}</span
+            ><button class="rounded border px-2 py-1" on-click="updateRunner(runner)">Request update</button
+            ><button class="rounded border px-2 py-1 text-rose-700" on-click="revokeRunner(runner)">Revoke</button>
+          </li></template
+        >
+      </ul>
+    </section>
+    <section class="rounded-xl border border-flow-border bg-white p-5" aria-labelledby="users-title">
+      <h2 id="users-title" class="text-lg font-semibold">OIDC users</h2>
+      <ul class="mt-3 space-y-3">
+        <template for="user of users"
+          ><li class="flex flex-wrap items-center gap-3 text-sm">
+            <span>{{ user.name || user.email || user.id }}</span
+            ><select attr-value="user.role" on-change="setRole(user, $event)">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </li></template
+        >
+      </ul>
+    </section>
+    <p role="status" class="text-sm text-flow-muted">{{ message }}</p>
+  </main>
+  <script setup src="/operations-ui.mjs"></script>
+</div>

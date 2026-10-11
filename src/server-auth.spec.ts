@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { WebhookServer } from "./server.js";
+import db from "./db-client.js";
 
 type TestResponse = {
   writeHead: ReturnType<typeof vi.fn>;
@@ -464,6 +465,10 @@ describe("workflow and secret settings authentication", () => {
     const request = { headers: { cookie: "runner_oidc_session=session" } };
     const server = {
       requireTeam: vi.fn(async () => "team-a"),
+      oidc: { userFromCookie: vi.fn(() => ({ id: "user-1" })) },
+      teams: { isAdmin: vi.fn(async () => true) },
+      requireSecretPermission: (req, res, teamId, scope, mutation) =>
+        (WebhookServer.prototype as any).requireSecretPermission.call(server, req, res, teamId, scope, mutation),
       readJson: vi.fn(async () => ({ value: "test-secret" })),
       secretRepository: { setForTeam: vi.fn(async () => undefined) },
     };
@@ -538,6 +543,153 @@ describe("workflow and secret settings authentication", () => {
 });
 
 describe("team authorization", () => {
+  it("does not let arbitrary workspace API keys manage legacy global API keys", async () => {
+    const server = {
+      isAdmin: vi.fn(() => false),
+      oidc: { userFromCookie: vi.fn(() => undefined), scopesForToken: vi.fn(async () => null) },
+      oidcBearer: (req: any) => req.headers.authorization?.slice(7),
+    };
+
+    await expect(
+      (WebhookServer.prototype as any).canManageLegacyApiKeys.call(server, {
+        headers: { authorization: "Bearer workspace-api-key" },
+      }),
+    ).resolves.toBe(false);
+    expect(server.oidc.scopesForToken).toHaveBeenCalledWith("workspace-api-key");
+  });
+
+  it("preserves legacy API-key management for valid OIDC bearer tokens", async () => {
+    const server = {
+      isAdmin: vi.fn(() => false),
+      oidc: { userFromCookie: vi.fn(() => undefined), scopesForToken: vi.fn(async () => ["api-tokens:manage"]) },
+      oidcBearer: (req: any) => req.headers.authorization?.slice(7),
+    };
+
+    await expect(
+      (WebhookServer.prototype as any).canManageLegacyApiKeys.call(server, {
+        headers: { authorization: "Bearer oidc-access-token" },
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it("binds API-key requests to the workspace stored on the key, not the caller header", async () => {
+    const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    const server = {
+      userForRequest: vi.fn(async () => undefined),
+      oidcBearer: (req: any) => req.headers.authorization?.slice(7),
+      apiKeys: { tokenDetails: vi.fn(async () => ({ scopes: ["workflows:read"], teamId: "workspace-a" })) },
+      teams: { isMember: vi.fn() },
+    };
+
+    await expect(
+      (WebhookServer.prototype as any).requireTeam.call(
+        server,
+        { method: "GET", url: "/api/workflows", headers: { authorization: "Bearer key", "x-team-id": "workspace-b" } },
+        response,
+      ),
+    ).resolves.toBeNull();
+    expect(response.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json" });
+    expect(server.teams.isMember).not.toHaveBeenCalled();
+  });
+
+  it("allows workspace API keys to use only their stored workspace and granted scope", async () => {
+    const server = {
+      isAdmin: vi.fn(() => false),
+      oidc: undefined,
+      apiKeys: { tokenDetails: vi.fn(async () => ({ scopes: ["workflows:read"], teamId: "workspace-a" })) },
+    };
+    const request = { headers: { authorization: "Bearer key" } };
+
+    await expect((WebhookServer.prototype as any).hasScope.call(server, request, "workflows:read")).resolves.toBe(true);
+    await expect((WebhookServer.prototype as any).hasScope.call(server, request, "runs:control")).resolves.toBe(false);
+  });
+
+  it("requires mapped API-key scopes while preserving documented scope-free job status", async () => {
+    const server = {
+      userForRequest: vi.fn(async () => undefined),
+      oidcBearer: () => "key",
+      apiKeys: { tokenDetails: vi.fn(async () => ({ scopes: ["workflows:read"], teamId: "workspace-a" })) },
+      teams: { isMember: vi.fn() },
+      apiKeyScopeForRequest: (req: any) => (WebhookServer.prototype as any).apiKeyScopeForRequest.call(server, req),
+    };
+    const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+
+    await expect(
+      (WebhookServer.prototype as any).requireTeam.call(
+        server,
+        { method: "GET", url: "/api/workflows", headers: { "x-team-id": "workspace-a" } },
+        response,
+      ),
+    ).resolves.toBe("workspace-a");
+    await expect(
+      (WebhookServer.prototype as any).requireTeam.call(
+        server,
+        { method: "POST", url: "/api/workflows", headers: { "x-team-id": "workspace-a" } },
+        response,
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      (WebhookServer.prototype as any).requireTeam.call(
+        server,
+        { method: "GET", url: "/api/jobs/42/status", headers: { "x-team-id": "workspace-a" } },
+        response,
+      ),
+    ).resolves.toBe("workspace-a");
+  });
+
+  it("does not let a browser session broaden a workspace API key's team or scopes", async () => {
+    const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    const server = {
+      oidc: { userFromCookie: vi.fn(() => ({ id: "member-a" })) },
+      userForRequest: vi.fn(async () => ({ id: "member-a" })),
+      oidcBearer: (req: any) => (req.headers.authorization || "").replace(/^Bearer /, "") || undefined,
+      apiKeys: { tokenDetails: vi.fn(async () => ({ scopes: ["workflows:read"], teamId: "workspace-a" })) },
+      teams: { isMember: vi.fn(async () => true) },
+      apiKeyScopeForRequest: (req: any) => (WebhookServer.prototype as any).apiKeyScopeForRequest.call(server, req),
+    };
+
+    await expect(
+      (WebhookServer.prototype as any).requireTeam.call(
+        server,
+        {
+          method: "GET",
+          url: "/api/secrets",
+          headers: { authorization: "Bearer workspace-key", cookie: "session", "x-team-id": "workspace-a" },
+        },
+        response,
+      ),
+    ).resolves.toBeNull();
+    expect(response.writeHead).toHaveBeenCalledWith(403, { "Content-Type": "application/json" });
+  });
+
+  it("allows only workspace admins to create workspace API keys", async () => {
+    const res = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    const server = {
+      oidc: { userFromCookie: vi.fn(() => ({ id: "admin-user" })) },
+      userForRequest: vi.fn(async () => ({ id: "admin-user" })),
+      requireSameOrigin: vi.fn(() => true),
+      workflowsLoaded: Promise.resolve(),
+      teams: { isAdmin: vi.fn(async () => true) },
+      apiKeys: { issue: vi.fn(async () => ({ id: "key-id", token: "one-time-token" })) },
+      readJson: vi.fn(async () => ({ name: "deploy", scopes: ["runs:dispatch"] })),
+    };
+
+    await (WebhookServer.prototype as any).handleTeams.call(
+      server,
+      {
+        method: "POST",
+        url: "/api/workspaces/workspace-a/api-keys",
+        headers: { cookie: "session", origin: "https://flow.test" },
+      },
+      res,
+      new URL("http://flow.test/api/workspaces/workspace-a/api-keys"),
+    );
+
+    expect(server.teams.isAdmin).toHaveBeenCalledWith("workspace-a", "admin-user");
+    expect(server.apiKeys.issue).toHaveBeenCalledWith("workspace-a", "deploy", ["runs:dispatch"]);
+    expect(res.writeHead).toHaveBeenCalledWith(201, expect.objectContaining({ "Cache-Control": "no-store" }));
+  });
+
   it("keeps the legacy GitHub webhook route compatible with GITHUB_WEBHOOK_SECRET", async () => {
     const previousSecret = process.env.GITHUB_WEBHOOK_SECRET;
     process.env.GITHUB_WEBHOOK_SECRET = "legacy-github-secret";
@@ -560,10 +712,32 @@ describe("team authorization", () => {
     }
   });
 
+  it("routes the legacy provider webhook to the adopted workspace while the migration marker exists", async () => {
+    const get = vi.spyOn(db, "get");
+    get
+      .mockResolvedValueOnce({ 1: 1 } as never)
+      .mockResolvedValueOnce({ target_workspace_id: "workspace-new" } as never);
+    try {
+      await expect((WebhookServer.prototype as any).legacyWebhookWorkspace.call({})).resolves.toBe("workspace-new");
+      expect(get).toHaveBeenNthCalledWith(
+        1,
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspace_adoptions'",
+      );
+      expect(get).toHaveBeenNthCalledWith(
+        2,
+        "SELECT target_workspace_id FROM workspace_adoptions WHERE version = ? AND source_workspace_id = 'default'",
+        ["default-to-workspace-v1"],
+      );
+    } finally {
+      get.mockRestore();
+    }
+  });
+
   it("requires an authenticated team member and hides teams the caller cannot access", async () => {
     const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
     const server = {
       oidc: { userFromCookie: () => ({ id: "member-1" }) },
+      oidcBearer: (req: any) => (req.headers.authorization || "").replace(/^Bearer /, "") || undefined,
       teams: { isMember: vi.fn(async (teamId: string) => teamId === "team-a") },
     };
     const request = { url: "/api/workflows", headers: { cookie: "session", "x-team-id": "team-b" } };
@@ -615,6 +789,7 @@ describe("admin user-management authorization", () => {
         userFromCookie: vi.fn(() => (authenticated ? { id: "caller-subject" } : undefined)),
         setRoleForUser: vi.fn(),
       },
+      requireSameOrigin: vi.fn(() => true),
       workflowsLoaded: Promise.resolve(),
       oidcUsers: {
         list: vi.fn(async () => users),
@@ -652,7 +827,7 @@ describe("admin user-management authorization", () => {
       {
         method: "GET",
         url: "/api/users",
-        headers: { host: "flow.test", cookie: "runner_oidc_session=admin" },
+        headers: { host: "flow.test", origin: "https://flow.test", cookie: "runner_oidc_session=admin" },
       },
       response,
     );
@@ -670,7 +845,7 @@ describe("admin user-management authorization", () => {
       {
         method: "PUT",
         url: "/api/users/target-subject/role",
-        headers: { host: "flow.test", cookie: "runner_oidc_session=admin" },
+        headers: { host: "flow.test", origin: "https://flow.test", cookie: "runner_oidc_session=admin" },
       },
       response,
     );

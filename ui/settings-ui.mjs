@@ -1,28 +1,10 @@
-import { onInit, ref, templateRef } from "@li3/web";
+import { onInit, ref } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
 
 export default function () {
-  const page = "settings";
-  const apiKeyForm = templateRef("apiKeyForm");
-  const keys = ref([]);
-  const workers = ref([]);
-  const workersForbidden = ref(false);
-  const workersLoaded = ref(false);
-  const runners = ref([]);
-  const runnersForbidden = ref(false);
-  const runnersLoaded = ref(false);
-  const enrollmentCode = ref("");
-  const enrollmentExpiresAt = ref("");
-  const runnerMessage = ref("");
-  const pinnedVersion = ref("");
-  const updatingRunnerId = ref("");
-  const users = ref([]);
-  const usersForbidden = ref(false);
-  const usersLoaded = ref(false);
-  const keyName = ref("");
-  const error = ref("");
   const timezone = ref(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const preferenceMessage = ref("");
+  const error = ref("");
   const timezones = ref(
     typeof Intl.supportedValuesOf === "function"
       ? ["UTC", ...Intl.supportedValuesOf("timeZone")]
@@ -35,26 +17,6 @@ export default function () {
       localStorage.getItem("runner-notifications") === "enabled",
   );
   const notificationMessage = ref("");
-  const scopeOptions = ref([
-    { name: "workflows:read", label: "Read workflows", selected: true },
-    { name: "workflows:write", label: "Modify workflows", selected: false },
-    { name: "logs:read", label: "Read logs", selected: false },
-    { name: "artifacts:read", label: "Read artifacts", selected: false },
-    { name: "runs:control", label: "Control runs", selected: false },
-    { name: "runs:dispatch", label: "Dispatch runs", selected: false },
-    { name: "workers:read", label: "Read workers", selected: false },
-    { name: "secrets:read", label: "Read secret names", selected: false },
-    { name: "secrets:write", label: "Manage secrets", selected: false },
-  ]);
-  const secrets = ref([]);
-  const secretName = ref("");
-  const secretValue = ref("");
-  const fileMode = ref(false);
-  const secretFileName = ref("");
-  const secretFileData = ref("");
-  const busy = ref(false);
-  const secretForm = templateRef("secretForm");
-  const secretValueInput = templateRef("secretValueInput");
   const api = async (url, options = {}) => {
     const response = await apiFetch(url, {
       headers: { accept: "application/json", ...(options.body ? { "content-type": "application/json" } : {}) },
@@ -62,196 +24,9 @@ export default function () {
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const reason = new Error(body.error || `Request failed: ${response.status}`);
-      reason.status = response.status;
-      throw reason;
+      throw new Error(body.error || `Request failed: ${response.status}`);
     }
     return body;
-  };
-  const load = async () => {
-    const revealedKeys = new Map(keys.value.filter((key) => key.token).map((key) => [key.id, key]));
-    const storedKeys = (await api("/api/v1/api-keys")).keys;
-    keys.value = storedKeys.map((key) => {
-      const revealed = revealedKeys.get(key.id);
-      return revealed ? { ...key, token: revealed.token, isNew: true } : key;
-    });
-  };
-  const loadSecrets = async () => {
-    secrets.value = (await api("/api/v1/secrets")).secrets;
-  };
-  const runSecretAction = async (action) => {
-    if (busy.value) {
-      return;
-    }
-    busy.value = true;
-    error.value = "";
-    try {
-      await action();
-    } catch (reason) {
-      error.value = reason.message;
-    } finally {
-      busy.value = false;
-    }
-  };
-  const saveSecret = () =>
-    runSecretAction(async () => {
-      const name = secretName.value.trim().toUpperCase();
-      if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
-        throw new Error("Secret names must start with a letter and contain only letters, numbers, and underscores.");
-      }
-      if (fileMode.value ? !secretFileData.value : !secretValue.value) {
-        throw new Error(fileMode.value ? "Choose a file first." : "Set a secret value first.");
-      }
-      await api(`/api/v1/secrets/${encodeURIComponent(name)}`, {
-        method: "PUT",
-        body: JSON.stringify(
-          fileMode.value
-            ? { value: secretFileData.value, encoding: "base64", originalName: secretFileName.value }
-            : { value: secretValue.value, encoding: "utf8" },
-        ),
-      });
-      secretName.value = "";
-      secretValue.value = "";
-      secretFileName.value = "";
-      secretFileData.value = "";
-      fileMode.value = false;
-      await loadSecrets();
-    });
-  const removeSecret = (name) => {
-    if (!confirm(`Delete ${name}?`)) {
-      return;
-    }
-    return runSecretAction(async () => {
-      await api(`/api/v1/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
-      await loadSecrets();
-    });
-  };
-  const setSecretFile = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let binary = "";
-    for (let index = 0; index < bytes.length; index += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-    }
-    secretFileName.value = file.name;
-    secretFileData.value = btoa(binary);
-  };
-  const setSecretName = (event) => {
-    secretName.value = event.target.value;
-  };
-  const setSecretValue = (event) => {
-    secretValue.value = event.target.value;
-  };
-  const setFileMode = (event) => {
-    fileMode.value = event.target.checked;
-  };
-  const selectSecret = (name) => {
-    secretName.value = name;
-    fileMode.value = false;
-    secretValue.value = "";
-    if (secretForm.value) {
-      secretForm.value.open = true;
-    }
-    secretForm.value?.scrollIntoView({ behavior: "smooth", block: "center" });
-    secretValueInput.value?.focus({ preventScroll: true });
-  };
-  const loadWorkers = async () => {
-    try {
-      workers.value = (await api("/api/v1/workers")).workers;
-    } catch (reason) {
-      if (reason.status === 403) {
-        workersForbidden.value = true;
-        return;
-      }
-      throw reason;
-    } finally {
-      workersLoaded.value = true;
-    }
-  };
-  const loadRunners = async () => {
-    try {
-      runners.value = (await api("/api/v1/runners")).runners;
-      runnersForbidden.value = false;
-    } catch (reason) {
-      if (reason.status === 403) {
-        runnersForbidden.value = true;
-        return;
-      }
-      throw reason;
-    } finally {
-      runnersLoaded.value = true;
-    }
-  };
-  const createEnrollment = async () => {
-    enrollmentCode.value = "";
-    runnerMessage.value = "";
-    try {
-      const result = await api("/api/v1/runner-enrollments", {
-        method: "POST",
-        body: JSON.stringify({ scope: "shared" }),
-      });
-      enrollmentCode.value = result.code;
-      enrollmentExpiresAt.value = result.expiresAt;
-    } catch (reason) {
-      runnerMessage.value = reason.message;
-    }
-  };
-  const revokeRunner = async (runner) => {
-    if (!confirm(`Revoke runner ${runner.name}?`)) {
-      return;
-    }
-    try {
-      await api(`/api/v1/runners/${encodeURIComponent(runner.id)}`, { method: "DELETE" });
-      runnerMessage.value = `Runner ${runner.name} revoked.`;
-      await loadRunners();
-    } catch (reason) {
-      runnerMessage.value = reason.message;
-    }
-  };
-  const setPinnedVersion = (event) => {
-    pinnedVersion.value = event.target.value;
-  };
-  const updateRunner = async (runner) => {
-    const version = pinnedVersion.value.trim();
-    if (updatingRunnerId.value || !version || !runner.capabilities?.includes("updater")) {
-      return;
-    }
-    updatingRunnerId.value = runner.id;
-    runnerMessage.value = "";
-    try {
-      await api(`/api/v1/runners/${encodeURIComponent(runner.id)}/update`, {
-        method: "POST",
-        body: JSON.stringify({ version }),
-      });
-      runnerMessage.value = `Update to ${version} requested for ${runner.name}.`;
-      await loadRunners();
-    } catch (reason) {
-      runnerMessage.value = reason.message;
-    } finally {
-      updatingRunnerId.value = "";
-    }
-  };
-  const isRunnerUpdateDisabled = (runner) =>
-    Boolean(updatingRunnerId.value) ||
-    !pinnedVersion.value.trim() ||
-    runner.status !== "online" ||
-    runner.activeJobs > 0 ||
-    runner.updateStatus === "pending";
-  const loadUsers = async () => {
-    try {
-      users.value = (await api("/api/v1/users")).users;
-    } catch (reason) {
-      if (reason.status === 403) {
-        usersForbidden.value = true;
-        return;
-      }
-      throw reason;
-    } finally {
-      usersLoaded.value = true;
-    }
   };
   const loadPreferences = async () => {
     const preferences = await api("/api/v1/preferences");
@@ -261,21 +36,6 @@ export default function () {
         timezones.value = [...timezones.value, preferences.timezone];
       }
     }
-  };
-  const formatTimestamp = (value) => {
-    if (!value) {
-      return "—";
-    }
-    const text = String(value);
-    const date = new Date(text.includes("T") ? text : `${text.replace(" ", "T")}Z`);
-    if (Number.isNaN(date.getTime())) {
-      return value;
-    }
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: timezone.value,
-    }).format(date);
   };
   const saveTimezone = async (event) => {
     const previousTimezone = timezone.value;
@@ -302,61 +62,6 @@ export default function () {
       error.value = reason.message;
     }
   };
-  const issueKey = async () => {
-    try {
-      error.value = "";
-      const result = await api("/api/v1/api-keys", {
-        method: "POST",
-        body: JSON.stringify({
-          name: keyName.value,
-          scopes: scopeOptions.value.filter((scope) => scope.selected).map((scope) => scope.name),
-        }),
-      });
-      const issuedKey = {
-        ...result,
-        id: result.id || result.label || result.name,
-        created_at: result.created_at || result.createdAt || "",
-        token: result.token,
-        isNew: true,
-      };
-      keys.value = [issuedKey, ...keys.value.filter((key) => key.id !== issuedKey.id)];
-      keyName.value = "";
-      apiKeyForm.value.open = false;
-      await load();
-    } catch (reason) {
-      error.value = reason.message;
-    }
-  };
-  const revokeKey = async (key) => {
-    if (!confirm(`Revoke ${key.name}?`)) {
-      return;
-    }
-    try {
-      await api(`/api/v1/api-keys/${key.id}`, { method: "DELETE" });
-      await load();
-    } catch (reason) {
-      error.value = reason.message;
-    }
-  };
-  const toggleRole = async (user) => {
-    const role = user.role === "admin" ? "user" : "admin";
-    if (!confirm(`Change ${user.name || user.email || user.id} to ${role}?`)) {
-      return;
-    }
-    error.value = "";
-    try {
-      await api(`/api/v1/users/${encodeURIComponent(user.id)}/role`, { method: "PUT", body: JSON.stringify({ role }) });
-      await loadUsers();
-    } catch (reason) {
-      error.value = reason.status === 403 ? "Only administrators can change user roles." : reason.message;
-    }
-  };
-  const setKeyName = (event) => {
-    keyName.value = event.target.value;
-  };
-  const toggleScope = (scope) => {
-    scope.selected = !scope.selected;
-  };
   const toggleNotifications = async () => {
     if (notificationsEnabled.value) {
       notificationsEnabled.value = false;
@@ -381,73 +86,13 @@ export default function () {
     loadPreferences().catch((reason) => {
       error.value = reason.message;
     });
-    load().catch((reason) => {
-      error.value = reason.message;
-    });
-    loadSecrets().catch((reason) => {
-      error.value = reason.message;
-    });
-    loadWorkers().catch((reason) => {
-      error.value = reason.message;
-    });
-    loadRunners().catch((reason) => {
-      error.value = reason.message;
-    });
-    loadUsers().catch((reason) => {
-      error.value = reason.message;
-    });
   });
   return {
-    page,
-    secrets,
-    secretForm,
-    secretValueInput,
-    secretName,
-    secretValue,
-    fileMode,
-    busy,
-    saveSecret,
-    removeSecret,
-    setSecretFile,
-    setSecretName,
-    setSecretValue,
-    setFileMode,
-    selectSecret,
-    keys,
-    apiKeyForm,
-    workers,
-    workersForbidden,
-    workersLoaded,
-    runners,
-    runnersForbidden,
-    runnersLoaded,
-    enrollmentCode,
-    enrollmentExpiresAt,
-    runnerMessage,
-    loadRunners,
-    createEnrollment,
-    revokeRunner,
-    pinnedVersion,
-    updatingRunnerId,
-    setPinnedVersion,
-    updateRunner,
-    isRunnerUpdateDisabled,
-    users,
-    usersForbidden,
-    usersLoaded,
-    keyName,
-    error,
     timezone,
     timezones,
     preferenceMessage,
-    formatTimestamp,
+    error,
     saveTimezone,
-    scopeOptions,
-    issueKey,
-    revokeKey,
-    setKeyName,
-    toggleScope,
-    toggleRole,
     notificationsEnabled,
     notificationMessage,
     toggleNotifications,

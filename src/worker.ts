@@ -24,7 +24,7 @@ import {
 import { setupSignalHandlers } from "./signals.js";
 import { consumeRunnerEvents } from "./events.js";
 import { PluginManager } from "./plugins/manager.js";
-import { DEFAULT_STEP_TIMEOUT_MS, WorkflowRepository } from "./workflows.js";
+import { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
 import { debug } from "./debug.js";
 import { expandMatrix } from "./parser/matrix-expander.js";
 import { createWorkflowPlugin } from "./plugins/workflow-registry.js";

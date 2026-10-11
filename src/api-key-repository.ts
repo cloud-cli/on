@@ -18,6 +18,7 @@ export class ApiKeyRepository {
   async init(): Promise<void> {
     await db.exec(`CREATE TABLE IF NOT EXISTS api_keys (
       id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL DEFAULT 'default',
       name TEXT NOT NULL,
       key_hash TEXT NOT NULL UNIQUE,
       scopes TEXT NOT NULL,
@@ -25,16 +26,34 @@ export class ApiKeyRepository {
       last_used_at DATETIME,
       revoked_at DATETIME
     )`);
+    const columns = await db.all("PRAGMA table_info(api_keys)");
+    if (!columns.some((column: any) => column.name === "team_id")) {
+      await db.run("ALTER TABLE api_keys ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default'");
+    }
   }
 
-  async list() {
+  async list(teamId = "default") {
     const rows = await db.all(
-      "SELECT id, name, scopes, created_at, last_used_at FROM api_keys WHERE revoked_at IS NULL ORDER BY created_at DESC",
+      "SELECT id, name, scopes, created_at, last_used_at FROM api_keys WHERE team_id = ? AND revoked_at IS NULL ORDER BY created_at DESC",
+      [teamId],
     );
     return rows.map((row: any) => ({ ...row, scopes: JSON.parse(row.scopes) }));
   }
 
-  async issue(name: string, scopes: string[]) {
+  async issue(
+    name: string,
+    scopes: string[],
+  ): Promise<{ id: string; name: string; scopes: ApiKeyScope[]; token: string }>;
+  async issue(
+    teamId: string,
+    name: string,
+    scopes: string[],
+  ): Promise<{ id: string; name: string; scopes: ApiKeyScope[]; token: string }>;
+  async issue(teamIdOrName: string, nameOrScopes: string | string[], maybeScopes?: string[]) {
+    const legacy = Array.isArray(nameOrScopes);
+    const teamId = legacy ? "default" : teamIdOrName;
+    const name = legacy ? teamIdOrName : String(nameOrScopes);
+    const scopes = legacy ? (nameOrScopes as string[]) : maybeScopes || [];
     const validScopes = [
       ...new Set(scopes.filter((scope): scope is ApiKeyScope => (API_KEY_SCOPES as readonly string[]).includes(scope))),
     ];
@@ -44,8 +63,9 @@ export class ApiKeyRepository {
     const id = crypto.randomUUID();
     const token = `on_${crypto.randomBytes(32).toString("base64url")}`;
     const keyHash = crypto.createHash("sha256").update(token).digest("hex");
-    await db.run("INSERT INTO api_keys (id, name, key_hash, scopes) VALUES (?, ?, ?, ?)", [
+    await db.run("INSERT INTO api_keys (id, team_id, name, key_hash, scopes) VALUES (?, ?, ?, ?, ?)", [
       id,
+      teamId,
       name.trim(),
       keyHash,
       JSON.stringify(validScopes),
@@ -53,20 +73,30 @@ export class ApiKeyRepository {
     return { id, name: name.trim(), scopes: validScopes, token };
   }
 
-  async scopesForToken(token: string): Promise<string[] | null> {
+  async tokenDetails(token: string): Promise<{ scopes: string[]; teamId: string } | null> {
     const keyHash = crypto.createHash("sha256").update(token).digest("hex");
-    const row = await db.get("SELECT id, scopes FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL", [keyHash]);
+    const row = await db.get("SELECT id, scopes, team_id FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL", [
+      keyHash,
+    ]);
     if (!row) {
       return null;
     }
     await db.run("UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?", [row.id]);
-    return JSON.parse(row.scopes);
+    return { scopes: JSON.parse(row.scopes), teamId: row.team_id || "default" };
   }
 
-  async revoke(id: string): Promise<boolean> {
+  async scopesForToken(token: string): Promise<string[] | null> {
+    return (await this.tokenDetails(token))?.scopes ?? null;
+  }
+
+  async revoke(id: string): Promise<boolean>;
+  async revoke(teamId: string, id: string): Promise<boolean>;
+  async revoke(teamIdOrId: string, maybeId?: string): Promise<boolean> {
+    const teamId = maybeId === undefined ? "default" : teamIdOrId;
+    const id = maybeId === undefined ? teamIdOrId : maybeId;
     const result = await db.run(
-      "UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL",
-      [id],
+      "UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE team_id = ? AND id = ? AND revoked_at IS NULL",
+      [teamId, id],
     );
     return Number(result?.changes || 0) > 0;
   }

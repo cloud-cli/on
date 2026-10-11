@@ -3387,7 +3387,14 @@
       "get": {
         "tags": ["discovery"],
         "summary": "Get this OpenAPI specification",
-        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "OpenAPI JSON document",
@@ -3492,6 +3499,142 @@
           },
           "404": {
             "description": "Unknown registration"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/api-keys": {
+      "get": {
+        "tags": ["discovery"],
+        "summary": "List active API keys",
+        "responses": {
+          "200": {
+            "description": "API key metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Workspace administrator required"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": ["discovery"],
+        "summary": "Issue a scoped API key",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyIssue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Key metadata and one-time token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Workspace administrator required"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/api-keys/{keyId}": {
+      "delete": {
+        "tags": ["workspaces"],
+        "summary": "Revoke an API key owned by a workspace",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "keyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Workspace administrator required"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }

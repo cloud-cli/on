@@ -18,6 +18,7 @@ import { renderHelpHtml } from "../ui/help.js";
 import openApiSpec from "../openapi.json" with { type: "json" };
 import { ApiKeyRepository } from "./api-key-repository.js";
 import { generateSettingsHtml } from "../ui/settings-ui.js";
+import { generateOperationsHtml } from "../ui/operations-ui.js";
 import { generateTeamSettingsHtml } from "../ui/team-settings-ui.js";
 import { buildAiHelpMessages, createAiRequest, streamAiHelp } from "./ai-help.js";
 import { workflowDocs } from "../ui/help.js";
@@ -37,6 +38,7 @@ import { UserPreferencesRepository } from "./user-preferences.js";
 import { TeamRepository } from "./teams.js";
 import { WorkspaceWebhookRepository } from "./workspace-webhook-repository.js";
 import { RunnerRegistry } from "./runner-registry.js";
+import db from "./db-client.js";
 
 function isSafeRunnerFilePath(value: string): boolean {
   return (
@@ -54,6 +56,7 @@ import appRouterSetup from "../ui/app-router.mjs?raw";
 import dashboardSetup from "../ui/dashboard.mjs?raw";
 import runSetup from "../ui/run.mjs?raw";
 import settingsSetup from "../ui/settings-ui.mjs?raw";
+import operationsSetup from "../ui/operations-ui.mjs?raw";
 import teamSettingsSetup from "../ui/team-settings-ui.mjs?raw";
 import teamsLandingSetup from "./teams-landing.mjs?raw";
 import workflowsSetup from "../ui/workflows-ui.mjs?raw";
@@ -258,6 +261,10 @@ export class WebhookServer {
     if (req.method === "GET" && (url.pathname === "/settings-ui.mjs" || url.pathname === "/pages/settings-ui.mjs")) {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(settingsSetup);
+    }
+    if (req.method === "GET" && url.pathname === "/operations-ui.mjs") {
+      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(operationsSetup);
     }
     if (req.method === "GET" && url.pathname === "/team-settings-ui.mjs") {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
@@ -846,6 +853,12 @@ export class WebhookServer {
       }
       return this.renderPageComponent(res, "page-settings", generateSettingsHtml());
     }
+    if (req.method === "GET" && url.pathname === "/pages/operations.html") {
+      if (!this.requireAdminSession(req, res)) {
+        return;
+      }
+      return this.renderPageComponent(res, "page-operations", generateOperationsHtml());
+    }
     if (req.method === "GET" && ["/pages/teams.html", "/pages/workspaces.html"].includes(url.pathname)) {
       if (!this.requireAuthenticatedUser(req, res)) {
         return;
@@ -868,6 +881,12 @@ export class WebhookServer {
 
     if (req.method === "GET" && url.pathname === "/settings") {
       if (!this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
+      return this.renderAppShell(res);
+    }
+    if (req.method === "GET" && url.pathname === "/operations") {
+      if (!this.requireAdminSession(req, res)) {
         return;
       }
       return this.renderAppShell(res);
@@ -999,7 +1018,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
 
     const userRoleMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/role$/);
     if (req.method === "PUT" && userRoleMatch) {
-      if (!this.requireAdminSession(req, res)) {
+      if (!this.requireSameOrigin(req, res) || !this.requireAdminSession(req, res)) {
         return;
       }
       const body = await this.readJson(req, res);
@@ -1033,7 +1052,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     }
 
     if (url.pathname === "/api/api-keys") {
-      if (!this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req)) {
+      if (!(await this.canManageLegacyApiKeys(req))) {
         return this.requireAdmin(req, res);
       }
       if (req.method === "GET") {
@@ -1041,7 +1060,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         if (providerKeys) {
           return res.end(JSON.stringify({ keys: providerKeys }));
         }
-        return res.end(JSON.stringify({ keys: await this.apiKeys.list() }));
+        return res.end(JSON.stringify({ keys: await this.apiKeys.list("default") }));
       }
       if (req.method === "POST") {
         if (this.oidc?.userFromCookie(req.headers.cookie) || this.oidcBearer(req)) {
@@ -1064,7 +1083,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     }
     const apiKeyMatch = url.pathname.match(/^\/api\/api-keys\/([^/]+)$/);
     if (apiKeyMatch && req.method === "DELETE") {
-      if (!this.isAdmin(req) && !this.oidc?.userFromCookie(req.headers.cookie) && !this.oidcBearer(req)) {
+      if (!(await this.canManageLegacyApiKeys(req))) {
         return this.requireAdmin(req, res);
       }
       if (this.oidc?.userFromCookie(req.headers.cookie) || this.oidcBearer(req)) {
@@ -1073,7 +1092,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
           return res.writeHead(providerResponse.status).end();
         }
       }
-      const revoked = await this.apiKeys.revoke(apiKeyMatch[1]);
+      const revoked = await this.apiKeys.revoke("default", apiKeyMatch[1]);
       res.writeHead(revoked ? 204 : 404).end();
       return;
     }
@@ -1289,7 +1308,13 @@ sessionStorage.removeItem('runner-pending-team-invite');
 
     if (req.method === "POST" && url.pathname.startsWith("/webhooks/")) {
       const provider = url.pathname.replace("/webhooks/", "");
-      return this.handleWebhook(provider, req, res, "default");
+      const workspaceId = await this.legacyWebhookWorkspace();
+      const legacySecret =
+        workspaceId === "default"
+          ? undefined
+          : process.env[`${provider.toUpperCase()}_WEBHOOK_SECRET`] ||
+            this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`);
+      return this.handleWebhook(provider, req, res, workspaceId, legacySecret);
     }
 
     // Keep machine-readable errors for APIs, but give browser navigation a helpful not-found page.
@@ -1361,6 +1386,21 @@ sessionStorage.removeItem('runner-pending-team-invite');
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Internal Ingress Error", details: err.message }));
     }
+  }
+
+  /** Keep the legacy provider URL/secret serving the adopted workspace until its webhook is cut over. */
+  private async legacyWebhookWorkspace(): Promise<string> {
+    const markerTable = await db.get(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspace_adoptions'",
+    );
+    if (!markerTable) {
+      return "default";
+    }
+    const adoption = await db.get(
+      "SELECT target_workspace_id FROM workspace_adoptions WHERE version = ? AND source_workspace_id = 'default'",
+      ["default-to-workspace-v1"],
+    );
+    return adoption?.target_workspace_id || "default";
   }
 
   private async handleDispatch(req: http.IncomingMessage, res: http.ServerResponse, provider: string) {
@@ -1685,8 +1725,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return true;
       }
     }
-    const scopes = await this.apiKeys.scopesForToken(authorization.slice(7));
-    return Boolean(scopes?.includes(scope));
+    const key = await this.apiKeys.tokenDetails(authorization.slice(7));
+    const requestedTeam = typeof req.headers["x-team-id"] === "string" ? req.headers["x-team-id"].trim() : key?.teamId;
+    return Boolean(key?.scopes.includes(scope) && key.teamId === requestedTeam);
   }
 
   private requireAuthenticatedUser(req: http.IncomingMessage, res: http.ServerResponse): boolean {
@@ -1708,7 +1749,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       if (this.oidc && (await this.oidc.scopesForToken(bearer)) !== null) {
         return true;
       }
-      if ((await this.apiKeys.scopesForToken(bearer)) !== null) {
+      const key = await this.apiKeys.tokenDetails(bearer);
+      const requestedTeam =
+        typeof req.headers["x-team-id"] === "string" ? req.headers["x-team-id"].trim() : key?.teamId;
+      if (key && key.teamId === requestedTeam) {
         return true;
       }
     }
@@ -1720,7 +1764,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
   private async requireTeam(req: http.IncomingMessage, res: http.ServerResponse): Promise<string | null> {
     const cookieUser = this.oidc?.userFromCookie(req.headers.cookie);
     const user = cookieUser || (await this.userForRequest(req));
-    if (!user) {
+    const bearer = this.oidcBearer(req);
+    const apiKey = bearer && (cookieUser || !user) ? await this.apiKeys.tokenDetails(bearer) : null;
+    if (!user && !apiKey) {
       res
         .writeHead(401, { "Content-Type": "application/json" })
         .end(JSON.stringify({ error: "Authentication required" }));
@@ -1735,16 +1781,89 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return null;
     }
     const queryTeamId = new URL(req.url || "/", "http://localhost").searchParams.get("teamId") || "";
-    const teamId = (
-      typeof req.headers["x-team-id"] === "string" ? req.headers["x-team-id"].trim() : queryTeamId
-    ).trim();
-    if (!teamId || !(await this.teams.isMember(teamId, user.id))) {
+    const requestedTeam = typeof req.headers["x-team-id"] === "string" ? req.headers["x-team-id"].trim() : queryTeamId;
+    const teamId = (requestedTeam || apiKey?.teamId || "").trim();
+    const isMember = teamId && user ? await this.teams.isMember(teamId, user.id) : false;
+    if (!teamId || (user && !isMember) || (apiKey ? apiKey.teamId !== teamId : !user)) {
       res
         .writeHead(teamId ? 404 : 400, { "Content-Type": "application/json" })
         .end(JSON.stringify({ error: teamId ? "Team not found" : "X-Team-ID is required" }));
       return null;
     }
+    if (apiKey) {
+      const scope = this.apiKeyScopeForRequest(req);
+      if (!scope || (scope !== "none" && !apiKey.scopes.includes(scope))) {
+        res
+          .writeHead(403, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "API key scope is insufficient" }));
+        return null;
+      }
+    }
     return teamId;
+  }
+
+  private apiKeyScopeForRequest(req: http.IncomingMessage): string | null {
+    const path = new URL(req.url || "/", "http://localhost").pathname;
+    const method = (req.method || "GET").toUpperCase();
+    if (path === "/api/workflows" || /^\/api\/workflows\/[^/]+(?:\/revisions\/[^/]+)?$/.test(path)) {
+      return method === "GET" ? "workflows:read" : "workflows:write";
+    }
+    if (/^\/api\/workflows\/[^/]+\/publish$/.test(path) || path === "/api/workflows/validate") {
+      return "workflows:write";
+    }
+    if (/^\/api\/workflows\/[^/]+\/run$/.test(path) || /^\/api\/dispatch\/[^/]+$/.test(path)) {
+      return "runs:dispatch";
+    }
+    if (path === "/api/secrets") {
+      return method === "GET" ? "secrets:read" : "secrets:write";
+    }
+    if (/^\/api\/secrets\/[A-Z][A-Z0-9_]*$/.test(path)) {
+      return "secrets:write";
+    }
+    if (path === "/api/events") {
+      return "logs:read";
+    }
+    if (path === "/api/jobs") {
+      return "logs:read";
+    }
+    if (/^\/api\/jobs\/\d+\/wait$/.test(path)) {
+      return "logs:read";
+    }
+    if (/^\/api\/jobs\/\d+\/status$/.test(path)) {
+      return "none";
+    }
+    if (/^\/api\/jobs\/\d+\/cancel$/.test(path)) {
+      return "runs:control";
+    }
+    if (/^\/api\/runs\/\d+\/artifacts\//.test(path)) {
+      return "artifacts:read";
+    }
+    if (/^\/api\/runs\/\d+$/.test(path)) {
+      return "logs:read";
+    }
+    if (path === "/api/workers") {
+      return "workers:read";
+    }
+    return null;
+  }
+
+  private async requireSecretPermission(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    teamId: string,
+    scope: "secrets:read" | "secrets:write",
+    mutation: boolean,
+  ): Promise<boolean> {
+    const cookieUser = this.oidc?.userFromCookie(req.headers.cookie);
+    if (cookieUser) {
+      if (!mutation || (await this.teams.isAdmin(teamId, cookieUser.id))) {
+        return true;
+      }
+      res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ error: "Workspace admin required to manage secrets" }));
+      return false;
+    }
+    return this.requireScope(req, res, scope);
   }
 
   private async handleTeams(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
@@ -1802,6 +1921,44 @@ sessionStorage.removeItem('runner-pending-team-invite');
       } catch (error: any) {
         res.writeHead(422, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
       }
+      return;
+    }
+    const workspaceApiKeys = url.pathname.match(/^\/api\/(?:workspaces|teams)\/([^/]+)\/api-keys$/);
+    const workspaceApiKey = url.pathname.match(/^\/api\/(?:workspaces|teams)\/([^/]+)\/api-keys\/([^/]+)$/);
+    if (workspaceApiKeys && ["GET", "POST"].includes(req.method || "")) {
+      const teamId = decodeURIComponent(workspaceApiKeys[1]);
+      if (!(await this.teams.isAdmin(teamId, user.id))) {
+        res
+          .writeHead(404, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Workspace not found" }));
+        return;
+      }
+      if (req.method === "GET") {
+        res
+          .writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" })
+          .end(JSON.stringify({ keys: await this.apiKeys.list(teamId) }));
+        return;
+      }
+      const body = await this.readJson(req, res);
+      try {
+        const key = await this.apiKeys.issue(teamId, body?.name, body?.scopes || []);
+        res
+          .writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" })
+          .end(JSON.stringify(key));
+      } catch (error: any) {
+        res.writeHead(422, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: error.message }));
+      }
+      return;
+    }
+    if (workspaceApiKey && req.method === "DELETE") {
+      const teamId = decodeURIComponent(workspaceApiKey[1]);
+      if (!(await this.teams.isAdmin(teamId, user.id))) {
+        res.writeHead(404).end();
+        return;
+      }
+      const revoked = await this.apiKeys.revoke(teamId, decodeURIComponent(workspaceApiKey[2]));
+      res.writeHead(revoked ? 204 : 404).end();
       return;
     }
     const webhooks = url.pathname.match(/^\/api\/(?:workspaces|teams)\/([^/]+)\/webhooks$/);
@@ -2202,6 +2359,14 @@ sessionStorage.removeItem('runner-pending-team-invite');
     return authorization.startsWith("Bearer ") ? authorization.slice(7) : undefined;
   }
 
+  private async canManageLegacyApiKeys(req: http.IncomingMessage): Promise<boolean> {
+    if (this.isAdmin(req) || this.oidc?.userFromCookie(req.headers.cookie)) {
+      return true;
+    }
+    const bearer = this.oidcBearer(req);
+    return Boolean(bearer && this.oidc && (await this.oidc.scopesForToken(bearer)) !== null);
+  }
+
   private async requireScope(req: http.IncomingMessage, res: http.ServerResponse, scope: string): Promise<boolean> {
     if (await this.hasScope(req, scope)) {
       return true;
@@ -2395,6 +2560,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (!teamId) {
       return;
     }
+    if (!(await this.requireSecretPermission(req, res, teamId, "secrets:read", false))) {
+      return;
+    }
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ secrets: await this.secretRepository.namesForTeam(teamId) }));
   }
@@ -2402,6 +2570,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
   private async handleSecretSave(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
     const teamId = await this.requireTeam(req, res);
     if (!teamId) {
+      return;
+    }
+    if (!(await this.requireSecretPermission(req, res, teamId, "secrets:write", true))) {
       return;
     }
     const body = await this.readJson(req, res);
@@ -2423,6 +2594,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
   private async handleSecretDelete(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
     const teamId = await this.requireTeam(req, res);
     if (!teamId) {
+      return;
+    }
+    if (!(await this.requireSecretPermission(req, res, teamId, "secrets:write", true))) {
       return;
     }
     if (!(await this.secretRepository.deleteForTeam(teamId, name))) {

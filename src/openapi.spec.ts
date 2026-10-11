@@ -26,6 +26,8 @@ describe("OpenAPI specification", () => {
     });
     expect(spec.components.schemas.JobStatusDetails.required).toEqual(["id", "status", "createdAt", "lastUpdated"]);
     expect(spec.paths["/api/v1/jobs"]).toHaveProperty("get");
+    expect(spec.paths["/api/v1/workspaces/{workspaceId}/api-keys"]).toHaveProperty("post");
+    expect(spec.paths["/api/v1/workspaces/{workspaceId}/api-keys/{keyId}"]).toHaveProperty("delete");
     expect(spec.paths["/api/session"].get.security).toEqual([{ oidcSessionCookie: [] }]);
     expect(spec.paths["/api/workflows/{workflowId}"]).toHaveProperty("put");
     expect(spec.paths["/api/workflows/{workflowId}/run"]).toHaveProperty("post");

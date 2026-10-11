@@ -99,6 +99,15 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: "007_scope_api_keys_to_teams",
+    async apply() {
+      const tables = await db.all("PRAGMA table_info(api_keys)");
+      if (tables.length && !tables.some((column: any) => column.name === "team_id")) {
+        await db.run("ALTER TABLE api_keys ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default'");
+      }
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {
