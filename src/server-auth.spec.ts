@@ -339,6 +339,7 @@ describe("job status endpoint", () => {
 
   it.each([
     ["OpenAPI discovery", "GET", "/api"],
+    ["versioned OpenAPI discovery", "GET", "/api/v1"],
     ["run view", "GET", "/api/runs/42"],
     ["job wait", "GET", "/api/jobs/42/wait?timeout=0"],
     ["event stream", "GET", "/api/events"],
@@ -537,6 +538,28 @@ describe("workflow and secret settings authentication", () => {
 });
 
 describe("team authorization", () => {
+  it("keeps the legacy GitHub webhook route compatible with GITHUB_WEBHOOK_SECRET", async () => {
+    const previousSecret = process.env.GITHUB_WEBHOOK_SECRET;
+    process.env.GITHUB_WEBHOOK_SECRET = "legacy-github-secret";
+    const parse = vi.fn(() => ({ isValid: true, inputs: {} }));
+    const server = {
+      secretRepository: { getAllForTeam: vi.fn(async () => ({})) },
+      secrets: { get: vi.fn() },
+      preprocessors: { get: vi.fn(() => ({ parse })) },
+    };
+
+    try {
+      await (WebhookServer.prototype as any).preprocess.call(server, "github", {}, Buffer.from("{}"), "default");
+      expect(parse).toHaveBeenCalledWith({}, Buffer.from("{}"), "legacy-github-secret");
+    } finally {
+      if (previousSecret === undefined) {
+        delete process.env.GITHUB_WEBHOOK_SECRET;
+      } else {
+        process.env.GITHUB_WEBHOOK_SECRET = previousSecret;
+      }
+    }
+  });
+
   it("requires an authenticated team member and hides teams the caller cannot access", async () => {
     const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
     const server = {
@@ -567,7 +590,7 @@ describe("team authorization", () => {
 
     await (WebhookServer.prototype as any).handleWebhook.call(server, "github", {}, response, "team-a");
 
-    expect(server.preprocess).toHaveBeenCalledWith("github", {}, Buffer.from("{}"), "team-a");
+    expect(server.preprocess).toHaveBeenCalledWith("github", {}, Buffer.from("{}"), "team-a", undefined);
     expect(server.workflows.publishedForTeam).toHaveBeenCalledWith("team-a");
     expect(server.matchWorkflows).toHaveBeenCalledWith("github", {}, workflows, { TEAM: "team-a" }, "team-a");
     expect(response.writeHead).toHaveBeenCalledWith(202, { "Content-Type": "application/json" });

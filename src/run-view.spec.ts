@@ -241,7 +241,7 @@ describe("run view", () => {
     expect(source).toContain("failedStepMessage");
     expect(source).toContain("Awaiting worker");
     expect(source).toContain("#{{ report.jobId }}");
-    expect(source).toContain("apiFetch(`/api/runs/${jobId}`");
+    expect(source).toContain("apiFetch(`/api/v1/runs/${jobId}`");
     expect(source).toContain("lucide-icon");
     expect(source).toContain("detailTab !== 'source'");
     expect(source).toContain('theme="googlecode"');
@@ -255,7 +255,7 @@ describe("run view", () => {
     expect(source).toContain("Original inputs");
     expect(source).toContain("setManualKey(entry, $event)");
     expect(source).toContain("report.value.parentId");
-    expect(source).toContain("/api/runs/${parentId}");
+    expect(source).toContain("/api/v1/runs/${parentId}");
     expect(source).toContain("Artifacts");
     expect(source).toContain("Thinking through the failed step");
     expect(source).toContain("marked.parse(content)");
@@ -266,12 +266,12 @@ describe("run view", () => {
     expect(source).toContain("{{ report.workerId || 'Awaiting worker' }}");
     expect(source).toContain("formatTimestampedLogLine");
     expect(source).toContain("formatDate(report.startedAt)");
-    expect(source).toContain("/api/preferences");
+    expect(source).toContain("/api/v1/preferences");
     expect(source).not.toContain("https://cdn.tailwindcss.com");
     expect(source).toContain("new EventSource(");
-    expect(source).toContain("/api/events?teamId=");
+    expect(source).toContain("/api/v1/events?teamId=");
     expect(source).toContain('addEventListener("jobs.changed", handleJobChange)');
-    expect(source).toContain("apiFetch(`/api/runs/${jobId}`");
+    expect(source).toContain("apiFetch(`/api/v1/runs/${jobId}`");
     expect(source).toContain("now.value = Date.now()");
     expect(source).toContain('href="/manifest.webmanifest"');
     expect(source).toContain('navigator.serviceWorker.register("/service-worker.js")');

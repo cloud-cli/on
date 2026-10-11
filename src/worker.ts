@@ -219,7 +219,7 @@ async function notifyJobChange(config: RunnerConfig, jobId: string | number): Pr
   }
 
   try {
-    const response = await fetch(new URL("/api/events", config.serverUrl), {
+    const response = await fetch(new URL("/api/v1/events", config.serverUrl), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.workerToken}`,
@@ -246,7 +246,7 @@ async function notifyWorkerHeartbeat(
     return;
   }
   try {
-    await fetch(new URL("/api/workers/heartbeat", config.serverUrl), {
+    await fetch(new URL("/api/v1/workers/heartbeat", config.serverUrl), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.workerToken}`,
@@ -270,7 +270,7 @@ async function fetchJobSecrets(
     return {};
   }
   try {
-    const response = await fetch(new URL(`/api/jobs/${jobId}/secrets`, config.serverUrl), {
+    const response = await fetch(new URL(`/api/v1/jobs/${jobId}/secrets`, config.serverUrl), {
       headers: { Authorization: `Bearer ${config.workerToken}`, "X-Runner-Worker-Id": workerId },
       signal: AbortSignal.timeout(5000),
     });

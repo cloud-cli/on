@@ -82,10 +82,11 @@ export default function setup() {
       },
     ].map((tab) => ({ ...tab, isActive: statusFilter.value === tab.status }));
   const loadTimezone = async () => {
-    const response = await apiFetch("/api/preferences", { headers: { accept: "application/json" } });
+    const response = await apiFetch("/api/v1/preferences", { headers: { accept: "application/json" } });
     if (!response.ok) {
       throw new Error(`Loading timezone preference failed: ${response.status}`);
     }
+
     const preferences = await response.json();
     if (preferences.timezone) {
       timezone.value = preferences.timezone;
@@ -105,8 +106,8 @@ export default function setup() {
       }
     };
     await Promise.all([
-      load("/api/workflows", "workflows", workflows, (item) => item.name || "Workflow"),
-      load("/api/workers", "workers", workers, (item) => item.workerId || "Worker"),
+      load("/api/v1/workflows", "workflows", workflows, (item) => item.name || "Workflow"),
+      load("/api/v1/workers", "workers", workers, (item) => item.workerId || "Worker"),
     ]);
   };
   const terminalStatuses = new Set(["success", "failed", "cancelled"]);
@@ -156,10 +157,11 @@ export default function setup() {
       if (!notificationsSupported.value) {
         return;
       }
-      const response = await apiFetch("/api/push/public-key", { headers: { accept: "application/json" } });
+      const response = await apiFetch("/api/v1/push/public-key", { headers: { accept: "application/json" } });
       if (!response.ok) {
         return;
       }
+
       const { publicKey } = await response.json();
       pushConfigured.value = true;
       const registration = await navigator.serviceWorker.ready;
@@ -169,7 +171,7 @@ export default function setup() {
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(publicKey),
         }));
-      const saved = await apiFetch("/api/push/subscriptions", {
+      const saved = await apiFetch("/api/v1/push/subscriptions", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(subscription),
@@ -187,7 +189,7 @@ export default function setup() {
       if (!subscription) {
         return;
       }
-      await apiFetch("/api/push/subscriptions", {
+      await apiFetch("/api/v1/push/subscriptions", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ endpoint: subscription.endpoint }),
@@ -241,8 +243,8 @@ export default function setup() {
       const workflowQuery = workflowFilter.value ? `&workflowId=${encodeURIComponent(workflowFilter.value)}` : "";
       const url =
         afterId === null
-          ? `/api/jobs?limit=100${filterQuery}${workflowQuery}`
-          : `/api/jobs?afterId=${afterId}&limit=100${filterQuery}${workflowQuery}`;
+          ? `/api/v1/jobs?limit=100${filterQuery}${workflowQuery}`
+          : `/api/v1/jobs?afterId=${afterId}&limit=100${filterQuery}${workflowQuery}`;
       const response = await apiFetch(url, { headers: { accept: "application/json" } });
       if (!response.ok) {
         throw new Error(`Dashboard refresh failed: ${response.status}`);
@@ -283,7 +285,7 @@ export default function setup() {
       const beforeId = Math.min(...jobs.value.map((job) => Number(job.id)));
       const filterQuery = activeFilter.value ? `&filter=${encodeURIComponent(activeFilter.value)}` : "";
       const workflowQuery = workflowFilter.value ? `&workflowId=${encodeURIComponent(workflowFilter.value)}` : "";
-      const response = await apiFetch(`/api/jobs?beforeId=${beforeId}${filterQuery}${workflowQuery}`, {
+      const response = await apiFetch(`/api/v1/jobs?beforeId=${beforeId}${filterQuery}${workflowQuery}`, {
         headers: { accept: "application/json" },
       });
       if (!response.ok) {
@@ -413,7 +415,7 @@ export default function setup() {
         .catch((error) => console.error("Service worker registration failed", error));
     }
     eventSource = new EventSource(
-      `/api/events?teamId=${encodeURIComponent(localStorage.getItem("runner-team-id") || "")}`,
+      `/api/v1/events?teamId=${encodeURIComponent(localStorage.getItem("runner-team-id") || "")}`,
     );
     eventSource.addEventListener("jobs.available", refreshJobs);
     eventSource.addEventListener("jobs.changed", refreshJobs);

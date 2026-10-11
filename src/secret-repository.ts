@@ -68,6 +68,27 @@ export class SecretRepository {
     return Object.fromEntries(rows.map((row: any) => [row.name, this.decrypt(row.ciphertext, row.encoding)]));
   }
 
+  async getForTeam(teamId: string, name: string): Promise<string | undefined> {
+    const row = await db.get("SELECT ciphertext, encoding FROM team_secrets WHERE team_id = ? AND name = ?", [
+      teamId,
+      name,
+    ]);
+    return row ? this.decrypt(row.ciphertext, row.encoding) : undefined;
+  }
+
+  /** Encrypts an isolated secret without adding it to workflow-visible team secrets. */
+  encryptValue(value: string): string {
+    const nonce = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv("aes-256-gcm", this.encryptionKey(), nonce);
+    const encrypted = Buffer.concat([cipher.update(Buffer.from(value, "utf8")), cipher.final()]);
+    return Buffer.concat([nonce, cipher.getAuthTag(), encrypted]).toString("base64");
+  }
+
+  /** Decrypts an isolated UTF-8 secret stored outside the workflow secret namespace. */
+  decryptValue(ciphertext: string): string {
+    return this.decrypt(ciphertext, "utf8");
+  }
+
   async getAllForJob(teamId = "default"): Promise<Record<string, StoredSecret>> {
     const rows = await db.all("SELECT name, ciphertext, encoding FROM team_secrets WHERE team_id = ? ORDER BY name", [
       teamId,

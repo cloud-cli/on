@@ -119,7 +119,7 @@ export async function consumeRunnerEvents(
   onEvent: (event: RunnerEvent, data: Record<string, unknown>) => void,
   onOpen?: () => void,
 ): Promise<void> {
-  const response = await fetch(new URL("/api/events", serverUrl), {
+  const response = await fetch(new URL("/api/v1/events", serverUrl), {
     headers: { Accept: "text/event-stream" },
     signal,
   });

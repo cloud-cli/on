@@ -89,15 +89,17 @@ export default function () {
   };
 
   const loadWorkflows = async () => {
-    workflows.value = (await api("/api/workflows")).workflows;
+    workflows.value = (await api("/api/v1/workflows")).workflows;
   };
 
   const loadSecrets = async () => {
-    secrets.value = (await api("/api/secrets")).secrets;
+    secrets.value = (await api("/api/v1/secrets")).secrets;
   };
 
   const openWorkflow = async (id) => {
-    const workflowUrl = initialRevision ? `/api/workflows/${id}?revision=${initialRevision}` : `/api/workflows/${id}`;
+    const workflowUrl = initialRevision
+      ? `/api/v1/workflows/${id}?revision=${initialRevision}`
+      : `/api/v1/workflows/${id}`;
     const workflow = await api(workflowUrl);
     selectedId.value = workflow.id;
     workflowId.value = workflow.id;
@@ -109,7 +111,7 @@ export default function () {
   };
 
   const validateSource = async () => {
-    return api("/api/workflows/validate", {
+    return api("/api/v1/workflows/validate", {
       method: "POST",
       body: JSON.stringify({ sourceYaml: source.value }),
     });
@@ -145,7 +147,7 @@ export default function () {
         showNotice("No changes to save.");
         return;
       }
-      const workflow = await api(`/api/workflows/${id}`, {
+      const workflow = await api(`/api/v1/workflows/${id}`, {
         method: "PUT",
         body: JSON.stringify({ sourceYaml: source.value, enabled: enabled.value }),
       });
@@ -165,7 +167,8 @@ export default function () {
       if (!id) {
         throw new Error("Save a workflow before publishing it.");
       }
-      const workflow = await api(`/api/workflows/${id}/publish`, { method: "POST" });
+      const workflow = await api(`/api/v1/workflows/${id}/publish`, { method: "POST" });
+
       selectedId.value = workflow.id;
       revision.value = workflow.revision;
       showNotice(`Published revision ${workflow.revision}.`);
@@ -179,7 +182,7 @@ export default function () {
       if (source.value !== savedSource.value) {
         throw new Error("Save the latest draft before running it.");
       }
-      const result = await api(`/api/workflows/${id}/run`, {
+      const result = await api(`/api/v1/workflows/${id}/run`, {
         method: "POST",
         body: JSON.stringify({}),
       });
@@ -195,7 +198,8 @@ export default function () {
       if (!id || !confirm(`Delete ${id} and all of its revisions?`)) {
         return;
       }
-      await api(`/api/workflows/${id}`, { method: "DELETE" });
+      await api(`/api/v1/workflows/${id}`, { method: "DELETE" });
+
       navigateTo("/workflows");
     });
   const saveSecret = () =>
@@ -208,7 +212,7 @@ export default function () {
       if (!name || (fileMode.value ? !secretFileData.value : !secretValue.value)) {
         throw new Error(fileMode.value ? "Choose a file first." : "Set a secret value first.");
       }
-      await api(`/api/secrets/${name}`, {
+      await api(`/api/v1/secrets/${name}`, {
         method: "PUT",
         body: JSON.stringify(
           fileMode.value
@@ -235,7 +239,8 @@ export default function () {
       if (!name || !confirm(`Delete ${name}?`)) {
         return;
       }
-      await api(`/api/secrets/${name}`, { method: "DELETE" });
+      await api(`/api/v1/secrets/${name}`, { method: "DELETE" });
+
       if (secretName.value.trim().toUpperCase() === name) {
         secretName.value = "";
         secretValue.value = "";
@@ -370,8 +375,8 @@ export default function () {
     revisionLoading.value = true;
     revisionError.value = "";
     try {
-      const current = await api(`/api/workflows/${selectedId.value}?revision=${number}`);
-      const previous = number > 1 ? await api(`/api/workflows/${selectedId.value}?revision=${number - 1}`) : null;
+      const current = await api(`/api/v1/workflows/${selectedId.value}?revision=${number}`);
+      const previous = number > 1 ? await api(`/api/v1/workflows/${selectedId.value}?revision=${number - 1}`) : null;
       revisionDiffHtml.value = renderRevisionDiff(previous?.sourceYaml ?? null, current.sourceYaml);
     } catch (error) {
       revisionError.value = error.message;
@@ -410,7 +415,7 @@ export default function () {
     aiError.value = "";
     aiDiffHtml.value = "";
     try {
-      const response = await apiFetch("/api/ai/workflow-help", {
+      const response = await apiFetch("/api/v1/ai/workflow-help", {
         method: "POST",
         credentials: "same-origin",
         headers: { accept: "text/event-stream", "content-type": "application/json" },

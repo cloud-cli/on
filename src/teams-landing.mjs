@@ -6,22 +6,27 @@ export default function () {
   const newTeamName = ref("");
   const message = ref("");
   const loadTeams = async () => {
-    const response = await apiFetch("/api/teams", { headers: { accept: "application/json" } });
-    if (response.ok) {teams.value = (await response.json()).teams || [];}
+    const response = await apiFetch("/api/v1/workspaces", { headers: { accept: "application/json" } });
+    if (response.ok) {
+      teams.value = (await response.json()).workspaces || [];
+    }
   };
   const createTeam = async (event) => {
     event.preventDefault();
     message.value = "";
     try {
-      const response = await apiFetch("/api/teams", {
+      const response = await apiFetch("/api/v1/workspaces", {
         method: "POST",
         headers: { accept: "application/json", "content-type": "application/json" },
         body: JSON.stringify({ name: newTeamName.value }),
       });
       const result = await response.json();
-      if (!response.ok) {throw new Error(result.error || "Unable to create team.");}
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to create workspace.");
+      }
+
       newTeamName.value = "";
-      message.value = `Created ${result.team.name}.`;
+      message.value = `Created ${result.workspace.name}.`;
       await loadTeams();
     } catch (error) {
       message.value = error.message;

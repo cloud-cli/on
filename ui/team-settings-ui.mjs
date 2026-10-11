@@ -9,7 +9,10 @@ export default function () {
   const newTeamName = ref("");
   const inviteEmail = ref("");
   const inviteLink = ref("");
-  const webhookPath = ref("");
+  const webhooks = ref([]);
+  const webhookProvider = ref("github");
+  const webhookUrl = ref("");
+  const webhookSecret = ref("");
   const message = ref("");
   const error = ref("");
   const teamRunners = ref([]);
@@ -34,8 +37,10 @@ export default function () {
     return result;
   };
   const load = async () => {
-    const { members: results = [] } = await request(`/api/teams/${encodeURIComponent(teamId)}/members`);
+    const { members: results = [] } = await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/members`);
     members.value = results;
+    const { webhooks: registrations = [] } = await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/webhooks`);
+    webhooks.value = registrations;
     const runners = await request(`/api/v1/teams/${encodeURIComponent(teamId)}/runners`);
     teamRunners.value = runners.team || [];
     sharedRunners.value = runners.shared || [];
@@ -51,18 +56,37 @@ export default function () {
   };
   const createInvitation = () =>
     act(async () => {
-      const result = await request(`/api/teams/${encodeURIComponent(teamId)}/invitations`, {
+      const result = await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/invitations`, {
         method: "POST",
         body: JSON.stringify({ email: inviteEmail.value }),
       });
       inviteLink.value = new URL(result.link, location.origin).toString();
       message.value = `Invite link expires ${new Date(result.expiresAt).toLocaleString()}.`;
     });
-  const rotateWebhook = () =>
+  const createWebhook = () =>
     act(async () => {
-      const result = await request(`/api/teams/${encodeURIComponent(teamId)}/webhook-token`, { method: "POST" });
-      webhookPath.value = `${location.origin}${result.webhookPath}`;
-      message.value = "Webhook URL rotated. Save this URL now.";
+      const result = await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/webhooks`, {
+        method: "POST",
+        body: JSON.stringify({ provider: webhookProvider.value }),
+      });
+      webhookUrl.value = `${location.origin}${result.url}`;
+      webhookSecret.value = result.signingSecret;
+      message.value = "Webhook created. Copy the URL and signing secret now; the secret is only shown once.";
+      await load();
+    });
+  const revokeWebhook = (registration) =>
+    act(async () => {
+      if (!confirm(`Revoke this ${registration.provider} webhook? Its URL and signing secret will stop working.`)) {
+        return;
+      }
+      await request(
+        `/api/v1/workspaces/${encodeURIComponent(teamId)}/webhooks/${encodeURIComponent(registration.id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+      await load();
+      message.value = "Webhook revoked.";
     });
   const copyValue = async (value) => {
     await navigator.clipboard.writeText(value);
@@ -85,8 +109,9 @@ export default function () {
         !confirm(
           `Deactivate ${runner.name} for this team? Its current team jobs will be canceled and retried after the lease expires.`,
         )
-      )
-        {return;}
+      ) {
+        return;
+      }
       await request(`/api/v1/teams/${encodeURIComponent(teamId)}/runners/${encodeURIComponent(runner.id)}`, {
         method: active ? "POST" : "DELETE",
       });
@@ -95,7 +120,7 @@ export default function () {
   const toggleMemberRole = (member) =>
     act(async () => {
       const role = member.role === "admin" ? "member" : "admin";
-      await request(`/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(member.subject)}`, {
+      await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/members/${encodeURIComponent(member.subject)}`, {
         method: "PUT",
         body: JSON.stringify({ role }),
       });
@@ -103,18 +128,19 @@ export default function () {
     });
   const removeMember = (member) =>
     act(async () => {
-      await request(`/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(member.subject)}`, {
+      await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/members/${encodeURIComponent(member.subject)}`, {
         method: "DELETE",
       });
       await load();
     });
   onInit(async () => {
     try {
-      const { teams = [] } = await request("/api/teams");
-      const team = teams.find((item) => item.id === teamId);
+      const { workspaces = [] } = await request("/api/v1/workspaces");
+      const team = workspaces.find((item) => item.id === teamId);
       if (!team) {
-        throw new Error("You are not a member of this team.");
+        throw new Error("You are not a member of this workspace.");
       }
+
       teamName.value = team.name;
       isAdmin.value = team.role === "admin";
       await load();
@@ -130,11 +156,15 @@ export default function () {
     newTeamName,
     inviteEmail,
     inviteLink,
-    webhookPath,
+    webhooks,
+    webhookProvider,
+    webhookUrl,
+    webhookSecret,
     message,
     error,
     createInvitation,
-    rotateWebhook,
+    createWebhook,
+    revokeWebhook,
     copyValue,
     toggleMemberRole,
     removeMember,

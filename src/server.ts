@@ -35,6 +35,7 @@ import { renderErrorPage, type ErrorPageOptions } from "../ui/error-page.js";
 import { OidcUserRepository } from "./oidc-user-repository.js";
 import { UserPreferencesRepository } from "./user-preferences.js";
 import { TeamRepository } from "./teams.js";
+import { WorkspaceWebhookRepository } from "./workspace-webhook-repository.js";
 import { RunnerRegistry } from "./runner-registry.js";
 
 function isSafeRunnerFilePath(value: string): boolean {
@@ -76,6 +77,7 @@ export class WebhookServer {
   private oidcUsers = new OidcUserRepository();
   private userPreferences = new UserPreferencesRepository();
   private teams = new TeamRepository();
+  private workspaceWebhooks = new WorkspaceWebhookRepository(this.secretRepository);
   private events = new EventBroker();
   private runners = new RunnerRegistry();
   private workflowsLoaded: Promise<void>;
@@ -94,14 +96,16 @@ export class WebhookServer {
     this.beta = options.config.beta ?? false;
     this.oidc = options.config.oidc ? new OidcClient(options.config.oidc) : undefined;
 
-    this.workflowsLoaded = Promise.all([
-      this.workflows.init(),
-      this.secretRepository.init(),
-      this.apiKeys.init(),
-      this.oidcUsers.init(),
-      this.userPreferences.init(),
-      this.runners.init(),
-    ]).then(() => undefined);
+    this.workflowsLoaded = this.workflows.init().then(async () => {
+      await Promise.all([
+        this.secretRepository.init(),
+        this.apiKeys.init(),
+        this.oidcUsers.init(),
+        this.userPreferences.init(),
+        this.runners.init(),
+        this.workspaceWebhooks.init(),
+      ]);
+    });
 
     this.registerPreprocessor(new GitHubPreprocessor());
     this.server = http.createServer((req, res) => {
@@ -142,6 +146,20 @@ export class WebhookServer {
       req.url || "/",
       `${req.headers["x-forwarded-proto"] || "http"}://${req.headers["x-forwarded-host"] || req.headers.host}`,
     );
+
+    // Application APIs are canonical under /api/v1. Keep legacy paths as aliases;
+    // the runner protocol and runner administration already own their /api/v1 paths.
+    if (url.pathname.startsWith("/api/v1/workspaces")) {
+      url.pathname = url.pathname.replace(/^\/api\/v1\/workspaces/, "/api/workspaces");
+    } else if (
+      url.pathname.startsWith("/api/v1/") &&
+      !url.pathname.startsWith("/api/v1/runner") &&
+      !url.pathname.startsWith("/api/v1/teams/") &&
+      url.pathname !== "/api/v1/teams" &&
+      url.pathname !== "/api/v1/runner-enrollments"
+    ) {
+      url.pathname = url.pathname.replace(/^\/api\/v1/, "/api");
+    }
 
     // Global OIDC authentication check for browser UI routes.
     // Exempt routes have their own authorization logic (API, static, auth flow, route-specific controls).
@@ -276,7 +294,7 @@ export class WebhookServer {
       return this.renderAppShell(res);
     }
 
-    if (req.method === "GET" && url.pathname === "/api") {
+    if (req.method === "GET" && (url.pathname === "/api" || url.pathname === "/api/v1")) {
       if (!(await this.requireAuthenticatedApiRequest(req, res))) {
         return;
       }
@@ -828,7 +846,7 @@ export class WebhookServer {
       }
       return this.renderPageComponent(res, "page-settings", generateSettingsHtml());
     }
-    if (req.method === "GET" && url.pathname === "/pages/teams.html") {
+    if (req.method === "GET" && ["/pages/teams.html", "/pages/workspaces.html"].includes(url.pathname)) {
       if (!this.requireAuthenticatedUser(req, res)) {
         return;
       }
@@ -854,13 +872,13 @@ export class WebhookServer {
       }
       return this.renderAppShell(res);
     }
-    if (req.method === "GET" && url.pathname === "/teams") {
+    if (req.method === "GET" && ["/teams", "/workspaces"].includes(url.pathname)) {
       if (!this.requireAuthenticatedUser(req, res)) {
         return;
       }
       return this.renderAppShell(res);
     }
-    if (req.method === "GET" && /^\/teams\/[^/]+\/settings$/.test(url.pathname)) {
+    if (req.method === "GET" && /^\/(?:teams|workspaces)\/[^/]+\/settings$/.test(url.pathname)) {
       if (!this.requireAuthenticatedUser(req, res)) {
         return;
       }
@@ -891,7 +909,7 @@ export class WebhookServer {
       return res.end(JSON.stringify({ user: { name: user.name || "", email: user.email || "", role }, meUrl }));
     }
 
-    if (req.method === "GET" && url.pathname === "/teams/accept") {
+    if (req.method === "GET" && ["/teams/accept", "/workspaces/accept"].includes(url.pathname)) {
       res.writeHead(200, {
         "Cache-Control": "no-store",
         "Content-Type": "text/html; charset=utf-8",
@@ -914,16 +932,19 @@ history.replaceState(null,'',location.pathname);
 sessionStorage.removeItem('runner-pending-team-invite');
 (async()=>{
   if(!token){status.textContent='Invitation link is missing or invalid.';return}
-  const sessionResponse=await fetch('/api/auth/session');
+  const sessionResponse=await fetch('/api/v1/auth/session');
   const session=sessionResponse.ok?await sessionResponse.json():{};
   if(!session.authenticated){sessionStorage.setItem('runner-pending-team-invite',token);location.assign('/auth/login?url=%2Fteams%2Faccept');return}
   status.textContent='Accept this invitation to join the team.';
   const button=document.querySelector('#accept');button.hidden=false;
-  button.addEventListener('click',async()=>{try{const response=await fetch('/api/teams/accept',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token})});if(!response.ok)throw new Error('This invitation is invalid, expired, or for a different verified sign-in email.');status.textContent='You joined the team. Redirecting…';setTimeout(()=>location.assign('/settings'),700)}catch(error){status.textContent=error.message}})
+  button.addEventListener('click',async()=>{try{const response=await fetch('/api/v1/workspaces/accept',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token})});if(!response.ok)throw new Error('This invitation is invalid, expired, or for a different verified sign-in email.');status.textContent='You joined the workspace. Redirecting…';setTimeout(()=>location.assign('/settings'),700)}catch(error){status.textContent=error.message}})
 })().catch(()=>{status.textContent='Could not validate this invitation. Please try again.'});
 </script></body></html>`);
     }
     if (url.pathname.startsWith("/api/teams")) {
+      return this.handleTeams(req, res, url);
+    }
+    if (url.pathname.startsWith("/api/workspaces")) {
       return this.handleTeams(req, res, url);
     }
 
@@ -1256,6 +1277,16 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return this.handleWebhook(match[2], req, res, team.id);
     }
 
+    if (req.method === "POST" && url.pathname.startsWith("/webhooks/workspace/")) {
+      const token = url.pathname.slice("/webhooks/workspace/".length);
+      const webhook = await this.workspaceWebhooks.lookupByToken(decodeURIComponent(token));
+      if (!webhook) {
+        res.writeHead(404).end();
+        return;
+      }
+      return this.handleWebhook(webhook.provider, req, res, webhook.workspaceId, webhook.signingSecret);
+    }
+
     if (req.method === "POST" && url.pathname.startsWith("/webhooks/")) {
       const provider = url.pathname.replace("/webhooks/", "");
       return this.handleWebhook(provider, req, res, "default");
@@ -1292,7 +1323,13 @@ sessionStorage.removeItem('runner-pending-team-invite');
   /**
    * Processes incoming HTTP webhooks
    */
-  private async handleWebhook(provider: string, req: http.IncomingMessage, res: http.ServerResponse, teamId: string) {
+  private async handleWebhook(
+    provider: string,
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    teamId: string,
+    signingSecret?: string,
+  ) {
     try {
       const { rawBuffer, headers } = await this.readRequest(req, res);
 
@@ -1300,7 +1337,13 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return;
       }
 
-      const { isValid, inputs, secretValues } = await this.preprocess(provider, headers, rawBuffer, teamId);
+      const { isValid, inputs, secretValues } = await this.preprocess(
+        provider,
+        headers,
+        rawBuffer,
+        teamId,
+        signingSecret,
+      );
 
       if (!isValid) {
         res.writeHead(401, { "Content-Type": "application/json" });
@@ -1515,7 +1558,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     return { rawBuffer, headers };
   }
 
-  private async preprocess(provider: string, headers, rawBuffer: Buffer, teamId: string) {
+  private async preprocess(provider: string, headers, rawBuffer: Buffer, teamId: string, signingSecret?: string) {
     let dbSecrets: Record<string, string> = {};
     try {
       dbSecrets = await this.secretRepository.getAllForTeam(teamId);
@@ -1525,7 +1568,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
     }
     const secret =
+      signingSecret ||
       dbSecrets[`${provider.toUpperCase()}_WEBHOOK_SECRET`] ||
+      (teamId === "default" ? process.env[`${provider.toUpperCase()}_WEBHOOK_SECRET`] : undefined) ||
       (teamId === "default" ? this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`) : undefined);
     const preprocessor = this.preprocessors.get(provider);
     try {
@@ -1720,13 +1765,18 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return;
     }
     await this.workflowsLoaded;
-    if (url.pathname === "/api/teams" && req.method === "GET") {
+    const workspaceApi = url.pathname === "/api/workspaces" || url.pathname.startsWith("/api/workspaces/");
+    const basePath = workspaceApi ? "/api/workspaces" : "/api/teams";
+    if (url.pathname === basePath && req.method === "GET") {
       res
-        .writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" })
-        .end(JSON.stringify({ teams: await this.teams.listForUser(user.id) }));
+        .writeHead(200, {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        })
+        .end(JSON.stringify({ [workspaceApi ? "workspaces" : "teams"]: await this.teams.listForUser(user.id) }));
       return;
     }
-    if (url.pathname === "/api/teams" && req.method === "POST") {
+    if (url.pathname === basePath && req.method === "POST") {
       const body = await this.readJson(req, res);
       if (!body || typeof body.name !== "string" || !body.name.trim()) {
         if (!res.headersSent) {
@@ -1736,20 +1786,74 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       try {
         const team = await this.teams.createTeam(body.name, user.id);
-        res.writeHead(201, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(
-          JSON.stringify({
-            team: { id: team.id, name: team.name, role: "admin" },
-            webhookPath: `/webhooks/team/${encodeURIComponent(team.webhookToken)}/{provider}`,
-          }),
-        );
+        res
+          .writeHead(201, {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+          })
+          .end(
+            JSON.stringify({
+              [workspaceApi ? "workspace" : "team"]: { id: team.id, name: team.name, role: "admin" },
+              ...(!workspaceApi
+                ? { webhookPath: `/webhooks/team/${encodeURIComponent(team.webhookToken)}/{provider}` }
+                : {}),
+            }),
+          );
       } catch (error: any) {
         res.writeHead(422, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
       }
       return;
     }
-    const invite = url.pathname.match(/^\/api\/teams\/([^/]+)\/invitations$/);
-    const members = url.pathname.match(/^\/api\/teams\/([^/]+)\/members$/);
-    const member = url.pathname.match(/^\/api\/teams\/([^/]+)\/members\/([^/]+)$/);
+    const webhooks = url.pathname.match(/^\/api\/(?:workspaces|teams)\/([^/]+)\/webhooks$/);
+    const webhook = url.pathname.match(/^\/api\/(?:workspaces|teams)\/([^/]+)\/webhooks\/([^/]+)$/);
+    if (webhooks && ["GET", "POST"].includes(req.method || "")) {
+      const teamId = decodeURIComponent(webhooks[1]);
+      if (!(await this.teams.isAdmin(teamId, user.id))) {
+        res.writeHead(404).end();
+        return;
+      }
+      if (req.method === "GET") {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ webhooks: await this.workspaceWebhooks.list(teamId) }));
+        return;
+      }
+      const body = await this.readJson(req, res);
+      if (!body || typeof body.provider !== "string") {
+        if (!res.headersSent) {
+          res.writeHead(400).end(JSON.stringify({ error: "provider is required" }));
+        }
+        return;
+      }
+      try {
+        const created = await this.workspaceWebhooks.create(teamId, body.provider);
+        res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(
+          JSON.stringify({
+            webhook: { id: created.id, provider: created.provider, createdAt: created.createdAt },
+            url: `/webhooks/workspace/${encodeURIComponent(created.token)}`,
+            signingSecret: created.signingSecret,
+          }),
+        );
+      } catch (error: any) {
+        res.writeHead(422, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: error.message }));
+      }
+      return;
+    }
+    if (webhook && req.method === "DELETE") {
+      const teamId = decodeURIComponent(webhook[1]);
+      if (!(await this.teams.isAdmin(teamId, user.id))) {
+        res.writeHead(404).end();
+        return;
+      }
+      const removed = await this.workspaceWebhooks.revoke(teamId, decodeURIComponent(webhook[2]));
+      res.writeHead(removed ? 204 : 404).end();
+      return;
+    }
+    const prefix = workspaceApi ? "workspaces" : "teams";
+    const invite = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/invitations$`));
+    const members = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/members$`));
+    const member = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/members/([^/]+)$`));
     if (member && req.method === "PUT") {
       const teamId = decodeURIComponent(member[1]);
       const subject = decodeURIComponent(member[2]);
@@ -1838,7 +1942,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         .end(JSON.stringify({ webhookPath: `/webhooks/team/${encodeURIComponent(token)}/{provider}` }));
       return;
     }
-    if (url.pathname === "/api/teams/accept" && req.method === "POST") {
+    if ((url.pathname === "/api/teams/accept" || url.pathname === "/api/workspaces/accept") && req.method === "POST") {
       const body = await this.readJson(req, res);
       if (!body || typeof body.token !== "string" || !user.email || user.email_verified !== true) {
         res.writeHead(403).end(JSON.stringify({ error: "A verified sign-in email is required" }));

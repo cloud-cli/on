@@ -70,14 +70,14 @@ export default function () {
   };
   const load = async () => {
     const revealedKeys = new Map(keys.value.filter((key) => key.token).map((key) => [key.id, key]));
-    const storedKeys = (await api("/api/api-keys")).keys;
+    const storedKeys = (await api("/api/v1/api-keys")).keys;
     keys.value = storedKeys.map((key) => {
       const revealed = revealedKeys.get(key.id);
       return revealed ? { ...key, token: revealed.token, isNew: true } : key;
     });
   };
   const loadSecrets = async () => {
-    secrets.value = (await api("/api/secrets")).secrets;
+    secrets.value = (await api("/api/v1/secrets")).secrets;
   };
   const runSecretAction = async (action) => {
     if (busy.value) {
@@ -102,7 +102,7 @@ export default function () {
       if (fileMode.value ? !secretFileData.value : !secretValue.value) {
         throw new Error(fileMode.value ? "Choose a file first." : "Set a secret value first.");
       }
-      await api(`/api/secrets/${encodeURIComponent(name)}`, {
+      await api(`/api/v1/secrets/${encodeURIComponent(name)}`, {
         method: "PUT",
         body: JSON.stringify(
           fileMode.value
@@ -122,7 +122,7 @@ export default function () {
       return;
     }
     return runSecretAction(async () => {
-      await api(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
+      await api(`/api/v1/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
       await loadSecrets();
     });
   };
@@ -160,7 +160,7 @@ export default function () {
   };
   const loadWorkers = async () => {
     try {
-      workers.value = (await api("/api/workers")).workers;
+      workers.value = (await api("/api/v1/workers")).workers;
     } catch (reason) {
       if (reason.status === 403) {
         workersForbidden.value = true;
@@ -242,7 +242,7 @@ export default function () {
     runner.updateStatus === "pending";
   const loadUsers = async () => {
     try {
-      users.value = (await api("/api/users")).users;
+      users.value = (await api("/api/v1/users")).users;
     } catch (reason) {
       if (reason.status === 403) {
         usersForbidden.value = true;
@@ -254,7 +254,7 @@ export default function () {
     }
   };
   const loadPreferences = async () => {
-    const preferences = await api("/api/preferences");
+    const preferences = await api("/api/v1/preferences");
     if (preferences.timezone) {
       timezone.value = preferences.timezone;
       if (!timezones.value.includes(preferences.timezone)) {
@@ -290,7 +290,7 @@ export default function () {
     timezone.value = selectedTimezone;
     preferenceMessage.value = "";
     try {
-      const saved = await api("/api/preferences", {
+      const saved = await api("/api/v1/preferences", {
         method: "PUT",
         body: JSON.stringify({ timezone: selectedTimezone }),
       });
@@ -305,7 +305,7 @@ export default function () {
   const issueKey = async () => {
     try {
       error.value = "";
-      const result = await api("/api/api-keys", {
+      const result = await api("/api/v1/api-keys", {
         method: "POST",
         body: JSON.stringify({
           name: keyName.value,
@@ -332,7 +332,7 @@ export default function () {
       return;
     }
     try {
-      await api(`/api/api-keys/${key.id}`, { method: "DELETE" });
+      await api(`/api/v1/api-keys/${key.id}`, { method: "DELETE" });
       await load();
     } catch (reason) {
       error.value = reason.message;
@@ -345,7 +345,7 @@ export default function () {
     }
     error.value = "";
     try {
-      await api(`/api/users/${encodeURIComponent(user.id)}/role`, { method: "PUT", body: JSON.stringify({ role }) });
+      await api(`/api/v1/users/${encodeURIComponent(user.id)}/role`, { method: "PUT", body: JSON.stringify({ role }) });
       await loadUsers();
     } catch (reason) {
       error.value = reason.status === 403 ? "Only administrators can change user roles." : reason.message;

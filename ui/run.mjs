@@ -150,24 +150,26 @@ export default function setup() {
     return current?.status === "failed" ? "exit code 1" : upper(current?.status);
   });
   const loadTimezone = async () => {
-    const response = await apiFetch("/api/preferences", { headers: { accept: "application/json" } });
+    const response = await apiFetch("/api/v1/preferences", { headers: { accept: "application/json" } });
     if (!response.ok) {
       throw new Error(`Loading timezone preference failed: ${response.status}`);
     }
+
     const preferences = await response.json();
     if (preferences.timezone) {
       timezone.value = preferences.timezone;
     }
   };
   const loadAdminRole = async () => {
-    const response = await apiFetch("/api/session", { headers: { accept: "application/json" } });
+    const response = await apiFetch("/api/v1/session", { headers: { accept: "application/json" } });
     if (!response.ok) {
       return;
     }
+
     const session = await response.json();
     isAdmin.value = session.user?.role === "admin";
   };
-  const artifactUrl = (path) => `/api/runs/${report.value.jobId}/artifacts/${encodeURIComponent(path)}`;
+  const artifactUrl = (path) => `/api/v1/runs/${report.value.jobId}/artifacts/${encodeURIComponent(path)}`;
   const downloadArtifact = async (event, path) => {
     event.preventDefault();
     const response = await apiFetch(artifactUrl(path));
@@ -189,10 +191,11 @@ export default function setup() {
     let parentId = report.value.parentId;
     while (parentId && !visited.has(String(parentId)) && lineage.length < 50) {
       visited.add(String(parentId));
-      const response = await apiFetch(`/api/runs/${parentId}`, { headers: { accept: "application/json" } });
+      const response = await apiFetch(`/api/v1/runs/${parentId}`, { headers: { accept: "application/json" } });
       if (!response.ok) {
         throw new Error(`Previous run request failed: ${response.status}`);
       }
+
       const parent = await response.json();
       lineage.push({ id: parent.jobId, status: parent.status, startedAt: parent.startedAt });
       parentId = parent.parentId;
@@ -249,7 +252,7 @@ export default function setup() {
     aiLoading.value = true;
     aiError.value = "";
     try {
-      const response = await apiFetch(`/api/runs/${report.value.jobId}/ai-help`, {
+      const response = await apiFetch(`/api/v1/runs/${report.value.jobId}/ai-help`, {
         method: "POST",
         headers: { accept: "application/json", "content-type": "application/json" },
         body: JSON.stringify({ stepId, question, conversation: aiMessages.value }),
@@ -371,10 +374,11 @@ export default function setup() {
     }
     cancelling.value = true;
     try {
-      const response = await apiFetch(`/api/jobs/${report.value.jobId}/cancel`, { method: "POST" });
+      const response = await apiFetch(`/api/v1/jobs/${report.value.jobId}/cancel`, { method: "POST" });
       if (!response.ok) {
         throw new Error(`Cancel failed: ${response.status}`);
       }
+
       await refreshRun();
     } catch (error) {
       console.error(error);
@@ -390,7 +394,7 @@ export default function setup() {
     refreshing = true;
 
     try {
-      const response = await apiFetch(`/api/runs/${jobId}`, {
+      const response = await apiFetch(`/api/v1/runs/${jobId}`, {
         headers: { accept: "application/json" },
       });
       if (!response.ok) {
@@ -462,7 +466,7 @@ export default function setup() {
       });
     }
     eventSource = new EventSource(
-      `/api/events?teamId=${encodeURIComponent(localStorage.getItem("runner-team-id") || "")}`,
+      `/api/v1/events?teamId=${encodeURIComponent(localStorage.getItem("runner-team-id") || "")}`,
     );
     eventSource.addEventListener("jobs.changed", handleJobChange);
     refreshTimer = setInterval(() => {
