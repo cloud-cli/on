@@ -48,12 +48,12 @@ describe("dashboard", () => {
     expect(dashboardSetup).toContain('params.get("search")?.trim()');
     expect(dashboardSetup).toContain("history.pushState(null");
     expect(dashboardSetup).toContain('params.set("search", value)');
-    expect(dashboardSetup).toContain("`/api/jobs?afterId=${afterId}&limit=100${filterQuery}${workflowQuery}`");
+    expect(dashboardSetup).toContain("`/api/v1/jobs?afterId=${afterId}&limit=100${filterQuery}${workflowQuery}`");
     expect(dashboardSetup).toContain('new Set(["success", "failed", "cancelled"])');
     expect(dashboardSetup).toContain("Math.max(0, Math.min(...activeIds) - 1)");
     expect(dashboardSetup).toContain("new Map(jobs.value.map((job) => [job.id, job]))");
     expect(dashboardSetup).toContain("Array.from(merged.values()).sort");
-    expect(dashboardSetup).toContain("`/api/jobs?beforeId=${beforeId}${filterQuery}${workflowQuery}`");
+    expect(dashboardSetup).toContain("`/api/v1/jobs?beforeId=${beforeId}${filterQuery}${workflowQuery}`");
     expect(html).toContain('on-click="previousPage()"');
     expect(html).toContain('on-click="nextPage()"');
     expect(html).toContain("Search runs");
@@ -83,8 +83,8 @@ describe("dashboard", () => {
     expect(html).toContain("ml-2 inline-flex items-center gap-1 rounded-full");
     expect(html).toContain('role="status"');
     expect(dashboardSetup).toContain("new EventSource(");
-    expect(dashboardSetup).toContain("/api/events?teamId=");
-    expect(dashboardSetup).toContain("/api/push/public-key");
+    expect(dashboardSetup).toContain("/api/v1/events?teamId=");
+    expect(dashboardSetup).toContain("/api/v1/push/public-key");
     expect(html).toContain("https://sodium.static.apphor.de/lucide-icon.html");
     expect(html).not.toContain("Runs</h1>");
     expect(html).not.toContain("Activity</p>");
@@ -97,8 +97,8 @@ describe("dashboard", () => {
     expect(dashboardSetup).toContain('addEventListener("jobs.available", refreshJobs)');
     expect(dashboardSetup).toContain('addEventListener("jobs.changed", refreshJobs)');
     expect(dashboardSetup).toContain("workflowId=${encodeURIComponent(workflowFilter.value)}");
-    expect(dashboardSetup).toContain('load("/api/workflows", "workflows"');
-    expect(dashboardSetup).toContain('load("/api/workers", "workers"');
+    expect(dashboardSetup).toContain('load("/api/v1/workflows", "workflows"');
+    expect(dashboardSetup).toContain('load("/api/v1/workers", "workers"');
     expect(dashboardSetup).toContain("setInterval(refreshJobs, 60000)");
     expect(html).toContain('href="/manifest.webmanifest"');
     expect(dashboardSetup).toContain('register("/service-worker.js")');

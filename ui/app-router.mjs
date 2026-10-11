@@ -13,12 +13,13 @@ export default function () {
   let activeTransientPage = null;
   let routeMessage = null;
   const checkTeams = async () => {
-    const response = await apiFetch("/api/teams", { headers: { accept: "application/json" } });
+    const response = await apiFetch("/api/v1/workspaces", { headers: { accept: "application/json" } });
     if (!response.ok) {
-      throw new Error(`Unable to check your teams (${response.status}). Please reload or sign in again.`);
+      throw new Error(`Unable to check your workspaces (${response.status}). Please reload or sign in again.`);
     }
+
     const result = await response.json();
-    const teams = result.teams || [];
+    const teams = result.workspaces || [];
     if (teams.length) {
       const selected = localStorage.getItem("runner-team-id");
       if (!teams.some((team) => team.id === selected)) {
@@ -38,7 +39,7 @@ export default function () {
     const main = document.createElement("main");
     main.className = "mx-auto mt-16 w-full max-w-lg rounded-2xl border border-flow-border bg-white p-8 shadow-sm";
     main.innerHTML =
-      '<p class="text-sm font-semibold uppercase tracking-wide text-flow-primary">Welcome to Flow</p><h1 class="mt-3 text-2xl font-semibold">Create your first team</h1><p class="mt-2 text-sm text-flow-secondary">Teams keep your workflows, runs, and secrets together.</p><form class="mt-6 space-y-4"><label class="block text-sm font-medium" for="first-team-name">Team name</label><input id="first-team-name" name="name" required maxlength="100" autocomplete="organization" class="w-full rounded-lg border border-flow-border px-3 py-2" placeholder="Acme Engineering"><p class="hidden text-sm text-rose-700" role="alert"></p><button class="rounded-lg bg-flow-primary px-4 py-2 font-semibold text-white">Create team</button></form>';
+      '<p class="text-sm font-semibold uppercase tracking-wide text-flow-primary">Welcome to Flow</p><h1 class="mt-3 text-2xl font-semibold">Create your first workspace</h1><p class="mt-2 text-sm text-flow-secondary">Workspaces keep related workflows, runs, and secrets together.</p><form class="mt-6 space-y-4"><label class="block text-sm font-medium" for="first-team-name">Workspace name</label><input id="first-team-name" name="name" required maxlength="100" autocomplete="organization" class="w-full rounded-lg border border-flow-border px-3 py-2" placeholder="Home automation"><p class="hidden text-sm text-rose-700" role="alert"></p><button class="rounded-lg bg-flow-primary px-4 py-2 font-semibold text-white">Create workspace</button></form>';
     const form = main.querySelector("form");
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -53,19 +54,20 @@ export default function () {
       button.textContent = "Creating…";
       alert.classList.add("hidden");
       try {
-        const response = await apiFetch("/api/teams", {
+        const response = await apiFetch("/api/v1/workspaces", {
           method: "POST",
           headers: { accept: "application/json", "content-type": "application/json" },
           body: JSON.stringify({ name }),
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(result.error || `Team creation failed (${response.status}). Please try again.`);
+          throw new Error(result.error || `Workspace creation failed (${response.status}). Please try again.`);
         }
-        const team = result.team || result;
+        const team = result.workspace || result;
         if (!team.id) {
-          throw new Error("Team was created but the response had no team ID. Reload and select your team in Settings.");
+          throw new Error("Workspace was created but the response had no ID. Reload and select it in Settings.");
         }
+
         teamCreated = true;
         localStorage.setItem("runner-team-id", team.id);
         document.body.dataset.teamless = "false";
@@ -74,7 +76,7 @@ export default function () {
         const success = document.createElement("section");
         success.className = "mt-6 space-y-3 text-sm";
         const confirmation = document.createElement("p");
-        confirmation.textContent = `Team “${team.name || name}” created successfully.`;
+        confirmation.textContent = `Workspace “${team.name || name}” created successfully.`;
         success.append(confirmation);
         if (result.webhookPath) {
           const webhook = document.createElement("p");
@@ -90,8 +92,8 @@ export default function () {
         main.append(success);
       } catch (error) {
         alert.textContent = teamCreated
-          ? "Your team was created, but this browser could not save the selected team. Enable browser storage, then reload."
-          : error.message || "Unable to create team. Please try again.";
+          ? "Your workspace was created, but this browser could not save the selection. Enable browser storage, then reload."
+          : error.message || "Unable to create workspace. Please try again.";
         alert.classList.remove("hidden");
         button.disabled = teamCreated;
         button.textContent = teamCreated ? "Team created" : "Create team";
@@ -115,10 +117,10 @@ export default function () {
     if (path === "/settings") {
       return { component: "page-settings", url: "/pages/settings.html", page: "settings" };
     }
-    if (path === "/teams") {
-      return { component: "page-teams", url: "/pages/teams.html", page: "teams" };
+    if (path === "/teams" || path === "/workspaces") {
+      return { component: "page-teams", url: "/pages/workspaces.html", page: "workspaces" };
     }
-    const teamSettings = path.match(/^\/teams\/([^/]+)\/settings$/);
+    const teamSettings = path.match(/^\/(?:teams|workspaces)\/([^/]+)\/settings$/);
     if (teamSettings) {
       return {
         component: "page-team-settings",

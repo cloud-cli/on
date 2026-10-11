@@ -20,7 +20,7 @@ describe("SPA router", () => {
 
   it("uses /settings as the sole settings route and section anchors for navigation", () => {
     expect(routerSetup).toContain('if (path === "/settings")');
-    expect(routerSetup).toContain('if (path === "/teams")');
+    expect(routerSetup).toContain('path === "/teams" || path === "/workspaces"');
     expect(routerSetup).not.toContain("settingsSections");
     expect(routerSetup).not.toMatch(/path === "\/settings\/|path\.startsWith\("\/settings\//);
     expect(routerSetup).toContain('url: "/pages/workflows.html?page=workflows"');
@@ -93,31 +93,31 @@ describe("SPA router", () => {
 
   it("checks team membership before mounting app routes and offers focused first-team onboarding", () => {
     expect(appShell).toContain('data-teamless="checking"');
-    expect(routerSetup).toContain('apiFetch("/api/teams"');
+    expect(routerSetup).toContain('apiFetch("/api/v1/workspaces"');
     expect(routerSetup).toContain("if (!teams.length)");
     expect(routerSetup).toContain("showOnboarding()");
-    expect(routerSetup).toContain('apiFetch("/api/teams", {');
+    expect(routerSetup).toContain('apiFetch("/api/v1/workspaces", {');
     expect(routerSetup).toContain('localStorage.setItem("runner-team-id", team.id)');
     expect(routerSetup).toContain("let teamCreated = false");
-    expect(routerSetup).toContain("Your team was created, but this browser could not save the selected team");
+    expect(routerSetup).toContain("Your workspace was created, but this browser could not save the selection");
     expect(routerSetup).toContain('document.body.dataset.teamless = "true"');
     expect(routerSetup).toContain("Continue to Flow");
     expect(routerTemplate).toContain('ref="outlet"');
   });
 
   it("routes team settings through membership validation and scopes the selected team", () => {
-    expect(routerSetup).toContain("path.match(/^\\/teams\\/([^/]+)\\/settings$/)");
+    expect(routerSetup).toContain("path.match(/^\\/(?:teams|workspaces)\\/([^/]+)\\/settings$/)");
     expect(routerSetup).toContain("teams.some((team) => team.id === current.teamId)");
     expect(routerSetup).toContain('localStorage.setItem("runner-team-id", current.teamId)');
     expect(routerSetup).toContain("url: `/pages/team-settings.html?teamId=${encodeURIComponent(teamSettings[1])}`");
     expect(serverSetup).toContain('url.pathname === "/pages/team-settings.html"');
     expect(serverSetup).toContain('url.pathname === "/team-settings-ui.mjs"');
-    expect(serverSetup).toContain("^\\/teams\\/[^/]+\\/settings$");
+    expect(serverSetup).toContain("^\\/(?:teams|workspaces)\\/[^/]+\\/settings$");
   });
   it("routes the team landing page through authenticated server delivery", () => {
-    expect(routerSetup).toContain('path === "/teams"');
-    expect(routerSetup).toContain('url: "/pages/teams.html"');
-    expect(serverSetup).toContain('url.pathname === "/pages/teams.html"');
-    expect(serverSetup).toContain('url.pathname === "/teams"');
+    expect(routerSetup).toContain('path === "/teams" || path === "/workspaces"');
+    expect(routerSetup).toContain('url: "/pages/workspaces.html"');
+    expect(serverSetup).toContain('"/pages/workspaces.html"');
+    expect(serverSetup).toContain('"/workspaces"');
   });
 });

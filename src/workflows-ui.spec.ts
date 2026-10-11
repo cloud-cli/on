@@ -55,13 +55,13 @@ describe("workflow management UI", () => {
     expect(source).toContain("https://sodium.static.apphor.de/code-block.html");
     expect(source).toContain("https://sodium.static.apphor.de/lucide-icon.html");
     expect(source).toContain("<template app>");
-    expect(source).toContain("/api/workflows/validate");
+    expect(source).toContain("/api/v1/workflows/validate");
     expect(source).toMatch(/credentials:\s*['"]same-origin['"]/);
     expect(source).toContain("@app/api-client.mjs");
     expect(source).toContain('import { apiFetch } from "@app/api-client.mjs"');
     expect(source).not.toContain("redirectToLogin");
     expect(workflowsSetup).toContain("const response = await apiFetch(url");
-    expect(workflowsSetup).toContain('apiFetch("/api/ai/workflow-help"');
+    expect(workflowsSetup).toContain('apiFetch("/api/v1/ai/workflow-help"');
     expect(source).toContain("const name = secretName.value.trim().toUpperCase()");
     expect(source).toContain("secretName.value.trim().toUpperCase() === name");
     expect(source).toContain("Secret names must start with a letter");
@@ -98,7 +98,7 @@ describe("workflow management UI", () => {
     expect(source).toContain('bind-innerhtml="revisionDiffHtml"');
     expect(source).toContain("https://unpkg.com/diff@9.0.0/libesm/index.js");
     expect(source).toContain("Get AI workflow help");
-    expect(source).toContain("/api/ai/workflow-help");
+    expect(source).toContain("/api/v1/ai/workflow-help");
     expect(source).toContain("Accept suggestion");
     expect(source).toContain('aria-label="Save workflow draft"');
     expect(source).toContain(
@@ -123,10 +123,10 @@ describe("workflow management UI", () => {
     expect(source).not.toContain("<iframe");
     expect(source).toContain("focus-visible:ring-2");
     expect(source).toContain("Publish");
-    expect(source).toContain("/api/workflows/");
+    expect(source).toContain("/api/v1/workflows/");
     expect(source).toContain("Run workflow now");
     expect(source).toContain("runNow");
-    expect(source).toContain("/api/secrets/");
+    expect(source).toContain("/api/v1/secrets/");
     expect(source).toContain('type="password"');
     expect(source).toContain('type="file"');
     expect(source).toContain("Binary file secret");

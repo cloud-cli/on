@@ -5,6 +5,7 @@ describe("OpenAPI specification", () => {
   it("documents discovery and core API paths", () => {
     expect(spec.openapi).toBe("3.0.3");
     expect(spec.paths["/api"]).toHaveProperty("get");
+    expect(spec.paths["/api/v1"].get.security).toEqual([{ oidcSessionCookie: [] }, { bearerAuth: [] }]);
     expect(spec.paths["/api/jobs"]).toHaveProperty("get");
     expect(spec.paths["/api/jobs"].get.security).toEqual([{ oidcSessionCookie: [] }, { bearerAuth: [] }]);
     for (const [path, method] of [
@@ -24,6 +25,7 @@ describe("OpenAPI specification", () => {
       $ref: "#/components/schemas/JobStatusDetails",
     });
     expect(spec.components.schemas.JobStatusDetails.required).toEqual(["id", "status", "createdAt", "lastUpdated"]);
+    expect(spec.paths["/api/v1/jobs"]).toHaveProperty("get");
     expect(spec.paths["/api/session"].get.security).toEqual([{ oidcSessionCookie: [] }]);
     expect(spec.paths["/api/workflows/{workflowId}"]).toHaveProperty("put");
     expect(spec.paths["/api/workflows/{workflowId}/run"]).toHaveProperty("post");
@@ -41,6 +43,10 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api/teams/{teamId}/invitations"]).toHaveProperty("post");
     expect(spec.paths["/api/teams/{teamId}/members/{subject}"]).toHaveProperty("delete");
     expect(spec.paths["/api/teams/{teamId}/members/{subject}"]).toHaveProperty("put");
+    expect(spec.paths["/api/v1/workspaces/{workspaceId}/members/{subject}"]).toHaveProperty("put");
+    expect(spec.paths["/api/v1/workspaces/{workspaceId}/webhooks"].post).toBeDefined();
+    expect(spec.paths["/api/v1/workspaces/{workspaceId}/webhooks/{webhookId}"].delete).toBeDefined();
+    expect(spec.paths["/webhooks/workspace/{token}"]).toHaveProperty("post");
   });
 
   it("documents workflow and secret settings as OIDC-session protected", () => {

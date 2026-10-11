@@ -15,11 +15,12 @@ export default function () {
     }
   };
   const loadTeams = async () => {
-    const teamResponse = await fetch("/api/teams", { headers: { accept: "application/json" } });
+    const teamResponse = await fetch("/api/v1/workspaces", { headers: { accept: "application/json" } });
     if (!teamResponse.ok) {
       return;
     }
-    teams.value = (await teamResponse.json()).teams || [];
+    teams.value = (await teamResponse.json()).workspaces || [];
+
     if (!teams.value.some((team) => team.id === activeTeamId.value)) {
       activeTeamId.value = teams.value[0]?.id || "";
       if (activeTeamId.value) {
@@ -31,10 +32,11 @@ export default function () {
   };
   onInit(async () => {
     try {
-      const response = await fetch("/api/auth/session");
+      const response = await fetch("/api/v1/auth/session");
       if (!response.ok) {
         return;
       }
+
       const session = await response.json();
       authConfigured.value = session.configured;
       authenticated.value = session.authenticated;

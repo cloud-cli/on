@@ -10,8 +10,8 @@ export default function setup() {
   const teams = ref([]);
   const loadTeams = async () => {
     try {
-      const response = await fetch("/api/teams", { headers: { accept: "application/json" } });
-      teams.value = response.ok ? (await response.json()).teams || [] : [];
+      const response = await fetch("/api/v1/workspaces", { headers: { accept: "application/json" } });
+      teams.value = response.ok ? (await response.json()).workspaces || [] : [];
     } catch (error) {
       console.error("Unable to load teams", error);
     }
@@ -30,9 +30,9 @@ export default function setup() {
   const syncSection = () => {
     const path = window.location.pathname;
     activeSection.value =
-      path === "/teams"
-        ? "teams"
-        : path.startsWith("/settings") || path.startsWith("/teams/")
+      path === "/teams" || path === "/workspaces"
+        ? "workspaces"
+        : path.startsWith("/settings") || path.startsWith("/teams/") || path.startsWith("/workspaces/")
           ? "settings"
           : path.startsWith("/workflows")
             ? "workflows"
@@ -47,7 +47,7 @@ export default function setup() {
     syncSection();
     window.addEventListener("popstate", syncSection);
     document.addEventListener("keydown", handleSkipKeydown);
-    void fetch("/api/auth/session", { credentials: "same-origin", headers: { accept: "application/json" } })
+    void fetch("/api/v1/auth/session", { credentials: "same-origin", headers: { accept: "application/json" } })
       .then((response) => (response.ok ? response.json() : null))
       .then((session) => {
         if (!session?.authenticated || !session.user) {

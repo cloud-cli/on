@@ -4,12 +4,12 @@ import setup from "./team-settings-ui.mjs?raw";
 import { WebhookServer } from "../src/server.js";
 
 describe("team settings UI", () => {
-  it("provides team-specific settings and existing team management actions", () => {
+  it("provides workspace-specific settings and management actions", () => {
     const html = generateTeamSettingsHtml();
 
-    expect(html).toContain("{{ teamName }} settings");
+    expect(html).toContain("{{ teamName }} workspace");
     expect(html).toContain("Create invite link");
-    expect(html).toContain("Generate / rotate webhook URL");
+    expect(html).toContain("Create webhook");
     expect(html).toContain('for="member of members"');
     expect(html).toContain('class-hidden="!isAdmin"');
     expect(html).toContain('script setup src="/team-settings-ui.mjs"');
@@ -17,20 +17,20 @@ describe("team settings UI", () => {
 
   it("loads and mutates only the team identified by the route", () => {
     expect(setup).toContain('location.pathname.split("/")[2]');
-    expect(setup).toContain("request(`/api/teams/${encodeURIComponent(teamId)}/members`)");
-    expect(setup).toContain("request(`/api/teams/${encodeURIComponent(teamId)}/invitations`");
-    expect(setup).toContain("request(`/api/teams/${encodeURIComponent(teamId)}/webhook-token`");
+    expect(setup).toContain("request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/members`)");
+    expect(setup).toContain("request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/invitations`");
+    expect(setup).toContain("request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/webhooks`");
     expect(setup).toContain('"X-Team-ID": teamId');
-    expect(setup).toContain('throw new Error("You are not a member of this team.")');
+    expect(setup).toContain("You are not a member of this workspace.");
   });
   it("keeps team settings focused on the selected team", () => {
-    expect(generateTeamSettingsHtml()).toContain("Team members share workflows");
-    expect(setup).not.toContain('request("/api/teams",');
+    expect(generateTeamSettingsHtml()).toContain("Workspace members share workflows");
+    expect(setup).not.toContain('request("/api/v1/teams",');
   });
 
   it("shows team and shared runner management with admin-only mutations", () => {
     const html = generateTeamSettingsHtml();
-    expect(html).toContain("Team-scoped runners");
+    expect(html).toContain("Workspace-scoped runners");
     expect(html).toContain("Active shared runners");
     expect(html).toContain("Available shared runners");
     expect(html).toContain("One-time enrollment code");
@@ -44,9 +44,10 @@ describe("team settings UI", () => {
     const { readFileSync } = await import("node:fs");
     const html = readFileSync(new URL("../src/teams-landing.html", import.meta.url), "utf8");
     const landing = readFileSync(new URL("../src/teams-landing.mjs", import.meta.url), "utf8");
-    expect(html).toContain("Choose a team");
+    expect(html).toContain("Choose a workspace");
+
     expect(html).toContain("encodeURIComponent(team.id) + '/settings'");
-    expect(landing).toContain('apiFetch("/api/teams"');
+    expect(landing).toContain('apiFetch("/api/v1/workspaces"');
   });
 
   it("extracts app content from Prettier-formatted template tags", () => {

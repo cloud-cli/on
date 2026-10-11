@@ -7,7 +7,7 @@ import { generateWorkflowManagementHtml } from "../ui/workflows-ui.js";
 describe("settings UI", () => {
   it("provides token, notifications, and worker settings without a duplicate workflows link", () => {
     const source = generateSettingsHtml() + settingsSetup;
-    expect(source).toContain("/api/api-keys");
+    expect(source).toContain("/api/v1/api-keys");
     expect(source).toContain("New API key");
     expect(source).toContain("Generate API key");
     expect(source).toContain("workflows:write");
@@ -40,7 +40,7 @@ describe("settings UI", () => {
 
   it("loads and saves the user's timezone and formats worker/key timestamps", () => {
     const html = generateSettingsHtml() + settingsSetup;
-    expect(settingsSetup).toContain("/api/preferences");
+    expect(settingsSetup).toContain("/api/v1/preferences");
     expect(settingsSetup).toContain('method: "PUT"');
     expect(settingsSetup).toContain("Intl.DateTimeFormat");
     expect(html).toContain('type="text"');
@@ -61,7 +61,7 @@ describe("settings UI", () => {
 
   it("hides worker and user sections when access is forbidden", () => {
     const html = generateSettingsHtml() + settingsSetup;
-    expect(html).toContain("/api/users");
+    expect(html).toContain("/api/v1/users");
     expect(html).toContain("/role");
     expect(html).toContain("confirm(");
     expect(html).toContain("usersForbidden");
@@ -97,7 +97,7 @@ describe("settings UI", () => {
     expect(settingsSetup).toContain("loadWorkers()");
     expect(settingsSetup).toContain("workersForbidden.value = true");
     expect(settingsSetup).toContain("loadUsers()");
-    expect(settingsSetup).toContain('api("/api/secrets")');
+    expect(settingsSetup).toContain('api("/api/v1/secrets")');
     expect(settingsSetup).toContain('method: "PUT"');
     expect(settingsSetup).toContain('method: "DELETE"');
     expect(settingsSetup).toContain('encoding: "base64"');
@@ -105,7 +105,7 @@ describe("settings UI", () => {
 
   it("keeps team APIs out of general settings", () => {
     expect(generateSettingsHtml()).not.toContain("section-teams");
-    expect(settingsSetup).not.toContain("/api/teams");
+    expect(settingsSetup).not.toContain("/api/v1/teams");
   });
 
   it("provides admin runner inventory, shared enrollment, revoke, and refresh controls", () => {

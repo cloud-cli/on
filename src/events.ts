@@ -124,7 +124,7 @@ export async function consumeRunnerEvents(
   if (workerToken) {
     headers.set("Authorization", `Bearer ${workerToken}`);
   }
-  const response = await fetch(new URL("/api/events", serverUrl), {
+  const response = await fetch(new URL("/api/v1/events", serverUrl), {
     headers,
     signal,
   });

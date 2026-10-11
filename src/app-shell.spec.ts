@@ -15,7 +15,7 @@ describe("Flow application shell", () => {
     expect(html.match(/href="\/runs"/g)).toHaveLength(3);
     expect(html.match(/href="\/workflows"/g)).toHaveLength(2);
     expect(html.match(/href="\/settings"/g)).toHaveLength(2);
-    expect(html.match(/href="\/teams"/g)).toHaveLength(2);
+    expect(html.match(/href="\/workspaces"/g)).toHaveLength(2);
     expect(html).toContain("activeSection === 'settings' ? 'page' : null");
     expect(html).toContain("focus-visible:ring-2");
     expect(html).toContain('>flow<span class="text-[#729b5b]">.</span>');
@@ -45,7 +45,7 @@ describe("Flow application shell", () => {
   });
 
   it("loads the signed-in profile from the session endpoint without inventing a user", () => {
-    expect(shellSetup).toContain('fetch("/api/auth/session"');
+    expect(shellSetup).toContain('fetch("/api/v1/auth/session"');
     expect(shellSetup).toContain("session?.authenticated || !session.user");
     expect(html).toContain("user.name || user.email");
     expect(html).toContain("{{ user.email }}");
@@ -55,17 +55,17 @@ describe("Flow application shell", () => {
     expect(html).toContain('if="userAuthenticated"');
   });
 
-  it("lists teams in the sidebar and links each team to its settings page", () => {
-    const teamsList = html.indexOf('aria-label="Your teams"');
+  it("lists workspaces in the sidebar and links each workspace to its settings page", () => {
+    const teamsList = html.indexOf('aria-label="Your workspaces"');
 
     expect(teamsList).toBeGreaterThan(html.indexOf('aria-label="Primary navigation"'));
     expect(teamsList).toBeLessThan(html.indexOf('id="main-content"'));
     expect(html).toContain("# {{ team.name }}");
-    expect(html).toContain("'/teams/' + encodeURIComponent(team.id) + '/settings'");
-    expect(shellSetup).toContain('fetch("/api/teams"');
+    expect(html).toContain("'/workspaces/' + encodeURIComponent(team.id) + '/settings'");
+    expect(shellSetup).toContain('fetch("/api/v1/workspaces"');
     expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
-    expect(shellSetup).toContain('path.startsWith("/teams/")');
-    expect(html).toContain(">Your teams</p>");
+    expect(shellSetup).toContain('path.startsWith("/workspaces/")');
+    expect(html).toContain(">Your workspaces</p>");
     expect(html).toContain("px-3 py-2.5 text-sm text-flow-secondary");
     expect(html).toContain("grid-cols-4");
   });
