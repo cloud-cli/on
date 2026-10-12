@@ -354,3 +354,17 @@ body[data-teamless]:not([data-teamless="false"]) [data-app-layout] {
 body[data-teamless]:not([data-teamless="false"]) #main-content {
   grid-column: 1 / -1;
 }
+
+body[data-simple-page="settings"] [data-app-layout] {
+  display: block;
+}
+
+body[data-simple-page="settings"] aside,
+body[data-simple-page="settings"] nav[aria-label="Mobile navigation"] {
+  display: none !important;
+}
+
+body[data-simple-page="settings"] #main-content {
+  max-width: 72rem;
+  margin-inline: auto;
+}
