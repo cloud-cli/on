@@ -1,6 +1,5 @@
 import { onDestroy, onInit, ref, templateRef } from "@li3/web";
 import { diffLines } from "diff";
-import { navigateTo } from "@app/app-router.mjs";
 import { apiFetch } from "@app/api-client.mjs";
 
 export default function () {
@@ -12,6 +11,7 @@ export default function () {
   const initialRevision = params.get("revision") ? Number(params.get("revision")) : null;
   const readOnly = Boolean(initialRevision);
   const workflows = ref([]);
+  const currentWorkspaceId = localStorage.getItem("runner-team-id") || "";
   const secrets = ref([]);
   const source = ref("");
   const validation = ref({ valid: true });
@@ -89,7 +89,26 @@ export default function () {
   };
 
   const loadWorkflows = async () => {
-    workflows.value = (await api("/api/v1/workflows")).workflows;
+    const { workspaces = [] } = await api("/api/v1/workspaces");
+    const results = await Promise.all(
+      workspaces.map(async (workspace) => {
+        try {
+          const data = await api("/api/v1/workflows", { headers: { "X-Team-ID": workspace.id } });
+          return (data.workflows || []).map((workflow) => ({
+            ...workflow,
+            workspaceId: workspace.id,
+            workspaceName: workspace.name,
+          }));
+        } catch (error) {
+          console.error(`Unable to load workflows for workspace ${workspace.id}`, error);
+          return null;
+        }
+      }),
+    );
+    workflows.value = results.filter(Boolean).flat();
+    if (results.some((result) => result === null)) {
+      showNotice("Some workspaces' workflows could not be loaded.", true);
+    }
   };
 
   const loadSecrets = async () => {
@@ -158,7 +177,11 @@ export default function () {
       revision.value = workflow.revision;
       showNotice(`Saved draft revision ${workflow.revision}.`);
       if (!initialId) {
-        history.replaceState(null, "", `/workflows/${workflow.id}`);
+        history.replaceState(
+          null,
+          "",
+          `/workflows/${workflow.id}?workspaceId=${encodeURIComponent(currentWorkspaceId)}`,
+        );
       }
     });
   const publish = () =>
@@ -304,9 +327,6 @@ export default function () {
   const selectSecret = (name) => {
     secretName.value = name;
     secretValueInput.value?.focus();
-  };
-  const visitWorkflow = (id) => {
-    navigateTo(`/workflows/${id}`);
   };
   const loadHelp = async (event) => {
     if (!event.target.open || helpLoaded.value || helpLoading.value || !helpContent.value) {
@@ -537,7 +557,6 @@ export default function () {
     setFileMode,
     setSecretFile,
     selectSecret,
-    visitWorkflow,
     loadHelp,
     openRevisionDialog,
     closeRevisionDialog,

@@ -395,6 +395,34 @@ export default function setup() {
     }
   };
   const hasNextPage = () => page.value < Math.ceil(filteredJobs().length / pageSize) || hasMore.value;
+  const switchWorkspace = () => {
+    refreshGeneration++;
+    refreshPending = false;
+    searchInProgress = false;
+    jobs.value = [];
+    workflows.value = [];
+    workers.value = [];
+    hasMore.value = false;
+    page.value = 1;
+    filter.value = "";
+    activeFilter.value = "";
+    workflowFilter.value = "";
+    workerFilter.value = "";
+    statusFilter.value = "all";
+    history.replaceState(null, "", window.location.pathname);
+    refreshError.value = false;
+    eventSource?.close();
+    eventSource = new EventSource(
+      `/api/v1/events?teamId=${encodeURIComponent(localStorage.getItem("runner-team-id") || "")}`,
+    );
+    eventSource.addEventListener("jobs.available", refreshJobs);
+    eventSource.addEventListener("jobs.changed", refreshJobs);
+    eventSource.onerror = () => {
+      refreshError.value = true;
+    };
+    void loadOptions();
+    void refreshJobs(true);
+  };
   onInit(() => {
     const params = new URLSearchParams(window.location.search);
     const initialSearch = params.get("search")?.trim() || "";
@@ -421,11 +449,13 @@ export default function setup() {
     eventSource.onerror = () => {
       refreshError.value = true;
     };
+    window.addEventListener("runner-team-changed", switchWorkspace);
     void refreshJobs(true);
     refreshTimer = setInterval(refreshJobs, 60000);
   });
   onDestroy(() => {
     eventSource?.close();
+    window.removeEventListener("runner-team-changed", switchWorkspace);
     clearInterval(refreshTimer);
   });
   return {

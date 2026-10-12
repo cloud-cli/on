@@ -65,11 +65,12 @@
               <template for="workflow of workflows">
                 <li class="flex min-h-14 items-center gap-3 px-2 py-2">
                   <a
-                    attr-href="'/workflows/' + workflow.id"
+                    attr-href="'/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)"
                     class="min-w-0 flex-1 text-left text-sm text-flow-secondary outline-none hover:text-flow-primary focus-visible:rounded focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                   >
                     <span class="flex min-w-0 items-center gap-3">
-                      <span class="truncate text-base font-semibold text-flow-foreground">{{ workflow.name }}</span>
+                      <span class="truncate text-base font-semibold text-flow-foreground">{{ workflow.name }}</span
+                      ><span class="shrink-0 text-xs text-flow-muted">{{ workflow.workspaceName }}</span>
                       <span class="shrink-0 font-mono text-xs text-flow-secondary">v{{ workflow.revision }}</span>
                     </span>
                   </a>
@@ -79,7 +80,7 @@
                     >Draft</span
                   >
                   <a
-                    attr-href="'/workflows/' + workflow.id"
+                    attr-href="'/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)"
                     attr-aria-label="'Edit ' + workflow.name"
                     class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-flow-secondary outline-none hover:bg-flow-sidebar hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                   >
