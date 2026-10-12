@@ -53,6 +53,11 @@ describe("team settings UI", () => {
     expect(setup).toContain('method: active ? "POST" : "DELETE"');
     expect(setup).toContain("/api/v1/teams/${encodeURIComponent(teamId)}/runners");
   });
+  it("keeps loop interpolations intact when the template is formatted", () => {
+    const html = generateTeamSettingsHtml();
+    expect(html).toContain("<span>{{ runner.version }}</span>");
+    expect(html).toContain("<span>{{ scope.label }}</span>");
+  });
   it("offers team selection links from the landing UI", async () => {
     const { readFileSync } = await import("node:fs");
     const html = readFileSync(new URL("../src/teams-landing.html", import.meta.url), "utf8");
