@@ -56,9 +56,14 @@ export async function consumeRunnerEvents(
   signal: AbortSignal,
   onEvent: (event: RunnerEvent, data: Record<string, unknown>) => void,
   onOpen?: () => void,
+  workerToken?: string,
 ): Promise<void> {
+  const headers = new Headers({ Accept: "text/event-stream" });
+  if (workerToken) {
+    headers.set("Authorization", `Bearer ${workerToken}`);
+  }
   const response = await fetch(new URL("/api/events", serverUrl), {
-    headers: { Accept: "text/event-stream" },
+    headers,
     signal,
   });
 

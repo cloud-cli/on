@@ -540,7 +540,7 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/api/events") {
-      if (!(await this.requireAuthenticatedApiRequest(req, res))) {
+      if (!this.isWorker(req) && !(await this.requireAuthenticatedApiRequest(req, res))) {
         return;
       }
       return this.events.subscribe(req, res);

@@ -177,6 +177,7 @@ async function maintainEventStream(config: RunnerConfig, signal: AbortSignal, wa
           }
         },
         wake,
+        config.workerToken,
       );
       retryMs = 1000;
     } catch (error: any) {

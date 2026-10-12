@@ -181,6 +181,9 @@ describe("job status endpoint", () => {
     end: vi.fn(),
   });
   const attachHandlers = (server: any) => {
+    server.matchesToken = (req, token, allowBasic) =>
+      (WebhookServer.prototype as any).matchesToken.call(server, req, token, allowBasic);
+    server.isWorker = (req) => (WebhookServer.prototype as any).isWorker.call(server, req);
     server.oidcBearer = (req) => (WebhookServer.prototype as any).oidcBearer.call(server, req);
     server.requireAuthenticatedUser = (req, res) =>
       (WebhookServer.prototype as any).requireAuthenticatedUser.call(server, req, res);
@@ -338,6 +341,29 @@ describe("job status endpoint", () => {
     );
 
     expect(res.writeHead).toHaveBeenCalledWith(401, { "Content-Type": "application/json; charset=utf-8" });
+  });
+
+  it("accepts the worker credential for the event stream", async () => {
+    const subscribe = vi.fn();
+    const server: any = {
+      workerToken: "worker-secret",
+      events: { subscribe },
+      oidc: { userFromCookie: vi.fn(() => undefined) },
+      apiKeys: { scopesForToken: vi.fn(async () => null) },
+    };
+    attachHandlers(server);
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      {
+        method: "GET",
+        url: "/api/events",
+        headers: { host: "flow.test", authorization: "Bearer worker-secret" },
+      },
+      response(),
+    );
+
+    expect(subscribe).toHaveBeenCalledOnce();
   });
 
   it("requires a browser session to load a run page", async () => {
