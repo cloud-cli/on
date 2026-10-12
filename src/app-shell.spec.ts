@@ -5,6 +5,7 @@ import shellSetup from "../ui/app-shell.mjs?raw";
 import preferencesSetup from "../ui/preferences.mjs?raw";
 
 const html = readFileSync(new URL("../ui/app-shell.html", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../ui/index.css", import.meta.url), "utf8");
 
 describe("Flow application shell", () => {
   it("provides responsive, accessible navigation around the mounted router", () => {
@@ -54,6 +55,13 @@ describe("Flow application shell", () => {
     expect(html).toContain('rel="noopener"');
     expect(html).toContain("oidcProviderUrl");
     expect(html).toContain('if="userAuthenticated"');
+  });
+
+  it("hides global navigation on the personal settings page only", () => {
+    expect(shellSetup).toContain('document.body.dataset.simplePage = path === "/settings" ? "settings" : "false"');
+    expect(styles).toContain('body[data-simple-page="settings"] aside');
+    expect(styles).toContain('body[data-simple-page="settings"] nav[aria-label="Mobile navigation"]');
+    expect(styles).toContain('body[data-simple-page="settings"] [data-app-layout]');
   });
 
   it("lists workspaces in the sidebar and links each workspace to its settings page", () => {
