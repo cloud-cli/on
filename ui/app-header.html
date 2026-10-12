@@ -1,10 +1,10 @@
 <template component="app-header">
   <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
-  <header class="flex w-full items-center justify-between gap-4 border-b border-gray-800 pb-5">
+  <header class="mx-auto flex w-full max-w-[78rem] items-center justify-between gap-4 border-b border-flow-border pb-5">
     <div class="flex min-w-0 items-start gap-3">
       <template if="back">
         <a
-          class="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-800 text-gray-400 no-underline outline-none hover:border-indigo-500 hover:text-indigo-200 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+          class="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-flow-border text-flow-muted no-underline outline-none hover:border-flow-primary hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/60"
           attr-href="back"
           attr-aria-label="backLabel || 'Back'"
           attr-title="backLabel || 'Back'"
@@ -25,15 +25,15 @@
         </a>
       </template>
       <div>
-        <div class="text-[.7rem] font-bold uppercase tracking-[.16em] text-indigo-400">Runner engine</div>
-        <h1 class="mt-1 text-2xl font-bold tracking-tight text-white">{{ title }}</h1>
-        <template if="subtitle"><p class="mt-1 text-xs text-gray-400">{{ subtitle }}</p></template>
+        <div class="text-[.7rem] font-bold uppercase tracking-[.16em] text-flow-primary">Runner engine</div>
+        <h1 class="mt-1 text-2xl font-bold tracking-tight text-flow-foreground">{{ title }}</h1>
+        <template if="subtitle"><p class="mt-1 text-xs text-flow-muted">{{ subtitle }}</p></template>
       </div>
     </div>
     <div class="flex items-center gap-2">
       <template if="!authenticated">
         <a
-          class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-700 text-indigo-200 no-underline outline-none hover:border-indigo-500 hover:bg-gray-900 hover:text-white focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+          class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-flow-border text-flow-secondary no-underline outline-none hover:border-flow-primary hover:bg-flow-background hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/60"
           href="/settings"
           aria-label="Settings"
           title="Settings"
@@ -42,11 +42,14 @@
         </a>
       </template>
       <template if="authenticated">
-        <a class="text-xs text-indigo-300 hover:text-white" href="/operations" class-hidden="userRole !== 'admin'"
+        <a
+          class="text-xs text-flow-primary hover:text-flow-foreground"
+          href="/operations"
+          class-hidden="userRole !== 'admin'"
           >Operations</a
         >
         <select
-          class="max-w-40 rounded-lg border border-gray-700 bg-gray-900 px-2 py-2 text-xs text-gray-200 outline-none focus:border-indigo-500"
+          class="max-w-40 rounded-lg border border-flow-border bg-flow-card px-2 py-2 text-xs text-flow-foreground outline-none focus:border-flow-primary"
           bind-value="activeTeamId"
           on-change="switchTeam($event)"
           attr-aria-label="Current team"
@@ -54,11 +57,11 @@
         >
           <template for="team of teams"><option attr-value="team.id">{{ team.name }}</option></template>
         </select>
-        <span class="hidden text-xs text-gray-400 sm:inline">{{ userName }}</span>
-        <a class="text-xs text-indigo-300 hover:text-white" href="/auth/logout">Sign out</a>
+        <span class="hidden text-xs text-flow-muted sm:inline">{{ userName }}</span>
+        <a class="text-xs text-flow-primary hover:text-flow-foreground" href="/auth/logout">Sign out</a>
       </template>
       <a
-        class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-700 text-indigo-200 no-underline outline-none hover:border-indigo-500 hover:bg-gray-900 hover:text-white focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+        class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-flow-border text-flow-secondary no-underline outline-none hover:border-flow-primary hover:bg-flow-background hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/60"
         href="/help"
         aria-label="Help"
         title="Help"
@@ -81,7 +84,7 @@
       </a>
       <template if="authenticated">
         <a
-          class="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-gray-700 text-indigo-200 no-underline outline-none hover:border-indigo-500 hover:bg-gray-900 hover:text-white focus-visible:ring-2 focus-visible:ring-indigo-400/60"
+          class="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-flow-border text-flow-secondary no-underline outline-none hover:border-flow-primary hover:bg-flow-background hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/60"
           href="/settings"
           aria-label="Settings"
           title="Settings"

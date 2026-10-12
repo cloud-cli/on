@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { WebhookServer } from "./server.js";
 import shellSetup from "../ui/app-shell.mjs?raw";
+import preferencesSetup from "../ui/preferences.mjs?raw";
 
 const html = readFileSync(new URL("../ui/app-shell.html", import.meta.url), "utf8");
 
@@ -80,6 +81,7 @@ describe("Flow application shell", () => {
 
   it("serves the shell setup module referenced by the app shell", async () => {
     expect(html).toContain('<script setup src="/app-shell.mjs"></script>');
+    expect(shellSetup).toContain('from "@app/preferences.mjs"');
     const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
 
     await (WebhookServer.prototype as any).handleRequest.call(
@@ -93,5 +95,21 @@ describe("Flow application shell", () => {
       "Content-Type": "text/javascript; charset=utf-8",
     });
     expect(response.end).toHaveBeenCalledWith(shellSetup);
+  });
+
+  it("serves the shared user-preferences module used by browser pages", async () => {
+    const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      {},
+      { method: "GET", url: "/preferences.mjs", headers: { host: "flow.test" } },
+      response,
+    );
+
+    expect(response.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-cache",
+      "Content-Type": "text/javascript; charset=utf-8",
+    });
+    expect(response.end).toHaveBeenCalledWith(preferencesSetup);
   });
 });

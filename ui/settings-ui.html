@@ -14,22 +14,25 @@
     <template app>
       <main class="w-full space-y-5 py-6">
         <h1 class="sr-only">Settings</h1>
-        <nav
-          class="sticky top-0 z-20 mb-6 flex flex-wrap gap-2 rounded-xl border border-flow-border bg-flow-card/95 p-1 shadow-sm backdrop-blur"
-          aria-label="Settings section navigation"
-        >
-          <a href="#section-timezone" class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-background"
-            >Timezone</a
+        <section class="rounded-xl border border-flow-border bg-flow-card p-5" aria-labelledby="appearance-title">
+          <h2 id="appearance-title" class="text-lg font-semibold">Appearance</h2>
+          <p class="mt-1 text-sm text-flow-muted">Choose how Flow looks on this account.</p>
+          <label for="appearance" class="sr-only">Color theme</label>
+          <select
+            id="appearance"
+            bind-value="theme"
+            on-change="saveTheme($event)"
+            class="mt-3 rounded-lg border border-flow-border bg-flow-card px-3 py-2 text-sm"
           >
-          <a
-            href="#section-notifications"
-            class="rounded-lg px-3 py-2 text-sm text-flow-secondary hover:bg-flow-background"
-            >Notifications</a
-          >
-        </nav>
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+          <p class="mt-2 text-sm text-flow-muted" role="status">{{ themeMessage }}</p>
+        </section>
         <section
           id="section-timezone"
-          class="scroll-mt-6 rounded-xl border border-flow-border bg-white p-5"
+          class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
           aria-labelledby="timezone-title"
         >
           <h2 id="timezone-title" class="text-lg font-semibold">Your timezone</h2>
@@ -43,14 +46,14 @@
             on-change="saveTimezone($event)"
             placeholder="Search or type an IANA timezone"
             autocomplete="off"
-            class="mt-2 w-full max-w-md rounded-lg border border-flow-border bg-white px-3 py-2 text-sm"
+            class="mt-2 w-full max-w-md rounded-lg border border-flow-border bg-flow-card px-3 py-2 text-sm"
           />
           <datalist id="timezone-options">
             <template for="zone of timezones"><option attr-value="zone"></option></template>
           </datalist>
           <p class="mt-2 text-sm text-flow-muted" role="status">{{ preferenceMessage }}</p>
         </section>
-        <section id="section-notifications" class="scroll-mt-6 rounded-xl border border-flow-border bg-white p-5">
+        <section id="section-notifications" class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5">
           <h2 class="text-lg font-semibold">Notifications</h2>
           <p class="mt-1 text-sm text-flow-muted">Receive job completion notifications on this device.</p>
           <button

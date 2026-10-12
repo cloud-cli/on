@@ -61,6 +61,7 @@ import teamSettingsSetup from "../ui/team-settings-ui.mjs?raw";
 import teamsLandingSetup from "./teams-landing.mjs?raw";
 import workflowsSetup from "../ui/workflows-ui.mjs?raw";
 import timezoneFormatSource from "../ui/timezone-format.mjs?raw";
+import preferencesSource from "../ui/preferences.mjs?raw";
 
 const DASHBOARD_PAGE_SIZE = 50;
 const MAX_DASHBOARD_PAGE_SIZE = 500;
@@ -212,6 +213,11 @@ export class WebhookServer {
     if (req.method === "GET" && url.pathname === "/timezone-format.mjs") {
       res.writeHead(200, { "Cache-Control": "public, max-age=3600", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(timezoneFormatSource);
+    }
+
+    if (req.method === "GET" && url.pathname === "/preferences.mjs") {
+      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(preferencesSource);
     }
 
     if (req.method === "GET" && url.pathname === "/service-worker.js") {

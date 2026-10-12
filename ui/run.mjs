@@ -2,6 +2,7 @@ import { computed, onDestroy, onInit, ref } from "@li3/web";
 import { AnsiUp } from "ansi_up";
 import { marked } from "marked";
 import { apiFetch } from "@app/api-client.mjs";
+import { loadTimezonePreference } from "@app/preferences.mjs";
 import { navigateTo } from "@app/app-router.mjs";
 import { formatTimestampedLogLine } from "@app/timezone-format.mjs";
 
@@ -150,14 +151,12 @@ export default function setup() {
     return current?.status === "failed" ? "exit code 1" : upper(current?.status);
   });
   const loadTimezone = async () => {
-    const response = await apiFetch("/api/v1/preferences", { headers: { accept: "application/json" } });
-    if (!response.ok) {
-      throw new Error(`Loading timezone preference failed: ${response.status}`);
+    const preference = await loadTimezonePreference();
+    if (preference.timezone) {
+      timezone.value = preference.timezone;
     }
-
-    const preferences = await response.json();
-    if (preferences.timezone) {
-      timezone.value = preferences.timezone;
+    if (preference.legacyError) {
+      console.warn("Timezone preference unavailable; using system timezone", preference.legacyError);
     }
   };
   const loadAdminRole = async () => {
