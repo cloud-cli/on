@@ -105,7 +105,11 @@ describe("workflow management UI", () => {
       'bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"',
     );
     expect(source).toContain('aria-labelledby="workflow-list-title"');
-    expect(source).toContain("attr-href=\"'/workflows/' + workflow.id\"");
+    expect(source).toContain(
+      "attr-href=\"'/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)\"",
+    );
+    expect(source).toContain("workflow.workspaceName");
+    expect(workflowsSetup).toContain('headers: { "X-Team-ID": workspace.id }');
     expect(source).toContain('href="/workflows"');
     expect(source).toContain("Back to workflows");
     expect(source).toContain('class="border-b border-flow-border px-4 pb-3 pt-3 sm:px-5"');

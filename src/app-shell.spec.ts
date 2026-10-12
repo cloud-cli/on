@@ -13,10 +13,10 @@ describe("Flow application shell", () => {
     expect(html).toContain('aria-label="Mobile navigation"');
     expect(html).toContain("bottom-0 z-50");
     expect(html).toContain("pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)] pt-2");
-    expect(html.match(/href="\/runs"/g)).toHaveLength(3);
+    expect(html).not.toContain('href="/runs"');
     expect(html.match(/href="\/workflows"/g)).toHaveLength(2);
     expect(html.match(/href="\/settings"/g)).toHaveLength(2);
-    expect(html.match(/href="\/workspaces"/g)).toHaveLength(2);
+    expect(html.match(/href="\/workspaces"/g)).toHaveLength(3);
     expect(html).toContain("activeSection === 'settings' ? 'page' : null");
     expect(html).toContain("focus-visible:ring-2");
     expect(html).toContain('>flow<span class="text-[#729b5b]">.</span>');
@@ -39,7 +39,8 @@ describe("Flow application shell", () => {
     expect(html).not.toContain("Engineering");
     expect(html).not.toContain("JD");
     expect(html).not.toContain("min-h-screen border-r border-flow-border");
-    expect(html.indexOf("Settings</a")).toBeLessThan(html.indexOf('if="userAuthenticated"'));
+    expect(html.indexOf("My workspaces")).toBeLessThan(html.indexOf("Workflows"));
+    expect(html.indexOf("Preferences")).toBeLessThan(html.indexOf("Your workspaces"));
     expect(html).not.toContain("mt-auto");
   });
 
@@ -62,13 +63,15 @@ describe("Flow application shell", () => {
 
     expect(teamsList).toBeGreaterThan(userCard);
     expect(html).toContain("# {{ team.name }}");
-    expect(html).toContain("'/workspaces/' + encodeURIComponent(team.id) + '/settings'");
+    expect(html).toContain("'/workspaces/' + encodeURIComponent(team.id) + '/runs'");
+    expect(html).toContain('on-click="selectWorkspace(team.id)"');
+    expect(html).toContain("selectedWorkspaceId === team.id");
     expect(shellSetup).toContain('fetch("/api/v1/workspaces"');
     expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
     expect(shellSetup).toContain('path.startsWith("/workspaces/")');
     expect(html).toContain(">Your workspaces</p>");
     expect(html).toContain("px-3 py-2.5 text-sm text-flow-secondary");
-    expect(html).toContain("grid-cols-4");
+    expect(html).toContain("grid-cols-3");
   });
 
   it("handles Enter and Space on the skip link without triggering browser navigation", () => {

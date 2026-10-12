@@ -123,6 +123,15 @@ export default function () {
     if (path === "/teams" || path === "/workspaces") {
       return { component: "page-teams", url: "/pages/workspaces.html", page: "workspaces" };
     }
+    const teamRuns = path.match(/^\/workspaces\/([^/]+)\/runs$/);
+    if (teamRuns) {
+      return {
+        component: "page-dashboard",
+        url: "/pages/dashboard.html",
+        page: "dashboard",
+        teamId: decodeURIComponent(teamRuns[1]),
+      };
+    }
     const teamSettings = path.match(/^\/(?:teams|workspaces)\/([^/]+)\/settings$/);
     if (teamSettings) {
       return {
@@ -135,12 +144,13 @@ export default function () {
     if (path === "/workflows") {
       return { component: "page-workflows", url: "/pages/workflows.html?page=workflows", page: "workflows" };
     }
-    const legacyEditor = path.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
-    if (legacyEditor) {
+    const workflowEditor = path.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
+    if (workflowEditor) {
       return {
         component: "page-workflow-editor",
-        url: `/pages/workflows.html?page=editor&id=${legacyEditor[1]}${url.searchParams.get("revision") ? `&revision=${url.searchParams.get("revision")}` : ""}`,
+        url: `/pages/workflows.html?page=editor&id=${workflowEditor[1]}${url.searchParams.get("revision") ? `&revision=${url.searchParams.get("revision")}` : ""}`,
         page: "editor",
+        teamId: url.searchParams.get("workspaceId") || "",
       };
     }
     return { component: "page-not-found", page: "not-found" };
@@ -162,7 +172,10 @@ export default function () {
         if (!teams.some((team) => team.id === current.teamId)) {
           throw new Error("You are not a member of this team.");
         }
-        localStorage.setItem("runner-team-id", current.teamId);
+        if (localStorage.getItem("runner-team-id") !== current.teamId) {
+          localStorage.setItem("runner-team-id", current.teamId);
+          window.dispatchEvent(new CustomEvent("runner-team-changed", { detail: { teamId: current.teamId } }));
+        }
       }
       document.body.dataset.page = current.page;
       activeTransientPage?.remove();

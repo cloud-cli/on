@@ -114,6 +114,12 @@ describe("SPA router", () => {
     expect(serverSetup).toContain('url.pathname === "/team-settings-ui.mjs"');
     expect(serverSetup).toContain("^\\/(?:teams|workspaces)\\/[^/]+\\/settings$");
   });
+  it("routes workspace recent runs and scopes workflow editors from their workspace query", () => {
+    expect(routerSetup).toContain("path.match(/^\\/workspaces\\/([^/]+)\\/runs$/)");
+    expect(routerSetup).toMatch(/page: "dashboard",\s+teamId: decodeURIComponent\(teamRuns\[1\]\)/);
+    expect(routerSetup).toContain('teamId: url.searchParams.get("workspaceId") || ""');
+    expect(routerSetup).toContain('localStorage.setItem("runner-team-id", current.teamId)');
+  });
   it("routes the team landing page through authenticated server delivery", () => {
     expect(routerSetup).toContain('path === "/teams" || path === "/workspaces"');
     expect(routerSetup).toContain('url: "/pages/workspaces.html"');
