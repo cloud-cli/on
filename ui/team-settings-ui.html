@@ -179,8 +179,8 @@
                 ><li class="rounded-lg border border-flow-border px-3 py-2 text-sm">
                   {{ runner.name }}
                   <span class="text-xs text-flow-muted"
-                    >· {{ runner.status }} · {{ runner.activeJobs }} / {{ runner.concurrency }} · {{ runner.version
-                    }}</span
+                    >· {{ runner.status }} · {{ runner.activeJobs }} / {{ runner.concurrency }} ·
+                    <span>{{ runner.version }}</span></span
                   >
                 </li></template
               >
@@ -255,8 +255,8 @@
               <legend class="mb-2 text-xs font-semibold uppercase tracking-wider text-flow-muted">Scopes</legend>
               <template for="scope of scopeOptions"
                 ><label class="flex items-center gap-2 text-sm"
-                  ><input type="checkbox" bind-checked="scope.selected" on-change="setScope(scope, $event)" /> {{
-                  scope.label }}</label
+                  ><input type="checkbox" bind-checked="scope.selected" on-change="setScope(scope, $event)" />
+                  <span>{{ scope.label }}</span></label
                 ></template
               >
             </fieldset>
