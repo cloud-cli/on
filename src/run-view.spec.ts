@@ -266,7 +266,7 @@ describe("run view", () => {
     expect(source).toContain("{{ report.workerId || 'Awaiting worker' }}");
     expect(source).toContain("formatTimestampedLogLine");
     expect(source).toContain("formatDate(report.startedAt)");
-    expect(source).toContain("/api/v1/preferences");
+    expect(source).toContain("loadTimezonePreference()");
     expect(source).not.toContain("https://cdn.tailwindcss.com");
     expect(source).toContain("new EventSource(");
     expect(source).toContain("/api/v1/events?teamId=");

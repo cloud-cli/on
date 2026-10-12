@@ -1,5 +1,6 @@
 import { onDestroy, onInit, ref } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
+import { loadTimezonePreference } from "@app/preferences.mjs";
 
 export default function setup() {
   const jobs = ref([]),
@@ -82,14 +83,12 @@ export default function setup() {
       },
     ].map((tab) => ({ ...tab, isActive: statusFilter.value === tab.status }));
   const loadTimezone = async () => {
-    const response = await apiFetch("/api/v1/preferences", { headers: { accept: "application/json" } });
-    if (!response.ok) {
-      throw new Error(`Loading timezone preference failed: ${response.status}`);
+    const preference = await loadTimezonePreference();
+    if (preference.timezone) {
+      timezone.value = preference.timezone;
     }
-
-    const preferences = await response.json();
-    if (preferences.timezone) {
-      timezone.value = preferences.timezone;
+    if (preference.legacyError) {
+      console.warn("Timezone preference unavailable; using system timezone", preference.legacyError);
     }
   };
   const loadOptions = async () => {

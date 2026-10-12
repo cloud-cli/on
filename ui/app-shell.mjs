@@ -1,5 +1,6 @@
 import { onDestroy, onInit, ref } from "@li3/web";
 import "@app/api-client.mjs";
+import { applyThemePreference, getAuthPreference } from "@app/preferences.mjs";
 
 export default function setup() {
   const activeSection = ref("runs");
@@ -44,6 +45,11 @@ export default function setup() {
   };
 
   onInit(() => {
+    void getAuthPreference("theme")
+      .then((theme) => {
+        applyThemePreference(theme);
+      })
+      .catch((error) => console.error("Unable to load appearance preference", error));
     syncSection();
     window.addEventListener("popstate", syncSection);
     document.addEventListener("keydown", handleSkipKeydown);

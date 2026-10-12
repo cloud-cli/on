@@ -105,6 +105,7 @@ export function isExemptFromGlobalOidcAuth(pathname: string, method: string): bo
     "/app-icon.svg",
     "/service-worker.js",
     "/api-client.mjs",
+    "/preferences.mjs",
     "/app-header.mjs",
     "/app-router.mjs",
     "/dashboard.mjs",
