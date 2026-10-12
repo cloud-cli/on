@@ -30,7 +30,6 @@ export default function setup() {
 
   const syncSection = () => {
     const path = window.location.pathname;
-    document.body.dataset.simplePage = path === "/settings" ? "settings" : "false";
     activeSection.value =
       path === "/teams" || path === "/workspaces"
         ? "workspaces"
