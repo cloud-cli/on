@@ -1142,10 +1142,16 @@ export class WebhookServer {
     );
   }
 
-  private handleOidcToken(req: http.IncomingMessage, res: http.ServerResponse) {
-    const token = this.oidc?.accessTokenFromCookie(req.headers.cookie);
+  private async handleOidcToken(req: http.IncomingMessage, res: http.ServerResponse) {
+    let token: { accessToken: string; expiresAt: number } | undefined;
+    try {
+      token = await this.oidc?.accessTokenFromCookie(req.headers.cookie);
+    } catch {
+      res.writeHead(503, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ error: "Token refresh unavailable" }));
+    }
     if (!token) {
-      res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(401, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify({ error: "Authentication required" }));
     }
     res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });

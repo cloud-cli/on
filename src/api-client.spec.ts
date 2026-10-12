@@ -188,6 +188,18 @@ describe("browser API client sign-in recovery", () => {
     expect(location.assign).not.toHaveBeenCalled();
   });
 
+  it("does not start sign-in recovery when token refresh is temporarily unavailable", async () => {
+    const { fetch } = installBrowser([
+      new Response(JSON.stringify({ error: "Token refresh unavailable" }), { status: 503 }),
+    ]);
+    const { apiFetch } = await importClient();
+
+    const response = await apiFetch("/api/runs/1");
+
+    expect(response.status).toBe(503);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("closes a marked login popup only after the runner session check succeeds", async () => {
     const { fetch, location, localStorage } = installBrowser([
       new Response(JSON.stringify({ configured: true, authenticated: true }), {

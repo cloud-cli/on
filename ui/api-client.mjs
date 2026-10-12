@@ -203,6 +203,9 @@ export async function apiFetch(input, init = {}) {
     return rawFetch(input, init);
   }
   let acquired = await acquireToken();
+  if (acquired.response?.status >= 500) {
+    return acquired.response;
+  }
   if (acquired.authRequired) {
     if (!(await recover())) {
       return acquired.response;
@@ -231,6 +234,9 @@ export async function apiFetch(input, init = {}) {
   sessionStorage.removeItem("runner-api-token");
   const retryHeaders = new Headers(init.headers);
   const retryToken = await acquireToken();
+  if (retryToken.response?.status >= 500) {
+    return retryToken.response;
+  }
   if (retryToken.authRequired) {
     return retryToken.response;
   }

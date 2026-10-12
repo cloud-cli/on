@@ -27,6 +27,8 @@ interface Session {
   role?: "user" | "admin";
   accessToken: string;
   accessTokenExpiresAt: number;
+  refreshToken?: string;
+  refreshPromise?: Promise<boolean>;
   expiresAt: number;
 }
 
@@ -58,7 +60,10 @@ export class OidcClient {
 
   async loginUrl(redirectUri: string, returnTo: string): Promise<string> {
     const provider = await this.providerClient();
-    const authorization = provider.createAuthorizationRequest({ redirectUri, scope: "openid profile email" });
+    const authorization = provider.createAuthorizationRequest({
+      redirectUri,
+      scope: "openid profile email offline_access",
+    });
     const verifier = authorization.codeVerifier;
     const state = this.signState({ verifier, returnTo, expiresAt: Date.now() + STATE_TTL_MS });
     const url = new URL(authorization.url);
@@ -78,9 +83,12 @@ export class OidcClient {
       codeVerifier: loginState.verifier,
       redirectUri,
       clientSecret: this.config.clientSecret,
-    })) as { access_token?: string; expires_in?: number };
+    })) as { access_token?: string; expires_in?: number; refresh_token?: string };
     if (!tokens.access_token) {
       throw new Error("OIDC token response did not include an access token");
+    }
+    if (!tokens.refresh_token) {
+      throw new Error("OIDC token response did not include a refresh token for offline_access");
     }
     const userInfo = (await provider.getUserInfo(tokens.access_token)) as (OidcUser & { sub?: string }) | null;
     if (!userInfo || typeof userInfo !== "object") {
@@ -102,6 +110,7 @@ export class OidcClient {
       user,
       accessToken: tokens.access_token,
       accessTokenExpiresAt: now + Math.max(60, Number(tokens.expires_in || 900)) * 1000,
+      refreshToken: tokens.refresh_token,
       expiresAt: now + SESSION_TTL_MS,
     });
     this.prune();
@@ -136,12 +145,59 @@ export class OidcClient {
     return this.sessionFromCookie(cookieHeader)?.role;
   }
 
-  accessTokenFromCookie(cookieHeader: string | undefined) {
+  async accessTokenFromCookie(cookieHeader: string | undefined) {
+    const cookieToken = this.cookieToken(cookieHeader);
     const session = this.sessionFromCookie(cookieHeader);
-    if (!session || session.accessTokenExpiresAt <= Date.now()) {
+    if (!session) {
+      return undefined;
+    }
+    if (session.accessTokenExpiresAt > Date.now() + 30_000) {
+      return { accessToken: session.accessToken, expiresAt: session.accessTokenExpiresAt };
+    }
+    if (!session.refreshToken || !(await this.refreshSessionToken(session))) {
+      if (cookieToken) {
+        this.sessions.delete(cookieToken);
+      }
       return undefined;
     }
     return { accessToken: session.accessToken, expiresAt: session.accessTokenExpiresAt };
+  }
+
+  private async refreshSessionToken(session: Session) {
+    if (!session.refreshPromise) {
+      session.refreshPromise = this.requestTokenRefresh(session).finally(() => {
+        session.refreshPromise = undefined;
+      });
+    }
+    return session.refreshPromise;
+  }
+
+  private async requestTokenRefresh(session: Session) {
+    const body = new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: this.config.clientId,
+      client_secret: this.config.clientSecret,
+      refresh_token: session.refreshToken!,
+    });
+    const response = await fetch(new URL("/token", `${this.config.providerUrl.replace(/\/$/, "")}/`), {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    if (response.status === 400 || response.status === 401) {
+      return false;
+    }
+    if (!response.ok) {
+      throw new Error(`OIDC token refresh failed: ${response.status}`);
+    }
+    const tokens = (await response.json()) as { access_token?: string; expires_in?: number; refresh_token?: string };
+    if (!tokens.access_token || !tokens.refresh_token || !Number.isFinite(tokens.expires_in) || !tokens.expires_in) {
+      throw new Error("OIDC token refresh response was incomplete");
+    }
+    session.accessToken = tokens.access_token;
+    session.accessTokenExpiresAt = Date.now() + Math.max(1, Number(tokens.expires_in)) * 1000;
+    session.refreshToken = tokens.refresh_token;
+    return true;
   }
 
   async scopesForToken(token: string): Promise<string[] | null> {
