@@ -34,7 +34,10 @@ describe("personal settings UI", () => {
     expect(timezonePreferences).toContain("auth.getPropertyNS(`on:${key}`)");
     expect(timezonePreferences).toContain('apiFetch("/api/v1/preferences"');
     expect(timezonePreferences).toContain('setAuthPreference("timezone", timezone)');
-    expect(themeStyles).toContain("#111713");
+    expect(timezonePreferences).toContain('window.matchMedia("(prefers-color-scheme: dark)")');
+    expect(timezonePreferences).toContain('colorSchemeMedia.removeEventListener("change", colorSchemeListener)');
+    expect(themeStyles).toContain("#0f1712");
+    expect(themeStyles).toContain("#c8e8a5");
     expect(themeStyles).toContain(".bg-emerald-100");
     expect(themeStyles).toContain(".bg-rose-100");
   });
