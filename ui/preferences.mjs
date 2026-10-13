@@ -1,11 +1,33 @@
 import { apiFetch } from "@app/api-client.mjs";
 
-const AUTH_MODULE_URL = "https://auth.api.apphor.de/index.mjs";
 let colorSchemeListener;
 let colorSchemeMedia;
+let authModulePromise;
+
+async function getAuthModule() {
+  if (!authModulePromise) {
+    authModulePromise = fetch("/api/auth/session", { headers: { accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Loading the authentication provider failed: ${response.status}`);
+        }
+        const session = await response.json();
+        if (!session.providerUrl) {
+          throw new Error("Authentication provider is not configured");
+        }
+        const moduleUrl = new URL("/index.mjs", `${session.providerUrl.replace(/\/+$/, "")}/`);
+        return import(moduleUrl.href);
+      })
+      .catch((error) => {
+        authModulePromise = undefined;
+        throw error;
+      });
+  }
+  return authModulePromise;
+}
 
 export async function getAuthPreference(key) {
-  const auth = await import(AUTH_MODULE_URL);
+  const auth = await getAuthModule();
   const property = await auth.getPropertyNS(`on:${key}`);
   if (typeof property === "string") {
     return property;
@@ -14,7 +36,7 @@ export async function getAuthPreference(key) {
 }
 
 export async function setAuthPreference(key, value) {
-  const auth = await import(AUTH_MODULE_URL);
+  const auth = await getAuthModule();
   await auth.setPropertyNS(`on:${key}`, value);
 }
 
