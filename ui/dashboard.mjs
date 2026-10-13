@@ -57,7 +57,7 @@ export default function setup() {
             : job.status === statusFilter.value)) &&
         (!activeFilter.value ||
           /^[A-Za-z0-9_-]+:.+$/.test(activeFilter.value) ||
-          `${workflowName(job.workflowId)} ${job.id} ${job.status} ${job.workerId || ""}`
+          `${job.workflowId} ${workflowName(job.workflowId)} ${job.id} ${job.status} ${job.workerId || ""}`
             .toLowerCase()
             .includes(activeFilter.value.toLowerCase())),
     );
