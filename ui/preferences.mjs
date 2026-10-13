@@ -2,6 +2,7 @@ import { apiFetch } from "@app/api-client.mjs";
 
 const AUTH_MODULE_URL = "https://auth.api.apphor.de/index.mjs";
 let colorSchemeListener;
+let colorSchemeMedia;
 
 export async function getAuthPreference(key) {
   const auth = await import(AUTH_MODULE_URL);
@@ -37,20 +38,20 @@ export function applyThemePreference(theme) {
     document.documentElement.dataset.theme = preference;
   }
 
-  const media = window.matchMedia("(prefers-color-scheme: dark)");
-  if (colorSchemeListener) {
-    media.removeEventListener("change", colorSchemeListener);
+  if (colorSchemeMedia && colorSchemeListener) {
+    colorSchemeMedia.removeEventListener("change", colorSchemeListener);
   }
+  colorSchemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
   colorSchemeListener = () => {
-    const isDark = preference === "dark" || (preference === "system" && media.matches);
+    const isDark = preference === "dark" || (preference === "system" && colorSchemeMedia.matches);
     const themeColor = document.querySelector('meta[name="theme-color"]');
     if (themeColor) {
-      themeColor.content = isDark ? "#111713" : "#eef2ec";
+      themeColor.content = isDark ? "#0f1712" : "#eef2ec";
     }
   };
   colorSchemeListener();
   if (preference === "system") {
-    media.addEventListener("change", colorSchemeListener);
+    colorSchemeMedia.addEventListener("change", colorSchemeListener);
   }
 }
 
