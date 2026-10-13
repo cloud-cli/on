@@ -1,4 +1,16 @@
 import crypto from "node:crypto";
+import {
+  ClientSecretBasic,
+  ClientSecretPost,
+  Configuration,
+  authorizationCodeGrant,
+  buildAuthorizationUrl,
+  discovery,
+  fetchUserInfo,
+  refreshTokenGrant,
+  skipSubjectCheck,
+  tokenIntrospection,
+} from "openid-client";
 
 export interface OidcConfig {
   providerUrl: string;
@@ -19,6 +31,7 @@ export interface OidcUser {
 
 interface LoginState {
   verifier: string;
+  nonce: string;
   returnTo: string;
   expiresAt: number;
 }
@@ -27,8 +40,10 @@ interface Session {
   user: OidcUser;
   role?: "user" | "admin";
   accessToken: string;
+  refreshToken?: string;
   accessTokenExpiresAt: number;
   expiresAt: number;
+  refreshPromise?: Promise<boolean>;
 }
 
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -36,14 +51,15 @@ const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const SESSION_COOKIE = "runner_oidc_session";
 
 export class OidcClient {
-  private providerClientPromise?: Promise<any>;
+  private configurationPromise?: Promise<Configuration>;
+  private introspectionConfigurationPromise?: Promise<Configuration>;
+  private authApiClientPromise?: Promise<any>;
   private readonly sessions = new Map<string, Session>();
+  private readonly config: OidcConfig;
 
   constructor(config: OidcConfig) {
     this.config = { ...config, providerUrl: normalizeIssuer(config.providerUrl) };
   }
-
-  private readonly config: OidcConfig;
 
   get enabled() {
     return Boolean(this.config.providerUrl && this.config.clientId && this.config.clientSecret);
@@ -57,44 +73,84 @@ export class OidcClient {
     return this.config.clientId;
   }
 
+  private getConfiguration() {
+    if (!this.configurationPromise) {
+      this.configurationPromise = discovery(
+        new URL(this.config.providerUrl),
+        this.config.clientId,
+        undefined,
+        ClientSecretPost(this.config.clientSecret),
+      );
+    }
+    return this.configurationPromise;
+  }
+
+  private getIntrospectionConfiguration() {
+    if (!this.introspectionConfigurationPromise) {
+      this.introspectionConfigurationPromise = this.getConfiguration().then((config) => {
+        const { supportsPKCE: _supportsPKCE, ...serverMetadata } = config.serverMetadata();
+        return new Configuration(
+          {
+            ...serverMetadata,
+            introspection_endpoint: new URL("/oauth/introspect", this.config.providerUrl).href,
+          },
+          this.config.clientId,
+          undefined,
+          ClientSecretBasic(this.config.clientSecret),
+        );
+      });
+    }
+    return this.introspectionConfigurationPromise;
+  }
+
   async loginUrl(redirectUri: string, returnTo: string): Promise<string> {
-    const provider = await this.providerClient();
-    const authorization = provider.createAuthorizationRequest({ redirectUri, scope: "openid profile email" });
-    const verifier = authorization.codeVerifier;
-    const state = this.signState({ verifier, returnTo, expiresAt: Date.now() + STATE_TTL_MS });
-    const url = new URL(authorization.url);
-    url.searchParams.set("state", state);
-    return url.toString();
+    const config = await this.getConfiguration();
+    const verifier = randomUrlSafe(32);
+    const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
+    const state = this.signState({
+      verifier,
+      nonce: randomUrlSafe(16),
+      returnTo,
+      expiresAt: Date.now() + STATE_TTL_MS,
+    });
+    return buildAuthorizationUrl(config, {
+      redirect_uri: redirectUri,
+      scope: "openid profile email offline_access",
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+      state,
+      nonce: this.parseState(state).nonce,
+    }).href;
   }
 
   async completeLogin(code: string, state: string, redirectUri: string): Promise<{ returnTo: string; cookie: string }> {
     const loginState = this.parseState(state);
-    if (!loginState || loginState.expiresAt <= Date.now()) {
+    if (loginState.expiresAt <= Date.now()) {
       throw new Error("OIDC login state is invalid or expired");
     }
 
-    const provider = await this.providerClient();
-    const tokens = (await provider.exchangeCode({
-      code,
-      codeVerifier: loginState.verifier,
-      redirectUri,
-      clientSecret: this.config.clientSecret,
-    })) as { access_token?: string; expires_in?: number };
+    const config = await this.getConfiguration();
+    const callbackUrl = new URL(redirectUri);
+    callbackUrl.searchParams.set("code", code);
+    callbackUrl.searchParams.set("state", state);
+    const tokens = await authorizationCodeGrant(config, callbackUrl, {
+      expectedState: state,
+      expectedNonce: loginState.nonce,
+      pkceCodeVerifier: loginState.verifier,
+    });
     if (!tokens.access_token) {
       throw new Error("OIDC token response did not include an access token");
     }
-    const userInfo = (await provider.getUserInfo(tokens.access_token)) as (OidcUser & { sub?: string }) | null;
-    if (!userInfo || typeof userInfo !== "object") {
-      throw new Error("OIDC userinfo response was empty");
+
+    const claims = tokens.claims();
+    const subject = claims?.sub;
+    if (typeof subject !== "string" || !subject) {
+      throw new Error("OIDC ID token did not include a user id");
     }
-    const user = {
-      ...userInfo,
-      id: typeof userInfo.sub === "string" ? userInfo.sub : userInfo.id || "",
-      name: userInfo.name || userInfo.preferred_username,
-      photo: userInfo.photo || userInfo.picture,
-    };
-    if (!user.id) {
-      throw new Error("OIDC userinfo response did not include a user id");
+    const userInfo = await fetchUserInfo(config, tokens.access_token, subject);
+    const user = normalizeUser(userInfo);
+    if (user.id !== subject) {
+      throw new Error("OIDC userinfo subject did not match the ID token");
     }
 
     const sessionToken = randomUrlSafe(32);
@@ -102,7 +158,8 @@ export class OidcClient {
     this.sessions.set(sessionToken, {
       user,
       accessToken: tokens.access_token,
-      accessTokenExpiresAt: now + Math.max(60, Number(tokens.expires_in || 900)) * 1000,
+      refreshToken: tokens.refresh_token,
+      accessTokenExpiresAt: now + Number(tokens.expires_in || 900) * 1000,
       expiresAt: now + SESSION_TTL_MS,
     });
     this.prune();
@@ -113,8 +170,7 @@ export class OidcClient {
   }
 
   userFromCookie(cookieHeader: string | undefined): OidcUser | undefined {
-    const session = this.sessionFromCookie(cookieHeader);
-    return session?.user;
+    return this.sessionFromCookie(cookieHeader)?.user;
   }
 
   async userFromAccessToken(accessToken: string): Promise<OidcUser | undefined> {
@@ -122,21 +178,9 @@ export class OidcClient {
       return undefined;
     }
     try {
-      const provider = await this.providerClient();
-      const userInfo = (await provider.getUserInfo(accessToken)) as (OidcUser & { sub?: string }) | null;
-      if (!userInfo || typeof userInfo !== "object") {
-        return undefined;
-      }
-      const id = typeof userInfo.sub === "string" ? userInfo.sub : userInfo.id;
-      if (!id) {
-        return undefined;
-      }
-      return {
-        ...userInfo,
-        id,
-        name: userInfo.name || userInfo.preferred_username,
-        photo: userInfo.photo || userInfo.picture,
-      };
+      const userInfo = await fetchUserInfo(await this.getConfiguration(), accessToken, skipSubjectCheck);
+      const user = normalizeUser(userInfo);
+      return user.id ? user : undefined;
     } catch {
       return undefined;
     }
@@ -162,27 +206,59 @@ export class OidcClient {
     return this.sessionFromCookie(cookieHeader)?.role;
   }
 
-  accessTokenFromCookie(cookieHeader: string | undefined) {
+  async accessTokenFromCookie(cookieHeader: string | undefined) {
+    const cookieToken = this.cookieToken(cookieHeader);
     const session = this.sessionFromCookie(cookieHeader);
-    if (!session || session.accessTokenExpiresAt <= Date.now()) {
+    if (!session) {
+      return undefined;
+    }
+    if (session.accessTokenExpiresAt > Date.now() + 30_000) {
+      return { accessToken: session.accessToken, expiresAt: session.accessTokenExpiresAt };
+    }
+    if (!session.refreshToken || !(await this.refreshSessionToken(session))) {
+      if (cookieToken) {
+        this.sessions.delete(cookieToken);
+      }
       return undefined;
     }
     return { accessToken: session.accessToken, expiresAt: session.accessTokenExpiresAt };
   }
 
+  private refreshSessionToken(session: Session) {
+    if (!session.refreshPromise) {
+      session.refreshPromise = this.requestTokenRefresh(session).finally(() => {
+        session.refreshPromise = undefined;
+      });
+    }
+    return session.refreshPromise;
+  }
+
+  private async requestTokenRefresh(session: Session) {
+    try {
+      const tokens = await refreshTokenGrant(await this.getConfiguration(), session.refreshToken!);
+      if (!tokens.access_token || !tokens.expires_in) {
+        throw new Error("OIDC token refresh response was incomplete");
+      }
+      session.accessToken = tokens.access_token;
+      session.refreshToken = tokens.refresh_token || session.refreshToken;
+      session.accessTokenExpiresAt = Date.now() + Number(tokens.expires_in) * 1000;
+      return true;
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 400 || status === 401) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
   async scopesForToken(token: string): Promise<string[] | null> {
     try {
-      const result = (await (await this.providerClient()).introspectToken(token)) as {
-        active?: boolean;
-        scope?: string | string[];
-        scopes?: string[];
-      };
+      const result = await tokenIntrospection(await this.getIntrospectionConfiguration(), token);
       if (!result.active) {
         return null;
       }
-      return (
-        result.scopes || (Array.isArray(result.scope) ? result.scope : result.scope?.split(/\s+/).filter(Boolean) || [])
-      );
+      return typeof result.scope === "string" ? result.scope.split(/\s+/).filter(Boolean) : [];
     } catch {
       return null;
     }
@@ -194,10 +270,32 @@ export class OidcClient {
     if (!bearer) {
       return undefined;
     }
+    const client = await this.authApiClient();
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${bearer}`);
     headers.set("x-auth-audience", this.config.clientId);
-    return fetch(new URL(path, this.config.providerUrl.replace(/\/$/, "") + "/"), { ...init, headers });
+    const contentType = headers.get("content-type") || "";
+    let body: unknown;
+    if (typeof init.body === "string") {
+      body = contentType.includes("application/json") ? JSON.parse(init.body) : init.body;
+    } else {
+      body = init.body;
+    }
+    try {
+      const result = await client.request(path, {
+        method: init.method || "GET",
+        headers: Object.fromEntries(headers.entries()),
+        body,
+      });
+      return new Response(JSON.stringify(result), { status: 200, headers: { "content-type": "application/json" } });
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      const message = error instanceof Error ? error.message : "Auth API request failed";
+      return new Response(JSON.stringify({ error: message }), {
+        status: status && status >= 400 && status <= 599 ? status : 502,
+        headers: { "content-type": "application/json" },
+      });
+    }
   }
 
   clearCookie(cookieHeader: string | undefined) {
@@ -228,24 +326,19 @@ export class OidcClient {
       .find(([name]) => name === SESSION_COOKIE)?.[1];
   }
 
-  private async providerClient() {
-    if (!this.providerClientPromise) {
-      this.providerClientPromise = fetch(new URL("/node.mjs", `${this.config.providerUrl.replace(/\/$/, "")}/`)).then(
-        async (response) => {
-          if (!response.ok) {
-            throw new Error(`OIDC client module failed: ${response.status}`);
-          }
-          const source = await response.text();
-          const module = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
-          return module.createAuthClient({
-            issuer: this.config.providerUrl,
-            clientId: this.config.clientId,
-            clientSecret: this.config.clientSecret,
-          });
-        },
-      );
+  private async authApiClient() {
+    if (!this.authApiClientPromise) {
+      const moduleUrl = new URL("/node.mjs", `${this.config.providerUrl}/`);
+      this.authApiClientPromise = fetch(moduleUrl).then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Auth API module failed: ${response.status}`);
+        }
+        const source = await response.text();
+        const module = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+        return module.createAuthClient({ issuer: this.config.providerUrl, clientId: this.config.clientId });
+      });
     }
-    return this.providerClientPromise;
+    return this.authApiClientPromise;
   }
 
   private prune() {
@@ -258,7 +351,7 @@ export class OidcClient {
   }
 
   private signState(state: LoginState) {
-    const payload = Buffer.from(JSON.stringify({ ...state, nonce: randomUrlSafe(16) })).toString("base64url");
+    const payload = Buffer.from(JSON.stringify(state)).toString("base64url");
     const signature = crypto.createHmac("sha256", this.config.clientSecret).update(payload).digest("base64url");
     return `${payload}.${signature}`;
   }
@@ -275,11 +368,21 @@ export class OidcClient {
       throw new Error("OIDC login state is invalid or expired");
     }
     const state = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as LoginState;
-    if (!state.verifier || !state.returnTo || state.expiresAt <= Date.now()) {
+    if (!state.verifier || !state.nonce || !state.returnTo || !Number.isFinite(state.expiresAt)) {
       throw new Error("OIDC login state is invalid or expired");
     }
     return state;
   }
+}
+
+function normalizeUser(userInfo: Record<string, unknown>): OidcUser {
+  const id = typeof userInfo.sub === "string" ? userInfo.sub : typeof userInfo.id === "string" ? userInfo.id : "";
+  return {
+    ...userInfo,
+    id,
+    name: (userInfo.name as string | undefined) || (userInfo.preferred_username as string | undefined),
+    photo: (userInfo.photo as string | undefined) || (userInfo.picture as string | undefined),
+  } as OidcUser;
 }
 
 function randomUrlSafe(bytes: number) {

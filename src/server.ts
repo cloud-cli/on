@@ -2262,8 +2262,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
     );
   }
 
-  private handleOidcToken(req: http.IncomingMessage, res: http.ServerResponse) {
-    const token = this.oidc?.accessTokenFromCookie(req.headers.cookie);
+  private async handleOidcToken(req: http.IncomingMessage, res: http.ServerResponse) {
+    const token = await this.oidc?.accessTokenFromCookie(req.headers.cookie);
     if (!token) {
       res.writeHead(401, { "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify({ error: "Authentication required" }));
