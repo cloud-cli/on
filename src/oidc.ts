@@ -1,5 +1,14 @@
 import crypto from "node:crypto";
-import { Configuration, buildAuthorizationUrl, authorizationCodeGrant, fetchUserInfo, refreshTokenGrant, tokenIntrospection, discovery, ClientSecretPost } from "openid-client";
+import {
+  Configuration,
+  buildAuthorizationUrl,
+  authorizationCodeGrant,
+  fetchUserInfo,
+  refreshTokenGrant,
+  tokenIntrospection,
+  discovery,
+  ClientSecretPost,
+} from "openid-client";
 
 export interface OidcConfig {
   providerUrl: string;
@@ -19,6 +28,7 @@ export interface OidcUser {
 
 interface LoginState {
   verifier: string;
+  nonce: string;
   returnTo: string;
   expiresAt: number;
 }
@@ -73,13 +83,15 @@ export class OidcClient {
     const config = await this.getConfiguration();
     const codeVerifier = crypto.randomBytes(32).toString("base64url");
     const codeChallenge = crypto.createHash("sha256").update(codeVerifier).digest("base64url");
-    const state = this.signState({ verifier: codeVerifier, returnTo, expiresAt: Date.now() + STATE_TTL_MS });
+    const nonce = randomUrlSafe(16);
+    const state = this.signState({ verifier: codeVerifier, nonce, returnTo, expiresAt: Date.now() + STATE_TTL_MS });
     const authorizationUrl = buildAuthorizationUrl(config, {
       redirect_uri: redirectUri,
       scope: "openid profile email offline_access",
       code_challenge: codeChallenge,
       code_challenge_method: "S256",
       state,
+      nonce,
     });
     return authorizationUrl.href;
   }
@@ -94,14 +106,22 @@ export class OidcClient {
     const callbackUrl = new URL(redirectUri);
     callbackUrl.searchParams.set("code", code);
     callbackUrl.searchParams.set("state", state);
-    const tokenResponse = await authorizationCodeGrant(config, callbackUrl, undefined, { code_verifier: loginState.verifier });
+    const tokenResponse = await authorizationCodeGrant(config, callbackUrl, {
+      expectedState: state,
+      expectedNonce: loginState.nonce,
+      pkceCodeVerifier: loginState.verifier,
+    });
     if (!tokenResponse.access_token) {
       throw new Error("OIDC token response did not include an access token");
     }
     if (!tokenResponse.refresh_token) {
       throw new Error("OIDC token response did not include a refresh token for offline_access");
     }
-    const userInfo = await fetchUserInfo(config, tokenResponse.access_token!, "skipSubjectCheck");
+    const subject = tokenResponse.claims()?.sub;
+    if (typeof subject !== "string" || !subject) {
+      throw new Error("OIDC ID token did not include a user id");
+    }
+    const userInfo = await fetchUserInfo(config, tokenResponse.access_token, subject);
     if (!userInfo || typeof userInfo !== "object") {
       throw new Error("OIDC userinfo response was empty");
     }
@@ -111,8 +131,8 @@ export class OidcClient {
       name: userInfo.name || userInfo.preferred_username,
       photo: userInfo.photo || userInfo.picture,
     } as OidcUser;
-    if (!user.id) {
-      throw new Error("OIDC userinfo response did not include a user id");
+    if (user.id !== subject) {
+      throw new Error("OIDC userinfo subject did not match the ID token");
     }
 
     const sessionToken = randomUrlSafe(32);
@@ -213,7 +233,11 @@ export class OidcClient {
       if (!result.active) {
         return null;
       }
-      return result.scope ? (Array.isArray(result.scope) ? result.scope : result.scope.split(/\s+/).filter(Boolean)) : [];
+      return result.scope
+        ? Array.isArray(result.scope)
+          ? result.scope
+          : result.scope.split(/\s+/).filter(Boolean)
+        : [];
     } catch {
       return null;
     }
@@ -269,7 +293,7 @@ export class OidcClient {
   }
 
   private signState(state: LoginState) {
-    const payload = Buffer.from(JSON.stringify({ ...state, nonce: randomUrlSafe(16) })).toString("base64url");
+    const payload = Buffer.from(JSON.stringify(state)).toString("base64url");
     const signature = crypto.createHmac("sha256", this.config.clientSecret).update(payload).digest("base64url");
     return `${payload}.${signature}`;
   }
@@ -286,7 +310,7 @@ export class OidcClient {
       throw new Error("OIDC login state is invalid or expired");
     }
     const state = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as LoginState;
-    if (!state.verifier || !state.returnTo || state.expiresAt <= Date.now()) {
+    if (!state.verifier || !state.nonce || !state.returnTo || state.expiresAt <= Date.now()) {
       throw new Error("OIDC login state is invalid or expired");
     }
     return state;
