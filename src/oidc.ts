@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { Configuration, buildAuthorizationUrl, authorizationCodeGrant, fetchUserInfo, refreshTokenGrant, tokenIntrospection, discovery, ClientSecretPost } from "openid-client";
 
 export interface OidcConfig {
   providerUrl: string;
@@ -25,11 +26,9 @@ interface LoginState {
 interface Session {
   user: OidcUser;
   role?: "user" | "admin";
-  accessToken: string;
-  accessTokenExpiresAt: number;
-  refreshToken?: string;
-  refreshPromise?: Promise<boolean>;
+  tokens: { access_token: string; refresh_token: string; expires_at: number };
   expiresAt: number;
+  refreshPromise?: Promise<boolean>;
 }
 
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -37,7 +36,7 @@ const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const SESSION_COOKIE = "runner_oidc_session";
 
 export class OidcClient {
-  private providerClientPromise?: Promise<any>;
+  private configPromise?: Promise<Configuration>;
   private readonly sessions = new Map<string, Session>();
 
   constructor(config: OidcConfig) {
@@ -58,17 +57,31 @@ export class OidcClient {
     return this.config.clientId;
   }
 
+  private async getConfiguration(): Promise<Configuration> {
+    if (!this.configPromise) {
+      this.configPromise = discovery(
+        new URL(this.config.providerUrl),
+        this.config.clientId,
+        undefined,
+        ClientSecretPost(this.config.clientSecret),
+      );
+    }
+    return this.configPromise;
+  }
+
   async loginUrl(redirectUri: string, returnTo: string): Promise<string> {
-    const provider = await this.providerClient();
-    const authorization = provider.createAuthorizationRequest({
-      redirectUri,
+    const config = await this.getConfiguration();
+    const codeVerifier = crypto.randomBytes(32).toString("base64url");
+    const codeChallenge = crypto.createHash("sha256").update(codeVerifier).digest("base64url");
+    const state = this.signState({ verifier: codeVerifier, returnTo, expiresAt: Date.now() + STATE_TTL_MS });
+    const authorizationUrl = buildAuthorizationUrl(config, {
+      redirect_uri: redirectUri,
       scope: "openid profile email offline_access",
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+      state,
     });
-    const verifier = authorization.codeVerifier;
-    const state = this.signState({ verifier, returnTo, expiresAt: Date.now() + STATE_TTL_MS });
-    const url = new URL(authorization.url);
-    url.searchParams.set("state", state);
-    return url.toString();
+    return authorizationUrl.href;
   }
 
   async completeLogin(code: string, state: string, redirectUri: string): Promise<{ returnTo: string; cookie: string }> {
@@ -77,20 +90,18 @@ export class OidcClient {
       throw new Error("OIDC login state is invalid or expired");
     }
 
-    const provider = await this.providerClient();
-    const tokens = (await provider.exchangeCode({
-      code,
-      codeVerifier: loginState.verifier,
-      redirectUri,
-      clientSecret: this.config.clientSecret,
-    })) as { access_token?: string; expires_in?: number; refresh_token?: string };
-    if (!tokens.access_token) {
+    const config = await this.getConfiguration();
+    const callbackUrl = new URL(redirectUri);
+    callbackUrl.searchParams.set("code", code);
+    callbackUrl.searchParams.set("state", state);
+    const tokenResponse = await authorizationCodeGrant(config, callbackUrl, undefined, { code_verifier: loginState.verifier });
+    if (!tokenResponse.access_token) {
       throw new Error("OIDC token response did not include an access token");
     }
-    if (!tokens.refresh_token) {
+    if (!tokenResponse.refresh_token) {
       throw new Error("OIDC token response did not include a refresh token for offline_access");
     }
-    const userInfo = (await provider.getUserInfo(tokens.access_token)) as (OidcUser & { sub?: string }) | null;
+    const userInfo = await fetchUserInfo(config, tokenResponse.access_token!, "skipSubjectCheck");
     if (!userInfo || typeof userInfo !== "object") {
       throw new Error("OIDC userinfo response was empty");
     }
@@ -99,7 +110,7 @@ export class OidcClient {
       id: typeof userInfo.sub === "string" ? userInfo.sub : userInfo.id || "",
       name: userInfo.name || userInfo.preferred_username,
       photo: userInfo.photo || userInfo.picture,
-    };
+    } as OidcUser;
     if (!user.id) {
       throw new Error("OIDC userinfo response did not include a user id");
     }
@@ -108,9 +119,11 @@ export class OidcClient {
     const now = Date.now();
     this.sessions.set(sessionToken, {
       user,
-      accessToken: tokens.access_token,
-      accessTokenExpiresAt: now + Math.max(60, Number(tokens.expires_in || 900)) * 1000,
-      refreshToken: tokens.refresh_token,
+      tokens: {
+        access_token: tokenResponse.access_token!,
+        refresh_token: tokenResponse.refresh_token!,
+        expires_at: Math.floor((now + Number(tokenResponse.expires_in || 900) * 1000) / 1000),
+      },
       expiresAt: now + SESSION_TTL_MS,
     });
     this.prune();
@@ -151,16 +164,16 @@ export class OidcClient {
     if (!session) {
       return undefined;
     }
-    if (session.accessTokenExpiresAt > Date.now() + 30_000) {
-      return { accessToken: session.accessToken, expiresAt: session.accessTokenExpiresAt };
+    if (session.tokens.expires_at > Math.floor(Date.now() / 1000) + 30) {
+      return { accessToken: session.tokens.access_token, expiresAt: session.tokens.expires_at * 1000 };
     }
-    if (!session.refreshToken || !(await this.refreshSessionToken(session))) {
+    if (!session.tokens.refresh_token || !(await this.refreshSessionToken(session))) {
       if (cookieToken) {
         this.sessions.delete(cookieToken);
       }
       return undefined;
     }
-    return { accessToken: session.accessToken, expiresAt: session.accessTokenExpiresAt };
+    return { accessToken: session.tokens.access_token, expiresAt: session.tokens.expires_at * 1000 };
   }
 
   private async refreshSessionToken(session: Session) {
@@ -173,46 +186,34 @@ export class OidcClient {
   }
 
   private async requestTokenRefresh(session: Session) {
-    const body = new URLSearchParams({
-      grant_type: "refresh_token",
-      client_id: this.config.clientId,
-      client_secret: this.config.clientSecret,
-      refresh_token: session.refreshToken!,
-    });
-    const response = await fetch(new URL("/token", `${this.config.providerUrl.replace(/\/$/, "")}/`), {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body,
-    });
-    if (response.status === 400 || response.status === 401) {
-      return false;
+    try {
+      const config = await this.getConfiguration();
+      const tokenResponse = await refreshTokenGrant(config, session.tokens.refresh_token!);
+      if (!tokenResponse.access_token || !tokenResponse.refresh_token || !tokenResponse.expires_in) {
+        throw new Error("OIDC token refresh response was incomplete");
+      }
+      session.tokens = {
+        access_token: tokenResponse.access_token,
+        refresh_token: tokenResponse.refresh_token,
+        expires_at: Math.floor((Date.now() + Number(tokenResponse.expires_in) * 1000) / 1000),
+      };
+      return true;
+    } catch (error: any) {
+      if (error.status === 400 || error.status === 401) {
+        return false;
+      }
+      throw error;
     }
-    if (!response.ok) {
-      throw new Error(`OIDC token refresh failed: ${response.status}`);
-    }
-    const tokens = (await response.json()) as { access_token?: string; expires_in?: number; refresh_token?: string };
-    if (!tokens.access_token || !tokens.refresh_token || !Number.isFinite(tokens.expires_in) || !tokens.expires_in) {
-      throw new Error("OIDC token refresh response was incomplete");
-    }
-    session.accessToken = tokens.access_token;
-    session.accessTokenExpiresAt = Date.now() + Math.max(1, Number(tokens.expires_in)) * 1000;
-    session.refreshToken = tokens.refresh_token;
-    return true;
   }
 
   async scopesForToken(token: string): Promise<string[] | null> {
     try {
-      const result = (await (await this.providerClient()).introspectToken(token)) as {
-        active?: boolean;
-        scope?: string | string[];
-        scopes?: string[];
-      };
+      const config = await this.getConfiguration();
+      const result = await tokenIntrospection(config, token);
       if (!result.active) {
         return null;
       }
-      return (
-        result.scopes || (Array.isArray(result.scope) ? result.scope : result.scope?.split(/\s+/).filter(Boolean) || [])
-      );
+      return result.scope ? (Array.isArray(result.scope) ? result.scope : result.scope.split(/\s+/).filter(Boolean)) : [];
     } catch {
       return null;
     }
@@ -220,7 +221,7 @@ export class OidcClient {
 
   async tokenApiRequest(cookieHeader: string | undefined, path: string, init: RequestInit = {}, accessToken?: string) {
     const session = this.sessionFromCookie(cookieHeader);
-    const bearer = accessToken || session?.accessToken;
+    const bearer = accessToken || session?.tokens.access_token;
     if (!bearer) {
       return undefined;
     }
@@ -258,26 +259,6 @@ export class OidcClient {
       .find(([name]) => name === SESSION_COOKIE)?.[1];
   }
 
-  private async providerClient() {
-    if (!this.providerClientPromise) {
-      this.providerClientPromise = fetch(new URL("/node.mjs", `${this.config.providerUrl.replace(/\/$/, "")}/`)).then(
-        async (response) => {
-          if (!response.ok) {
-            throw new Error(`OIDC client module failed: ${response.status}`);
-          }
-          const source = await response.text();
-          const module = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
-          return module.createAuthClient({
-            issuer: this.config.providerUrl,
-            clientId: this.config.clientId,
-            clientSecret: this.config.clientSecret,
-          });
-        },
-      );
-    }
-    return this.providerClientPromise;
-  }
-
   private prune() {
     const now = Date.now();
     for (const [key, session] of this.sessions) {
@@ -312,10 +293,16 @@ export class OidcClient {
   }
 }
 
-function randomUrlSafe(bytes: number) {
-  return crypto.randomBytes(bytes).toString("base64url");
+function normalizeIssuer(url: string): string {
+  try {
+    const u = new URL(url);
+    u.pathname = u.pathname.replace(/\/+$/, "");
+    return u.toString().replace(/\/$/, "");
+  } catch {
+    return url.replace(/\/+$/, "");
+  }
 }
 
-function normalizeIssuer(value: string) {
-  return value.replace(/\/api\/?$/, "").replace(/\/$/, "");
+function randomUrlSafe(bytes: number): string {
+  return crypto.randomBytes(bytes).toString("base64url");
 }
