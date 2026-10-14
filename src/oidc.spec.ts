@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import crypto from "node:crypto";
+import { Configuration } from "openid-client";
 import { OidcClient } from "./oidc.js";
 
 describe("OIDC client - internal logic", () => {
@@ -175,5 +176,32 @@ describe("OIDC client - token refresh logic", () => {
 
     const result = await client.accessTokenFromCookie(`runner_oidc_session=${sessionToken}`);
     expect(result).toBeUndefined();
+  });
+});
+
+describe("OIDC bearer token introspection", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("uses Auth's Basic-authenticated introspection endpoint", async () => {
+    const client = new OidcClient({ providerUrl: "https://auth.test", clientId: "flow", clientSecret: "secret" });
+    const discovered = new Configuration({ issuer: "https://auth.test" }, "flow", "secret");
+    vi.spyOn(client as any, "getConfiguration").mockResolvedValue(discovered);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ active: true, scope: "logs:read runs:dispatch" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(client.scopesForToken("opaque-api-token")).resolves.toEqual(["logs:read", "runs:dispatch"]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0];
+    expect(String(requestUrl)).toBe("https://auth.test/oauth/introspect");
+    expect(new Headers(requestInit?.headers).get("authorization")).toBe(
+      `Basic ${Buffer.from("flow:secret").toString("base64")}`,
+    );
+    expect(new URLSearchParams(String(requestInit?.body)).get("token")).toBe("opaque-api-token");
   });
 });

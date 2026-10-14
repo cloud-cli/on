@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import {
+  ClientSecretBasic,
   Configuration,
   buildAuthorizationUrl,
   authorizationCodeGrant,
@@ -47,6 +48,7 @@ const SESSION_COOKIE = "runner_oidc_session";
 
 export class OidcClient {
   private configPromise?: Promise<Configuration>;
+  private introspectionConfigPromise?: Promise<Configuration>;
   private readonly sessions = new Map<string, Session>();
 
   constructor(config: OidcConfig) {
@@ -77,6 +79,24 @@ export class OidcClient {
       );
     }
     return this.configPromise;
+  }
+
+  private async getIntrospectionConfiguration(): Promise<Configuration> {
+    if (!this.introspectionConfigPromise) {
+      this.introspectionConfigPromise = this.getConfiguration().then((config) => {
+        const { supportsPKCE: _supportsPKCE, ...serverMetadata } = config.serverMetadata();
+        return new Configuration(
+          {
+            ...serverMetadata,
+            introspection_endpoint: new URL("/oauth/introspect", this.config.providerUrl).href,
+          },
+          this.config.clientId,
+          undefined,
+          ClientSecretBasic(this.config.clientSecret),
+        );
+      });
+    }
+    return this.introspectionConfigPromise;
   }
 
   async loginUrl(redirectUri: string, returnTo: string): Promise<string> {
@@ -228,7 +248,7 @@ export class OidcClient {
 
   async scopesForToken(token: string): Promise<string[] | null> {
     try {
-      const config = await this.getConfiguration();
+      const config = await this.getIntrospectionConfiguration();
       const result = await tokenIntrospection(config, token);
       if (!result.active) {
         return null;
