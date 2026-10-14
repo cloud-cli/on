@@ -31,10 +31,8 @@
       >
         Skip to content
       </a>
-      <div class="h-dvh overflow-hidden md:grid md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]">
-        <aside
-          class="hidden h-full min-h-0 overflow-y-auto border-r border-flow-border bg-flow-sidebar px-4 py-5 md:flex md:flex-col"
-        >
+      <div class="h-dvh overflow-hidden md:grid md:grid-cols-[16rem_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]">
+        <aside class="hidden h-full min-h-0 w-64 overflow-y-auto px-2 py-5 md:flex md:flex-col">
           <a
             href="/runs"
             on-click="setActive('runs')"
@@ -57,51 +55,59 @@
               href="/runs"
               on-click="setActive('runs')"
               attr-aria-current="activeSection === 'runs' ? 'page' : null"
-              class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
+              class="flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm font-semibold text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:border-flow-foreground aria-[current=page]:bg-white aria-[current=page]:text-flow-foreground"
               ><lucide-icon icon="play" size="17"></lucide-icon>Runs</a
             >
             <a
               href="/workflows"
               on-click="setActive('workflows')"
               attr-aria-current="activeSection === 'workflows' ? 'page' : null"
-              class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
+              class="flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm font-semibold text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:border-flow-foreground aria-[current=page]:bg-white aria-[current=page]:text-flow-foreground"
               ><lucide-icon icon="workflow" size="17"></lucide-icon>Workflows</a
             >
             <a
               href="/settings"
               on-click="setActive('settings')"
               attr-aria-current="activeSection === 'settings' ? 'page' : null"
-              class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-flow-primary"
+              class="flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm font-semibold text-flow-secondary no-underline outline-none hover:bg-white/70 hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary aria-[current=page]:border-flow-foreground aria-[current=page]:bg-white aria-[current=page]:text-flow-foreground"
               ><lucide-icon icon="settings" size="17"></lucide-icon>Settings</a
             >
           </nav>
-          <template if="userAuthenticated">
-            <div
-              class="mt-4 flex min-w-0 items-center gap-3 border border-flow-border py-2 px-3 rounded-lg bg-white/40"
-            >
-              <span
-                class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-flow-accent text-sm font-semibold text-flow-foreground"
-                >{{ userInitial }}</span
-              >
-              <a
-                attr-href="oidcProviderUrl ? oidcProviderUrl + '/me' : null"
-                target="_blank"
-                rel="noopener"
-                class="min-w-0 flex-1 text-flow-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary"
-                aria-label="Open profile at identity provider in a new tab"
-              >
-                <span class="block truncate text-sm font-medium">{{ user.name || user.email }}</span>
-                <span class="block truncate text-xs text-flow-secondary">{{ user.email }}</span>
-                <span
-                  class="mt-1 inline-block rounded-full bg-flow-sidebar px-2 py-0.5 text-[10px] font-medium text-flow-secondary"
-                  >{{ user.role }}</span
-                >
-                <lucide-icon icon="external-link" size="13" class="ml-1 inline-block align-middle"></lucide-icon>
-              </a>
-            </div>
-          </template>
         </aside>
         <div class="h-dvh min-h-0 min-w-0 overflow-y-auto overscroll-y-contain pb-20 md:h-full md:pb-0">
+          <header class="hidden justify-end px-4 pt-4 sm:px-6 md:flex lg:px-8">
+            <template if="userAuthenticated">
+              <div
+                class="flex cursor-pointer items-center gap-4 rounded-full border border-gray-200 bg-white py-1.5 px-1.5 shadow-sm transition-shadow hover:shadow-md sm:pr-4 dark:bg-[#18231b] dark:border-[#303d34]"
+                role="group"
+                aria-label="Signed-in user"
+              >
+                <div
+                  class="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-flow-primary text-sm font-bold text-white"
+                >
+                  <img
+                    attr-src="user.photo || user.picture || null"
+                    referrerpolicy="no-referrer"
+                    alt=""
+                    class="absolute inset-0 size-full object-cover"
+                  />
+                  <span aria-hidden="true" attr-class="(user.photo || user.picture) ? 'hidden' : ''"
+                    >{{ userInitial }}</span
+                  >
+                </div>
+                <a
+                  attr-href="oidcProviderUrl ? oidcProviderUrl + '/me' : null"
+                  target="_blank"
+                  rel="noopener"
+                  class="hidden flex-col justify-center text-flow-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary sm:flex"
+                  aria-label="Open profile at identity provider in a new tab"
+                >
+                  <span class="text-sm font-semibold leading-tight">{{ user.name || user.email }}</span>
+                  <span class="text-[10px] leading-tight text-flow-secondary">{{ user.email }}</span>
+                </a>
+              </div>
+            </template>
+          </header>
           <div id="main-content" tabindex="-1" class="min-h-full min-w-0 p-4 sm:p-6 lg:p-8">
             <app-router></app-router>
           </div>

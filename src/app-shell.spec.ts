@@ -24,9 +24,14 @@ describe("Flow application shell", () => {
     expect(html).toContain('id="main-content"');
     expect(html).toContain('tabindex="-1"');
     expect(html).toContain('class="h-dvh overflow-hidden bg-flow-background');
-    expect(html).toContain("h-dvh overflow-hidden md:grid");
+    expect(html).toContain("h-dvh overflow-hidden md:grid md:grid-cols-[16rem_minmax(0,1fr)]");
     expect(html).toContain("h-dvh min-h-0 min-w-0 overflow-y-auto overscroll-y-contain");
-    expect(html).toContain("border border-flow-border py-2 px-3 rounded-lg bg-white/40");
+    expect(html).toContain("hidden h-full min-h-0 w-64 overflow-y-auto px-2 py-5 md:flex md:flex-col");
+    expect(html).not.toContain("border-r border-flow-border bg-flow-sidebar");
+    expect(html).toContain('role="group"');
+    expect(html).toContain('aria-label="Signed-in user"');
+    expect(html).toContain('attr-src="user.photo || user.picture || null"');
+    expect(html).toContain("aria-[current=page]:border-flow-foreground");
     expect(html).toContain("md:grid-rows-[minmax(0,1fr)]");
     expect(html).not.toContain('<main class="min-h-screen min-w-0');
     expect(html).toContain("<app-router></app-router>");
@@ -43,11 +48,9 @@ describe("Flow application shell", () => {
     expect(shellSetup).toContain("session?.authenticated || !session.user");
     expect(html).toContain("user.name || user.email");
     expect(html).toContain("{{ user.email }}");
-    expect(html).toContain("{{ user.role }}");
     expect(html).toContain('target="_blank"');
     expect(html).toContain('rel="noopener"');
     expect(html).toContain("oidcProviderUrl");
-    expect(html).toContain('icon="external-link"');
     expect(html).toContain('if="userAuthenticated"');
   });
 
