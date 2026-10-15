@@ -2690,37 +2690,6 @@
         }
       }
     },
-    "/api/v1/workflows": {
-      "get": {
-        "tags": ["workflows"],
-        "summary": "List workflows",
-        "security": [
-          {
-            "oidcSessionCookie": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Workflow list",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "workflows": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Workflow"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/users": {
       "get": {
         "tags": ["users"],
@@ -2890,101 +2859,6 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/api/v1/workflows/{workflowId}": {
-      "get": {
-        "tags": ["workflows"],
-        "summary": "Get a workflow or historical revision",
-        "security": [
-          {
-            "oidcSessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/WorkflowId"
-          },
-          {
-            "$ref": "#/components/parameters/Revision"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Workflow definition",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Workflow"
-                }
-              }
-            }
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          }
-        }
-      },
-      "put": {
-        "tags": ["workflows"],
-        "summary": "Save a workflow draft",
-        "security": [
-          {
-            "oidcSessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/WorkflowId"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WorkflowSave"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Draft saved",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Workflow"
-                }
-              }
-            }
-          },
-          "422": {
-            "$ref": "#/components/responses/ValidationError"
-          }
-        }
-      },
-      "delete": {
-        "tags": ["workflows"],
-        "summary": "Delete a workflow and its revisions",
-        "security": [
-          {
-            "oidcSessionCookie": []
-          }
-        ],
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/WorkflowId"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Workflow deleted"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
           }
         }
       }

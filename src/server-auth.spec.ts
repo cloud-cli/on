@@ -379,6 +379,7 @@ describe("job status endpoint", () => {
       apiKeys: { scopesForToken: vi.fn(async () => null) },
     };
     attachHandlers(server);
+    server.isWorker = (req) => (WebhookServer.prototype as any).isWorker.call(server, req);
 
     await (WebhookServer.prototype as any).handleRequest.call(
       server,

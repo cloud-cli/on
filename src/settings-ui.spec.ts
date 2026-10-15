@@ -13,6 +13,7 @@ describe("personal settings UI", () => {
     expect(html).toContain("Appearance");
     expect(html).toContain('value="system"');
     expect(html).not.toContain("Settings section navigation");
+    expect(html).not.toContain('class="sticky top-0');
     expect(html).toContain('id="section-timezone"');
     expect(html).toContain('id="section-notifications"');
     expect(html).toContain("Your timezone");

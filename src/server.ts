@@ -158,6 +158,10 @@ export class WebhookServer {
     } else if (
       url.pathname.startsWith("/api/v1/") &&
       !url.pathname.startsWith("/api/v1/runner") &&
+      !(
+        ["GET", "PUT", "DELETE"].includes(req.method || "") &&
+        /^\/api\/v1\/workflows(?:\/[a-z0-9-]+)?$/.test(url.pathname)
+      ) &&
       !url.pathname.startsWith("/api/v1/teams/") &&
       url.pathname !== "/api/v1/teams" &&
       url.pathname !== "/api/v1/runner-enrollments"

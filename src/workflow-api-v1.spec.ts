@@ -11,7 +11,12 @@ function makeServer(scopes: string[] | null = ["workflows:read", "workflows:writ
       userFromCookie: vi.fn(() => undefined),
       scopesForToken: vi.fn(async () => null),
     },
-    apiKeys: { scopesForToken: vi.fn(async (token: string) => (token === "test-key" ? scopes : null)) },
+    apiKeys: {
+      scopesForToken: vi.fn(async (token: string) => (token === "test-key" ? scopes : null)),
+      tokenDetails: vi.fn(async (token: string) =>
+        token === "test-key" && scopes ? { scopes, teamId: "default" } : null,
+      ),
+    },
     workflowsLoaded: Promise.resolve(),
     workflows: {
       list: vi.fn(async () => []),
@@ -22,6 +27,7 @@ function makeServer(scopes: string[] | null = ["workflows:read", "workflows:writ
       delete: vi.fn(async () => true),
       ...workflows,
     },
+    handleWorkflowPublish: vi.fn(),
     isAdmin: () => false,
   };
   server.oidcBearer = (req) => (WebhookServer.prototype as any).oidcBearer.call(server, req);
@@ -128,5 +134,17 @@ describe("scoped workflow API v1", () => {
 
     expect(res.writeHead).toHaveBeenCalledWith(401, { "Content-Type": "application/json; charset=utf-8" });
     expect(server.workflows.list).not.toHaveBeenCalled();
+  });
+
+  it("keeps the versioned publish endpoint routed through the legacy alias", async () => {
+    const server = makeServer();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      makeRequest("POST", "/api/v1/workflows/test/publish"),
+      makeResponse(),
+    );
+
+    expect(server.handleWorkflowPublish).toHaveBeenCalledWith(expect.anything(), expect.anything(), "test");
   });
 });

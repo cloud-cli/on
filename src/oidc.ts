@@ -9,6 +9,7 @@ import {
   tokenIntrospection,
   discovery,
   ClientSecretPost,
+  skipSubjectCheck,
 } from "openid-client";
 
 export interface OidcConfig {
@@ -184,20 +185,25 @@ export class OidcClient {
       return undefined;
     }
     try {
-      const provider = await this.providerClient();
-      const userInfo = (await provider.getUserInfo(accessToken)) as (OidcUser & { sub?: string }) | null;
+      const userInfo = await fetchUserInfo(await this.getConfiguration(), accessToken, skipSubjectCheck);
       if (!userInfo || typeof userInfo !== "object") {
         return undefined;
       }
-      const id = typeof userInfo.sub === "string" ? userInfo.sub : userInfo.id;
+      const id = typeof userInfo.sub === "string" ? userInfo.sub : typeof userInfo.id === "string" ? userInfo.id : "";
       if (!id) {
         return undefined;
       }
       return {
         ...userInfo,
         id,
-        name: userInfo.name || userInfo.preferred_username,
-        photo: userInfo.photo || userInfo.picture,
+        name:
+          (typeof userInfo.name === "string" && userInfo.name) ||
+          (typeof userInfo.preferred_username === "string" && userInfo.preferred_username) ||
+          undefined,
+        photo:
+          (typeof userInfo.photo === "string" && userInfo.photo) ||
+          (typeof userInfo.picture === "string" && userInfo.picture) ||
+          undefined,
       };
     } catch {
       return undefined;
