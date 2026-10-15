@@ -15,7 +15,26 @@ describe("team settings UI", () => {
     expect(html).toContain('class-hidden="!isAdmin"');
     expect(html).toContain('script setup src="/team-settings-ui.mjs"');
     expect(html).not.toContain("Personal settings</a>");
-    expect(html.match(/rounded-xl border border-flow-border bg-flow-card p-5/g)).toHaveLength(4);
+    expect(html.match(/rounded-xl border border-flow-border bg-flow-card p-5/g)).toHaveLength(5);
+    expect(html).toContain('aria-label="Workspace settings sections"');
+    expect(html).toContain('href="#team-members"');
+    expect(html).toContain('href="#team-webhooks"');
+    expect(html).toContain('href="#team-runners"');
+    expect(html).toContain('href="#workspace-api-keys"');
+    expect(html).toContain('href="#workspace-secrets"');
+  });
+
+  it("puts webhooks in their own section after workspace members", () => {
+    const html = generateTeamSettingsHtml();
+    const membersSection = html.indexOf('id="team-members"');
+    const webhooksSection = html.indexOf('id="team-webhooks"');
+    const runnersSection = html.indexOf('id="team-runners"');
+
+    expect(membersSection).toBeGreaterThan(-1);
+    expect(webhooksSection).toBeGreaterThan(membersSection);
+    expect(runnersSection).toBeGreaterThan(webhooksSection);
+    expect(html.slice(membersSection, webhooksSection)).not.toContain("createWebhook()");
+    expect(html.slice(webhooksSection, runnersSection)).toContain("createWebhook()");
   });
 
   it("loads and mutates only the team identified by the route", () => {

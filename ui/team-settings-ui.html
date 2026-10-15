@@ -13,10 +13,42 @@
   <body class="min-h-screen bg-flow-background p-4 font-sans text-flow-foreground md:p-6">
     <template app
       ><main class="mx-auto max-w-6xl space-y-5 py-6">
-        <h1 class="text-2xl font-semibold">{{ teamName }} workspace</h1>
+        <header class="flex flex-wrap items-center justify-between gap-3 border-b border-flow-border pb-3">
+          <h1 class="text-2xl font-semibold">{{ teamName }} workspace</h1>
+          <nav aria-label="Workspace settings sections" class="flex flex-wrap justify-end gap-1.5">
+            <a href="#team-members" class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
+              >Members</a
+            >
+            <a
+              href="#team-webhooks"
+              class-hidden="!isAdmin"
+              class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
+              >Webhooks</a
+            >
+            <a href="#team-runners" class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
+              >Runners</a
+            >
+            <a
+              href="#workspace-api-keys"
+              class-hidden="!isAdmin"
+              class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
+              >API keys</a
+            >
+            <a
+              href="#workspace-secrets"
+              class-hidden="!isAdmin"
+              class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
+              >Secrets</a
+            >
+          </nav>
+        </header>
         <div id="team-settings" class="space-y-5">
-          <section class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5">
-            <h2 class="text-lg font-semibold">Workspace settings</h2>
+          <section
+            id="team-members"
+            class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
+            aria-labelledby="team-members-title"
+          >
+            <h2 id="team-members-title" class="text-lg font-semibold">Workspace members</h2>
             <p class="mt-1 text-sm text-flow-muted">
               Workspace members share workflows, runs, logs, artifacts, and secrets. Only workspace admins can invite
               members.
@@ -57,75 +89,8 @@
                   </div></template
                 >
               </div>
-              <div class="rounded-xl border border-flow-border p-4" class-hidden="!isAdmin">
-                <h3 class="font-medium">Workspace webhooks</h3>
-                <p class="mt-1 text-xs text-flow-muted">
-                  Each registration has its own URL and signing secret. Copy both when created; the signing secret is
-                  only shown once.
-                </p>
-                <div class="mt-3 flex gap-2">
-                  <input
-                    bind-value="webhookProvider"
-                    on-input="webhookProvider = $event.target.value"
-                    aria-label="Webhook provider"
-                    value="github"
-                    maxlength="64"
-                    pattern="[a-z0-9-]+"
-                    class="min-w-0 flex-1 rounded-lg border border-flow-border px-3 py-2 text-sm"
-                  />
-                  <button
-                    type="button"
-                    on-click="createWebhook()"
-                    class="rounded-lg border border-flow-border px-4 py-2 text-sm"
-                  >
-                    Create webhook
-                  </button>
-                </div>
-                <ul class="mt-3 space-y-2">
-                  <template for="registration of webhooks"
-                    ><li
-                      class="flex items-center justify-between rounded-lg border border-flow-border px-3 py-2 text-sm"
-                    >
-                      <span>{{ registration.provider }} · created {{ registration.createdAt }}</span>
-                      <button
-                        type="button"
-                        on-click="revokeWebhook(registration)"
-                        class="text-xs text-rose-700 underline"
-                      >
-                        Revoke
-                      </button>
-                    </li></template
-                  >
-                </ul>
-                <template if="webhookUrl"
-                  ><div class="mt-3 space-y-2 break-all rounded-lg bg-flow-panel p-3 text-xs">
-                    <p>
-                      URL: <code>{{ webhookUrl }}</code
-                      ><button
-                        type="button"
-                        on-click="copyValue(webhookUrl)"
-                        aria-label="Copy webhook URL"
-                        class="ml-3 underline"
-                      >
-                        Copy
-                      </button>
-                    </p>
-                    <p>
-                      Signing secret: <code>{{ webhookSecret }}</code
-                      ><button
-                        type="button"
-                        on-click="copyValue(webhookSecret)"
-                        aria-label="Copy webhook signing secret"
-                        class="ml-3 underline"
-                      >
-                        Copy
-                      </button>
-                    </p>
-                  </div></template
-                >
-              </div>
             </div>
-            <h3 class="mt-6 text-xs font-semibold uppercase tracking-wider text-flow-muted">Workspace members</h3>
+            <h3 class="mt-6 text-xs font-semibold uppercase tracking-wider text-flow-muted">Current members</h3>
             <ul class="mt-2 space-y-2">
               <template for="member of members"
                 ><li
@@ -154,6 +119,73 @@
             </ul>
           </section>
           <section
+            id="team-webhooks"
+            class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
+            class-hidden="!isAdmin"
+            aria-labelledby="team-webhooks-title"
+          >
+            <h2 id="team-webhooks-title" class="text-lg font-semibold">Workspace webhooks</h2>
+            <p class="mt-1 text-sm text-flow-muted">
+              Each registration has its own URL and signing secret. Copy both when created; the signing secret is only
+              shown once.
+            </p>
+            <div class="mt-4 flex gap-2">
+              <input
+                bind-value="webhookProvider"
+                on-input="webhookProvider = $event.target.value"
+                aria-label="Webhook provider"
+                value="github"
+                maxlength="64"
+                pattern="[a-z0-9-]+"
+                class="min-w-0 flex-1 rounded-lg border border-flow-border px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                on-click="createWebhook()"
+                class="rounded-lg border border-flow-border px-4 py-2 text-sm"
+              >
+                Create webhook
+              </button>
+            </div>
+            <ul class="mt-3 space-y-2">
+              <template for="registration of webhooks"
+                ><li class="flex items-center justify-between rounded-lg border border-flow-border px-3 py-2 text-sm">
+                  <span>{{ registration.provider }} · created {{ registration.createdAt }}</span>
+                  <button type="button" on-click="revokeWebhook(registration)" class="text-xs text-rose-700 underline">
+                    Revoke
+                  </button>
+                </li></template
+              >
+            </ul>
+            <template if="webhookUrl"
+              ><div class="mt-3 space-y-2 break-all rounded-lg bg-flow-panel p-3 text-xs">
+                <p>
+                  URL: <code>{{ webhookUrl }}</code
+                  ><button
+                    type="button"
+                    on-click="copyValue(webhookUrl)"
+                    aria-label="Copy webhook URL"
+                    class="ml-3 underline"
+                  >
+                    Copy
+                  </button>
+                </p>
+                <p>
+                  Signing secret: <code>{{ webhookSecret }}</code
+                  ><button
+                    type="button"
+                    on-click="copyValue(webhookSecret)"
+                    aria-label="Copy webhook signing secret"
+                    class="ml-3 underline"
+                  >
+                    Copy
+                  </button>
+                </p>
+              </div></template
+            >
+          </section>
+          <section
+            id="team-runners"
             class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
             aria-labelledby="team-runners-title"
           >
@@ -232,6 +264,7 @@
             </ul>
           </section>
           <section
+            id="workspace-api-keys"
             class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
             class-hidden="!isAdmin"
             aria-labelledby="workspace-api-keys-title"
@@ -291,6 +324,7 @@
             </ul>
           </section>
           <section
+            id="workspace-secrets"
             class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
             class-hidden="!isAdmin"
             aria-labelledby="workspace-secrets-title"
