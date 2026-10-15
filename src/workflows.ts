@@ -221,6 +221,24 @@ export class WorkflowRepository {
     }));
   }
 
+  async listActive(): Promise<StoredWorkflow[]> {
+    const rows = await db.all(`
+      SELECT w.id, w.name, r.source_yaml, w.active_revision AS revision, w.status, w.enabled
+      FROM workflows w
+      JOIN workflow_revisions r ON r.workflow_id = w.id AND r.revision = w.active_revision
+      WHERE w.status = 'published' AND w.enabled = 1
+      ORDER BY w.name
+    `);
+    return rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      sourceYaml: row.source_yaml,
+      revision: Number(row.revision),
+      status: row.status,
+      enabled: Boolean(row.enabled),
+    }));
+  }
+
   async get(id: string): Promise<StoredWorkflow | null> {
     const row = await db.get(
       "SELECT id, name, source_yaml, COALESCE(active_revision, 0) AS revision, status, enabled FROM workflows WHERE id = ?",

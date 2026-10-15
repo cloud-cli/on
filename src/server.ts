@@ -519,6 +519,73 @@ export class WebhookServer {
       return this.renderDashboardJobs(res, limit, afterId, beforeId, filter, workflowId);
     }
 
+    const workflowApiV1Match = url.pathname.match(/^\/api\/v1\/workflows(?:\/([a-z0-9-]+))?$/);
+    if (workflowApiV1Match) {
+      const workflowId = workflowApiV1Match[1];
+      if (req.method === "GET") {
+        if (!(await this.requireWorkflowApiScope(req, res, "workflows:read"))) {
+          return;
+        }
+        await this.workflowsLoaded;
+        if (!workflowId) {
+          const workflows =
+            url.searchParams.get("activeOnly") === "true"
+              ? await this.workflows.listActive()
+              : await this.workflows.list();
+          res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+          return res.end(JSON.stringify({ workflows }));
+        }
+        const revisionParam = url.searchParams.get("revision");
+        const revision = revisionParam === null ? undefined : Number(revisionParam);
+        if (revisionParam !== null && (!Number.isSafeInteger(revision) || (revision as number) < 1)) {
+          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          return res.end(JSON.stringify({ error: "revision must be a positive integer" }));
+        }
+        const workflow =
+          revision === undefined
+            ? await this.workflows.get(workflowId)
+            : await this.workflows.getRevisionSnapshot(workflowId, revision);
+        if (!workflow) {
+          res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+          return res.end(JSON.stringify({ error: "Workflow not found" }));
+        }
+        res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+        return res.end(JSON.stringify(workflow));
+      }
+      if (workflowId && req.method === "PUT") {
+        if (!(await this.requireWorkflowApiScope(req, res, "workflows:write"))) {
+          return;
+        }
+        const body = await this.readJson(req, res);
+        if (!body || typeof body.sourceYaml !== "string") {
+          if (!res.headersSent) {
+            res
+              .writeHead(400, { "Content-Type": "application/json; charset=utf-8" })
+              .end(JSON.stringify({ error: "sourceYaml is required" }));
+          }
+          return;
+        }
+        try {
+          const workflow = await this.workflows.saveDraft(workflowId, body.sourceYaml, body.enabled !== false);
+          res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+          return res.end(JSON.stringify(workflow));
+        } catch (error: any) {
+          res.writeHead(422, { "Content-Type": "application/json; charset=utf-8" });
+          return res.end(JSON.stringify({ error: error.message }));
+        }
+      }
+      if (workflowId && req.method === "DELETE") {
+        if (!(await this.requireWorkflowApiScope(req, res, "workflows:write"))) {
+          return;
+        }
+        if (!(await this.workflows.delete(workflowId))) {
+          res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+          return res.end(JSON.stringify({ error: "Workflow not found" }));
+        }
+        return res.writeHead(204).end();
+      }
+    }
+
     const dispatchMatch = url.pathname.match(/^\/api\/dispatch\/([a-z0-9-]+)$/);
     if (req.method === "POST" && dispatchMatch) {
       return this.handleDispatch(req, res, dispatchMatch[1]);
@@ -1001,6 +1068,25 @@ export class WebhookServer {
     }
     const scopes = await this.apiKeys.scopesForToken(authorization.slice(7));
     return Boolean(scopes?.includes(scope));
+  }
+
+  private async requireWorkflowApiScope(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    scope: "workflows:read" | "workflows:write",
+  ): Promise<boolean> {
+    if (this.oidc?.userFromCookie(req.headers.cookie)) {
+      return true;
+    }
+    if (!(await this.requireAuthenticatedApiRequest(req, res))) {
+      return false;
+    }
+    if (await this.hasScope(req, scope)) {
+      return true;
+    }
+    res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ error: `Missing required scope: ${scope}` }));
+    return false;
   }
 
   private requireAuthenticatedUser(req: http.IncomingMessage, res: http.ServerResponse): boolean {

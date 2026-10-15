@@ -23,15 +23,17 @@ describe("OpenAPI specification", () => {
     expect(jobStatus.responses["200"].content["application/json"].schema).toEqual({
       $ref: "#/components/schemas/JobStatusDetails",
     });
-    expect(spec.components.schemas.JobStatusDetails.required).toEqual([
-      "id",
-      "status",
-      "createdAt",
-      "lastUpdated",
-    ]);
+    expect(spec.components.schemas.JobStatusDetails.required).toEqual(["id", "status", "createdAt", "lastUpdated"]);
     expect(spec.paths["/api/session"].get.security).toEqual([{ oidcSessionCookie: [] }]);
     expect(spec.paths["/api/workflows/{workflowId}"]).toHaveProperty("put");
     expect(spec.paths["/api/workflows/{workflowId}/run"]).toHaveProperty("post");
+    expect(spec.paths["/api/v1/workflows"].get.security).toEqual([{ oidcSessionCookie: [] }, { bearerAuth: [] }]);
+    expect(spec.paths["/api/v1/workflows/{workflowId}"].get.security).toEqual([
+      { oidcSessionCookie: [] },
+      { bearerAuth: [] },
+    ]);
+    expect(spec.paths["/api/v1/workflows/{workflowId}"]).toHaveProperty("put");
+    expect(spec.paths["/api/v1/workflows/{workflowId}"]).toHaveProperty("delete");
     expect(spec.paths["/api/runs/{jobId}/artifacts/{path}"]).toHaveProperty("get");
     expect(spec.paths["/webhooks/{provider}"]).toHaveProperty("post");
   });

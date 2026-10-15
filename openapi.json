@@ -321,6 +321,97 @@
         }
       }
     },
+    "/api/v1/workflows": {
+      "get": {
+        "tags": ["workflows"],
+        "summary": "List workflows through the scoped API",
+        "description": "Requires an OIDC session or a bearer token with the workflows:read scope. Set activeOnly=true to return only enabled published workflows, with their active revision source YAML.",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "activeOnly",
+            "in": "query",
+            "description": "When true, limit results to enabled published workflows and return the active revision source.",
+            "required": false,
+            "schema": { "type": "boolean", "default": false }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workflow list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["workflows"],
+                  "properties": {
+                    "workflows": { "type": "array", "items": { "$ref": "#/components/schemas/Workflow" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v1/workflows/{workflowId}": {
+      "get": {
+        "tags": ["workflows"],
+        "summary": "Get a workflow or historical revision through the scoped API",
+        "description": "Requires an OIDC session or a bearer token with the workflows:read scope.",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/WorkflowId" },
+          { "$ref": "#/components/parameters/Revision" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workflow source and metadata",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["workflows"],
+        "summary": "Save a workflow draft through the scoped API",
+        "description": "Requires an OIDC session or a bearer token with the workflows:write scope. Saving a draft does not publish it.",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowSave" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Draft saved",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Workflow" } } }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
+      },
+      "delete": {
+        "tags": ["workflows"],
+        "summary": "Delete a workflow and its revisions through the scoped API",
+        "description": "Requires an OIDC session or a bearer token with the workflows:write scope.",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
+        "responses": {
+          "204": { "description": "Workflow deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/api/users": {
       "get": {
         "tags": ["users"],
