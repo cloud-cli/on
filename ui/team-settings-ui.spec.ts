@@ -14,6 +14,8 @@ describe("team settings UI", () => {
     expect(html).toContain('for="member of members"');
     expect(html).toContain('class-hidden="!isAdmin"');
     expect(html).toContain('script setup src="/team-settings-ui.mjs"');
+    expect(html).not.toContain("Personal settings</a>");
+    expect(html.match(/rounded-xl border border-flow-border bg-flow-card p-5/g)).toHaveLength(4);
   });
 
   it("loads and mutates only the team identified by the route", () => {
@@ -63,6 +65,9 @@ describe("team settings UI", () => {
     const html = readFileSync(new URL("../src/teams-landing.html", import.meta.url), "utf8");
     const landing = readFileSync(new URL("../src/teams-landing.mjs", import.meta.url), "utf8");
     expect(html).toContain("Choose a workspace");
+    expect(html).toContain('<main class="w-full space-y-5 py-6">');
+    expect(html).toContain('class="rounded-xl border border-flow-border bg-flow-card p-5" aria-label="Workspace list"');
+    expect(html).toContain('class="rounded-xl border border-flow-border bg-white p-5"');
 
     expect(html).toContain("encodeURIComponent(team.id) + '/settings'");
     expect(landing).toContain('apiFetch("/api/v1/workspaces"');
