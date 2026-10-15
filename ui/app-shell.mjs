@@ -1,6 +1,6 @@
 import { onDestroy, onInit, ref } from "@li3/web";
 import "@app/api-client.mjs";
-import { applyThemePreference, getAuthPreference } from "@app/preferences.mjs";
+import { applyThemePreference, getAuthPreference, setAuthPreference } from "@app/preferences.mjs";
 
 export default function setup() {
   const activeSection = ref("workspaces");
@@ -10,6 +10,12 @@ export default function setup() {
   const userInitial = ref("U");
   const teams = ref([]);
   const selectedWorkspaceId = ref(localStorage.getItem("runner-team-id") || "");
+  const themePreference = ref("system");
+  const themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+  const isDarkTheme = ref(
+    document.documentElement.dataset.theme === "dark" ||
+      (!document.documentElement.dataset.theme && themeMedia.matches),
+  );
   const loadTeams = async () => {
     try {
       const response = await fetch("/api/v1/workspaces", { headers: { accept: "application/json" } });
@@ -55,6 +61,22 @@ export default function setup() {
     selectedWorkspaceId.value = teamId;
     activeSection.value = "workspace-runs";
   };
+  const syncSystemTheme = () => {
+    if (themePreference.value === "system") {
+      isDarkTheme.value = themeMedia.matches;
+    }
+  };
+  const toggleTheme = async () => {
+    const nextTheme = isDarkTheme.value ? "light" : "dark";
+    try {
+      await setAuthPreference("theme", nextTheme);
+      themePreference.value = nextTheme;
+      isDarkTheme.value = nextTheme === "dark";
+      applyThemePreference(nextTheme);
+    } catch (error) {
+      console.error("Unable to save appearance preference", error);
+    }
+  };
   const syncWorkspace = (event) => {
     selectedWorkspaceId.value = event.detail?.teamId || localStorage.getItem("runner-team-id") || "";
   };
@@ -62,9 +84,15 @@ export default function setup() {
   onInit(() => {
     void getAuthPreference("theme")
       .then((theme) => {
-        applyThemePreference(theme);
+        themePreference.value = ["light", "dark", "system"].includes(theme) ? theme : "system";
+        applyThemePreference(themePreference.value);
+        syncSystemTheme();
       })
-      .catch((error) => console.error("Unable to load appearance preference", error));
+      .catch((error) => {
+        syncSystemTheme();
+        console.error("Unable to load appearance preference", error);
+      });
+    themeMedia.addEventListener("change", syncSystemTheme);
     syncSection();
     window.addEventListener("popstate", syncSection);
     window.addEventListener("runner-team-changed", syncWorkspace);
@@ -92,6 +120,7 @@ export default function setup() {
     window.removeEventListener("popstate", syncSection);
     window.removeEventListener("runner-team-changed", syncWorkspace);
     window.removeEventListener("runner-teams-updated", loadTeams);
+    themeMedia.removeEventListener("change", syncSystemTheme);
     document.removeEventListener("keydown", handleSkipKeydown);
   });
 
@@ -103,7 +132,9 @@ export default function setup() {
     oidcProviderUrl,
     teams,
     selectedWorkspaceId,
+    isDarkTheme,
     setActive,
     selectWorkspace,
+    toggleTheme,
   };
 }

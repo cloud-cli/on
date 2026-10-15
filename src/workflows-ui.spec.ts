@@ -77,9 +77,11 @@ describe("workflow management UI", () => {
     expect(source).toContain("Save draft");
     expect(source).toContain('href="/workflows/new"');
     expect(source).toContain('id="workflow-workspace"');
-    expect(source).toContain("Workflows stay top-level and remain visible across workspaces.");
     expect(source).toContain('bind-value="selectedWorkspaceId"');
     expect(source).toContain('on-change="setWorkspace($event)"');
+    expect(source).toContain('<label for="workflow-workspace" class="sr-only">Workspace</label>');
+    expect(source).not.toContain('id="workflow-workspace-help"');
+    expect(source).not.toContain("Workflows stay top-level and remain visible across workspaces.");
     expect(source.indexOf('id="workflow-workspace"')).toBeLessThan(source.indexOf('aria-label="Save workflow draft"'));
     expect(source).not.toContain('aria-label="Workflow count"');
     expect(source).toContain("text-base font-semibold text-flow-foreground");

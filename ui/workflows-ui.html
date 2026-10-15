@@ -25,7 +25,7 @@
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
 
     <template app>
-      <main class="w-full space-y-5 py-6">
+      <main class="w-full space-y-5 py-2">
         <template if="notice">
           <div
             role="status"
@@ -116,25 +116,19 @@
             <div class="border-b border-flow-border bg-flow-panel px-4 py-4 sm:px-5">
               <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div class="w-full lg:max-w-xs">
-                  <label for="workflow-workspace" class="block text-sm font-semibold text-flow-foreground"
-                    >Workspace</label
-                  >
+                  <label for="workflow-workspace" class="sr-only">Workspace</label>
                   <select
                     id="workflow-workspace"
                     bind-value="selectedWorkspaceId"
                     on-change="setWorkspace($event)"
                     bind-disabled="workspacesLoading || selectedId"
-                    aria-describedby="workflow-workspace-help"
-                    class="mt-1.5 w-full rounded-lg border border-flow-border bg-flow-card px-3 py-2.5 text-sm text-flow-foreground outline-none focus:border-flow-primary disabled:cursor-not-allowed disabled:opacity-70"
+                    class="w-full rounded-lg border border-flow-border bg-flow-card px-3 py-2.5 text-sm text-flow-foreground outline-none focus:border-flow-primary disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     <option value="">Select a workspace</option>
                     <template for="workspace of availableWorkspaces"
                       ><option attr-value="workspace.id">{{ workspace.name }}</option></template
                     >
                   </select>
-                  <p id="workflow-workspace-help" class="mt-1 text-xs text-flow-muted">
-                    Workflows stay top-level and remain visible across workspaces.
-                  </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                   <label class="inline-flex items-center gap-2 text-sm text-flow-secondary">

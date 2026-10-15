@@ -32,6 +32,8 @@ describe("team settings UI", () => {
     expect(html).toContain('<h2 id="team-runners-title" class="text-lg font-semibold">Task Runners</h2>');
     expect(html).toContain('<h2 id="workspace-api-keys-title" class="text-lg font-semibold">API keys</h2>');
     expect(html).toContain('<h2 id="workspace-secrets-title" class="text-lg font-semibold">Task Runner Secrets</h2>');
+    expect(html).toContain("bg-flow-warning/10");
+    expect(html).toContain("text-flow-warning");
     expect(html).toContain('placeholder="API key name"');
     expect(html).not.toContain('value="github"');
     expect(html).toContain('on-change="setFileMode($event)"');
@@ -127,7 +129,7 @@ describe("team settings UI", () => {
       'class="text-xs font-semibold uppercase tracking-wider text-flow-muted">Your workspaces',
     );
     expect(html).not.toContain("Choose a workspace");
-    expect(html).toContain('<main class="w-full space-y-5 py-6">');
+    expect(html).toContain('<main class="w-full space-y-5 py-2">');
     expect(html).toContain(
       'class="flex flex-wrap items-center gap-3 rounded-xl border border-flow-border bg-white p-5"',
     );

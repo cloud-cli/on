@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { WebhookServer } from "./server.js";
 import shellSetup from "../ui/app-shell.mjs?raw";
@@ -7,6 +7,16 @@ import preferencesSetup from "../ui/preferences.mjs?raw";
 const html = readFileSync(new URL("../ui/app-shell.html", import.meta.url), "utf8");
 
 describe("Flow application shell", () => {
+  it("uses compact vertical spacing on every page main", () => {
+    for (const directory of ["ui", "src"]) {
+      const files = readdirSync(new URL(`../${directory}/`, import.meta.url)).filter((file) => file.endsWith(".html"));
+      for (const file of files) {
+        const source = readFileSync(new URL(`../${directory}/${file}`, import.meta.url), "utf8");
+        expect(source, `${directory}/${file}`).not.toMatch(/<main\b[^>]*\bpy-6\b/);
+      }
+    }
+  });
+
   it("provides responsive, accessible navigation around the mounted router", () => {
     expect(shellSetup).toContain('import "@app/api-client.mjs"');
     expect(html).toContain('aria-label="Primary navigation"');
@@ -33,6 +43,13 @@ describe("Flow application shell", () => {
     expect(html).not.toContain("overflow-hidden bg-flow-background");
     expect(html).toContain('role="group"');
     expect(html).toContain('aria-label="Signed-in user"');
+    expect(html).toContain('on-click="toggleTheme()"');
+    expect(html).toContain('class="flex items-center justify-end gap-4');
+    expect(html).toContain('md:flex"');
+    expect(html).toContain("isDarkTheme ? 'sun' : 'moon'");
+    expect(html).toContain("isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'");
+    expect(shellSetup).toContain('setAuthPreference("theme", nextTheme)');
+    expect(shellSetup).toContain('themeMedia.addEventListener("change", syncSystemTheme)');
     expect(html).toContain('attr-src="user.photo || user.picture || null"');
     expect(html).toContain("aria-[current=page]:font-semibold");
     expect(html).not.toContain('<main class="min-h-screen min-w-0');
