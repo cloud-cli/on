@@ -83,9 +83,17 @@ describe("team settings UI", () => {
     const { readFileSync } = await import("node:fs");
     const html = readFileSync(new URL("../src/teams-landing.html", import.meta.url), "utf8");
     const landing = readFileSync(new URL("../src/teams-landing.mjs", import.meta.url), "utf8");
-    expect(html).toContain("Choose a workspace");
+    expect(html).toContain('<h1 class="text-2xl font-semibold">Your workspaces</h1>');
+    expect(html).not.toContain(
+      'class="text-xs font-semibold uppercase tracking-wider text-flow-muted">Your workspaces',
+    );
+    expect(html).not.toContain("Choose a workspace");
     expect(html).toContain('<main class="w-full space-y-5 py-6">');
-    expect(html).toContain('class="rounded-xl border border-flow-border bg-flow-card p-5" aria-label="Workspace list"');
+    expect(html).toContain(
+      'class="flex flex-wrap items-center gap-3 rounded-xl border border-flow-border bg-white p-5"',
+    );
+    expect(html).toContain('class="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto"');
+    expect(html).toContain('class="rounded-xl border border-flow-border bg-white p-5" aria-label="Workspace list"');
     expect(html).toContain('class="rounded-xl border border-flow-border bg-white p-5"');
 
     expect(html).toContain("encodeURIComponent(team.id) + '/settings'");

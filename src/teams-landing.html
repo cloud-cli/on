@@ -12,24 +12,31 @@
   <body class="min-h-screen bg-flow-background p-4 font-sans text-flow-foreground md:p-6">
     <template app>
       <main class="w-full space-y-5 py-6">
-        <p class="text-xs font-semibold uppercase tracking-wider text-flow-muted">Your workspaces</p>
-        <h1 class="text-2xl font-semibold">Choose a workspace</h1>
-        <form class="flex flex-wrap gap-2" on-submit.prevent="createTeam($event)">
-          <label class="sr-only" for="new-team-name">New workspace name</label>
-          <input
-            id="new-team-name"
-            bind-value="newTeamName"
-            on-input="newTeamName = $event.target.value"
-            placeholder="New workspace name"
-            maxlength="100"
-            class="min-w-48 rounded-lg border border-flow-border px-3 py-2 text-sm"
-          />
-          <button type="submit" class="rounded-lg bg-flow-primary px-4 py-2 text-sm font-medium text-white">
-            Create workspace
-          </button>
-          <p class="w-full text-sm text-flow-muted" role="status">{{ message }}</p>
-        </form>
-        <section class="rounded-xl border border-flow-border bg-flow-card p-5" aria-label="Workspace list">
+        <section class="flex flex-wrap items-center gap-3 rounded-xl border border-flow-border bg-white p-5">
+          <h1 class="text-2xl font-semibold">Your workspaces</h1>
+          <form
+            class="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto"
+            on-submit.prevent="createTeam($event)"
+          >
+            <label class="sr-only" for="new-team-name">New workspace name</label>
+            <input
+              id="new-team-name"
+              bind-value="newTeamName"
+              on-input="newTeamName = $event.target.value"
+              placeholder="New workspace name"
+              maxlength="100"
+              class="min-w-0 flex-1 rounded-lg border border-flow-border px-3 py-2 text-sm sm:min-w-48"
+            />
+            <button
+              type="submit"
+              class="whitespace-nowrap rounded-lg bg-flow-primary px-4 py-2 text-sm font-medium text-white"
+            >
+              Create workspace
+            </button>
+            <p class="w-full text-sm text-flow-muted" role="status">{{ message }}</p>
+          </form>
+        </section>
+        <section class="rounded-xl border border-flow-border bg-white p-5" aria-label="Workspace list">
           <ul class="grid gap-3 sm:grid-cols-2">
             <template for="team of teams"
               ><li>
