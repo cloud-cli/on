@@ -36,7 +36,7 @@ export default function setup() {
   };
 
   const syncSection = () => {
-    const path = window.location.pathname;
+    const path = window.location.pathname.replace(/^\/ui/, "");
     const workspaceRuns = path.match(/^\/workspaces\/([^/]+)\/runs$/);
     if (workspaceRuns) {
       activeSection.value = "workspace-runs";

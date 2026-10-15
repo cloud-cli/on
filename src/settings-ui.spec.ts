@@ -33,7 +33,7 @@ describe("personal settings UI", () => {
     expect(settingsSetup).toContain('getAuthPreference("theme")');
     expect(serverSetup).toContain("generateSettingsHtml()");
     expect(timezonePreferences).toContain("auth.getPropertyNS(`on:${key}`)");
-    expect(timezonePreferences).toContain('fetch("/api/auth/session"');
+    expect(timezonePreferences).toContain('fetch("/api/v1/auth/session"');
     expect(timezonePreferences).toContain('new URL("/index.mjs"');
     expect(timezonePreferences).not.toContain("https://auth.api.apphor.de/index.mjs");
     expect(timezonePreferences).toContain('apiFetch("/api/v1/preferences"');

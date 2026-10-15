@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#eef2ec" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/on.css" />
+    <link rel="manifest" href="/assets/manifest.webmanifest" />
+    <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/on.css" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
     <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
     <title>Workflow Run</title>
     <script type="importmap">
       {
         "imports": {
-          "@app/": "/",
+          "@app/": "/assets/",
           "@li3/": "https://at-li3.static.apphor.de/",
           "ansi_up": "https://esm.sh/ansi_up@6.0.6",
           "marked": "https://cdn.jsdelivr.net/npm/marked@18.0.12/lib/marked.esm.js"
@@ -28,7 +28,7 @@
         <header class="run-heading flex flex-wrap items-center justify-between gap-3">
           <div>
             <a
-              href="/runs"
+              href="/ui/runs"
               class="mb-3 inline-flex items-center gap-2 text-sm text-flow-secondary hover:text-flow-primary"
             >
               <lucide-icon icon="arrow-left" size="15"></lucide-icon>All runs
@@ -129,7 +129,7 @@
                 >Worker</span
               >
               <span class="mt-1 block truncate text-xs text-flow-foreground sm:text-sm"
-                >{{ report.workerId || 'Awaiting worker' }}</span
+                >{{ report.workerName || report.workerId || 'Awaiting worker' }}</span
               >
             </div>
           </div>
@@ -394,7 +394,7 @@
                 <template for="run of previousRuns">
                   <li>
                     <a
-                      attr-href="'/runs/' + run.id"
+                      attr-href="'/ui/runs/' + run.id"
                       class="flex items-center justify-between gap-3 px-5 py-4 text-sm text-flow-foreground hover:bg-flow-panel"
                     >
                       <span><span class="font-mono">#{{ run.id }}</span> · {{ formatDate(run.startedAt) }}</span>
@@ -409,7 +409,7 @@
           <div class-hidden="detailTab !== 'source'">
             <div class="flex justify-end border-b border-flow-border px-4 py-2" class-hidden="!isAdmin">
               <a
-                attr-href="'/workflows/' + report.workflowId"
+                attr-href="'/ui/workflows/' + report.workflowId"
                 class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-flow-primary outline-none transition hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
               >
                 <lucide-icon icon="pencil" size="15"></lucide-icon>Edit workflow
@@ -510,7 +510,7 @@
         </template>
       </main>
 
-      <script setup src="/run.mjs"></script>
+      <script setup src="/assets/run.mjs"></script>
     </template>
 
     <script type="module">

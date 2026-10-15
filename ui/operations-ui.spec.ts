@@ -10,10 +10,10 @@ describe("global operations page", () => {
     expect(html).toContain("Worker presence");
     expect(html).toContain("Runners");
     expect(html).toContain("OIDC users");
-    expect(setup).toContain("/api/workers");
+    expect(setup).toContain("/api/v1/workers");
     expect(setup).toContain("/api/v1/runner-enrollments");
     expect(setup).toContain("/api/v1/runners/");
-    expect(setup).toContain("/api/users/");
+    expect(setup).toContain("/api/v1/users/");
     expect(setup).not.toMatch(/api-keys|secrets/);
   });
 

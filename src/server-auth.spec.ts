@@ -33,7 +33,7 @@ describe("browser admin-route authorization", () => {
     const { allowed, response } = invokeRequireAdmin({ authenticated: true });
 
     expect(allowed).toBe(false);
-    expect(response.writeHead).toHaveBeenCalledWith(302, { Location: "/settings" });
+    expect(response.writeHead).toHaveBeenCalledWith(302, { Location: "/ui/settings" });
     expect(response.end).toHaveBeenCalledOnce();
   });
 
@@ -69,7 +69,7 @@ describe("browser admin-route authorization", () => {
     expect(admin.allowed).toBe(true);
     expect(admin.response.writeHead).not.toHaveBeenCalled();
 
-    const api = invokeRequireAdmin({ method: "POST", url: "/api/workflows" });
+    const api = invokeRequireAdmin({ method: "POST", url: "/api/v1/workflows" });
     expect(api.allowed).toBe(false);
     expect(api.response.writeHead).toHaveBeenCalledWith(401, { "Content-Type": "application/json; charset=utf-8" });
   });
@@ -235,7 +235,7 @@ describe("job status endpoint", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(
       server,
-      { method: "GET", url: "/api/jobs/42/status", headers: { host: "flow.test", "x-team-id": "team-a" } },
+      { method: "GET", url: "/api/v1/jobs/42/status", headers: { host: "flow.test", "x-team-id": "team-a" } },
       res,
     );
 
@@ -266,7 +266,7 @@ describe("job status endpoint", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(
       server,
-      { method: "GET", url: "/api/jobs/42/status", headers: { host: "flow.test", "x-team-id": "team-a" } },
+      { method: "GET", url: "/api/v1/jobs/42/status", headers: { host: "flow.test", "x-team-id": "team-a" } },
       res,
     );
 
@@ -289,7 +289,7 @@ describe("job status endpoint", () => {
     const res = response();
     const req = {
       method: "GET",
-      url: "/api/jobs/42/status",
+      url: "/api/v1/jobs/42/status",
       headers: { host: "flow.test", authorization: "Bearer valid-oidc-token", "x-team-id": "team-a" },
     };
 
@@ -310,7 +310,7 @@ describe("job status endpoint", () => {
     };
     attachHandlers(server);
     const res = response();
-    const req = { method: "GET", url: "/api/jobs/42/status", headers: { host: "flow.test" } };
+    const req = { method: "GET", url: "/api/v1/jobs/42/status", headers: { host: "flow.test" } };
 
     await (WebhookServer.prototype as any).handleRequest.call(server, req, res);
 
@@ -333,7 +333,7 @@ describe("job status endpoint", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(
       server,
-      { method: "GET", url: "/api/jobs", headers: { host: "flow.test" } },
+      { method: "GET", url: "/api/v1/jobs", headers: { host: "flow.test" } },
       res,
     );
 
@@ -342,14 +342,14 @@ describe("job status endpoint", () => {
   });
 
   it.each([
-    ["OpenAPI discovery", "GET", "/api"],
-    ["versioned OpenAPI discovery", "GET", "/api/v1"],
-    ["run view", "GET", "/api/runs/42"],
-    ["job wait", "GET", "/api/jobs/42/wait?timeout=0"],
-    ["event stream", "GET", "/api/events"],
-    ["push public key", "GET", "/api/push/public-key"],
-    ["push subscribe", "POST", "/api/push/subscriptions"],
-    ["push unsubscribe", "DELETE", "/api/push/subscriptions"],
+    ["OpenAPI discovery", "GET", "/api/v1"],
+    ["versioned OpenAPI discovery", "GET", "/api/v1/v1"],
+    ["run view", "GET", "/api/v1/runs/42"],
+    ["job wait", "GET", "/api/v1/jobs/42/wait?timeout=0"],
+    ["event stream", "GET", "/api/v1/events"],
+    ["push public key", "GET", "/api/v1/push/public-key"],
+    ["push subscribe", "POST", "/api/v1/push/subscriptions"],
+    ["push unsubscribe", "DELETE", "/api/v1/push/subscriptions"],
   ])("requires authentication for %s", async (_label, method, url) => {
     const server: any = {
       oidc: {
@@ -385,7 +385,7 @@ describe("job status endpoint", () => {
       server,
       {
         method: "GET",
-        url: "/api/events",
+        url: "/api/v1/events",
         headers: { host: "flow.test", authorization: "Bearer worker-secret" },
       },
       response(),
@@ -404,12 +404,12 @@ describe("job status endpoint", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(
       server,
-      { method: "GET", url: "/runs/42", headers: { host: "flow.test" } },
+      { method: "GET", url: "/ui/runs/42", headers: { host: "flow.test" } },
       res,
     );
 
     expect(server.renderRunDetails).not.toHaveBeenCalled();
-    expect(res.writeHead).toHaveBeenCalledWith(302, { Location: "/auth/login?url=%2Fruns%2F42" });
+    expect(res.writeHead).toHaveBeenCalledWith(302, { Location: "/auth/login?url=%2Fui%2Fruns%2F42" });
   });
 });
 
@@ -507,7 +507,7 @@ describe("workflow and secret settings authentication", () => {
     expect(response.writeHead).toHaveBeenCalledWith(204);
   });
 
-  it.each(["/settings/workflows", "/settings/workflows/new"])("serves %s to any signed-in user", async (path) => {
+  it.each(["/ui/settings/workflows", "/ui/settings/workflows/new"])("serves %s to any signed-in user", async (path) => {
     const server = {
       oidc: { enabled: true, userFromCookie: () => ({ id: "user-1", role: "user" }) },
       requireAuthenticatedUser: vi.fn(() => true),
@@ -524,7 +524,7 @@ describe("workflow and secret settings authentication", () => {
 
     expect(server.requireAuthenticatedUser).toHaveBeenCalled();
     expect(response.writeHead).toHaveBeenCalledWith(302, {
-      Location: path.replace(/^\/settings\/workflows/, "/workflows"),
+      Location: path.replace("/ui/settings/workflows", "/ui/workflows"),
     });
     expect(response.end).toHaveBeenCalledOnce();
     expect(server.renderAppShell).not.toHaveBeenCalled();
@@ -537,7 +537,7 @@ describe("workflow and secret settings authentication", () => {
       renderPageComponent: vi.fn(),
     };
     const request = {
-      url: "/pages/workflows.html?page=secrets",
+      url: "/assets/pages/workflows.html?page=secrets",
       method: "GET",
       headers: { host: "flow.test", cookie: "runner_oidc_session=session" },
     };
@@ -555,7 +555,7 @@ describe("workflow and secret settings authentication", () => {
       renderAppShell: vi.fn(),
     };
     const request = {
-      url: "/settings/timezone",
+      url: "/ui/settings/timezone",
       method: "GET",
       headers: { host: "flow.test", cookie: "runner_oidc_session=session" },
     };
@@ -566,6 +566,107 @@ describe("workflow and secret settings authentication", () => {
     expect(server.requireAdmin).not.toHaveBeenCalled();
     expect(server.renderAppShell).not.toHaveBeenCalled();
     expect(response.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json; charset=utf-8" });
+  });
+});
+
+describe("canonical route boundaries", () => {
+  it.each(["/api/jobs", "/webhooks/github", "/runs", "/workflows", "/on.css", "/assets/"])(
+    "rejects legacy public URL %s",
+    async (url) => {
+      const response = { writeHead: vi.fn(), end: vi.fn() };
+      await (WebhookServer.prototype as any).handleRequest.call(
+        {},
+        { method: "GET", url, headers: { host: "flow.test" } },
+        response,
+      );
+      expect(response.writeHead).toHaveBeenCalledWith(404, expect.any(Object));
+      expect(response.end).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("serves canonical UI paths through the existing authenticated page handlers", async () => {
+    const response = { writeHead: vi.fn(), end: vi.fn() };
+    const server = {
+      oidc: { enabled: true, userFromCookie: vi.fn(() => ({ id: "user-1" })) },
+      requireAuthenticatedUser: vi.fn(() => true),
+      renderAppShell: vi.fn(),
+    };
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      { method: "GET", url: "/ui/workflows", headers: { host: "flow.test", cookie: "session" } },
+      response,
+    );
+    expect(server.requireAuthenticatedUser).toHaveBeenCalledOnce();
+    expect(server.renderAppShell).toHaveBeenCalledWith(response);
+    expect(response.writeHead).not.toHaveBeenCalledWith(404, expect.anything());
+  });
+
+  it("uses registered friendly names in worker presence responses", async () => {
+    const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    const server = {
+      workflowsLoaded: Promise.resolve(),
+      hasScope: vi.fn(async () => true),
+      queue: { listWorkerPresence: vi.fn(async () => [{ workerId: "runner-1", online: true }]) },
+      runners: { list: vi.fn(async () => [{ id: "runner-1", name: "build-west" }]) },
+    };
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      { method: "GET", url: "/api/v1/workers", headers: { host: "flow.test" } },
+      response,
+    );
+    expect(JSON.parse(response.end.mock.calls[0][0])).toEqual({
+      workers: [{ workerId: "runner-1", online: true, name: "build-west" }],
+    });
+  });
+
+  it("allows only server administrators to rename a runner over the v1 API", async () => {
+    const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    const server = {
+      workflowsLoaded: Promise.resolve(),
+      requireSameOrigin: vi.fn(() => true),
+      requireAuthenticatedUser: vi.fn(() => true),
+      oidc: { userFromCookie: vi.fn(() => ({ id: "admin-user" })) },
+      oidcUsers: { role: vi.fn(async () => "admin") },
+      readJson: vi.fn(async () => ({ name: "build-west" })),
+      runners: {
+        rename: vi.fn(async () => true),
+        list: vi.fn(async () => [{ id: "runner-1", name: "build-west" }]),
+      },
+    };
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      {
+        method: "PUT",
+        url: "/api/v1/runners/runner-1",
+        headers: { host: "flow.test", origin: "https://flow.test", cookie: "session" },
+      },
+      response,
+    );
+    expect(server.runners.rename).toHaveBeenCalledWith("runner-1", "build-west");
+    expect(response.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({ "Cache-Control": "no-store" }));
+  });
+
+  it("does not rename runners for a non-admin OIDC user", async () => {
+    const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    const server = {
+      workflowsLoaded: Promise.resolve(),
+      requireSameOrigin: vi.fn(() => true),
+      requireAuthenticatedUser: vi.fn(() => true),
+      oidc: { userFromCookie: vi.fn(() => ({ id: "user-1" })) },
+      oidcUsers: { role: vi.fn(async () => "user") },
+      runners: { rename: vi.fn() },
+    };
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      {
+        method: "PUT",
+        url: "/api/v1/runners/runner-1",
+        headers: { host: "flow.test", origin: "https://flow.test", cookie: "session" },
+      },
+      response,
+    );
+    expect(server.runners.rename).not.toHaveBeenCalled();
+    expect(response.writeHead).toHaveBeenCalledWith(403, expect.objectContaining({ "Cache-Control": "no-store" }));
   });
 });
 
@@ -611,7 +712,11 @@ describe("team authorization", () => {
     await expect(
       (WebhookServer.prototype as any).requireTeam.call(
         server,
-        { method: "GET", url: "/api/workflows", headers: { authorization: "Bearer key", "x-team-id": "workspace-b" } },
+        {
+          method: "GET",
+          url: "/api/v1/workflows",
+          headers: { authorization: "Bearer key", "x-team-id": "workspace-b" },
+        },
         response,
       ),
     ).resolves.toBeNull();
@@ -644,21 +749,21 @@ describe("team authorization", () => {
     await expect(
       (WebhookServer.prototype as any).requireTeam.call(
         server,
-        { method: "GET", url: "/api/workflows", headers: { "x-team-id": "workspace-a" } },
+        { method: "GET", url: "/api/v1/workflows", headers: { "x-team-id": "workspace-a" } },
         response,
       ),
     ).resolves.toBe("workspace-a");
     await expect(
       (WebhookServer.prototype as any).requireTeam.call(
         server,
-        { method: "POST", url: "/api/workflows", headers: { "x-team-id": "workspace-a" } },
+        { method: "POST", url: "/api/v1/workflows", headers: { "x-team-id": "workspace-a" } },
         response,
       ),
     ).resolves.toBeNull();
     await expect(
       (WebhookServer.prototype as any).requireTeam.call(
         server,
-        { method: "GET", url: "/api/jobs/42/status", headers: { "x-team-id": "workspace-a" } },
+        { method: "GET", url: "/api/v1/jobs/42/status", headers: { "x-team-id": "workspace-a" } },
         response,
       ),
     ).resolves.toBe("workspace-a");
@@ -678,7 +783,7 @@ describe("team authorization", () => {
       (WebhookServer.prototype as any).apiKeyScopeForRequest.call(server, { url, method });
 
     expect(scopeFor("/api/v1/jobs?limit=10", "GET")).toBe("logs:read");
-    expect(scopeFor("/api/jobs?limit=10", "GET")).toBe("logs:read");
+    expect(scopeFor("/api/v1/jobs?limit=10", "GET")).toBe("logs:read");
     expect(scopeFor("/api/v1/jobs/42/status", "GET")).toBe("none");
     expect(scopeFor("/api/v1/workflows", "GET")).toBe("workflows:read");
     expect(scopeFor("/api/v1/workflows/build", "PUT")).toBe("workflows:write");
@@ -731,7 +836,7 @@ describe("team authorization", () => {
         server,
         {
           method: "GET",
-          url: "/api/secrets",
+          url: "/api/v1/secrets",
           headers: { authorization: "Bearer workspace-key", cookie: "session", "x-team-id": "workspace-a" },
         },
         response,
@@ -818,7 +923,7 @@ describe("team authorization", () => {
       oidcBearer: (req: any) => (req.headers.authorization || "").replace(/^Bearer /, "") || undefined,
       teams: { isMember: vi.fn(async (teamId: string) => teamId === "team-a") },
     };
-    const request = { url: "/api/workflows", headers: { cookie: "session", "x-team-id": "team-b" } };
+    const request = { url: "/api/v1/workflows", headers: { cookie: "session", "x-team-id": "team-b" } };
 
     await expect((WebhookServer.prototype as any).requireTeam.call(server, request, response)).resolves.toBeNull();
     expect(response.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json" });
@@ -885,7 +990,7 @@ describe("admin user-management authorization", () => {
     const response = makeResponse();
     const request = {
       method: "GET",
-      url: "/api/users",
+      url: "/api/v1/users",
       headers: { host: "flow.test", cookie: "runner_oidc_session=user", authorization: "Bearer scoped-token" },
     };
 
@@ -904,7 +1009,7 @@ describe("admin user-management authorization", () => {
       server,
       {
         method: "GET",
-        url: "/api/users",
+        url: "/api/v1/users",
         headers: { host: "flow.test", origin: "https://flow.test", cookie: "runner_oidc_session=admin" },
       },
       response,
@@ -922,7 +1027,7 @@ describe("admin user-management authorization", () => {
       server,
       {
         method: "PUT",
-        url: "/api/users/target-subject/role",
+        url: "/api/v1/users/target-subject/role",
         headers: { host: "flow.test", origin: "https://flow.test", cookie: "runner_oidc_session=admin" },
       },
       response,
@@ -942,7 +1047,7 @@ describe("admin user-management authorization", () => {
       server,
       {
         method: "PUT",
-        url: "/api/users/target-subject/role",
+        url: "/api/v1/users/target-subject/role",
         headers: { host: "flow.test", cookie: "runner_oidc_session=admin" },
       },
       response,
@@ -974,7 +1079,7 @@ describe("per-user UI timezone preference", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(
       server,
-      { method: "GET", url: "/api/preferences", headers: { host: "flow.test", cookie: "session" } },
+      { method: "GET", url: "/api/v1/preferences", headers: { host: "flow.test", cookie: "session" } },
       response,
     );
 
@@ -988,7 +1093,7 @@ describe("per-user UI timezone preference", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(
       server,
-      { method: "PUT", url: "/api/preferences", headers: { host: "flow.test", cookie: "session" } },
+      { method: "PUT", url: "/api/v1/preferences", headers: { host: "flow.test", cookie: "session" } },
       response,
     );
 
@@ -999,7 +1104,7 @@ describe("per-user UI timezone preference", () => {
     const invalidResponse = makeResponse();
     await (WebhookServer.prototype as any).handleRequest.call(
       server,
-      { method: "PUT", url: "/api/preferences", headers: { host: "flow.test", cookie: "session" } },
+      { method: "PUT", url: "/api/v1/preferences", headers: { host: "flow.test", cookie: "session" } },
       invalidResponse,
     );
     expect(invalidResponse.writeHead).toHaveBeenCalledWith(400, { "Content-Type": "application/json; charset=utf-8" });
@@ -1020,7 +1125,7 @@ describe("authenticated profile endpoint", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(
       server,
-      { method: "GET", url: "/api/session", headers: { host: "flow.test", cookie: "session" } },
+      { method: "GET", url: "/api/v1/session", headers: { host: "flow.test", cookie: "session" } },
       response,
     );
 
@@ -1047,7 +1152,7 @@ describe("authenticated profile endpoint", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(
       server,
-      { method: "GET", url: "/api/session", headers: { host: "flow.test" } },
+      { method: "GET", url: "/api/v1/session", headers: { host: "flow.test" } },
       response,
     );
 

@@ -403,7 +403,7 @@ export async function processJob(p: Processable) {
     jobId: String(job.id),
     workflowName: resolvedWorkflow.name,
     inputs,
-    runUrl: new URL(`/runs/${job.id}`, config.serverUrl).toString(),
+    runUrl: new URL(`/ui/runs/${job.id}`, config.serverUrl).toString(),
   };
   await pluginManager.triggerWorkflowStart(workflowContext);
 

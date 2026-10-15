@@ -51,6 +51,17 @@ describe("RunnerRegistry", () => {
     expect(db.run).not.toHaveBeenCalled();
   });
 
+  it("renames only active runners and enforces concise display names", async () => {
+    const registry = new RunnerRegistry();
+    await expect(registry.rename("runner-1", "  build-west  ")).resolves.toBe(true);
+    expect(db.run).toHaveBeenCalledWith("UPDATE runners SET name = ? WHERE id = ? AND revoked_at IS NULL", [
+      "build-west",
+      "runner-1",
+    ]);
+    await expect(registry.rename("runner-1", "   ")).rejects.toThrow("1–32 characters");
+    await expect(registry.rename("runner-1", "x".repeat(33))).rejects.toThrow("1–32 characters");
+  });
+
   it("accepts only exact semantic versions for updates", async () => {
     const registry = new RunnerRegistry();
     await expect(registry.requestUpdate("runner-1", "latest")).rejects.toThrow("exact semantic version");

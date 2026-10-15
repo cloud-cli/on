@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Workspace settings</title>
     <script type="importmap">
-      { "imports": { "@app/": "/", "@li3/": "https://at-li3.static.apphor.de/" } }
+      { "imports": { "@app/": "/assets/", "@li3/": "https://at-li3.static.apphor.de/" } }
     </script>
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
-    <link rel="stylesheet" href="/on.css" />
+    <link rel="stylesheet" href="/assets/on.css" />
   </head>
   <body class="min-h-screen bg-flow-background p-4 font-sans text-flow-foreground md:p-6">
     <template app
@@ -398,7 +398,7 @@
         </div>
         <p class="text-sm text-rose-700" role="alert" class-hidden="!error">{{ error }}</p>
       </main>
-      <script setup src="/team-settings-ui.mjs"></script
+      <script setup src="/assets/team-settings-ui.mjs"></script
     ></template>
     <script type="module">
       import "@li3/web";

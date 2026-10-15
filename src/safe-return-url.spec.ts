@@ -9,36 +9,36 @@ describe("safeReturnUrl", () => {
   });
 
   it("rejects protocol-relative URLs (starting with //)", () => {
-    expect(safeReturnUrl("//example.com")).toBe("/runs");
-    expect(safeReturnUrl("//evil.com/path")).toBe("/runs");
+    expect(safeReturnUrl("//example.com")).toBe("/ui/runs");
+    expect(safeReturnUrl("//evil.com/path")).toBe("/ui/runs");
   });
 
   it("rejects backslash-based authority", () => {
-    expect(safeReturnUrl("\\\\computer\\share")).toBe("/runs");
-    expect(safeReturnUrl("C:\\path")).toBe("/runs");
+    expect(safeReturnUrl("\\\\computer\\share")).toBe("/ui/runs");
+    expect(safeReturnUrl("C:\\path")).toBe("/ui/runs");
   });
 
   it("rejects full URLs with schemes (containing ://)", () => {
-    expect(safeReturnUrl("http://example.com")).toBe("/runs");
-    expect(safeReturnUrl("https://example.com")).toBe("/runs");
-    expect(safeReturnUrl("ftp://example.com")).toBe("/runs");
+    expect(safeReturnUrl("http://example.com")).toBe("/ui/runs");
+    expect(safeReturnUrl("https://example.com")).toBe("/ui/runs");
+    expect(safeReturnUrl("ftp://example.com")).toBe("/ui/runs");
   });
 
   it("rejects CR/LF injection", () => {
-    expect(safeReturnUrl("/path\r\n")).toBe("/runs");
-    expect(safeReturnUrl("/path\n")).toBe("/runs");
-    expect(safeReturnUrl("/path\r")).toBe("/runs");
+    expect(safeReturnUrl("/path\r\n")).toBe("/ui/runs");
+    expect(safeReturnUrl("/path\n")).toBe("/ui/runs");
+    expect(safeReturnUrl("/path\r")).toBe("/ui/runs");
   });
 
   it("rejects paths that do not start with /", () => {
-    expect(safeReturnUrl("runs")).toBe("/runs");
-    expect(safeReturnUrl("runs?foo=bar")).toBe("/runs");
-    expect(safeReturnUrl("runs/")).toBe("/runs");
+    expect(safeReturnUrl("runs")).toBe("/ui/runs");
+    expect(safeReturnUrl("runs?foo=bar")).toBe("/ui/runs");
+    expect(safeReturnUrl("runs/")).toBe("/ui/runs");
   });
 
   it("rejects empty path", () => {
-    expect(safeReturnUrl("")).toBe("/runs");
-    expect(safeReturnUrl("?query")).toBe("/runs");
+    expect(safeReturnUrl("")).toBe("/ui/runs");
+    expect(safeReturnUrl("?query")).toBe("/ui/runs");
   });
 
   it("extracts pathname and query string from parsed URLs", () => {
@@ -60,12 +60,12 @@ describe("isExemptFromGlobalOidcAuth", () => {
     expect(isExemptFromGlobalOidcAuth("/auth/logout", "GET")).toBe(true);
   });
 
-  it("exempts API endpoints: /api exactly and /api/*", () => {
+  it("exempts API endpoints: /api exactly and /api/v1/*", () => {
     expect(isExemptFromGlobalOidcAuth("/api", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/api/", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/api/workflows", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/api/v1/", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/api/v1/workflows", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/api-keys", "GET")).toBe(false);
-    expect(isExemptFromGlobalOidcAuth("/api/workflows/validate", "POST")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/api/v1/workflows/validate", "POST")).toBe(true);
   });
 
   it("exempts static module/template routes", () => {
@@ -75,33 +75,33 @@ describe("isExemptFromGlobalOidcAuth", () => {
     expect(isExemptFromGlobalOidcAuth("/api-client.mjs", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/preferences.mjs", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/app-header.mjs", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/app-router.mjs", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/dashboard.mjs", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/run.mjs", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/settings-ui.mjs", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/assets/app-router.mjs", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/assets/dashboard.mjs", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/assets/run.mjs", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/assets/settings-ui.mjs", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/workflows-ui.mjs", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/pages/dashboard.mjs", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/pages/run.mjs", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/pages/settings-ui.mjs", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/pages/workflows-ui.mjs", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/app-header.html", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/app-router.html", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/assets/pages/dashboard.mjs", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/assets/pages/run.mjs", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/assets/pages/settings-ui.mjs", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/assets/pages/workflows-ui.mjs", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/assets/app-header.html", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/assets/app-router.html", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/preview-live.mjs", "GET")).toBe(false);
   });
 
   it("exempts route-specific controls", () => {
     expect(isExemptFromGlobalOidcAuth("/restart/123", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/restart/", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/webhooks/gitea", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/webhooks/", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/api/v1/webhooks/gitea", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/api/v1/webhooks/", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/admin/reload-secrets", "POST")).toBe(true);
   });
 
   it("exempts POST and OPTIONS methods from global auth check", () => {
     expect(isExemptFromGlobalOidcAuth("/", "POST")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/", "OPTIONS")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/api/workflows", "POST")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/api/workflows", "OPTIONS")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/api/v1/workflows", "POST")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/api/v1/workflows", "OPTIONS")).toBe(true);
   });
 
   it("does NOT exempt non-GET/HEAD methods by default (wait, this is wrong)", () => {
@@ -130,12 +130,12 @@ describe("isProtectedUiRoute", () => {
       "/settings/timezone",
       "/workflows",
       "/workflows/new",
-      "/pages/dashboard.html",
-      "/pages/run.html",
-      "/pages/help.html",
-      "/pages/workflows.html",
-      "/pages/settings.html",
-      "/pages/team-settings.html",
+      "/assets/pages/dashboard.html",
+      "/assets/pages/run.html",
+      "/assets/pages/help.html",
+      "/assets/pages/workflows.html",
+      "/assets/pages/settings.html",
+      "/assets/pages/team-settings.html",
     ];
 
     for (const path of protectedPaths) {
@@ -151,7 +151,7 @@ describe("isProtectedUiRoute", () => {
     expect(isProtectedUiRoute("/", "POST")).toBe(false);
     expect(isProtectedUiRoute("/", "OPTIONS")).toBe(false);
     expect(isProtectedUiRoute("/api", "GET")).toBe(false);
-    expect(isProtectedUiRoute("/app-router.mjs", "GET")).toBe(false);
+    expect(isProtectedUiRoute("/assets/app-router.mjs", "GET")).toBe(false);
     expect(isProtectedUiRoute("/team-settings-ui.mjs", "GET")).toBe(false);
   });
 });

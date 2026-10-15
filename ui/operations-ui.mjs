@@ -21,9 +21,9 @@ export default function () {
   const load = async () => {
     try {
       [workers.value, runners.value, users.value] = await Promise.all([
-        api("/api/workers").then((result) => result.workers || []),
+        api("/api/v1/workers").then((result) => result.workers || []),
         api("/api/v1/runners").then((result) => result.runners || []),
-        api("/api/users").then((result) => result.users || []),
+        api("/api/v1/users").then((result) => result.users || []),
       ]);
     } catch (error) {
       message.value = error.message;
@@ -67,9 +67,24 @@ export default function () {
       message.value = error.message;
     }
   };
+  const renameRunner = async (runner) => {
+    const name = window.prompt("Runner display name (1–32 characters)", runner.name);
+    if (name === null || name.trim() === runner.name) {
+      return;
+    }
+    try {
+      await api(`/api/v1/runners/${encodeURIComponent(runner.id)}`, {
+        method: "PUT",
+        body: JSON.stringify({ name }),
+      });
+      await load();
+    } catch (error) {
+      message.value = error.message;
+    }
+  };
   const setRole = async (user, event) => {
     try {
-      await api(`/api/users/${encodeURIComponent(user.id)}/role`, {
+      await api(`/api/v1/users/${encodeURIComponent(user.id)}/role`, {
         method: "PUT",
         body: JSON.stringify({ role: event.target.value }),
       });
@@ -80,5 +95,16 @@ export default function () {
     }
   };
   onInit(() => void load());
-  return { workers, runners, users, message, enrollmentMessage, enroll, revokeRunner, updateRunner, setRole };
+  return {
+    workers,
+    runners,
+    users,
+    message,
+    enrollmentMessage,
+    enroll,
+    renameRunner,
+    revokeRunner,
+    updateRunner,
+    setRole,
+  };
 }

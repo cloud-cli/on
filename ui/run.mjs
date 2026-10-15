@@ -312,14 +312,14 @@ export default function setup() {
     await requestAiHelp(aiStepId.value, question);
   };
   const restartJob = async () => {
-    const response = await apiFetch(`/restart/${report.value.jobId}`, {
+    const response = await apiFetch(`/api/v1/jobs/${report.value.jobId}/restart`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ inputs: report.value.inputs || {} }),
     });
     if (response.ok) {
       const { id } = await response.json();
-      navigateTo(`/runs/${id}`);
+      navigateTo(`/ui/runs/${id}`);
     }
   };
   const openManualRestart = (event) => {
@@ -351,7 +351,7 @@ export default function setup() {
     );
     manualRestartLoading.value = true;
     try {
-      const response = await apiFetch(`/restart/${report.value.jobId}`, {
+      const response = await apiFetch(`/api/v1/jobs/${report.value.jobId}/restart`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ inputs }),
@@ -360,7 +360,7 @@ export default function setup() {
         throw new Error(`Restart failed: ${response.status}`);
       }
       const { id } = await response.json();
-      navigateTo(`/runs/${id}`);
+      navigateTo(`/ui/runs/${id}`);
     } catch (error) {
       aiError.value = error.message;
     } finally {
@@ -423,11 +423,11 @@ export default function setup() {
           nextReport.status === "success" ? `Job #${nextReport.jobId} succeeded` : `Job #${nextReport.jobId} failed`,
           {
             body: `${nextReport.workflowName} finished with status ${nextReport.status}.`,
-            icon: "/app-icon.svg",
-            badge: "/app-icon.svg",
+            icon: "/assets/app-icon.svg",
+            badge: "/assets/app-icon.svg",
             tag: `runner-job-${nextReport.jobId}`,
             renotify: true,
-            data: { url: `/runs/${nextReport.jobId}` },
+            data: { url: `/ui/runs/${nextReport.jobId}` },
           },
         );
       }
@@ -460,7 +460,7 @@ export default function setup() {
     void refreshRun();
     void loadAdminRole().catch((error) => console.error("Unable to load run editor access", error));
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/service-worker.js").catch((error) => {
+      navigator.serviceWorker.register("/assets/service-worker.js", { scope: "/ui/" }).catch((error) => {
         console.error("Service worker registration failed", error);
       });
     }

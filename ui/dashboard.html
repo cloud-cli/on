@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#eef2ec" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/on.css" />
+    <link rel="manifest" href="/assets/manifest.webmanifest" />
+    <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/on.css" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
-    <link rel="component" href="/app-header.html" />
+    <link rel="component" href="/assets/app-header.html" />
     <title>Runs · Flow</title>
     <script type="importmap">
-      { "imports": { "@app/": "/", "@li3/": "https://at-li3.static.apphor.de/" } }
+      { "imports": { "@app/": "/assets/", "@li3/": "https://at-li3.static.apphor.de/" } }
     </script>
   </head>
   <body class="bg-flow-background text-flow-foreground min-h-screen p-4 md:p-6 font-sans">
@@ -89,7 +89,7 @@
                 <template for="job of visibleJobs()"
                   ><tr class="border-b border-flow-border last:border-0 hover:bg-flow-panel">
                     <td class="px-3 py-3">
-                      <a attr-href="'/runs/' + job.id" class="font-medium text-flow-foreground hover:underline"
+                      <a attr-href="'/ui/runs/' + job.id" class="font-medium text-flow-foreground hover:underline"
                         >{{ workflowName(job.workflowId) }}</a
                       >
                     </td>
@@ -106,7 +106,7 @@
                         ><span>{{ job.statusLabel }}</span></span
                       >
                     </td>
-                    <td class="px-3 py-3 text-flow-secondary">{{ job.workerId || 'Queued' }}</td>
+                    <td class="px-3 py-3 text-flow-secondary">{{ job.workerName || job.workerId || 'Queued' }}</td>
                     <td class="px-3 py-3 text-flow-secondary">{{ formatDate(job.createdAt) }}</td>
                     <td class="px-3 py-3 text-flow-secondary">{{ formatDate(job.updatedAt) }}</td>
                   </tr></template
@@ -140,7 +140,7 @@
           </div>
         </section>
       </main>
-      <script setup src="/dashboard.mjs"></script>
+      <script setup src="/assets/dashboard.mjs"></script>
     </template>
     <script type="module">
       import "@li3/web";

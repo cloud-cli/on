@@ -7,8 +7,8 @@ describe("renderErrorPage", () => {
       status: 502,
       title: "Couldn't complete sign-in",
       message: "Please try again.",
-      action: { label: "Try again", href: "/auth/login?url=%2Fruns" },
-      secondaryAction: { label: "Back to Flow", href: "/runs" },
+      action: { label: "Try again", href: "/auth/login?url=%2Fui%2Fruns" },
+      secondaryAction: { label: "Back to Flow", href: "/ui/runs" },
     });
 
     expect(html).toContain("<title>502 — Couldn&#39;t complete sign-in · Flow</title>");
@@ -16,8 +16,8 @@ describe("renderErrorPage", () => {
     expect(html).toContain('<span class="brand-name">flow<span class="brand-dot">.</span></span>');
     expect(html).toContain("background: #547d42");
     expect(html).not.toContain("<svg");
-    expect(html).toContain('href="/auth/login?url=%2Fruns"');
-    expect(html).toContain('href="/runs"');
+    expect(html).toContain('href="/auth/login?url=%2Fui%2Fruns"');
+    expect(html).toContain('href="/ui/runs"');
     expect(html).not.toContain("access-token");
   });
 
@@ -32,6 +32,6 @@ describe("renderErrorPage", () => {
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).toContain("Bad &quot;request&quot; &amp; response");
-    expect(html).toContain('href="/runs"');
+    expect(html).toContain('href="/ui/runs"');
   });
 });

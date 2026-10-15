@@ -29,7 +29,7 @@ function actionLink(action: ErrorPageAction, primary: boolean): string {
   const href =
     action.href.startsWith("/") && !action.href.startsWith("//") && !/[\\\r\n\u0000-\u001f]/.test(action.href)
       ? action.href
-      : "/runs";
+      : "/ui/runs";
   return `<a class="${className}" href="${escapeHtml(href)}">${escapeHtml(action.label)}</a>`;
 }
 

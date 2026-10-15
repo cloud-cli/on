@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#eef2ec" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/assets/manifest.webmanifest" />
+    <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml" />
     <title>Runner Workflow Management</title>
     <script type="importmap">
       {
         "imports": {
-          "@app/": "/",
+          "@app/": "/assets/",
           "@li3/": "https://at-li3.static.apphor.de/",
           "diff": "https://unpkg.com/diff@9.0.0/libesm/index.js"
         }
@@ -19,7 +19,7 @@
     </script>
   </head>
   <body data-page="__WORKFLOW_PAGE__" class="min-h-screen bg-flow-background p-4 text-flow-foreground font-sans md:p-6">
-    <link rel="stylesheet" href="/on.css" />
+    <link rel="stylesheet" href="/assets/on.css" />
     <link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />
     <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
@@ -35,7 +35,7 @@
             <lucide-icon bind-icon="noticeError ? 'circle-alert' : 'circle-check'" size="17"></lucide-icon>
             <span class="min-w-0 flex-1">{{ notice }}</span>
             <a
-              href="/runs"
+              href="/ui/runs"
               class-hidden="!noticeLink"
               class="shrink-0 font-semibold underline underline-offset-2 hover:opacity-80"
               >Go to runs</a
@@ -54,7 +54,7 @@
                 <h2 id="workflow-list-title" class="mt-1 text-lg font-semibold text-flow-foreground">Workflows</h2>
               </div>
               <a
-                href="/workflows/new"
+                href="/ui/workflows/new"
                 class="inline-flex items-center justify-center gap-2 rounded-lg bg-flow-primary px-3 py-2 text-sm font-semibold text-white outline-none transition hover:bg-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/40"
               >
                 <lucide-icon icon="plus" size="16"></lucide-icon>
@@ -65,7 +65,7 @@
               <template for="workflow of workflows">
                 <li class="flex min-h-14 items-center gap-3 px-2 py-2">
                   <a
-                    attr-href="'/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)"
+                    attr-href="'/ui/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)"
                     class="min-w-0 flex-1 text-left text-sm text-flow-secondary outline-none hover:text-flow-primary focus-visible:rounded focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                   >
                     <span class="flex min-w-0 items-center gap-3">
@@ -80,7 +80,7 @@
                     >Draft</span
                   >
                   <a
-                    attr-href="'/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)"
+                    attr-href="'/ui/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)"
                     attr-aria-label="'Edit ' + workflow.name"
                     class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-flow-secondary outline-none hover:bg-flow-sidebar hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                   >
@@ -106,7 +106,7 @@
           >
             <div class="border-b border-flow-border px-4 pb-3 pt-3 sm:px-5">
               <a
-                href="/workflows"
+                href="/ui/workflows"
                 class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-flow-secondary outline-none transition hover:bg-flow-sidebar hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary/40"
               >
                 <lucide-icon icon="arrow-left" size="14"></lucide-icon>
@@ -541,7 +541,7 @@
         </section>
       </main>
 
-      <script setup src="/workflows-ui.mjs"></script>
+      <script setup src="/assets/workflows-ui.mjs"></script>
     </template>
 
     <script type="module">

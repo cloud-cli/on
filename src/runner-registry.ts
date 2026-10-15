@@ -135,8 +135,8 @@ export class RunnerRegistry {
       return null;
     }
     const normalizedName = name.trim();
-    if (!normalizedName || normalizedName.length > 100) {
-      throw new Error("Runner name must be 1–100 characters");
+    if (!normalizedName || normalizedName.length > 32) {
+      throw new Error("Runner name must be 1–32 characters");
     }
     const id = random(18);
     const credential = `onr_${random()}`;
@@ -348,6 +348,18 @@ export class RunnerRegistry {
       desiredVersion: row.shown_desired_version,
       updateStatus: row.update_status,
     }));
+  }
+
+  async rename(runnerId: string, name: string): Promise<boolean> {
+    const normalizedName = name.trim();
+    if (!normalizedName || normalizedName.length > 32) {
+      throw new Error("Runner name must be 1–32 characters");
+    }
+    const result = await db.run("UPDATE runners SET name = ? WHERE id = ? AND revoked_at IS NULL", [
+      normalizedName,
+      runnerId,
+    ]);
+    return Number(result?.changes || 0) === 1;
   }
 
   async listForTeam(teamId: string): Promise<{

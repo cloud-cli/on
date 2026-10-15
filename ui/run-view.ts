@@ -17,6 +17,7 @@ function normalizeTimestamp(value: string): string {
 export interface RunView {
   jobId: string;
   workerId?: string;
+  workerName?: string;
   workflowId: string;
   workflowRevision: number;
   workflowSourceYaml?: string;

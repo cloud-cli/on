@@ -43,7 +43,7 @@ describe("dashboard", () => {
     const jobs = toDashboardJobs([row]);
     const html = generateDashboardHtml(jobs, true);
     expect(html).not.toContain("<script state>");
-    expect(html).toContain('<script setup src="/dashboard.mjs"></script>');
+    expect(html).toContain('<script setup src="/assets/dashboard.mjs"></script>');
     expect(dashboardSetup).toContain("void refreshJobs(true)");
     expect(dashboardSetup).toContain('params.get("search")?.trim()');
     expect(dashboardSetup).toContain("history.pushState(null");
@@ -100,8 +100,8 @@ describe("dashboard", () => {
     expect(dashboardSetup).toContain('load("/api/v1/workflows", "workflows"');
     expect(dashboardSetup).toContain('load("/api/v1/workers", "workers"');
     expect(dashboardSetup).toContain("setInterval(refreshJobs, 60000)");
-    expect(html).toContain('href="/manifest.webmanifest"');
-    expect(dashboardSetup).toContain('register("/service-worker.js")');
+    expect(html).toContain('href="/assets/manifest.webmanifest"');
+    expect(dashboardSetup).toContain('register("/assets/service-worker.js", { scope: "/ui/" })');
     expect(dashboardSetup).toContain("Notification.requestPermission()");
     expect(dashboardSetup).toContain("registration.showNotification(");
     expect(dashboardSetup).toContain("!terminalStatuses.has(previousStatus) && terminalStatuses.has(job.status)");

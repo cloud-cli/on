@@ -104,30 +104,30 @@ export default function () {
   };
   const route = () => {
     const url = new URL(window.location.href);
-    const path = url.pathname;
+    const path = url.pathname === "/ui" ? "/" : url.pathname.startsWith("/ui/") ? url.pathname.slice(3) : url.pathname;
     if (path === "/" || path === "/runs") {
-      return { component: "page-dashboard", url: "/pages/dashboard.html", page: "dashboard" };
+      return { component: "page-dashboard", url: "/assets/pages/dashboard.html", page: "dashboard" };
     }
     if (path.match(/^\/runs\/\d+$/)) {
-      return { component: "page-run", url: `/pages/run.html?jobId=${path.split("/").pop()}`, page: "run" };
+      return { component: "page-run", url: `/assets/pages/run.html?jobId=${path.split("/").pop()}`, page: "run" };
     }
     if (path === "/help") {
-      return { component: "page-help", url: "/pages/help.html", page: "help" };
+      return { component: "page-help", url: "/assets/pages/help.html", page: "help" };
     }
     if (path === "/settings") {
-      return { component: "page-settings", url: "/pages/settings.html", page: "settings" };
+      return { component: "page-settings", url: "/assets/pages/settings.html", page: "settings" };
     }
     if (path === "/operations") {
-      return { component: "page-operations", url: "/pages/operations.html", page: "operations" };
+      return { component: "page-operations", url: "/assets/pages/operations.html", page: "operations" };
     }
     if (path === "/teams" || path === "/workspaces") {
-      return { component: "page-teams", url: "/pages/workspaces.html", page: "workspaces" };
+      return { component: "page-teams", url: "/assets/pages/workspaces.html", page: "workspaces" };
     }
     const teamRuns = path.match(/^\/workspaces\/([^/]+)\/runs$/);
     if (teamRuns) {
       return {
         component: "page-dashboard",
-        url: "/pages/dashboard.html",
+        url: "/assets/pages/dashboard.html",
         page: "dashboard",
         teamId: decodeURIComponent(teamRuns[1]),
       };
@@ -136,19 +136,19 @@ export default function () {
     if (teamSettings) {
       return {
         component: "page-team-settings",
-        url: `/pages/team-settings.html?teamId=${encodeURIComponent(teamSettings[1])}`,
+        url: `/assets/pages/team-settings.html?teamId=${encodeURIComponent(teamSettings[1])}`,
         page: "team-settings",
         teamId: decodeURIComponent(teamSettings[1]),
       };
     }
     if (path === "/workflows") {
-      return { component: "page-workflows", url: "/pages/workflows.html?page=workflows", page: "workflows" };
+      return { component: "page-workflows", url: "/assets/pages/workflows.html?page=workflows", page: "workflows" };
     }
     const workflowEditor = path.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
     if (workflowEditor) {
       return {
         component: "page-workflow-editor",
-        url: `/pages/workflows.html?page=editor&id=${workflowEditor[1]}${url.searchParams.get("revision") ? `&revision=${url.searchParams.get("revision")}` : ""}`,
+        url: `/assets/pages/workflows.html?page=editor&id=${workflowEditor[1]}${url.searchParams.get("revision") ? `&revision=${url.searchParams.get("revision")}` : ""}`,
         page: "editor",
         teamId: url.searchParams.get("workspaceId") || "",
       };
@@ -189,7 +189,7 @@ export default function () {
         routeMessage = document.createElement("main");
         routeMessage.className = "mx-auto max-w-4xl p-8";
         routeMessage.innerHTML =
-          '<h1 class="text-xl font-semibold">404 — Page not found</h1><p class="mt-2 text-sm">The page you are looking for does not exist. <a href="/">Go home</a> or <a href="/runs">view runs</a>.</p>';
+          '<h1 class="text-xl font-semibold">404 — Page not found</h1><p class="mt-2 text-sm">The page you are looking for does not exist. <a href="/ui/runs">Go home</a> or <a href="/ui/runs">view runs</a>.</p>';
         outlet.value.append(routeMessage);
       } else {
         const persistentPage = !["run", "editor", "team-settings"].includes(current.page);
@@ -257,11 +257,11 @@ export default function () {
       target.origin !== window.location.origin ||
       !target.pathname.startsWith("/") ||
       target.pathname.startsWith("/auth/") ||
-      target.pathname === "/teams/accept"
+      target.pathname === "/ui/teams/accept"
     ) {
       return;
     }
-    if (target.pathname.startsWith("/api/") || target.pathname.startsWith("/webhooks/")) {
+    if (target.pathname.startsWith("/api/v1/") || target.pathname.startsWith("/assets/")) {
       return;
     }
     if (target.pathname === window.location.pathname && target.hash) {

@@ -106,7 +106,7 @@ export default function setup() {
     };
     await Promise.all([
       load("/api/v1/workflows", "workflows", workflows, (item) => item.name || "Workflow"),
-      load("/api/v1/workers", "workers", workers, (item) => item.workerId || "Worker"),
+      load("/api/v1/workers", "workers", workers, (item) => item.name || item.workerId || "Worker"),
     ]);
   };
   const terminalStatuses = new Set(["success", "failed", "cancelled"]);
@@ -135,11 +135,11 @@ export default function setup() {
         job.status === "success" ? `Job #${job.id} succeeded` : `Job #${job.id} failed`,
         {
           body: `${workflowName(job.workflowId)} finished with status ${job.status}.`,
-          icon: "/app-icon.svg",
-          badge: "/app-icon.svg",
+          icon: "/assets/app-icon.svg",
+          badge: "/assets/app-icon.svg",
           tag: `runner-job-${job.id}`,
           renotify: true,
-          data: { url: `/runs/${job.id}` },
+          data: { url: `/ui/runs/${job.id}` },
         },
       );
     } catch (error) {
@@ -433,7 +433,7 @@ export default function setup() {
     void loadTimezone().catch((error) => console.error("Unable to load timezone preference", error));
     if (notificationsSupported.value) {
       navigator.serviceWorker
-        .register("/service-worker.js")
+        .register("/assets/service-worker.js", { scope: "/ui/" })
         .then(() => {
           if (notificationsEnabled.value) {
             void enablePushNotifications();

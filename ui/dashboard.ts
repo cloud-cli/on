@@ -7,6 +7,7 @@ export interface DashboardJob {
   status: string;
   statusLabel: string;
   workerId: string | null;
+  workerName?: string | null;
   createdAt: string;
   updatedAt: string;
 }

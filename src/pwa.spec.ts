@@ -4,14 +4,14 @@ import { appIcon, getAppIcon, serviceWorker, webManifest } from "../ui/pwa.js";
 describe("PWA assets", () => {
   it("provides an installable manifest rooted at the dashboard", () => {
     expect(JSON.parse(webManifest)).toMatchObject({
-      start_url: "/runs",
-      scope: "/",
+      start_url: "/ui/runs",
+      scope: "/ui/",
       display: "standalone",
       name: "Flow",
       short_name: "Flow",
       background_color: "#263d32",
       theme_color: "#263d32",
-      icons: [{ src: "/app-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }],
+      icons: [{ src: "/assets/app-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }],
     });
     expect(appIcon).toContain("<svg");
     expect(appIcon).toContain('fill="#263d32"');

@@ -6,7 +6,7 @@ let authModulePromise;
 
 async function getAuthModule() {
   if (!authModulePromise) {
-    authModulePromise = fetch("/api/auth/session", { headers: { accept: "application/json" } })
+    authModulePromise = fetch("/api/v1/auth/session", { headers: { accept: "application/json" } })
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(`Loading the authentication provider failed: ${response.status}`);

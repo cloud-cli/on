@@ -21,9 +21,8 @@ alone do not bypass team membership checks.
 
 Each team has a unique, unguessable webhook path. Create or rotate it from **Settings → Workspaces**;
 the path is displayed once, so store it securely. Configure provider webhooks using
-`/webhooks/team/<secret>/<provider>` (for example, `.../github`). Provider signature validation
-continues to apply. After legacy-data adoption, legacy `/webhooks/<provider>` routes continue to
-target the adopted workspace until the provider webhook is switched to its workspace-specific URL.
+`/api/v1/webhooks/team/<secret>/<provider>` (for example, `.../github`). Provider signature validation
+continues to apply.
 Rotating a team's webhook token immediately invalidates its previous URL.
 
 ### Adopting legacy data
@@ -43,9 +42,8 @@ ownership changes and the completion marker are committed in one SQLite transact
 makes a repeat invocation a no-op. User preferences remain personal. Test this against an isolated
 clone before any separately approved rollout; never point the command at a live database as a test.
 
-The old `/webhooks/github` endpoint continues to accept `GITHUB_WEBHOOK_SECRET` and temporarily routes
-to the adopted workspace. Create a workspace-scoped GitHub webhook, switch GitHub to its new URL and
-signing secret, and verify delivery before rotating the old secret. Workspace webhook signing secrets
+The GitHub provider endpoint is `/api/v1/webhooks/github`. Create a workspace-scoped webhook, configure
+the generated versioned URL and signing secret, and verify delivery. Workspace webhook signing secrets
 are stored encrypted and are not exposed to workflow jobs.
 
 A self-hosted, lightweight, high-performance CI/CD runner engine built for Node.js.
@@ -59,7 +57,7 @@ Designed with a strict **security-first boundary**, native **JavaScript AST eval
 - **Strict Code/Data Separation:** `run:` steps are executed verbatim as raw process scripts. Expressions and dynamic data bindings are isolated strictly to `env:`, eliminating shell-injection vectors entirely.
 - **Standard ES Template Syntax (`${...}`):** No custom DSL wrappers like `${{ }}` or `{{ }}`. If a field contains `${...}`, it evaluates standard JavaScript template string logic via AST.
 - **Deterministic Field Evaluation:** No silent fallbacks or ambiguous type conversions. Plain strings remain literal strings; conditions in `if:` fields run as strict JS boolean expressions.
-- **Built-in Dark Mode Web UI (`/runs`):** Monitor job statuses live, inspect workspace inputs, and view ANSI-colored terminal log streams rendered in real-time.
+- **Built-in Dark Mode Web UI (`/ui/runs`):** Monitor job statuses live, inspect workspace inputs, and view ANSI-colored terminal log streams rendered in real-time.
 - **System & Container Execution Drivers:** Run steps directly as detached host process groups or inside isolated Docker/Systemd transient units.
 - **DB-authored workflows:** Draft, validate, and publish portable YAML workflows through the authenticated API.
 - **Scheduled execution:** Published workflows can run from cron expressions or local sunrise/sunset events.
@@ -147,11 +145,11 @@ steps:
 Store the YAML as a draft and publish it through the authenticated API. Only published revisions can receive webhooks or scheduled runs. For an immediate test from the editor, save the draft and use **Run now**; this queues the latest saved draft revision without changing the schedule or publishing it:
 
 ```bash
-curl -u admin:"$RUNNER_ADMIN_SECRET" -X POST http://localhost:11235/api/workflows/validate \
+curl -u admin:"$RUNNER_ADMIN_SECRET" -X POST http://localhost:11235/api/v1/workflows/validate \
   -H 'Content-Type: application/json' --data '{"sourceYaml":"..."}'
-curl -u admin:"$RUNNER_ADMIN_SECRET" -X PUT http://localhost:11235/api/workflows/build-and-publish-release \
+curl -u admin:"$RUNNER_ADMIN_SECRET" -X PUT http://localhost:11235/api/v1/workflows/build-and-publish-release \
   -H 'Content-Type: application/json' --data '{"sourceYaml":"..."}'
-curl -u admin:"$RUNNER_ADMIN_SECRET" -X POST http://localhost:11235/api/workflows/build-and-publish-release/publish
+curl -u admin:"$RUNNER_ADMIN_SECRET" -X POST http://localhost:11235/api/v1/workflows/build-and-publish-release/publish
 ```
 
 Time triggers are defined beside a webhook trigger:
@@ -240,7 +238,7 @@ Set `RUNNER_ADMIN_SECRET` only on the HTTP server for dashboard and management A
 
 ### Secrets
 
-Secrets are written through `PUT /api/secrets/:NAME` and are AES-256-GCM encrypted in the database. Set `RUNNER_MASTER_KEY` only on the HTTP server, or provide an `on-master-key` systemd credential. Workers receive decrypted values only after claiming a running job; values are not written to job payloads or reports.
+Secrets are written through `PUT /api/v1/secrets/:NAME` and are AES-256-GCM encrypted in the database. Set `RUNNER_MASTER_KEY` only on the HTTP server, or provide an `on-master-key` systemd credential. Workers receive decrypted values only after claiming a running job; values are not written to job payloads or reports.
 
 ---
 
@@ -280,9 +278,9 @@ The GitHub status plugin publishes commit states when a workflow starts and fini
 
 The dashboard can receive job notifications while it is closed through Web Push. Generate a VAPID key pair with `npx web-push generate-vapid-keys`, configure the three `RUNNER_VAPID_*` values on the server, and enable notifications from the dashboard over HTTPS. Without VAPID configuration, notifications work only while the dashboard is open.
 
-Run details are available as HTML at `/runs/:id` and as sanitized JSON at `/api/runs/:id`. The HTML view refreshes reactively through job-specific SSE events while a run is active. Both representations omit raw webhook bodies, sensitive input fields, execution environment values, and internal rerun state.
+Run details are available as HTML at `/ui/runs/:id` and as sanitized JSON at `/api/v1/runs/:id`. The HTML view refreshes reactively through job-specific SSE events while a run is active. Both representations omit raw webhook bodies, sensitive input fields, execution environment values, and internal rerun state.
 
-Open `/workflows` to list workflows and manage secret values. Open `/workflows/new` to create a definition or `/workflows/:id` to edit one. These pages are protected by the administrator HTTP Basic credential; secret values are write-only.
+Open `/ui/workflows` to list workflows and manage secret values. Open `/ui/workflows/new` to create a definition or `/ui/workflows/:id` to edit one. These pages require an authenticated OIDC session; secret values are write-only.
 
 ---
 
@@ -333,26 +331,26 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
 
 ### Endpoint Matrix
 
-| Method                     | Endpoint                                         | Description                                                                                      |
-| -------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| **`POST`**                 | `/webhooks/github`                               | Webhook endpoint for GitHub events. Applies GitHub filters and evaluates `on.github.if`.         |
-| **`GET`**                  | `/runs`                                          | **Dashboard:** Public live dark-mode monitoring page listing recent jobs.                        |
-| **`GET`**                  | `/api/jobs?afterId=<id>&beforeId=<id>&limit=<n>` | Dashboard jobs with exclusive lower and upper ID cursors and a limit from 1 to 500 (default 50). |
-| **`GET`**                  | `/runs/:jobId`                                   | **Job Report:** Authenticated interactive trace with step timings and terminal log output.       |
-| **`GET`**                  | `/workflows`                                     | Authenticated workflow list and encrypted secret management UI.                                  |
-| **`GET`**                  | `/workflows/new`, `/workflows/:id`               | Authenticated YAML workflow editor.                                                              |
-| **`POST`**                 | `/api/workflows/validate`                        | Authenticated YAML validation without persistence.                                               |
-| **`GET`, `PUT`, `DELETE`** | `/api/workflows/:id`                             | Authenticated revisioned workflow read, draft save, and deletion.                                |
-| **`POST`**                 | `/api/workflows/:id/publish`                     | Authenticated publication of the latest draft revision.                                          |
-| **`POST`**                 | `/api/workflows/:id/run`                         | Authenticated immediate run of the latest saved draft revision.                                  |
-| **`GET`, `PUT`, `DELETE`** | `/api/secrets`, `/api/secrets/:name`             | Authenticated encrypted secret-name and write-only value management.                             |
+| Method                     | Endpoint                                            | Description                                                                                      |
+| -------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| **`POST`**                 | `/api/v1/webhooks/github`                           | Webhook endpoint for GitHub events. Applies GitHub filters and evaluates `on.github.if`.         |
+| **`GET`**                  | `/ui/runs`                                          | **Dashboard:** OIDC-protected live page listing recent jobs.                                     |
+| **`GET`**                  | `/api/v1/jobs?afterId=<id>&beforeId=<id>&limit=<n>` | Dashboard jobs with exclusive lower and upper ID cursors and a limit from 1 to 500 (default 50). |
+| **`GET`**                  | `/ui/runs/:jobId`                                   | **Job Report:** Authenticated interactive trace with step timings and terminal log output.       |
+| **`GET`**                  | `/ui/workflows`                                     | Authenticated workflow list and encrypted secret management UI.                                  |
+| **`GET`**                  | `/ui/workflows/new`, `/ui/workflows/:id`            | Authenticated YAML workflow editor.                                                              |
+| **`POST`**                 | `/api/v1/workflows/validate`                        | Authenticated YAML validation without persistence.                                               |
+| **`GET`, `PUT`, `DELETE`** | `/api/v1/workflows/:id`                             | Authenticated revisioned workflow read, draft save, and deletion.                                |
+| **`POST`**                 | `/api/v1/workflows/:id/publish`                     | Authenticated publication of the latest draft revision.                                          |
+| **`POST`**                 | `/api/v1/workflows/:id/run`                         | Authenticated immediate run of the latest saved draft revision.                                  |
+| **`GET`, `PUT`, `DELETE`** | `/api/v1/secrets`, `/api/v1/secrets/:name`          | Authenticated encrypted secret-name and write-only value management.                             |
 
 ### Dashboard Features
 
-- **Real-time Auto-Refresh:** `/runs` automatically refreshes job queue statuses (`PENDING`, `RUNNING`, `SUCCESS`, `FAILED`, `CANCELLED`).
+- **Real-time Auto-Refresh:** `/ui/runs` automatically refreshes job queue statuses (`PENDING`, `RUNNING`, `SUCCESS`, `FAILED`, `CANCELLED`).
 - **ANSI Terminal Rendering:** Uses `ansi_up` to render bash colors, bold highlights, and console outputs accurately in step log boxes.
 - **Payload Inspection:** View JSON inputs received from webhooks for easy debugging.
-- **Workflow Management:** Use the authenticated `/workflows` pages to create, validate, publish, edit, and delete DB-authored workflow revisions.
+- **Workflow Management:** Use the authenticated `/ui/workflows` pages to create, validate, publish, edit, and delete DB-authored workflow revisions.
 
 ---
 

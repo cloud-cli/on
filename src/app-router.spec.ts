@@ -8,7 +8,7 @@ const handleClick = routerSetup.match(/const handleClick = \(event\) => \{([\s\S
 
 describe("SPA router", () => {
   it("keeps workflow editor routes under /workflows rather than Settings", () => {
-    expect(routerTemplate).toContain('<script setup src="/app-router.mjs"></script>');
+    expect(routerTemplate).toContain('<script setup src="/assets/app-router.mjs"></script>');
     expect(routerSetup).toContain("path.match(/^\\/workflows\\/(new|[a-z0-9-]+)$/)");
     expect(handleClick).toContain("event.preventDefault()");
     expect(handleClick).toContain("history.pushState");
@@ -23,14 +23,14 @@ describe("SPA router", () => {
     expect(routerSetup).toContain('path === "/teams" || path === "/workspaces"');
     expect(routerSetup).not.toContain("settingsSections");
     expect(routerSetup).not.toMatch(/path === "\/settings\/|path\.startsWith\("\/settings\//);
-    expect(routerSetup).toContain('url: "/pages/workflows.html?page=workflows"');
-    expect(routerSetup).toContain('url: "/pages/settings.html"');
+    expect(routerSetup).toContain('url: "/assets/pages/workflows.html?page=workflows"');
+    expect(routerSetup).toContain('url: "/assets/pages/settings.html"');
   });
 
-  it("SPA handleClick intercepts same-origin navigation excluding /auth/, /api/, /webhooks", () => {
+  it("SPA handleClick intercepts same-origin navigation excluding API and assets", () => {
     expect(handleClick).toContain('target.pathname.startsWith("/auth/")');
-    expect(handleClick).toContain('target.pathname.startsWith("/api/")');
-    expect(handleClick).toContain('target.pathname.startsWith("/webhooks/")');
+    expect(handleClick).toContain('target.pathname.startsWith("/api/v1/")');
+    expect(handleClick).toContain('target.pathname.startsWith("/assets/")');
     expect(handleClick).toContain("event.preventDefault()");
     expect(handleClick).toContain("history.pushState");
   });
@@ -39,18 +39,20 @@ describe("SPA router", () => {
     expect(routerSetup).toContain('if (path === "/settings")');
     expect(routerSetup).toContain('if (path === "/workflows")');
     expect(routerSetup).toContain('page: "settings"');
-    expect(routerSetup).toContain('url: "/pages/workflows.html?page=workflows"');
+    expect(routerSetup).toContain('url: "/assets/pages/workflows.html?page=workflows"');
     expect(serverSetup).toContain("Location: destination");
     expect(serverSetup).not.toContain("settingsPageMatch");
     expect(serverSetup).toContain("return this.renderAppShell(res);");
   });
 
   it("routes run detail URLs through the app shell and loads the run component on refresh", () => {
-    expect(routerSetup).toContain('component: "page-run", url: `/pages/run.html?jobId=${path.split("/").pop()}`');
+    expect(routerSetup).toContain(
+      'component: "page-run", url: `/assets/pages/run.html?jobId=${path.split("/").pop()}`',
+    );
     expect(serverSetup).toContain('if (req.method === "GET" && /^\\/runs\\/\\d+$/.test(url.pathname))');
     expect(serverSetup).toContain("return this.renderAppShell(res);");
     expect(serverSetup).toContain('if (req.method === "GET" && url.pathname.startsWith("/api/runs/"))');
-    expect(handleClick).toContain('target.pathname.startsWith("/api/")');
+    expect(handleClick).toContain('target.pathname.startsWith("/api/v1/")');
   });
 
   it("serves workspace run routes directly so refreshes load the app shell", () => {
@@ -115,7 +117,9 @@ describe("SPA router", () => {
     expect(routerSetup).toContain("path.match(/^\\/(?:teams|workspaces)\\/([^/]+)\\/settings$/)");
     expect(routerSetup).toContain("teams.some((team) => team.id === current.teamId)");
     expect(routerSetup).toContain('localStorage.setItem("runner-team-id", current.teamId)');
-    expect(routerSetup).toContain("url: `/pages/team-settings.html?teamId=${encodeURIComponent(teamSettings[1])}`");
+    expect(routerSetup).toContain(
+      "url: `/assets/pages/team-settings.html?teamId=${encodeURIComponent(teamSettings[1])}`",
+    );
     expect(serverSetup).toContain('url.pathname === "/pages/team-settings.html"');
     expect(serverSetup).toContain('url.pathname === "/team-settings-ui.mjs"');
     expect(serverSetup).toContain("^\\/(?:teams|workspaces)\\/[^/]+\\/settings$");
@@ -128,7 +132,7 @@ describe("SPA router", () => {
   });
   it("routes the team landing page through authenticated server delivery", () => {
     expect(routerSetup).toContain('path === "/teams" || path === "/workspaces"');
-    expect(routerSetup).toContain('url: "/pages/workspaces.html"');
+    expect(routerSetup).toContain('url: "/assets/pages/workspaces.html"');
     expect(serverSetup).toContain('"/pages/workspaces.html"');
     expect(serverSetup).toContain('"/workspaces"');
   });

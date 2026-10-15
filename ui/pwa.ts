@@ -1,16 +1,16 @@
 export const webManifest = JSON.stringify({
-  id: "/runs",
+  id: "/ui/runs",
   name: "Flow",
   short_name: "Flow",
   description: "Follow CI/CD runs, workflows, and results.",
-  start_url: "/runs",
-  scope: "/",
+  start_url: "/ui/runs",
+  scope: "/ui/",
   display: "standalone",
   background_color: "#263d32",
   theme_color: "#263d32",
   icons: [
     {
-      src: "/app-icon.svg",
+      src: "/assets/app-icon.svg",
       sizes: "any",
       type: "image/svg+xml",
       purpose: "any maskable",
@@ -28,7 +28,9 @@ export const appIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512
 </svg>`;
 
 export function getAppIcon(beta = false): string {
-  if (!beta) {return appIcon;}
+  if (!beta) {
+    return appIcon;
+  }
   return appIcon.replace('fill="#263d32"', 'fill="#101b3f"');
 }
 
@@ -38,14 +40,14 @@ self.addEventListener('push', (event) => {
   const data = event.data?.json() || {};
   event.waitUntil(self.registration.showNotification(data.title || 'Flow', {
     body: data.body || 'A workflow run changed.',
-    icon: '/app-icon.svg',
-    badge: '/app-icon.svg',
-    data: { url: data.url || '/runs' },
+    icon: '/assets/app-icon.svg',
+    badge: '/assets/app-icon.svg',
+    data: { url: data.url || '/ui/runs' },
   }));
 });
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = event.notification.data?.url || '/runs';
+  const target = event.notification.data?.url || '/ui/runs';
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const existing = windows.find((client) => new URL(client.url).pathname === target);

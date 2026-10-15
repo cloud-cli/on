@@ -19,14 +19,15 @@ describe("Flow application shell", () => {
 
   it("provides responsive, accessible navigation around the mounted router", () => {
     expect(shellSetup).toContain('import "@app/api-client.mjs"');
+    expect(html).toContain('"@app/": "/assets/"');
     expect(html).toContain('aria-label="Primary navigation"');
     expect(html).toContain('aria-label="Mobile navigation"');
     expect(html).toContain("bottom-0 z-50");
     expect(html).toContain("pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)] pt-2");
-    expect(html).not.toContain('href="/runs"');
-    expect(html.match(/href="\/workflows"/g)).toHaveLength(2);
-    expect(html.match(/href="\/settings"/g)).toHaveLength(2);
-    expect(html.match(/href="\/workspaces"/g)).toHaveLength(3);
+    expect(html).not.toContain('href="/ui/runs"');
+    expect(html.match(/href="\/ui\/workflows"/g)).toHaveLength(2);
+    expect(html.match(/href="\/ui\/settings"/g)).toHaveLength(2);
+    expect(html.match(/href="\/ui\/workspaces"/g)).toHaveLength(3);
     expect(html).toContain("activeSection === 'settings' ? 'page' : null");
     expect(html).toContain("focus-visible:ring-2");
     expect(html).toContain('>flow<span class="text-[#729b5b]">.</span>');
@@ -80,7 +81,7 @@ describe("Flow application shell", () => {
     expect(teamsList).toBeGreaterThan(html.indexOf('aria-label="Primary navigation"'));
     expect(teamsList).toBeLessThan(html.indexOf('id="main-content"'));
     expect(html).toContain("# {{ team.name }}");
-    expect(html).toContain("'/workspaces/' + encodeURIComponent(team.id) + '/runs'");
+    expect(html).toContain("'/ui/workspaces/' + encodeURIComponent(team.id) + '/runs'");
     expect(html).toContain('on-click="selectWorkspace(team.id)"');
     expect(html).toContain("selectedWorkspaceId === team.id");
     expect(shellSetup).toContain('fetch("/api/v1/workspaces"');
@@ -100,13 +101,13 @@ describe("Flow application shell", () => {
   });
 
   it("serves the shell setup module referenced by the app shell", async () => {
-    expect(html).toContain('<script setup src="/app-shell.mjs"></script>');
+    expect(html).toContain('<script setup src="/assets/app-shell.mjs"></script>');
     expect(shellSetup).toContain('from "@app/preferences.mjs"');
     const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
 
     await (WebhookServer.prototype as any).handleRequest.call(
       {},
-      { method: "GET", url: "/app-shell.mjs", headers: { host: "flow.test" } },
+      { method: "GET", url: "/assets/app-shell.mjs", headers: { host: "flow.test" } },
       response,
     );
 
@@ -122,7 +123,7 @@ describe("Flow application shell", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(
       {},
-      { method: "GET", url: "/preferences.mjs", headers: { host: "flow.test" } },
+      { method: "GET", url: "/assets/preferences.mjs", headers: { host: "flow.test" } },
       response,
     );
 

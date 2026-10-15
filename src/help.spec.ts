@@ -6,7 +6,7 @@ describe("workflow help", () => {
     const html = renderHelpHtml();
 
     expect(html).toContain("<title>Workflow help</title>");
-    expect(html).toContain('<app-header title="Workflow Documentation" subtitle="" back="/runs"');
+    expect(html).toContain('<app-header title="Workflow Documentation" subtitle="" back="/ui/runs"');
     expect(html).toContain("Your First Workflow");
     expect(html).toContain("Environment and Expressions");
     expect(html).toContain("Docker Volumes and Trust");
@@ -15,7 +15,7 @@ describe("workflow help", () => {
     expect(html).toContain('href="#tutorials"');
     expect(html).toContain('<app-header title="Workflow Documentation"');
     expect(html).toContain("https://at-li3.static.apphor.de/");
-    expect(html).toContain('back="/runs"');
+    expect(html).toContain('back="/ui/runs"');
     expect(html).not.toContain('onclick="history.back()"');
     expect(html).not.toMatch(/<style\b/i);
     expect(html).toContain("grid-cols-1");

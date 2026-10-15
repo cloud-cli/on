@@ -5,13 +5,13 @@ import headerSetup from "../ui/app-header.mjs?raw";
 describe("app header", () => {
   it("unauthenticated header shows user-round icon linking to /settings", () => {
     expect(headerTemplate).toMatch(
-      /<template if="!authenticated">[\s\S]*?href="\/settings"[\s\S]*?aria-label="Settings"[\s\S]*?title="Settings"[\s\S]*?icon="user-round"[\s\S]*?<\/template>/,
+      /<template if="!authenticated">[\s\S]*?href="\/ui\/settings"[\s\S]*?aria-label="Settings"[\s\S]*?title="Settings"[\s\S]*?icon="user-round"[\s\S]*?<\/template>/,
     );
   });
 
   it("authenticated header settings control links to /settings", () => {
     expect(headerTemplate).toMatch(
-      /<template if="authenticated">[\s\S]*?href="\/settings"[\s\S]*?aria-label="Settings"[\s\S]*?title="Settings"[\s\S]*?icon="circle-user-round"[\s\S]*?<\/template>/,
+      /<template if="authenticated">[\s\S]*?href="\/ui\/settings"[\s\S]*?aria-label="Settings"[\s\S]*?title="Settings"[\s\S]*?icon="circle-user-round"[\s\S]*?<\/template>/,
     );
   });
 
@@ -21,7 +21,7 @@ describe("app header", () => {
   });
 
   it("shows Operations only when the session role is admin", () => {
-    expect(headerTemplate).toContain('href="/operations"');
+    expect(headerTemplate).toContain('href="/ui/operations"');
     expect(headerTemplate).toContain("userRole !== 'admin'");
     expect(headerSetup).toContain('userRole.value = session.user?.role || ""');
   });

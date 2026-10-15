@@ -50,26 +50,42 @@ function isSafeRunnerFilePath(value: string): boolean {
   );
 }
 
-function canonicalApiPath(pathname: string, method: string): string {
+function internalApiPath(pathname: string, method: string): string {
+  if (pathname === "/api/v1") {
+    return pathname;
+  }
+  if (pathname.startsWith("/api/v1/webhooks/")) {
+    return pathname.replace(/^\/api\/v1/, "");
+  }
+  const restart = pathname.match(/^\/api\/v1\/jobs\/(\d+)\/restart$/);
+  if (restart) {
+    return `/restart/${restart[1]}`;
+  }
+  if (pathname === "/api/v1/admin/reload-secrets") {
+    return "/admin/reload-secrets";
+  }
+  if (pathname === "/api/v1/auth/session") {
+    return "/api/auth/session";
+  }
+  if (pathname === "/api/v1/auth/token") {
+    return "/api/auth/token";
+  }
   if (pathname.startsWith("/api/v1/workspaces")) {
     return pathname.replace(/^\/api\/v1\/workspaces/, "/api/workspaces");
   }
 
   if (
-    pathname.startsWith("/api/v1/") &&
-    !pathname.startsWith("/api/v1/runner") &&
-    !(
-      ["GET", "PUT", "DELETE"].includes(method.toUpperCase()) &&
-      /^\/api\/v1\/workflows(?:\/[a-z0-9-]+)?$/.test(pathname)
-    ) &&
-    !pathname.startsWith("/api/v1/teams/") &&
-    pathname !== "/api/v1/teams" &&
-    pathname !== "/api/v1/runner-enrollments"
+    pathname.startsWith("/api/v1/runner/") ||
+    pathname.startsWith("/api/v1/runners") ||
+    pathname === "/api/v1/runner-enrollments" ||
+    /^\/api\/v1\/teams\/[^/]+\/runners(?:\/[^/]+)?$/.test(pathname) ||
+    (["GET", "PUT", "DELETE"].includes(method.toUpperCase()) &&
+      /^\/api\/v1\/workflows(?:\/[a-z0-9-]+)?$/.test(pathname))
   ) {
-    return pathname.replace(/^\/api\/v1/, "/api");
+    return pathname;
   }
 
-  return pathname;
+  return pathname.replace(/^\/api\/v1/, "/api");
 }
 import apiClientSource from "../ui/api-client.mjs?raw";
 import appShellSetup from "../ui/app-shell.mjs?raw";
@@ -151,7 +167,7 @@ export class WebhookServer {
               status: 500,
               title: "Something went wrong",
               message: "Flow hit an unexpected problem while handling this page. Please try again.",
-              action: { label: "Try again", href: "/runs" },
+              action: { label: "Try again", href: "/ui/runs" },
             },
             req.method === "HEAD",
           );
@@ -173,14 +189,56 @@ export class WebhookServer {
       `${req.headers["x-forwarded-proto"] || "http"}://${req.headers["x-forwarded-host"] || req.headers.host}`,
     );
 
-    // Keep API routing and API-key scope resolution on the same canonical paths.
-    url.pathname = canonicalApiPath(url.pathname, req.method || "GET");
+    if (
+      url.pathname === "/api" ||
+      (url.pathname.startsWith("/api/") && url.pathname !== "/api/v1" && !url.pathname.startsWith("/api/v1/"))
+    ) {
+      res.writeHead(404, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ error: "API routes must use /api/v1" }));
+    }
+    if (
+      url.pathname.startsWith("/webhooks/") ||
+      url.pathname.startsWith("/restart/") ||
+      url.pathname === "/admin/reload-secrets"
+    ) {
+      res.writeHead(404, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ error: "Use the versioned API route under /api/v1" }));
+    }
+    const externalPath = url.pathname;
+    const isVersionedApiPath = externalPath === "/api/v1" || externalPath.startsWith("/api/v1/");
+    if (isVersionedApiPath) {
+      url.pathname = internalApiPath(url.pathname, req.method || "GET");
+    }
+    const isUiPage = externalPath === "/ui" || externalPath.startsWith("/ui/");
+    const isAsset = externalPath === "/assets" || externalPath.startsWith("/assets/");
+    if (externalPath === "/assets" || externalPath === "/assets/") {
+      res.writeHead(404, { "Cache-Control": "no-store" });
+      res.end();
+      return;
+    }
+    if (isUiPage) {
+      url.pathname = externalPath === "/ui" ? "/" : externalPath.slice(3);
+    } else if (isAsset) {
+      url.pathname = externalPath === "/assets" ? "/" : externalPath.slice(7);
+    } else if (
+      externalPath === "/" ||
+      ["/runs", "/help", "/settings", "/operations", "/teams", "/workspaces", "/workflows"].includes(externalPath) ||
+      /^\/(?:runs|workflows)\//.test(externalPath) ||
+      /^\/(?:teams|workspaces|settings)\//.test(externalPath) ||
+      externalPath.startsWith("/pages/") ||
+      ["/manifest.webmanifest", "/app-icon.svg", "/on.css", "/service-worker.js"].includes(externalPath) ||
+      /\.(?:mjs|js|css|svg|html|ico|png|webmanifest)$/.test(externalPath)
+    ) {
+      res.writeHead(404, { "Cache-Control": "no-store" });
+      res.end();
+      return;
+    }
 
     // Global OIDC authentication check for browser UI routes.
     // Exempt routes have their own authorization logic (API, static, auth flow, route-specific controls).
     const method = (req.method || "GET").toUpperCase();
     const requiresUiAuthentication = isProtectedUiRoute(url.pathname, method);
-    if (url.pathname.startsWith("/api/v1/")) {
+    if (isVersionedApiPath) {
       await this.workflowsLoaded;
     }
 
@@ -191,13 +249,13 @@ export class WebhookServer {
           status: 503,
           title: "Sign-in is unavailable",
           message: "Authentication is temporarily unavailable. Please try again in a little while.",
-          action: { label: "Try signing in", href: "/auth/login?url=%2Fruns" },
+          action: { label: "Try signing in", href: "/auth/login?url=%2Fui%2Fruns" },
         });
       }
 
       const user = this.oidc?.userFromCookie(req.headers.cookie);
       if (!user) {
-        const returnTo = encodeURIComponent(safeReturnUrl(url.pathname + url.search));
+        const returnTo = encodeURIComponent(safeReturnUrl(externalPath + url.search));
         res.writeHead(302, { Location: `/auth/login?url=${returnTo}` });
         return res.end();
       }
@@ -232,7 +290,11 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/service-worker.js") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Service-Worker-Allowed": "/ui/",
+      });
       return res.end(serviceWorker);
     }
 
@@ -321,7 +383,7 @@ export class WebhookServer {
       return this.renderAppShell(res);
     }
 
-    if (req.method === "GET" && (url.pathname === "/api" || url.pathname === "/api/v1")) {
+    if (req.method === "GET" && url.pathname === "/api/v1") {
       if (!(await this.requireAuthenticatedApiRequest(req, res))) {
         return;
       }
@@ -352,8 +414,17 @@ export class WebhookServer {
       if (!(await this.hasScope(req, "workers:read"))) {
         return this.requireScope(req, res, "workers:read");
       }
+      const workers = await this.queue.listWorkerPresence();
+      const runnerNames = new Map((await this.runners.list()).map((runner) => [runner.id, runner.name]));
       res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-      return res.end(JSON.stringify({ workers: await this.queue.listWorkerPresence() }));
+      return res.end(
+        JSON.stringify({
+          workers: workers.map((worker) => ({
+            ...worker,
+            name: runnerNames.get(worker.workerId) || worker.workerId,
+          })),
+        }),
+      );
     }
 
     if (url.pathname === "/api/v1/runner-enrollments" && req.method === "POST") {
@@ -533,6 +604,46 @@ export class WebhookServer {
       return;
     }
     const revokeRunnerMatch = url.pathname.match(/^\/api\/v1\/runners\/([^/]+)$/);
+    if (req.method === "PUT" && revokeRunnerMatch) {
+      if (!this.requireSameOrigin(req, res) || !this.requireAuthenticatedUser(req, res)) {
+        return;
+      }
+      const user = this.oidc?.userFromCookie(req.headers.cookie);
+      if (!user || (await this.oidcUsers.role(user.id)) !== "admin") {
+        res
+          .writeHead(403, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Server admin required" }));
+        return;
+      }
+      const body = await this.readJson(req, res);
+      if (!body || typeof body.name !== "string") {
+        res
+          .writeHead(400, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Runner name is required" }));
+        return;
+      }
+      let renamed: boolean;
+      try {
+        renamed = await this.runners.rename(decodeURIComponent(revokeRunnerMatch[1]), body.name);
+      } catch (error) {
+        res
+          .writeHead(400, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: (error as Error).message }));
+        return;
+      }
+      if (!renamed) {
+        res
+          .writeHead(404, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Runner not found" }));
+        return;
+      }
+      res
+        .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+        .end(
+          JSON.stringify({ runner: (await this.runners.list()).find((runner) => runner.id === revokeRunnerMatch[1]) }),
+        );
+      return;
+    }
     if (req.method === "DELETE" && revokeRunnerMatch) {
       if (!this.requireSameOrigin(req, res) || !this.requireAuthenticatedUser(req, res)) {
         return;
@@ -935,7 +1046,7 @@ export class WebhookServer {
       if (!this.requireAuthenticatedUser(req, res)) {
         return;
       }
-      const destination = url.pathname.replace(/^\/settings\/workflows/, "/workflows") + url.search;
+      const destination = url.pathname.replace(/^\/settings\/workflows/, "/ui/workflows") + url.search;
       res.writeHead(302, { Location: destination });
       return res.end();
     }
@@ -970,7 +1081,7 @@ export class WebhookServer {
 <body style="font:16px system-ui;max-width:36rem;margin:15vh auto;padding:1rem;color:#17202a">
 <h1>Join a Flow team</h1><p id="status">Checking invitation…</p>
 <button id="accept" style="padding:.7rem 1rem" hidden>Accept invitation</button>
-<p><a href="/runs">Back to Flow</a></p>
+<p><a href="/ui/runs">Back to Flow</a></p>
 <script>
 const status=document.querySelector('#status');
 const token=new URLSearchParams(location.hash.slice(1)).get('token')||sessionStorage.getItem('runner-pending-team-invite')||'';
@@ -980,10 +1091,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
   if(!token){status.textContent='Invitation link is missing or invalid.';return}
   const sessionResponse=await fetch('/api/v1/auth/session');
   const session=sessionResponse.ok?await sessionResponse.json():{};
-  if(!session.authenticated){sessionStorage.setItem('runner-pending-team-invite',token);location.assign('/auth/login?url=%2Fteams%2Faccept');return}
+  if(!session.authenticated){sessionStorage.setItem('runner-pending-team-invite',token);location.assign('/auth/login?url=%2Fui%2Fteams%2Faccept');return}
   status.textContent='Accept this invitation to join the team.';
   const button=document.querySelector('#accept');button.hidden=false;
-  button.addEventListener('click',async()=>{try{const response=await fetch('/api/v1/workspaces/accept',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token})});if(!response.ok)throw new Error('This invitation is invalid, expired, or for a different verified sign-in email.');status.textContent='You joined the workspace. Redirecting…';setTimeout(()=>location.assign('/settings'),700)}catch(error){status.textContent=error.message}})
+  button.addEventListener('click',async()=>{try{const response=await fetch('/api/v1/workspaces/accept',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token})});if(!response.ok)throw new Error('This invitation is invalid, expired, or for a different verified sign-in email.');status.textContent='You joined the workspace. Redirecting…';setTimeout(()=>location.assign('/ui/settings'),700)}catch(error){status.textContent=error.message}})
 })().catch(()=>{status.textContent='Could not validate this invitation. Please try again.'});
 </script></body></html>`);
     }
@@ -1425,7 +1536,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
           status: 404,
           title: "We couldn't find that page",
           message: "The link may be out of date, or the page may have moved.",
-          action: { label: "Back to Flow", href: "/runs" },
+          action: { label: "Back to Flow", href: "/ui/runs" },
         },
         req.method === "HEAD",
       );
@@ -1923,7 +2034,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (/^\/api\/v1\/workflows(?:\/[a-z0-9-]+)?$/.test(originalPath) && ["GET", "PUT", "DELETE"].includes(method)) {
       return method === "GET" ? "workflows:read" : "workflows:write";
     }
-    const path = canonicalApiPath(originalPath, method);
+    const path = internalApiPath(originalPath, method);
     if (path === "/api/workflows" || /^\/api\/workflows\/[^/]+(?:\/revisions\/[^/]+)?$/.test(path)) {
       return method === "GET" ? "workflows:read" : "workflows:write";
     }
@@ -2033,7 +2144,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
             JSON.stringify({
               [workspaceApi ? "workspace" : "team"]: { id: team.id, name: team.name, role: "admin" },
               ...(!workspaceApi
-                ? { webhookPath: `/webhooks/team/${encodeURIComponent(team.webhookToken)}/{provider}` }
+                ? { webhookPath: `/api/v1/webhooks/team/${encodeURIComponent(team.webhookToken)}/{provider}` }
                 : {}),
             }),
           );
@@ -2106,7 +2217,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         res.end(
           JSON.stringify({
             webhook: { id: created.id, provider: created.provider, createdAt: created.createdAt },
-            url: `/webhooks/workspace/${encodeURIComponent(created.token)}`,
+            url: `/api/v1/webhooks/workspace/${encodeURIComponent(created.token)}`,
             signingSecret: created.signingSecret,
           }),
         );
@@ -2192,7 +2303,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         const record = await this.teams.createInvitation(teamId, body.email, user.id);
         res.writeHead(201, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(
           JSON.stringify({
-            link: `/teams/accept#token=${encodeURIComponent(record.token)}`,
+            link: `/ui/teams/accept#token=${encodeURIComponent(record.token)}`,
             expiresAt: record.expiresAt,
           }),
         );
@@ -2215,7 +2326,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       res
         .writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" })
-        .end(JSON.stringify({ webhookPath: `/webhooks/team/${encodeURIComponent(token)}/{provider}` }));
+        .end(JSON.stringify({ webhookPath: `/api/v1/webhooks/team/${encodeURIComponent(token)}/{provider}` }));
       return;
     }
     if ((url.pathname === "/api/teams/accept" || url.pathname === "/api/workspaces/accept") && req.method === "POST") {
@@ -2265,14 +2376,14 @@ sessionStorage.removeItem('runner-pending-team-invite');
   }
 
   private async handleOidcLogin(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
-    const requestedReturnTo = url.searchParams.get("url") || "/runs";
+    const requestedReturnTo = url.searchParams.get("url") || "/ui/runs";
     const sanitizedReturnTo = safeReturnUrl(requestedReturnTo);
     if (!this.oidc?.enabled) {
       return this.sendHtmlError(res, {
         status: 503,
         title: "Sign-in is unavailable",
         message: "Authentication is not configured on this server. Please contact your administrator.",
-        action: { label: "Back to Flow", href: "/runs" },
+        action: { label: "Back to Flow", href: "/ui/runs" },
       });
     }
     try {
@@ -2284,7 +2395,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         title: "Couldn't start sign-in",
         message: "The authentication service couldn't be reached. Please try again shortly.",
         action: { label: "Try again", href: `/auth/login?url=${encodeURIComponent(sanitizedReturnTo)}` },
-        secondaryAction: { label: "Back to Flow", href: "/runs" },
+        secondaryAction: { label: "Back to Flow", href: "/ui/runs" },
       });
     }
   }
@@ -2295,7 +2406,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         status: 503,
         title: "Sign-in is unavailable",
         message: "Authentication is not configured on this server. Please contact your administrator.",
-        action: { label: "Back to Flow", href: "/runs" },
+        action: { label: "Back to Flow", href: "/ui/runs" },
       });
     }
     if (url.searchParams.get("error")) {
@@ -2303,8 +2414,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
         status: 401,
         title: "Sign-in wasn't completed",
         message: "You cancelled sign-in or the identity provider couldn't authenticate you. You can safely try again.",
-        action: { label: "Try signing in again", href: "/auth/login?url=%2Fruns" },
-        secondaryAction: { label: "Back to Flow", href: "/runs" },
+        action: { label: "Try signing in again", href: "/auth/login?url=%2Fui%2Fruns" },
+        secondaryAction: { label: "Back to Flow", href: "/ui/runs" },
       });
     }
     const code = url.searchParams.get("code");
@@ -2314,8 +2425,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
         status: 400,
         title: "Sign-in link is incomplete",
         message: "The identity provider returned an incomplete response. Please start sign-in again.",
-        action: { label: "Try signing in again", href: "/auth/login?url=%2Fruns" },
-        secondaryAction: { label: "Back to Flow", href: "/runs" },
+        action: { label: "Try signing in again", href: "/auth/login?url=%2Fui%2Fruns" },
+        secondaryAction: { label: "Back to Flow", href: "/ui/runs" },
       });
     }
     try {
@@ -2338,8 +2449,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
         title: "Couldn't complete sign-in",
         message:
           "We couldn't verify your identity with the sign-in provider. Please try again. If the problem continues, contact your administrator.",
-        action: { label: "Try signing in again", href: "/auth/login?url=%2Fruns" },
-        secondaryAction: { label: "Back to Flow", href: "/runs" },
+        action: { label: "Try signing in again", href: "/auth/login?url=%2Fui%2Fruns" },
+        secondaryAction: { label: "Back to Flow", href: "/ui/runs" },
       });
     }
   }
@@ -2350,11 +2461,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
         status: 404,
         title: "Sign-out is unavailable",
         message: "This application does not have an active sign-in session to end.",
-        action: { label: "Back to Flow", href: "/runs" },
+        action: { label: "Back to Flow", href: "/ui/runs" },
       });
     }
     res.writeHead(302, {
-      Location: "/runs",
+      Location: "/ui/runs",
       "Set-Cookie": `${this.oidc.clearCookie(req.headers.cookie)}${this.isHttps(req) ? "; Secure" : ""}`,
     });
     return res.end();
@@ -2533,11 +2644,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
     const path = (req.url || "/").split("?")[0];
     if (req.method === "GET" && !path.startsWith("/api/")) {
       if (this.oidc?.userFromCookie(req.headers.cookie)) {
-        res.writeHead(302, { Location: "/settings" });
+        res.writeHead(302, { Location: "/ui/settings" });
         res.end();
         return false;
       }
-      const returnTo = encodeURIComponent(req.url || "/settings");
+      const returnTo = encodeURIComponent(req.url || "/ui/settings");
       res.writeHead(302, { Location: `/auth/login?url=${returnTo}` });
       res.end();
       return false;
@@ -2912,7 +3023,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
       res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify({ error: error.message }));
     }
-    const jobs = toDashboardJobs(rows.slice(0, limit));
+    const runnerNames = new Map((await this.runners.list()).map((runner) => [runner.id, runner.name]));
+    const jobs = toDashboardJobs(rows.slice(0, limit)).map((job) => ({
+      ...job,
+      workerName: job.workerId ? runnerNames.get(job.workerId) || job.workerId : null,
+    }));
     const body = JSON.stringify(
       this.redactStructured({ jobs, hasMore: rows.length > limit }, await this.currentSecrets(teamId)),
     );
@@ -2948,7 +3063,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         status: 404,
         title: "We couldn't find that run",
         message: "The run may have been removed, or the link may be out of date.",
-        action: { label: "Back to runs", href: "/runs" },
+        action: { label: "Back to runs", href: "/ui/runs" },
       });
     }
 
@@ -2967,6 +3082,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
       snapshot?.sourceYaml,
       definition?.name,
     );
+    report.workerName = report.workerId
+      ? (await this.runners.list()).find((runner) => runner.id === report.workerId)?.name
+      : undefined;
 
     if (format === "json") {
       res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
@@ -3087,7 +3205,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     try {
       const requestBody = createAiRequest(model, messages);
       const workflowUrl = new URL(
-        `/runs/${jobId}`,
+        `/ui/runs/${jobId}`,
         `${req.headers["x-forwarded-proto"] || "http"}://${req.headers["x-forwarded-host"] || req.headers.host}`,
       ).toString();
       await this.queue.saveAiRequest(jobId, workflowUrl, requestBody);

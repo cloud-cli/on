@@ -51,7 +51,7 @@ export class PushRepository {
     const payload = JSON.stringify({
       title: `Job #${job.id} ${job.status}`,
       body: `${job.workflow_id} finished with status ${job.status}.`,
-      url: `/runs/${job.id}`,
+      url: `/ui/runs/${job.id}`,
     });
 
     await Promise.all(

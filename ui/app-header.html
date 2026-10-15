@@ -34,7 +34,7 @@
       <template if="!authenticated">
         <a
           class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-flow-border text-flow-secondary no-underline outline-none hover:border-flow-primary hover:bg-flow-background hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/60"
-          href="/settings"
+          href="/ui/settings"
           aria-label="Settings"
           title="Settings"
         >
@@ -44,7 +44,7 @@
       <template if="authenticated">
         <a
           class="text-xs text-flow-primary hover:text-flow-foreground"
-          href="/operations"
+          href="/ui/operations"
           class-hidden="userRole !== 'admin'"
           >Operations</a
         >
@@ -62,7 +62,7 @@
       </template>
       <a
         class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-flow-border text-flow-secondary no-underline outline-none hover:border-flow-primary hover:bg-flow-background hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/60"
-        href="/help"
+        href="/ui/help"
         aria-label="Help"
         title="Help"
       >
@@ -85,7 +85,7 @@
       <template if="authenticated">
         <a
           class="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-flow-border text-flow-secondary no-underline outline-none hover:border-flow-primary hover:bg-flow-background hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/60"
-          href="/settings"
+          href="/ui/settings"
           aria-label="Settings"
           title="Settings"
         >
@@ -95,5 +95,5 @@
       </template>
     </div>
   </header>
-  <script setup src="/app-header.mjs"></script>
+  <script setup src="/assets/app-header.mjs"></script>
 </template>

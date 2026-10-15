@@ -14,7 +14,7 @@ describe("team settings UI", () => {
     expect(html).toContain("Webhook URL slug.");
     expect(html).toContain('for="member of members"');
     expect(html).toContain('class-hidden="!isAdmin"');
-    expect(html).toContain('script setup src="/team-settings-ui.mjs"');
+    expect(html).toContain('script setup src="/assets/team-settings-ui.mjs"');
     expect(html).not.toContain("Personal settings</a>");
     expect(html.match(/rounded-xl border border-flow-border bg-flow-card p-5/g)).toHaveLength(5);
     expect(html).toContain('aria-label="Workspace settings sections"');

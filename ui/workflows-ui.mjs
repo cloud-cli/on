@@ -5,7 +5,9 @@ import { apiFetch } from "@app/api-client.mjs";
 
 export default function () {
   const params = new URLSearchParams(window.location.search);
-  const workflowPath = window.location.pathname.match(/^\/(?:settings\/)?workflows\/(new|[a-z0-9-]+)$/);
+  const workflowPath = window.location.pathname
+    .replace(/^\/ui/, "")
+    .match(/^\/(?:settings\/)?workflows\/(new|[a-z0-9-]+)$/);
   const page = workflowPath ? "editor" : document.body.dataset.page || params.get("page") || "workflows";
   const pathWorkflowId = workflowPath && workflowPath[1] !== "new" ? workflowPath[1] : "";
   const initialId = params.get("id") || pathWorkflowId;
@@ -101,7 +103,7 @@ export default function () {
     const results = await Promise.all(
       workspaces.map(async (workspace) => {
         try {
-          const data = await api("/api/workflows", { headers: { "X-Team-ID": workspace.id } });
+          const data = await api("/api/v1/workflows", { headers: { "X-Team-ID": workspace.id } });
           return (data.workflows || []).map((workflow) => ({
             ...workflow,
             workspaceId: workspace.id,
@@ -168,7 +170,9 @@ export default function () {
   };
 
   const openWorkflow = async (id) => {
-    const workflowUrl = initialRevision ? `/api/workflows/${id}?revision=${initialRevision}` : `/api/workflows/${id}`;
+    const workflowUrl = initialRevision
+      ? `/api/v1/workflows/${id}?revision=${initialRevision}`
+      : `/api/v1/workflows/${id}`;
     const workflow = await api(workflowUrl);
     selectedId.value = workflow.id;
     workflowId.value = workflow.id;
@@ -180,7 +184,7 @@ export default function () {
   };
 
   const validateSource = async () => {
-    return api("/api/workflows/validate", {
+    return api("/api/v1/workflows/validate", {
       method: "POST",
       body: JSON.stringify({ sourceYaml: source.value }),
     });
@@ -219,7 +223,7 @@ export default function () {
         showNotice("No changes to save.");
         return;
       }
-      const workflow = await api(`/api/workflows/${id}`, {
+      const workflow = await api(`/api/v1/workflows/${id}`, {
         method: "PUT",
         body: JSON.stringify({ sourceYaml: source.value, enabled: enabled.value }),
       });
@@ -233,7 +237,7 @@ export default function () {
         history.replaceState(
           null,
           "",
-          `/workflows/${workflow.id}?workspaceId=${encodeURIComponent(selectedWorkspaceId.value)}`,
+          `/ui/workflows/${workflow.id}?workspaceId=${encodeURIComponent(selectedWorkspaceId.value)}`,
         );
       }
     });
@@ -243,7 +247,7 @@ export default function () {
       if (!id) {
         throw new Error("Save a workflow before publishing it.");
       }
-      const workflow = await api(`/api/workflows/${id}/publish`, { method: "POST" });
+      const workflow = await api(`/api/v1/workflows/${id}/publish`, { method: "POST" });
 
       selectedId.value = workflow.id;
       revision.value = workflow.revision;
@@ -258,7 +262,7 @@ export default function () {
       if (source.value !== savedSource.value) {
         throw new Error("Save the latest draft before running it.");
       }
-      const result = await api(`/api/workflows/${id}/run`, {
+      const result = await api(`/api/v1/workflows/${id}/run`, {
         method: "POST",
         body: JSON.stringify({}),
       });
@@ -274,9 +278,9 @@ export default function () {
       if (!id || !confirm(`Delete ${id} and all of its revisions?`)) {
         return;
       }
-      await api(`/api/workflows/${id}`, { method: "DELETE" });
+      await api(`/api/v1/workflows/${id}`, { method: "DELETE" });
 
-      navigateTo("/workflows");
+      navigateTo("/ui/workflows");
     });
   const saveSecret = () =>
     run(async () => {
@@ -388,7 +392,7 @@ export default function () {
     helpLoading.value = true;
     helpContent.value.textContent = "Loading workflow syntax help...";
     try {
-      const response = await fetch("/help?embed=1", { headers: { accept: "text/html" } });
+      const response = await fetch("/ui/help?embed=1", { headers: { accept: "text/html" } });
       if (!response.ok) {
         throw new Error(`Help request failed: ${response.status}`);
       }
@@ -448,8 +452,8 @@ export default function () {
     revisionLoading.value = true;
     revisionError.value = "";
     try {
-      const current = await api(`/api/workflows/${selectedId.value}?revision=${number}`);
-      const previous = number > 1 ? await api(`/api/workflows/${selectedId.value}?revision=${number - 1}`) : null;
+      const current = await api(`/api/v1/workflows/${selectedId.value}?revision=${number}`);
+      const previous = number > 1 ? await api(`/api/v1/workflows/${selectedId.value}?revision=${number - 1}`) : null;
       revisionDiffHtml.value = renderRevisionDiff(previous?.sourceYaml ?? null, current.sourceYaml);
     } catch (error) {
       revisionError.value = error.message;
