@@ -49,6 +49,28 @@ function isSafeRunnerFilePath(value: string): boolean {
     value.split("/").every((part) => part !== "" && part !== "." && part !== "..")
   );
 }
+
+function canonicalApiPath(pathname: string, method: string): string {
+  if (pathname.startsWith("/api/v1/workspaces")) {
+    return pathname.replace(/^\/api\/v1\/workspaces/, "/api/workspaces");
+  }
+
+  if (
+    pathname.startsWith("/api/v1/") &&
+    !pathname.startsWith("/api/v1/runner") &&
+    !(
+      ["GET", "PUT", "DELETE"].includes(method.toUpperCase()) &&
+      /^\/api\/v1\/workflows(?:\/[a-z0-9-]+)?$/.test(pathname)
+    ) &&
+    !pathname.startsWith("/api/v1/teams/") &&
+    pathname !== "/api/v1/teams" &&
+    pathname !== "/api/v1/runner-enrollments"
+  ) {
+    return pathname.replace(/^\/api\/v1/, "/api");
+  }
+
+  return pathname;
+}
 import apiClientSource from "../ui/api-client.mjs?raw";
 import appShellSetup from "../ui/app-shell.mjs?raw";
 import appHeaderSetup from "../ui/app-header.mjs?raw";
@@ -151,23 +173,8 @@ export class WebhookServer {
       `${req.headers["x-forwarded-proto"] || "http"}://${req.headers["x-forwarded-host"] || req.headers.host}`,
     );
 
-    // Application APIs are canonical under /api/v1. Keep legacy paths as aliases;
-    // the runner protocol and runner administration already own their /api/v1 paths.
-    if (url.pathname.startsWith("/api/v1/workspaces")) {
-      url.pathname = url.pathname.replace(/^\/api\/v1\/workspaces/, "/api/workspaces");
-    } else if (
-      url.pathname.startsWith("/api/v1/") &&
-      !url.pathname.startsWith("/api/v1/runner") &&
-      !(
-        ["GET", "PUT", "DELETE"].includes(req.method || "") &&
-        /^\/api\/v1\/workflows(?:\/[a-z0-9-]+)?$/.test(url.pathname)
-      ) &&
-      !url.pathname.startsWith("/api/v1/teams/") &&
-      url.pathname !== "/api/v1/teams" &&
-      url.pathname !== "/api/v1/runner-enrollments"
-    ) {
-      url.pathname = url.pathname.replace(/^\/api\/v1/, "/api");
-    }
+    // Keep API routing and API-key scope resolution on the same canonical paths.
+    url.pathname = canonicalApiPath(url.pathname, req.method || "GET");
 
     // Global OIDC authentication check for browser UI routes.
     // Exempt routes have their own authorization logic (API, static, auth flow, route-specific controls).
@@ -1911,8 +1918,12 @@ sessionStorage.removeItem('runner-pending-team-invite');
   }
 
   private apiKeyScopeForRequest(req: http.IncomingMessage): string | null {
-    const path = new URL(req.url || "/", "http://localhost").pathname;
     const method = (req.method || "GET").toUpperCase();
+    const originalPath = new URL(req.url || "/", "http://localhost").pathname;
+    if (/^\/api\/v1\/workflows(?:\/[a-z0-9-]+)?$/.test(originalPath) && ["GET", "PUT", "DELETE"].includes(method)) {
+      return method === "GET" ? "workflows:read" : "workflows:write";
+    }
+    const path = canonicalApiPath(originalPath, method);
     if (path === "/api/workflows" || /^\/api\/workflows\/[^/]+(?:\/revisions\/[^/]+)?$/.test(path)) {
       return method === "GET" ? "workflows:read" : "workflows:write";
     }

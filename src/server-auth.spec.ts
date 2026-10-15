@@ -662,6 +662,57 @@ describe("team authorization", () => {
         response,
       ),
     ).resolves.toBe("workspace-a");
+    await expect(
+      (WebhookServer.prototype as any).requireTeam.call(
+        server,
+        { method: "GET", url: "/api/v1/jobs?limit=10", headers: { "x-team-id": "workspace-a" } },
+        response,
+      ),
+    ).resolves.toBeNull();
+    expect(response.writeHead).toHaveBeenLastCalledWith(403, { "Content-Type": "application/json" });
+  });
+
+  it("maps versioned API aliases to the same API-key scopes as canonical routes", () => {
+    const server = {};
+    const scopeFor = (url: string, method: string) =>
+      (WebhookServer.prototype as any).apiKeyScopeForRequest.call(server, { url, method });
+
+    expect(scopeFor("/api/v1/jobs?limit=10", "GET")).toBe("logs:read");
+    expect(scopeFor("/api/jobs?limit=10", "GET")).toBe("logs:read");
+    expect(scopeFor("/api/v1/jobs/42/status", "GET")).toBe("none");
+    expect(scopeFor("/api/v1/workflows", "GET")).toBe("workflows:read");
+    expect(scopeFor("/api/v1/workflows/build", "PUT")).toBe("workflows:write");
+    expect(scopeFor("/api/v1/workflows/build/run", "POST")).toBe("runs:dispatch");
+    expect(scopeFor("/api/v1/runner/leases", "POST")).toBeNull();
+  });
+
+  it("allows an all-scopes workspace API key to list jobs through the versioned route", async () => {
+    const scopes = [
+      "workflows:read",
+      "workflows:write",
+      "logs:read",
+      "artifacts:read",
+      "runs:control",
+      "runs:dispatch",
+      "workers:read",
+      "secrets:read",
+      "secrets:write",
+    ];
+    const server = {
+      userForRequest: vi.fn(async () => undefined),
+      oidcBearer: (req: any) => req.headers.authorization?.slice(7),
+      apiKeys: { tokenDetails: vi.fn(async () => ({ scopes, teamId: "workspace-a" })) },
+      teams: { isMember: vi.fn() },
+      apiKeyScopeForRequest: (req: any) => (WebhookServer.prototype as any).apiKeyScopeForRequest.call(server, req),
+    };
+
+    await expect(
+      (WebhookServer.prototype as any).requireTeam.call(
+        server,
+        { method: "GET", url: "/api/v1/jobs?limit=10", headers: { authorization: "Bearer key" } },
+        { writeHead: vi.fn().mockReturnThis(), end: vi.fn() },
+      ),
+    ).resolves.toBe("workspace-a");
   });
 
   it("does not let a browser session broaden a workspace API key's team or scopes", async () => {
