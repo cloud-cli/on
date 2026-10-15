@@ -13,31 +13,37 @@
   <body class="min-h-screen bg-flow-background p-4 font-sans text-flow-foreground md:p-6">
     <template app
       ><main class="w-full space-y-5 py-2">
-        <header class="flex flex-wrap items-center justify-between gap-3 border-b border-flow-border pb-3">
+        <header
+          class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-flow-border bg-flow-background py-2"
+        >
           <h1 class="text-2xl font-semibold">{{ teamName }} workspace</h1>
           <nav aria-label="Workspace settings sections" class="flex flex-wrap justify-end gap-1.5">
-            <a href="#team-members" class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
+            <a
+              href="#team-members"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
               >Members</a
             >
             <a
               href="#team-webhooks"
               class-hidden="!isAdmin"
-              class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
               >Webhooks</a
             >
-            <a href="#team-runners" class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
+            <a
+              href="#team-runners"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
               >Task Runners</a
             >
             <a
               href="#workspace-secrets"
               class-hidden="!isAdmin"
-              class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
               >Task Runner Secrets</a
             >
             <a
               href="#workspace-api-keys"
               class-hidden="!isAdmin"
-              class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
               >API keys</a
             >
           </nav>

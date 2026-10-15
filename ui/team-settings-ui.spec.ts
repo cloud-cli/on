@@ -18,6 +18,12 @@ describe("team settings UI", () => {
     expect(html).not.toContain("Personal settings</a>");
     expect(html.match(/rounded-xl border border-flow-border bg-flow-card p-5/g)).toHaveLength(5);
     expect(html).toContain('aria-label="Workspace settings sections"');
+    expect(html).toContain(
+      'class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-flow-border bg-flow-background py-2"',
+    );
+    expect(
+      html.match(/rounded-md border border-flow-border bg-white px-2\.5 py-1\.5 text-xs font-medium/g),
+    ).toHaveLength(5);
     expect(html).toContain('href="#team-members"');
     expect(html).toContain('href="#team-webhooks"');
     expect(html).toContain('href="#team-runners"');
