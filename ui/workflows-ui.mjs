@@ -11,7 +11,10 @@ export default function () {
   const initialRevision = params.get("revision") ? Number(params.get("revision")) : null;
   const readOnly = Boolean(initialRevision);
   const workflows = ref([]);
-  const currentWorkspaceId = localStorage.getItem("runner-team-id") || "";
+  const availableWorkspaces = ref([]);
+  const workspacesLoading = ref(page === "editor");
+  const initialWorkspaceId = params.get("workspaceId") || localStorage.getItem("runner-team-id") || "";
+  const selectedWorkspaceId = ref(initialWorkspaceId);
   const secrets = ref([]);
   const source = ref("");
   const validation = ref({ valid: true });
@@ -56,13 +59,17 @@ export default function () {
   };
 
   const api = async (url, options = {}) => {
+    const requestHeaders = {
+      "X-Team-ID": selectedWorkspaceId.value,
+      ...(options.headers || {}),
+    };
     const response = await apiFetch(url, {
       ...options,
       credentials: "same-origin",
       headers: {
         accept: "application/json",
         ...(options.body ? { "content-type": "application/json" } : {}),
-        ...(options.headers || {}),
+        ...requestHeaders,
       },
     });
     const body = response.status === 204 ? null : await response.json().catch(() => ({}));
@@ -89,11 +96,11 @@ export default function () {
   };
 
   const loadWorkflows = async () => {
-    const { workspaces = [] } = await api("/api/v1/workspaces");
+    const { workspaces = [] } = await api("/api/v1/workspaces", { headers: { "X-Team-ID": "" } });
     const results = await Promise.all(
       workspaces.map(async (workspace) => {
         try {
-          const data = await api("/api/v1/workflows", { headers: { "X-Team-ID": workspace.id } });
+          const data = await api("/api/workflows", { headers: { "X-Team-ID": workspace.id } });
           return (data.workflows || []).map((workflow) => ({
             ...workflow,
             workspaceId: workspace.id,
@@ -115,10 +122,52 @@ export default function () {
     secrets.value = (await api("/api/v1/secrets")).secrets;
   };
 
+  const persistWorkspaceSelection = (workspaceId) => {
+    if (workspaceId) {
+      localStorage.setItem("runner-team-id", workspaceId);
+    } else {
+      localStorage.removeItem("runner-team-id");
+    }
+    window.dispatchEvent(new CustomEvent("runner-team-changed", { detail: { teamId: workspaceId } }));
+  };
+
+  const loadWorkspaceOptions = async () => {
+    workspacesLoading.value = true;
+    try {
+      const { workspaces: result = [] } = await api("/api/v1/workspaces", { headers: { "X-Team-ID": "" } });
+      availableWorkspaces.value = result;
+      const currentSelectionExists = result.some((workspace) => workspace.id === selectedWorkspaceId.value);
+      if (!currentSelectionExists) {
+        selectedWorkspaceId.value = result.length === 1 ? result[0].id : "";
+      }
+      persistWorkspaceSelection(selectedWorkspaceId.value);
+    } finally {
+      workspacesLoading.value = false;
+    }
+  };
+
+  const setWorkspace = async (event) => {
+    if (selectedId.value) {
+      return;
+    }
+    const workspaceId = event.target.value;
+    if (!availableWorkspaces.value.some((workspace) => workspace.id === workspaceId)) {
+      selectedWorkspaceId.value = "";
+      return;
+    }
+    selectedWorkspaceId.value = workspaceId;
+    persistWorkspaceSelection(workspaceId);
+    if (initialId && !selectedId.value) {
+      try {
+        await openWorkflow(initialId);
+      } catch (error) {
+        showNotice(error.message, true);
+      }
+    }
+  };
+
   const openWorkflow = async (id) => {
-    const workflowUrl = initialRevision
-      ? `/api/v1/workflows/${id}?revision=${initialRevision}`
-      : `/api/v1/workflows/${id}`;
+    const workflowUrl = initialRevision ? `/api/workflows/${id}?revision=${initialRevision}` : `/api/workflows/${id}`;
     const workflow = await api(workflowUrl);
     selectedId.value = workflow.id;
     workflowId.value = workflow.id;
@@ -130,7 +179,7 @@ export default function () {
   };
 
   const validateSource = async () => {
-    return api("/api/v1/workflows/validate", {
+    return api("/api/workflows/validate", {
       method: "POST",
       body: JSON.stringify({ sourceYaml: source.value }),
     });
@@ -156,6 +205,9 @@ export default function () {
 
   const save = () =>
     run(async () => {
+      if (!availableWorkspaces.value.some((workspace) => workspace.id === selectedWorkspaceId.value)) {
+        throw new Error("Choose a workspace before saving this workflow.");
+      }
       const id = selectedId.value || workflowId.value;
       if (
         initialId &&
@@ -166,7 +218,7 @@ export default function () {
         showNotice("No changes to save.");
         return;
       }
-      const workflow = await api(`/api/v1/workflows/${id}`, {
+      const workflow = await api(`/api/workflows/${id}`, {
         method: "PUT",
         body: JSON.stringify({ sourceYaml: source.value, enabled: enabled.value }),
       });
@@ -180,7 +232,7 @@ export default function () {
         history.replaceState(
           null,
           "",
-          `/workflows/${workflow.id}?workspaceId=${encodeURIComponent(currentWorkspaceId)}`,
+          `/workflows/${workflow.id}?workspaceId=${encodeURIComponent(selectedWorkspaceId.value)}`,
         );
       }
     });
@@ -190,7 +242,7 @@ export default function () {
       if (!id) {
         throw new Error("Save a workflow before publishing it.");
       }
-      const workflow = await api(`/api/v1/workflows/${id}/publish`, { method: "POST" });
+      const workflow = await api(`/api/workflows/${id}/publish`, { method: "POST" });
 
       selectedId.value = workflow.id;
       revision.value = workflow.revision;
@@ -205,7 +257,7 @@ export default function () {
       if (source.value !== savedSource.value) {
         throw new Error("Save the latest draft before running it.");
       }
-      const result = await api(`/api/v1/workflows/${id}/run`, {
+      const result = await api(`/api/workflows/${id}/run`, {
         method: "POST",
         body: JSON.stringify({}),
       });
@@ -221,7 +273,7 @@ export default function () {
       if (!id || !confirm(`Delete ${id} and all of its revisions?`)) {
         return;
       }
-      await api(`/api/v1/workflows/${id}`, { method: "DELETE" });
+      await api(`/api/workflows/${id}`, { method: "DELETE" });
 
       navigateTo("/workflows");
     });
@@ -395,8 +447,8 @@ export default function () {
     revisionLoading.value = true;
     revisionError.value = "";
     try {
-      const current = await api(`/api/v1/workflows/${selectedId.value}?revision=${number}`);
-      const previous = number > 1 ? await api(`/api/v1/workflows/${selectedId.value}?revision=${number - 1}`) : null;
+      const current = await api(`/api/workflows/${selectedId.value}?revision=${number}`);
+      const previous = number > 1 ? await api(`/api/workflows/${selectedId.value}?revision=${number - 1}`) : null;
       revisionDiffHtml.value = renderRevisionDiff(previous?.sourceYaml ?? null, current.sourceYaml);
     } catch (error) {
       revisionError.value = error.message;
@@ -502,20 +554,22 @@ export default function () {
   onDestroy(() => clearTimeout(validationTimer));
 
   onInit(() => {
-    const loadPage =
-      page === "editor"
-        ? initialId
-          ? openWorkflow(initialId)
-          : Promise.resolve()
-        : page === "secrets"
-          ? loadSecrets()
-          : loadWorkflows();
+    const loadEditor = async () => {
+      await loadWorkspaceOptions();
+      if (initialId && selectedWorkspaceId.value) {
+        await openWorkflow(initialId);
+      }
+    };
+    const loadPage = page === "editor" ? loadEditor() : page === "secrets" ? loadSecrets() : loadWorkflows();
     loadPage.catch((error) => showNotice(error.message, true));
   });
 
   return {
     page,
     workflows,
+    availableWorkspaces,
+    workspacesLoading,
+    selectedWorkspaceId,
     secrets,
     source,
     validation,
@@ -551,6 +605,7 @@ export default function () {
     saveSecret,
     removeSecret,
     setSource,
+    setWorkspace,
     setEnabled,
     setSecretName,
     setSecretValue,

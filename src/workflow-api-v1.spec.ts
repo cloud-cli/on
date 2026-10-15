@@ -21,10 +21,15 @@ function makeServer(scopes: string[] | null = ["workflows:read", "workflows:writ
     workflows: {
       list: vi.fn(async () => []),
       listActive: vi.fn(async () => []),
+      listForTeam: vi.fn(async () => []),
+      listActiveForTeam: vi.fn(async () => []),
       get: vi.fn(async () => null),
+      getForTeam: vi.fn(async () => null),
       getRevisionSnapshot: vi.fn(async () => null),
       saveDraft: vi.fn(async () => ({ id: "test", sourceYaml: "name: Test" })),
+      saveDraftForTeam: vi.fn(async () => ({ id: "test", sourceYaml: "name: Test" })),
       delete: vi.fn(async () => true),
+      deleteForTeam: vi.fn(async () => true),
       ...workflows,
     },
     handleWorkflowPublish: vi.fn(),
@@ -36,6 +41,7 @@ function makeServer(scopes: string[] | null = ["workflows:read", "workflows:writ
     (WebhookServer.prototype as any).requireAuthenticatedApiRequest.call(server, req, res);
   server.requireWorkflowApiScope = (req, res, scope) =>
     (WebhookServer.prototype as any).requireWorkflowApiScope.call(server, req, res, scope);
+  server.requireTeam = vi.fn(async () => "default");
   server.readRequest = (req, res) => (WebhookServer.prototype as any).readRequest.call(server, req, res);
   server.readJson = (req, res) => (WebhookServer.prototype as any).readJson.call(server, req, res);
   return server;
@@ -57,7 +63,7 @@ function makeRequest(method: string, url: string, body?: unknown) {
 describe("scoped workflow API v1", () => {
   it("lists only active workflows when requested with a read-scoped key", async () => {
     const workflows = [{ id: "test", sourceYaml: "name: Test", status: "published", enabled: true }];
-    const server = makeServer(["workflows:read"], { listActive: vi.fn(async () => workflows) });
+    const server = makeServer(["workflows:read"], { listActiveForTeam: vi.fn(async () => workflows) });
     const res = makeResponse();
 
     await (WebhookServer.prototype as any).handleRequest.call(
@@ -66,13 +72,45 @@ describe("scoped workflow API v1", () => {
       res,
     );
 
-    expect(server.workflows.listActive).toHaveBeenCalledOnce();
-    expect(server.workflows.list).not.toHaveBeenCalled();
+    expect(server.workflows.listActiveForTeam).toHaveBeenCalledWith("default");
+    expect(server.workflows.listForTeam).not.toHaveBeenCalled();
+    expect(server.workflows.listActive).not.toHaveBeenCalled();
     expect(res.writeHead).toHaveBeenCalledWith(200, {
       "Cache-Control": "no-store",
       "Content-Type": "application/json; charset=utf-8",
     });
     expect(res.end).toHaveBeenCalledWith(JSON.stringify({ workflows }));
+  });
+
+  it("reads an individual workflow only from the requested workspace", async () => {
+    const workflow = { id: "test", sourceYaml: "name: Test", revision: 1, status: "draft", enabled: true };
+    const server = makeServer(["workflows:read"], { getForTeam: vi.fn(async () => workflow) });
+    const res = makeResponse();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      makeRequest("GET", "/api/v1/workflows/test"),
+      res,
+    );
+
+    expect(server.requireTeam).toHaveBeenCalledOnce();
+    expect(server.workflows.getForTeam).toHaveBeenCalledWith("default", "test");
+    expect(server.workflows.get).not.toHaveBeenCalled();
+    expect(res.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify(workflow));
+  });
+
+  it("does not list workflows when workspace authorization fails", async () => {
+    const server = makeServer();
+    server.requireTeam.mockResolvedValue(null);
+    const res = makeResponse();
+
+    await (WebhookServer.prototype as any).handleRequest.call(server, makeRequest("GET", "/api/v1/workflows"), res);
+
+    expect(server.workflows.listForTeam).not.toHaveBeenCalled();
   });
 
   it("rejects a valid API key without the required scope", async () => {
@@ -92,7 +130,7 @@ describe("scoped workflow API v1", () => {
 
   it("saves workflow drafts with a write-scoped key", async () => {
     const saved = { id: "test", sourceYaml: "name: Test", revision: 3, status: "draft", enabled: false };
-    const server = makeServer(["workflows:write"], { saveDraft: vi.fn(async () => saved) });
+    const server = makeServer(["workflows:write"], { saveDraftForTeam: vi.fn(async () => saved) });
     const res = makeResponse();
 
     await (WebhookServer.prototype as any).handleRequest.call(
@@ -101,7 +139,8 @@ describe("scoped workflow API v1", () => {
       res,
     );
 
-    expect(server.workflows.saveDraft).toHaveBeenCalledWith("test", "name: Test", false);
+    expect(server.workflows.saveDraftForTeam).toHaveBeenCalledWith("default", "test", "name: Test", false);
+    expect(server.workflows.saveDraft).not.toHaveBeenCalled();
     expect(res.writeHead).toHaveBeenCalledWith(200, {
       "Cache-Control": "no-store",
       "Content-Type": "application/json; charset=utf-8",
@@ -119,7 +158,8 @@ describe("scoped workflow API v1", () => {
       res,
     );
 
-    expect(server.workflows.delete).toHaveBeenCalledWith("test");
+    expect(server.workflows.deleteForTeam).toHaveBeenCalledWith("default", "test");
+    expect(server.workflows.delete).not.toHaveBeenCalled();
     expect(res.writeHead).toHaveBeenCalledWith(204);
     expect(res.end).toHaveBeenCalledOnce();
   });
@@ -133,7 +173,7 @@ describe("scoped workflow API v1", () => {
     await (WebhookServer.prototype as any).handleRequest.call(server, req, res);
 
     expect(res.writeHead).toHaveBeenCalledWith(401, { "Content-Type": "application/json; charset=utf-8" });
-    expect(server.workflows.list).not.toHaveBeenCalled();
+    expect(server.workflows.listForTeam).not.toHaveBeenCalled();
   });
 
   it("keeps the versioned publish endpoint routed through the legacy alias", async () => {

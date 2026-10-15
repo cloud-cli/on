@@ -55,7 +55,7 @@ describe("workflow management UI", () => {
     expect(source).toContain("https://sodium.static.apphor.de/code-block.html");
     expect(source).toContain("https://sodium.static.apphor.de/lucide-icon.html");
     expect(source).toContain("<template app>");
-    expect(source).toContain("/api/v1/workflows/validate");
+    expect(source).toContain("/api/workflows/validate");
     expect(source).toMatch(/credentials:\s*['"]same-origin['"]/);
     expect(source).toContain("@app/api-client.mjs");
     expect(source).toContain('import { apiFetch } from "@app/api-client.mjs"');
@@ -69,11 +69,17 @@ describe("workflow management UI", () => {
     expect(source).toContain(
       'const page = workflowPath ? "editor" : document.body.dataset.page || params.get("page") || "workflows"',
     );
-    expect(source).toContain("? openWorkflow(initialId)");
+    expect(workflowsSetup).toContain("if (initialId && selectedWorkspaceId.value)");
+    expect(workflowsSetup).toContain("await openWorkflow(initialId)");
     expect(source).toContain("const workflow = await api(workflowUrl)");
     expect(source).not.toContain("derivedId");
     expect(source).toContain("Save draft");
     expect(source).toContain('href="/workflows/new"');
+    expect(source).toContain('id="workflow-workspace"');
+    expect(source).toContain("Workflows stay top-level and remain visible across workspaces.");
+    expect(source).toContain('bind-value="selectedWorkspaceId"');
+    expect(source).toContain('on-change="setWorkspace($event)"');
+    expect(source.indexOf('id="workflow-workspace"')).toBeLessThan(source.indexOf('aria-label="Save workflow draft"'));
     expect(source).not.toContain('aria-label="Workflow count"');
     expect(source).toContain("text-base font-semibold text-flow-foreground");
     expect(source).toContain('type="checkbox"');
@@ -110,6 +116,13 @@ describe("workflow management UI", () => {
     );
     expect(source).toContain("workflow.workspaceName");
     expect(workflowsSetup).toContain('headers: { "X-Team-ID": workspace.id }');
+    expect(workflowsSetup).toContain('api("/api/workflows", { headers: { "X-Team-ID": workspace.id } })');
+    expect(workflowsSetup).toContain('"X-Team-ID": selectedWorkspaceId.value');
+    expect(workflowsSetup).not.toContain("/api/v1/workflows");
+    expect(workflowsSetup).toContain("Choose a workspace before saving this workflow.");
+    expect(workflowsSetup).toContain("persistWorkspaceSelection(selectedWorkspaceId.value)");
+    expect(workflowsSetup).toContain("if (initialId && !selectedId.value)");
+    expect(workflowsSetup).toContain("await openWorkflow(initialId)");
     expect(source).toContain('href="/workflows"');
     expect(source).toContain("Back to workflows");
     expect(source).toContain('class="border-b border-flow-border px-4 pb-3 pt-3 sm:px-5"');
@@ -127,7 +140,7 @@ describe("workflow management UI", () => {
     expect(source).not.toContain("<iframe");
     expect(source).toContain("focus-visible:ring-2");
     expect(source).toContain("Publish");
-    expect(source).toContain("/api/v1/workflows/");
+    expect(source).toContain("/api/workflows/");
     expect(source).toContain("Run workflow now");
     expect(source).toContain("runNow");
     expect(source).toContain("/api/v1/secrets/");

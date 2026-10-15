@@ -1155,12 +1155,16 @@ sessionStorage.removeItem('runner-pending-team-invite');
         if (!(await this.requireWorkflowApiScope(req, res, "workflows:read"))) {
           return;
         }
+        const teamId = await this.requireTeam(req, res);
+        if (!teamId) {
+          return;
+        }
         await this.workflowsLoaded;
         if (!workflowId) {
           const workflows =
             url.searchParams.get("activeOnly") === "true"
-              ? await this.workflows.listActive()
-              : await this.workflows.list();
+              ? await this.workflows.listActiveForTeam(teamId)
+              : await this.workflows.listForTeam(teamId);
           res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
           return res.end(JSON.stringify({ workflows }));
         }
@@ -1170,10 +1174,13 @@ sessionStorage.removeItem('runner-pending-team-invite');
           res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
           return res.end(JSON.stringify({ error: "revision must be a positive integer" }));
         }
+        const owned = await this.workflows.getForTeam(teamId, workflowId);
         const workflow =
           revision === undefined
-            ? await this.workflows.get(workflowId)
-            : await this.workflows.getRevisionSnapshot(workflowId, revision);
+            ? owned
+            : owned
+              ? await this.workflows.getRevisionSnapshot(workflowId, revision)
+              : null;
         if (!workflow) {
           res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
           return res.end(JSON.stringify({ error: "Workflow not found" }));
@@ -1183,6 +1190,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       if (workflowId && req.method === "PUT") {
         if (!(await this.requireWorkflowApiScope(req, res, "workflows:write"))) {
+          return;
+        }
+        const teamId = await this.requireTeam(req, res);
+        if (!teamId) {
           return;
         }
         const body = await this.readJson(req, res);
@@ -1195,7 +1206,12 @@ sessionStorage.removeItem('runner-pending-team-invite');
           return;
         }
         try {
-          const workflow = await this.workflows.saveDraft(workflowId, body.sourceYaml, body.enabled !== false);
+          const workflow = await this.workflows.saveDraftForTeam(
+            teamId,
+            workflowId,
+            body.sourceYaml,
+            body.enabled !== false,
+          );
           res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
           return res.end(JSON.stringify(workflow));
         } catch (error: any) {
@@ -1207,7 +1223,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
         if (!(await this.requireWorkflowApiScope(req, res, "workflows:write"))) {
           return;
         }
-        if (!(await this.workflows.delete(workflowId))) {
+        const teamId = await this.requireTeam(req, res);
+        if (!teamId) {
+          return;
+        }
+        if (!(await this.workflows.deleteForTeam(teamId, workflowId))) {
           res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
           return res.end(JSON.stringify({ error: "Workflow not found" }));
         }

@@ -624,12 +624,14 @@
       "post": {
         "tags": ["jobs"],
         "summary": "Run the latest saved workflow revision immediately",
+        "description": "Queues a workflow owned by the selected workspace. OIDC requests must provide X-Team-ID.",
         "security": [
           {
             "oidcSessionCookie": []
           }
         ],
         "parameters": [
+          { "$ref": "#/components/parameters/WorkspaceId" },
           {
             "name": "workflowId",
             "in": "path",
@@ -1063,9 +1065,10 @@
       "get": {
         "tags": ["workflows"],
         "summary": "List workflows through the scoped API",
-        "description": "Requires an OIDC session or a bearer token with the workflows:read scope. Set activeOnly=true to return only enabled published workflows, with their active revision source YAML.",
+        "description": "Requires an OIDC session or a bearer token with the workflows:read scope, plus the selected workspace. API keys are bound to their workspace; OIDC requests provide X-Team-ID.",
         "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
         "parameters": [
+          { "$ref": "#/components/parameters/WorkspaceId" },
           {
             "name": "activeOnly",
             "in": "query",
@@ -1098,9 +1101,10 @@
       "get": {
         "tags": ["workflows"],
         "summary": "Get a workflow or historical revision through the scoped API",
-        "description": "Requires an OIDC session or a bearer token with the workflows:read scope.",
+        "description": "Requires an OIDC session or a bearer token with the workflows:read scope, plus the selected workspace. API keys are bound to their workspace; OIDC requests provide X-Team-ID.",
         "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
         "parameters": [
+          { "$ref": "#/components/parameters/WorkspaceId" },
           { "$ref": "#/components/parameters/WorkflowId" },
           { "$ref": "#/components/parameters/Revision" }
         ],
@@ -1118,9 +1122,12 @@
       "put": {
         "tags": ["workflows"],
         "summary": "Save a workflow draft through the scoped API",
-        "description": "Requires an OIDC session or a bearer token with the workflows:write scope. Saving a draft does not publish it.",
+        "description": "Requires an OIDC session or a bearer token with the workflows:write scope, plus the selected workspace. API keys are bound to their workspace; OIDC requests provide X-Team-ID. Saving a draft does not publish it.",
         "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
+        "parameters": [
+          { "$ref": "#/components/parameters/WorkspaceId" },
+          { "$ref": "#/components/parameters/WorkflowId" }
+        ],
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkflowSave" } } }
@@ -1139,9 +1146,12 @@
       "delete": {
         "tags": ["workflows"],
         "summary": "Delete a workflow and its revisions through the scoped API",
-        "description": "Requires an OIDC session or a bearer token with the workflows:write scope.",
+        "description": "Requires an OIDC session or a bearer token with the workflows:write scope, plus the selected workspace. API keys are bound to their workspace; OIDC requests provide X-Team-ID.",
         "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/WorkflowId" }],
+        "parameters": [
+          { "$ref": "#/components/parameters/WorkspaceId" },
+          { "$ref": "#/components/parameters/WorkflowId" }
+        ],
         "responses": {
           "204": { "description": "Workflow deleted" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
@@ -2359,7 +2369,8 @@
             "schema": {
               "type": "string"
             }
-          }
+          },
+          { "$ref": "#/components/parameters/WorkspaceId" }
         ],
         "requestBody": {
           "required": true,
@@ -2873,6 +2884,7 @@
           }
         ],
         "parameters": [
+          { "$ref": "#/components/parameters/WorkspaceId" },
           {
             "$ref": "#/components/parameters/WorkflowId"
           }
@@ -3649,6 +3661,16 @@
         "schema": {
           "type": "string",
           "pattern": "^[a-z0-9-]+$"
+        }
+      },
+      "WorkspaceId": {
+        "name": "X-Team-ID",
+        "in": "header",
+        "description": "Workspace ID. Required for OIDC sessions; API keys are restricted to their bound workspace.",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "UserSubject": {

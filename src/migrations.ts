@@ -108,6 +108,61 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: "008_workflows_team_foreign_key",
+    async apply() {
+      // teams is established by 005. Add ownership before checking it so legacy rows
+      // receive the existing default owner, then refuse to hide any invalid ownership.
+      const columns = await db.all("PRAGMA table_info(workflows)");
+      if (!columns.some((column: any) => column.name === "team_id")) {
+        await db.run("ALTER TABLE workflows ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default'");
+      }
+      const orphans = await db.all(
+        "SELECT workflows.id, workflows.team_id FROM workflows LEFT JOIN teams ON teams.id = workflows.team_id WHERE teams.id IS NULL LIMIT 1",
+      );
+      if (orphans.length) {
+        throw new Error(
+          `Cannot enforce workflows.team_id foreign key: workflow ${orphans[0].id} has missing team ${orphans[0].team_id}`,
+        );
+      }
+      const definition = await db.get("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'workflows'");
+      if (!definition?.sql) {
+        throw new Error("Cannot enforce workflows.team_id foreign key: workflows table is missing");
+      }
+      if (/FOREIGN\s+KEY\s*\(\s*team_id\s*\)/i.test(definition.sql)) {
+        return;
+      }
+      const indexes = await db.all(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'workflows' AND sql IS NOT NULL",
+      );
+      const original = definition.sql.replace(
+        /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`\[]?workflows["'`\]]?/i,
+        "CREATE TABLE workflows",
+      );
+      const closingParen = original.lastIndexOf(")");
+      if (closingParen < 0) {
+        throw new Error("Cannot enforce workflows.team_id foreign key: unrecognized workflows schema");
+      }
+      const constrained = `${original.slice(0, closingParen)}, FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE RESTRICT${original.slice(closingParen)}`;
+      const columnsWithOwnership = await db.all("PRAGMA table_info(workflows)");
+      const names = columnsWithOwnership.map((column: any) => column.name);
+      const list = names.map((name: string) => `\"${name.replace(/\"/g, '\"\"')}\"`).join(", ");
+      const replacementTable = constrained.replace(
+        /^CREATE TABLE workflows\b/i,
+        "CREATE TABLE workflows_after_team_fk",
+      );
+      if (typeof db.transaction !== "function") {
+        throw new Error("Cannot enforce workflows.team_id foreign key: database transactions are required");
+      }
+      await db.transaction([
+        { s: replacementTable, m: "run" },
+        { s: `INSERT INTO workflows_after_team_fk (${list}) SELECT ${list} FROM workflows`, m: "run" },
+        { s: "DROP TABLE workflows", m: "run" },
+        { s: "ALTER TABLE workflows_after_team_fk RENAME TO workflows", m: "run" },
+        ...indexes.map((index: any) => ({ s: index.sql, m: "run" })),
+      ]);
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

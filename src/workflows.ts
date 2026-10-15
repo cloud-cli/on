@@ -129,7 +129,9 @@ export class WorkflowRepository {
       CREATE TABLE IF NOT EXISTS workflows (
         id TEXT PRIMARY KEY, name TEXT NOT NULL, source_yaml TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'draft', active_revision INTEGER, enabled INTEGER NOT NULL DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        team_id TEXT NOT NULL DEFAULT 'default',
+        FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE RESTRICT
       );
       CREATE TABLE IF NOT EXISTS workflow_revisions (
         workflow_id TEXT NOT NULL, revision INTEGER NOT NULL, source_yaml TEXT NOT NULL,
@@ -330,6 +332,25 @@ export class WorkflowRepository {
       WHERE w.status = 'published' AND w.enabled = 1
       ORDER BY w.name
     `);
+    return rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      sourceYaml: row.source_yaml,
+      revision: Number(row.revision),
+      status: row.status,
+      enabled: Boolean(row.enabled),
+    }));
+  }
+
+  async listActiveForTeam(teamId: string): Promise<StoredWorkflow[]> {
+    const rows = await db.all(
+      `SELECT w.id, w.name, r.source_yaml, w.active_revision AS revision, w.status, w.enabled
+       FROM workflows w
+       JOIN workflow_revisions r ON r.workflow_id = w.id AND r.revision = w.active_revision
+       WHERE w.team_id = ? AND w.status = 'published' AND w.enabled = 1
+       ORDER BY w.name`,
+      [teamId],
+    );
     return rows.map((row: any) => ({
       id: row.id,
       name: row.name,

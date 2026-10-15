@@ -114,70 +114,93 @@
               </a>
             </div>
             <div class="border-b border-flow-border bg-flow-panel px-4 py-4 sm:px-5">
-              <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-end">
-                <label class="inline-flex items-center gap-2 text-sm text-flow-secondary">
-                  <input
-                    type="checkbox"
-                    bind-checked="enabled"
-                    on-change="setEnabled($event)"
-                    class="h-4 w-4 rounded border-flow-border bg-flow-panel text-flow-primary focus:ring-2 focus:ring-flow-primary/20"
-                  />
-                  Enabled
-                </label>
-                <div class="flex flex-wrap gap-2" class-hidden="readOnly">
-                  <button
-                    type="button"
-                    aria-label="Get AI workflow help"
-                    title="Get AI workflow help"
-                    on-click="openAiHelp()"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-primary/50 px-3 py-2.5 text-sm font-medium text-flow-primary outline-none hover:bg-flow-primary/10 focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div class="w-full lg:max-w-xs">
+                  <label for="workflow-workspace" class="block text-sm font-semibold text-flow-foreground"
+                    >Workspace</label
                   >
-                    <lucide-icon icon="sparkles" size="16"></lucide-icon><span class="hidden md:inline">AI help</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Save workflow draft"
-                    title="Save workflow draft"
-                    on-click="save()"
-                    bind-disabled="busy"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg bg-flow-primary px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-flow-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  <select
+                    id="workflow-workspace"
+                    bind-value="selectedWorkspaceId"
+                    on-change="setWorkspace($event)"
+                    bind-disabled="workspacesLoading || selectedId"
+                    aria-describedby="workflow-workspace-help"
+                    class="mt-1.5 w-full rounded-lg border border-flow-border bg-flow-card px-3 py-2.5 text-sm text-flow-foreground outline-none focus:border-flow-primary disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    <lucide-icon icon="save" size="16"></lucide-icon>
-                    <span class="hidden md:inline">Save draft</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Publish workflow"
-                    title="Publish workflow"
-                    on-click="publish()"
-                    bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-success/50 px-3 py-2.5 text-sm font-medium text-flow-success transition hover:bg-flow-success/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <lucide-icon icon="rocket" size="16"></lucide-icon>
-                    <span class="hidden md:inline">Publish</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Run workflow now"
-                    title="Run saved workflow draft now"
-                    on-click="runNow()"
-                    bind-disabled="busy || !selectedId || source !== savedSource || !validation.valid"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-info/50 px-3 py-2.5 text-sm font-medium text-flow-info transition hover:bg-flow-info/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <lucide-icon icon="play" size="16"></lucide-icon>
-                    <span class="hidden md:inline">Run now</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Delete workflow"
-                    title="Delete workflow"
-                    on-click="remove()"
-                    bind-disabled="busy"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-error/50 px-3 py-2.5 text-sm font-medium text-flow-error transition hover:bg-flow-error/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <lucide-icon icon="trash" size="16"></lucide-icon>
-                    <span class="hidden md:inline">Delete</span>
-                  </button>
+                    <option value="">Select a workspace</option>
+                    <template for="workspace of availableWorkspaces"
+                      ><option attr-value="workspace.id">{{ workspace.name }}</option></template
+                    >
+                  </select>
+                  <p id="workflow-workspace-help" class="mt-1 text-xs text-flow-muted">
+                    Workflows stay top-level and remain visible across workspaces.
+                  </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <label class="inline-flex items-center gap-2 text-sm text-flow-secondary">
+                    <input
+                      type="checkbox"
+                      bind-checked="enabled"
+                      on-change="setEnabled($event)"
+                      class="h-4 w-4 rounded border-flow-border bg-flow-panel text-flow-primary focus:ring-2 focus:ring-flow-primary/20"
+                    />
+                    Enabled
+                  </label>
+                  <div class="flex flex-wrap gap-2" class-hidden="readOnly">
+                    <button
+                      type="button"
+                      aria-label="Get AI workflow help"
+                      title="Get AI workflow help"
+                      on-click="openAiHelp()"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-primary/50 px-3 py-2.5 text-sm font-medium text-flow-primary outline-none hover:bg-flow-primary/10 focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                    >
+                      <lucide-icon icon="sparkles" size="16"></lucide-icon><span class="hidden md:inline">AI help</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Save workflow draft"
+                      title="Save workflow draft"
+                      on-click="save()"
+                      bind-disabled="busy || workspacesLoading || !selectedWorkspaceId"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg bg-flow-primary px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-flow-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <lucide-icon icon="save" size="16"></lucide-icon>
+                      <span class="hidden md:inline">Save draft</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Publish workflow"
+                      title="Publish workflow"
+                      on-click="publish()"
+                      bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-success/50 px-3 py-2.5 text-sm font-medium text-flow-success transition hover:bg-flow-success/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <lucide-icon icon="rocket" size="16"></lucide-icon>
+                      <span class="hidden md:inline">Publish</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Run workflow now"
+                      title="Run saved workflow draft now"
+                      on-click="runNow()"
+                      bind-disabled="busy || !selectedId || source !== savedSource || !validation.valid"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-info/50 px-3 py-2.5 text-sm font-medium text-flow-info transition hover:bg-flow-info/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <lucide-icon icon="play" size="16"></lucide-icon>
+                      <span class="hidden md:inline">Run now</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Delete workflow"
+                      title="Delete workflow"
+                      on-click="remove()"
+                      bind-disabled="busy"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-error/50 px-3 py-2.5 text-sm font-medium text-flow-error transition hover:bg-flow-error/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <lucide-icon icon="trash" size="16"></lucide-icon>
+                      <span class="hidden md:inline">Delete</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

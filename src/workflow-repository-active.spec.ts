@@ -40,4 +40,14 @@ describe("active workflow listing", () => {
       },
     ]);
   });
+
+  it("limits active workflow listing to the owning workspace", async () => {
+    all.mockResolvedValue([]);
+
+    await new WorkflowRepository().listActiveForTeam("cloudy");
+
+    expect(all).toHaveBeenCalledWith(expect.stringContaining("WHERE w.team_id = ? AND w.status = 'published'"), [
+      "cloudy",
+    ]);
+  });
 });
