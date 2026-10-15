@@ -717,7 +717,7 @@ describe("team authorization", () => {
     expect(res.writeHead).toHaveBeenCalledWith(201, expect.objectContaining({ "Cache-Control": "no-store" }));
   });
 
-  it("keeps the legacy GitHub webhook route compatible with GITHUB_WEBHOOK_SECRET", async () => {
+  it("does not use an unscoped environment secret for webhook preprocessing", async () => {
     const previousSecret = process.env.GITHUB_WEBHOOK_SECRET;
     process.env.GITHUB_WEBHOOK_SECRET = "legacy-github-secret";
     const parse = vi.fn(() => ({ isValid: true, inputs: {} }));
@@ -729,7 +729,7 @@ describe("team authorization", () => {
 
     try {
       await (WebhookServer.prototype as any).preprocess.call(server, "github", {}, Buffer.from("{}"), "default");
-      expect(parse).toHaveBeenCalledWith({}, Buffer.from("{}"), "legacy-github-secret");
+      expect(parse).toHaveBeenCalledWith({}, Buffer.from("{}"), undefined);
     } finally {
       if (previousSecret === undefined) {
         delete process.env.GITHUB_WEBHOOK_SECRET;

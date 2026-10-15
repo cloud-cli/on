@@ -49,7 +49,7 @@ export class QueueManager {
 
     const res = await db.run(
       `INSERT INTO jobs (workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id)
-      VALUES (?, ?, ?, ?, ?, COALESCE((SELECT team_id FROM workflows WHERE id = ?), 'default'));`,
+      VALUES (?, ?, ?, ?, ?, (SELECT team_id FROM workflows WHERE id = ?));`,
       [
         workflowId,
         workflowRevision,

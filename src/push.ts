@@ -30,6 +30,9 @@ export class PushRepository {
     if (!this.config.push || !["success", "failed", "cancelled"].includes(job.status)) {
       return;
     }
+    if (!job.team_id) {
+      return;
+    }
     const delivery = await db.get(
       "INSERT INTO push_deliveries (job_id) VALUES (?) ON CONFLICT(job_id) DO NOTHING RETURNING job_id",
       [job.id],
@@ -38,8 +41,12 @@ export class PushRepository {
       return;
     }
     webpush.setVapidDetails(this.config.push.subject, this.config.push.publicKey, this.config.push.privateKey);
+    const teamId = job.team_id;
+    if (!teamId) {
+      return;
+    }
     const subscriptions = await db.all("SELECT endpoint, p256dh, auth FROM team_push_subscriptions WHERE team_id = ?", [
-      job.team_id || "default",
+      teamId,
     ]);
     const payload = JSON.stringify({
       title: `Job #${job.id} ${job.status}`,
@@ -56,7 +63,7 @@ export class PushRepository {
           );
         } catch (error: any) {
           if (error.statusCode === 404 || error.statusCode === 410) {
-            await this.remove(subscription.endpoint, job.team_id || "default");
+            await this.remove(subscription.endpoint, teamId);
           } else {
             console.error(`Unable to send push notification to ${subscription.endpoint}:`, error.message);
           }

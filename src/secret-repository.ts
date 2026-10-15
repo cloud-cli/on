@@ -26,8 +26,10 @@ export class SecretRepository {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
     await db.run("ALTER TABLE secrets ADD COLUMN encoding TEXT NOT NULL DEFAULT 'utf8'").catch(() => {});
-    await db.run(`INSERT OR IGNORE INTO team_secrets (team_id, name, ciphertext, encoding, created_at, updated_at)
-      SELECT 'default', name, ciphertext, encoding, created_at, updated_at FROM secrets`);
+    const legacy = await db.get("SELECT 1 AS present FROM secrets LIMIT 1");
+    if (legacy) {
+      throw new Error("Legacy secrets require explicit workspace assignment");
+    }
   }
 
   private encryptionKey(): Buffer {
@@ -35,7 +37,7 @@ export class SecretRepository {
   }
 
   async set(name: string, value: string, encoding: SecretEncoding = "utf8"): Promise<void> {
-    return this.setForTeam("default", name, value, encoding);
+    throw new Error("An explicit workspace is required to store secrets");
   }
 
   async setForTeam(teamId: string, name: string, value: string, encoding: SecretEncoding = "utf8"): Promise<void> {
@@ -58,7 +60,7 @@ export class SecretRepository {
   }
 
   async getAll(): Promise<Record<string, string>> {
-    return this.getAllForTeam("default");
+    throw new Error("An explicit workspace is required to list secrets");
   }
 
   async getAllForTeam(teamId: string): Promise<Record<string, string>> {
@@ -89,7 +91,7 @@ export class SecretRepository {
     return this.decrypt(ciphertext, "utf8");
   }
 
-  async getAllForJob(teamId = "default"): Promise<Record<string, StoredSecret>> {
+  async getAllForJob(teamId: string): Promise<Record<string, StoredSecret>> {
     const rows = await db.all("SELECT name, ciphertext, encoding FROM team_secrets WHERE team_id = ? ORDER BY name", [
       teamId,
     ]);
@@ -102,7 +104,7 @@ export class SecretRepository {
   }
 
   async names(): Promise<string[]> {
-    return this.namesForTeam("default");
+    throw new Error("An explicit workspace is required to list secrets");
   }
 
   async namesForTeam(teamId: string): Promise<string[]> {
@@ -111,7 +113,7 @@ export class SecretRepository {
   }
 
   async delete(name: string): Promise<boolean> {
-    return this.deleteForTeam("default", name);
+    throw new Error("An explicit workspace is required to delete secrets");
   }
 
   async deleteForTeam(teamId: string, name: string): Promise<boolean> {

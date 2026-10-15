@@ -14,7 +14,7 @@ function makeServer(scopes: string[] | null = ["workflows:read", "workflows:writ
     apiKeys: {
       scopesForToken: vi.fn(async (token: string) => (token === "test-key" ? scopes : null)),
       tokenDetails: vi.fn(async (token: string) =>
-        token === "test-key" && scopes ? { scopes, teamId: "default" } : null,
+        token === "test-key" && scopes ? { scopes, teamId: "workspace-a" } : null,
       ),
     },
     workflowsLoaded: Promise.resolve(),
@@ -41,7 +41,7 @@ function makeServer(scopes: string[] | null = ["workflows:read", "workflows:writ
     (WebhookServer.prototype as any).requireAuthenticatedApiRequest.call(server, req, res);
   server.requireWorkflowApiScope = (req, res, scope) =>
     (WebhookServer.prototype as any).requireWorkflowApiScope.call(server, req, res, scope);
-  server.requireTeam = vi.fn(async () => "default");
+  server.requireTeam = vi.fn(async () => "workspace-a");
   server.readRequest = (req, res) => (WebhookServer.prototype as any).readRequest.call(server, req, res);
   server.readJson = (req, res) => (WebhookServer.prototype as any).readJson.call(server, req, res);
   return server;
@@ -72,7 +72,7 @@ describe("scoped workflow API v1", () => {
       res,
     );
 
-    expect(server.workflows.listActiveForTeam).toHaveBeenCalledWith("default");
+    expect(server.workflows.listActiveForTeam).toHaveBeenCalledWith("workspace-a");
     expect(server.workflows.listForTeam).not.toHaveBeenCalled();
     expect(server.workflows.listActive).not.toHaveBeenCalled();
     expect(res.writeHead).toHaveBeenCalledWith(200, {
@@ -94,7 +94,7 @@ describe("scoped workflow API v1", () => {
     );
 
     expect(server.requireTeam).toHaveBeenCalledOnce();
-    expect(server.workflows.getForTeam).toHaveBeenCalledWith("default", "test");
+    expect(server.workflows.getForTeam).toHaveBeenCalledWith("workspace-a", "test");
     expect(server.workflows.get).not.toHaveBeenCalled();
     expect(res.writeHead).toHaveBeenCalledWith(200, {
       "Cache-Control": "no-store",
@@ -139,7 +139,7 @@ describe("scoped workflow API v1", () => {
       res,
     );
 
-    expect(server.workflows.saveDraftForTeam).toHaveBeenCalledWith("default", "test", "name: Test", false);
+    expect(server.workflows.saveDraftForTeam).toHaveBeenCalledWith("workspace-a", "test", "name: Test", false);
     expect(server.workflows.saveDraft).not.toHaveBeenCalled();
     expect(res.writeHead).toHaveBeenCalledWith(200, {
       "Cache-Control": "no-store",
@@ -158,7 +158,7 @@ describe("scoped workflow API v1", () => {
       res,
     );
 
-    expect(server.workflows.deleteForTeam).toHaveBeenCalledWith("default", "test");
+    expect(server.workflows.deleteForTeam).toHaveBeenCalledWith("workspace-a", "test");
     expect(server.workflows.delete).not.toHaveBeenCalled();
     expect(res.writeHead).toHaveBeenCalledWith(204);
     expect(res.end).toHaveBeenCalledOnce();

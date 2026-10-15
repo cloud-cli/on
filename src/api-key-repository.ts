@@ -18,7 +18,7 @@ export class ApiKeyRepository {
   async init(): Promise<void> {
     await db.exec(`CREATE TABLE IF NOT EXISTS api_keys (
       id TEXT PRIMARY KEY,
-      team_id TEXT NOT NULL DEFAULT 'default',
+      team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       key_hash TEXT NOT NULL UNIQUE,
       scopes TEXT NOT NULL,
@@ -28,11 +28,15 @@ export class ApiKeyRepository {
     )`);
     const columns = await db.all("PRAGMA table_info(api_keys)");
     if (!columns.some((column: any) => column.name === "team_id")) {
-      await db.run("ALTER TABLE api_keys ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default'");
+      const row = await db.get("SELECT 1 AS present FROM api_keys LIMIT 1");
+      if (row) {
+        throw new Error("Legacy API keys require explicit workspace assignment");
+      }
+      await db.run("ALTER TABLE api_keys ADD COLUMN team_id TEXT NOT NULL REFERENCES teams(id)");
     }
   }
 
-  async list(teamId = "default") {
+  async list(teamId: string) {
     const rows = await db.all(
       "SELECT id, name, scopes, created_at, last_used_at FROM api_keys WHERE team_id = ? AND revoked_at IS NULL ORDER BY created_at DESC",
       [teamId],
@@ -40,20 +44,7 @@ export class ApiKeyRepository {
     return rows.map((row: any) => ({ ...row, scopes: JSON.parse(row.scopes) }));
   }
 
-  async issue(
-    name: string,
-    scopes: string[],
-  ): Promise<{ id: string; name: string; scopes: ApiKeyScope[]; token: string }>;
-  async issue(
-    teamId: string,
-    name: string,
-    scopes: string[],
-  ): Promise<{ id: string; name: string; scopes: ApiKeyScope[]; token: string }>;
-  async issue(teamIdOrName: string, nameOrScopes: string | string[], maybeScopes?: string[]) {
-    const legacy = Array.isArray(nameOrScopes);
-    const teamId = legacy ? "default" : teamIdOrName;
-    const name = legacy ? teamIdOrName : String(nameOrScopes);
-    const scopes = legacy ? (nameOrScopes as string[]) : maybeScopes || [];
+  async issue(teamId: string, name: string, scopes: string[]) {
     const validScopes = [
       ...new Set(scopes.filter((scope): scope is ApiKeyScope => (API_KEY_SCOPES as readonly string[]).includes(scope))),
     ];
@@ -82,18 +73,15 @@ export class ApiKeyRepository {
       return null;
     }
     await db.run("UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?", [row.id]);
-    return { scopes: JSON.parse(row.scopes), teamId: row.team_id || "default" };
+    return { scopes: JSON.parse(row.scopes), teamId: row.team_id };
   }
 
   async scopesForToken(token: string): Promise<string[] | null> {
     return (await this.tokenDetails(token))?.scopes ?? null;
   }
 
-  async revoke(id: string): Promise<boolean>;
   async revoke(teamId: string, id: string): Promise<boolean>;
-  async revoke(teamIdOrId: string, maybeId?: string): Promise<boolean> {
-    const teamId = maybeId === undefined ? "default" : teamIdOrId;
-    const id = maybeId === undefined ? teamIdOrId : maybeId;
+  async revoke(teamId: string, id: string): Promise<boolean> {
     const result = await db.run(
       "UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE team_id = ? AND id = ? AND revoked_at IS NULL",
       [teamId, id],

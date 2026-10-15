@@ -1,5 +1,6 @@
 import { onDestroy, onInit, ref, templateRef } from "@li3/web";
 import { diffLines } from "diff";
+import { navigateTo } from "@app/app-router.mjs";
 import { apiFetch } from "@app/api-client.mjs";
 
 export default function () {

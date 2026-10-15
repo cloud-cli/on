@@ -79,22 +79,21 @@ const migrations: Migration[] = [
           accepted_at DATETIME, created_by TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_team_invitations_expiry ON team_invitations(expires_at);
-        INSERT OR IGNORE INTO teams (id, name, webhook_token) VALUES ('default', 'Default', lower(hex(randomblob(32))));
-        INSERT OR IGNORE INTO team_members (team_id, subject, role)
-          SELECT 'default', subject, CASE WHEN role = 'admin' THEN 'admin' ELSE 'member' END FROM oidc_users;
       `);
     },
   },
   {
     version: "006_scope_push_subscriptions_to_teams",
     async apply() {
+      const legacy = await db.get("SELECT 1 AS present FROM push_subscriptions LIMIT 1");
+      if (legacy) {
+        throw new Error("Legacy push subscriptions require explicit workspace assignment");
+      }
       await db.exec(`
         CREATE TABLE IF NOT EXISTS team_push_subscriptions (
-          team_id TEXT NOT NULL DEFAULT 'default', endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
+          team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(team_id, endpoint)
         );
-        INSERT OR IGNORE INTO team_push_subscriptions (team_id, endpoint, p256dh, auth, created_at)
-          SELECT 'default', endpoint, p256dh, auth, created_at FROM push_subscriptions;
         CREATE INDEX IF NOT EXISTS idx_team_push_subscriptions_team ON team_push_subscriptions(team_id);
       `);
     },
@@ -104,18 +103,29 @@ const migrations: Migration[] = [
     async apply() {
       const tables = await db.all("PRAGMA table_info(api_keys)");
       if (tables.length && !tables.some((column: any) => column.name === "team_id")) {
-        await db.run("ALTER TABLE api_keys ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default'");
+        const rows = await db.get("SELECT 1 AS present FROM api_keys LIMIT 1");
+        if (rows) {
+          throw new Error(
+            "Cannot add workspace ownership to populated api_keys: explicit workspace assignment required",
+          );
+        }
+        await db.run("ALTER TABLE api_keys ADD COLUMN team_id TEXT NOT NULL REFERENCES teams(id)");
       }
     },
   },
   {
     version: "008_workflows_team_foreign_key",
     async apply() {
-      // teams is established by 005. Add ownership before checking it so legacy rows
-      // receive the existing default owner, then refuse to hide any invalid ownership.
+      // Legacy populated workflows need an explicit workspace assignment.
       const columns = await db.all("PRAGMA table_info(workflows)");
       if (!columns.some((column: any) => column.name === "team_id")) {
-        await db.run("ALTER TABLE workflows ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default'");
+        const rows = await db.get("SELECT id FROM workflows LIMIT 1");
+        if (rows) {
+          throw new Error(
+            "Cannot add workspace ownership to populated workflows: explicit workspace assignment required",
+          );
+        }
+        await db.run("ALTER TABLE workflows ADD COLUMN team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE RESTRICT");
       }
       const orphans = await db.all(
         "SELECT workflows.id, workflows.team_id FROM workflows LEFT JOIN teams ON teams.id = workflows.team_id WHERE teams.id IS NULL LIMIT 1",

@@ -59,6 +59,7 @@ describe("workflow management UI", () => {
     expect(source).toMatch(/credentials:\s*['"]same-origin['"]/);
     expect(source).toContain("@app/api-client.mjs");
     expect(source).toContain('import { apiFetch } from "@app/api-client.mjs"');
+    expect(source).toContain('import { navigateTo } from "@app/app-router.mjs"');
     expect(source).not.toContain("redirectToLogin");
     expect(workflowsSetup).toContain("const response = await apiFetch(url");
     expect(workflowsSetup).toContain('apiFetch("/api/v1/ai/workflow-help"');

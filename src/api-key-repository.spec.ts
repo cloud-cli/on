@@ -7,7 +7,7 @@ const database = vi.hoisted(() => {
     if (sql.startsWith("ALTER TABLE api_keys ADD COLUMN team_id")) {
       columns.push("team_id");
       for (const row of rows) {
-        row.team_id = "default";
+        row.team_id = undefined;
       }
     } else if (sql.startsWith("INSERT INTO api_keys")) {
       const [id, teamId, name, key_hash, scopes] = params;
@@ -37,6 +37,9 @@ const database = vi.hoisted(() => {
     return [];
   });
   const get = vi.fn(async (sql: string, params: any[] = []) => {
+    if (sql.startsWith("SELECT 1 AS present FROM api_keys")) {
+      return rows.length ? { present: 1 } : null;
+    }
     if (sql.startsWith("SELECT id, scopes, team_id FROM api_keys")) {
       return rows.find((row) => row.key_hash === params[0] && !row.revoked_at) || null;
     }
@@ -67,7 +70,7 @@ describe("workspace API-key repository", () => {
     vi.clearAllMocks();
   });
 
-  it("adds a default workspace to pre-existing API-key tables without changing existing tokens", async () => {
+  it("rejects populated unscoped API-key tables without assigning an owner", async () => {
     const repository = new ApiKeyRepository();
     database.rows.push({
       id: "old",
@@ -78,11 +81,9 @@ describe("workspace API-key repository", () => {
       revoked_at: null,
     });
 
-    await repository.init();
-    await repository.init();
-
-    expect(database.run).toHaveBeenCalledTimes(1);
-    expect(database.rows[0]).toMatchObject({ id: "old", team_id: "default", key_hash: "preserved-hash" });
+    await expect(repository.init()).rejects.toThrow(/explicit workspace assignment/);
+    expect(database.run).not.toHaveBeenCalled();
+    expect(database.rows[0]).toMatchObject({ id: "old", key_hash: "preserved-hash" });
   });
 
   it("lists, resolves, and revokes keys only within their owning workspace", async () => {
@@ -99,12 +100,10 @@ describe("workspace API-key repository", () => {
     expect(await repository.scopesForToken(b.token)).toEqual(["runs:control"]);
   });
 
-  it("assigns compatibility API keys to the default workspace", async () => {
+  it("requires an explicit workspace when issuing API keys", async () => {
     const repository = new ApiKeyRepository();
     await repository.init();
-    const issued = await repository.issue("legacy-key", ["workflows:read"]);
-
-    expect((await repository.tokenDetails(issued.token))?.teamId).toBe("default");
-    expect((await repository.list("default")).map((key) => key.name)).toContain("legacy-key");
+    await expect(repository.issue("legacy-key", ["workflows:read"] as any)).rejects.toThrow();
+    expect(database.rows).toHaveLength(0);
   });
 });

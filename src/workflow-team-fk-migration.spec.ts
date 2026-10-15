@@ -76,6 +76,36 @@ describe("workflow team foreign-key migration", () => {
     ]);
   });
 
+  it("does not provision an implicit default workspace or assign OIDC users", async () => {
+    database.all.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT version FROM schema_migrations")) {
+        return [];
+      }
+      if (sql === "PRAGMA table_info(workflows)") {
+        return ["id", "name", "source_yaml", "status", "active_revision", "enabled", "team_id"].map((name) => ({
+          name,
+        }));
+      }
+      if (sql === "PRAGMA table_info(api_keys)") {
+        return [];
+      }
+      return [];
+    });
+    database.get.mockImplementation(async (sql: string) => {
+      if (sql.includes("sqlite_master") && sql.includes("name = 'workflows'")) {
+        return {
+          sql: "CREATE TABLE workflows (id TEXT PRIMARY KEY, team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE RESTRICT)",
+        };
+      }
+      return null;
+    });
+
+    await runMigrations();
+    const migrationSql = database.exec.mock.calls.map(([sql]: [string]) => sql).join("\n");
+    expect(migrationSql).not.toMatch(/INSERT\s+OR\s+IGNORE\s+INTO\s+teams/i);
+    expect(migrationSql).not.toMatch(/SELECT\s+'default',\s*subject\s+FROM\s+oidc_users/i);
+  });
+
   it("keeps a fresh schema that already declares the workspace foreign key", async () => {
     database.get.mockResolvedValue({
       sql: "CREATE TABLE workflows (id TEXT, team_id TEXT, FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE RESTRICT)",

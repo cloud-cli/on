@@ -15,11 +15,12 @@ describe("team data schema initialization order", () => {
 
     expect(database.exec).toHaveBeenCalledOnce();
     expect(database.exec.mock.calls[0][0]).toContain("CREATE TABLE IF NOT EXISTS team_secrets");
+    expect(database.exec.mock.calls[0][0]).toContain("team_id TEXT NOT NULL REFERENCES teams(id)");
     expect(database.exec.mock.calls[0][0]).not.toContain("idx_workflows_team");
     expect(database.run).not.toHaveBeenCalled();
   });
 
-  it("creates team indexes and assigns legacy jobs once both tables exist", async () => {
+  it("creates team indexes without assigning jobs to an implicit workspace", async () => {
     database.all
       .mockResolvedValueOnce([{ name: "id" }, { name: "team_id" }])
       .mockResolvedValueOnce([{ name: "id" }, { name: "team_id" }])
@@ -31,6 +32,19 @@ describe("team data schema initialization order", () => {
     expect(database.exec).toHaveBeenCalledTimes(3);
     expect(database.exec.mock.calls[1][0]).toContain("idx_workflows_team");
     expect(database.exec.mock.calls[2][0]).toContain("idx_jobs_team");
-    expect(database.run).toHaveBeenCalledWith(expect.stringContaining("UPDATE jobs SET team_id"));
+    expect(database.run).not.toHaveBeenCalled();
+    expect(database.get).toHaveBeenCalledWith(expect.stringContaining("jobs.team_id != workflows.team_id"));
+  });
+
+  it("fails instead of moving ownerless jobs into an implicit workspace", async () => {
+    database.all
+      .mockResolvedValueOnce([{ name: "id" }, { name: "team_id" }])
+      .mockResolvedValueOnce([{ name: "id" }, { name: "team_id" }])
+      .mockResolvedValueOnce([{ name: "id" }, { name: "team_id" }])
+      .mockResolvedValueOnce([{ name: "id" }, { name: "team_id" }]);
+    database.get.mockResolvedValue({ id: 42 });
+
+    await expect(ensureTeamDataSchema()).rejects.toThrow(/Job 42 has no valid workspace owner/);
+    expect(database.run).not.toHaveBeenCalled();
   });
 });

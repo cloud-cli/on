@@ -53,6 +53,12 @@ describe("SPA router", () => {
     expect(handleClick).toContain('target.pathname.startsWith("/api/")');
   });
 
+  it("serves workspace run routes directly so refreshes load the app shell", () => {
+    expect(routerSetup).toContain("path.match(/^\\/workspaces\\/([^/]+)\\/runs$/)");
+    expect(serverSetup).toContain("/^\\/workspaces\\/[^/]+\\/runs$/");
+    expect(serverSetup).toContain("return this.renderAppShell(res);");
+  });
+
   it("route mapping covers /settings and workflow editor paths only under /workflows", () => {
     expect(routerSetup).toContain('path === "/settings"');
 

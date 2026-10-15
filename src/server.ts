@@ -299,7 +299,10 @@ export class WebhookServer {
       return res.end(appRouterTemplate);
     }
 
-    if (req.method === "GET" && (url.pathname === "/runs" || url.pathname === "/")) {
+    if (
+      req.method === "GET" &&
+      (url.pathname === "/runs" || url.pathname === "/" || /^\/workspaces\/[^/]+\/runs$/.test(url.pathname))
+    ) {
       return this.renderAppShell(res);
     }
 
@@ -684,9 +687,13 @@ export class WebhookServer {
           res.writeHead(409, { "Cache-Control": "no-store" }).end();
           return;
         }
+        if (!job.team_id) {
+          res.writeHead(409).end();
+          return;
+        }
         res
           .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
-          .end(JSON.stringify({ secrets: await this.secretRepository.getAllForJob(job.team_id || "default") }));
+          .end(JSON.stringify({ secrets: await this.secretRepository.getAllForJob(job.team_id) }));
         return;
       }
       if (req.method === "POST" && action === "renew") {
@@ -737,8 +744,11 @@ export class WebhookServer {
           return;
         }
         const cacheKey = typeof body.cacheKey === "string" ? body.cacheKey.slice(0, 200) : "";
-        const ownerKey =
-          body.kind === "artifact" ? String(job.id) : `${job.team_id || "default"}:${job.workflow_id}:${cacheKey}`;
+        if (body.kind !== "artifact" && !job.team_id) {
+          res.writeHead(409).end();
+          return;
+        }
+        const ownerKey = body.kind === "artifact" ? String(job.id) : `${job.team_id}:${job.workflow_id}:${cacheKey}`;
         if (body.action === "load") {
           const files = await this.queue.getStoredFilesForRunner(
             body.kind,
@@ -810,7 +820,7 @@ export class WebhookServer {
           body.report,
         );
         if (saved) {
-          this.events.publish("jobs.changed", { jobId: job.id, teamId: job.team_id || "default" });
+          this.events.publish("jobs.changed", { jobId: job.id, teamId: job.team_id });
         }
         res.writeHead(saved ? 204 : 409, { "Cache-Control": "no-store" }).end();
         return;
@@ -820,7 +830,7 @@ export class WebhookServer {
         if (released) {
           this.events.publish("jobs.available", {
             tags: job.required_tags ? JSON.parse(job.required_tags) : [],
-            teamId: job.team_id || "default",
+            teamId: job.team_id,
           });
         }
         res.writeHead(released ? 204 : 409, { "Cache-Control": "no-store" }).end();
@@ -1070,25 +1080,12 @@ sessionStorage.removeItem('runner-pending-team-invite');
         if (providerKeys) {
           return res.end(JSON.stringify({ keys: providerKeys }));
         }
-        return res.end(JSON.stringify({ keys: await this.apiKeys.list("default") }));
+        res.writeHead(410, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: "Use a workspace-scoped API key endpoint" }));
       }
       if (req.method === "POST") {
-        if (this.oidc?.userFromCookie(req.headers.cookie) || this.oidcBearer(req)) {
-          const providerKey = await this.issueOidcToken(req, res);
-          if (providerKey) {
-            return res.end(JSON.stringify(providerKey));
-          }
-          return;
-        }
-        const body = await this.readJson(req, res);
-        try {
-          const key = await this.apiKeys.issue(body?.name, body?.scopes || []);
-          res.writeHead(201, { "Content-Type": "application/json; charset=utf-8" });
-          return res.end(JSON.stringify(key));
-        } catch (error: any) {
-          res.writeHead(422, { "Content-Type": "application/json" });
-          return res.end(JSON.stringify({ error: error.message }));
-        }
+        res.writeHead(410, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: "Use a workspace-scoped API key endpoint" }));
       }
     }
     const apiKeyMatch = url.pathname.match(/^\/api\/api-keys\/([^/]+)$/);
@@ -1102,8 +1099,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
           return res.writeHead(providerResponse.status).end();
         }
       }
-      const revoked = await this.apiKeys.revoke("default", apiKeyMatch[1]);
-      res.writeHead(revoked ? 204 : 404).end();
+      res.writeHead(410, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Use a workspace-scoped API key endpoint" }));
       return;
     }
 
@@ -1406,12 +1403,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (req.method === "POST" && url.pathname.startsWith("/webhooks/")) {
       const provider = url.pathname.replace("/webhooks/", "");
       const workspaceId = await this.legacyWebhookWorkspace();
-      const legacySecret =
-        workspaceId === "default"
-          ? undefined
-          : process.env[`${provider.toUpperCase()}_WEBHOOK_SECRET`] ||
-            this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`);
-      return this.handleWebhook(provider, req, res, workspaceId, legacySecret);
+      if (!workspaceId) {
+        res.writeHead(404).end();
+        return;
+      }
+      return this.handleWebhook(provider, req, res, workspaceId);
     }
 
     // Keep machine-readable errors for APIs, but give browser navigation a helpful not-found page.
@@ -1486,18 +1482,18 @@ sessionStorage.removeItem('runner-pending-team-invite');
   }
 
   /** Keep the legacy provider URL/secret serving the adopted workspace until its webhook is cut over. */
-  private async legacyWebhookWorkspace(): Promise<string> {
+  private async legacyWebhookWorkspace(): Promise<string | null> {
     const markerTable = await db.get(
       "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspace_adoptions'",
     );
     if (!markerTable) {
-      return "default";
+      return null;
     }
     const adoption = await db.get(
       "SELECT target_workspace_id FROM workspace_adoptions WHERE version = ? AND source_workspace_id = 'default'",
       ["default-to-workspace-v1"],
     );
-    return adoption?.target_workspace_id || "default";
+    return adoption?.target_workspace_id || null;
   }
 
   private async handleDispatch(req: http.IncomingMessage, res: http.ServerResponse, provider: string) {
@@ -1704,11 +1700,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         throw error;
       }
     }
-    const secret =
-      signingSecret ||
-      dbSecrets[`${provider.toUpperCase()}_WEBHOOK_SECRET`] ||
-      (teamId === "default" ? process.env[`${provider.toUpperCase()}_WEBHOOK_SECRET`] : undefined) ||
-      (teamId === "default" ? this.secrets.get(`${provider.toUpperCase()}_WEBHOOK_SECRET`) : undefined);
+    const secret = signingSecret || dbSecrets[`${provider.toUpperCase()}_WEBHOOK_SECRET`] || undefined;
     const preprocessor = this.preprocessors.get(provider);
     try {
       if (preprocessor) {
@@ -2738,8 +2730,12 @@ sessionStorage.removeItem('runner-pending-team-invite');
       res.writeHead(403, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Job is not assigned to this worker" }));
     }
+    if (!job.team_id) {
+      res.writeHead(409).end();
+      return;
+    }
     res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ secrets: await this.secretRepository.getAllForJob(job.team_id || "default") }));
+    res.end(JSON.stringify({ secrets: await this.secretRepository.getAllForJob(job.team_id) }));
   }
 
   /**
@@ -2784,7 +2780,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (jobId) {
       const job = await this.queue.getJob(jobId);
       if (job) {
-        this.events.publish("jobs.changed", { jobId, teamId: job.team_id || "default" });
+        if (job.team_id) {
+          this.events.publish("jobs.changed", { jobId, teamId: job.team_id });
+        }
         void this.push.notify(job);
       }
     }
@@ -3181,14 +3179,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
     res.end(JSON.stringify({ id: Number(jobId), status: "cancelled" }));
   }
 
-  private async currentSecrets(teamId = "default"): Promise<Record<string, string>> {
+  private async currentSecrets(teamId: string): Promise<Record<string, string>> {
     try {
       return await this.secretRepository.getAllForTeam(teamId);
     } catch (error) {
-      if (teamId !== "default" || process.env.RUNNER_MASTER_KEY || process.env.CREDENTIALS_DIRECTORY) {
-        throw error;
-      }
-      return this.secrets.getAll();
+      throw error;
     }
   }
 

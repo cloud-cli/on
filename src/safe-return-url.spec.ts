@@ -121,6 +121,8 @@ describe("isProtectedUiRoute", () => {
       "/settings",
       "/teams",
       "/teams/team-1/settings",
+      "/workspaces/workspace-1/runs",
+      "/workspaces/workspace-1/settings",
       "/settings/secrets",
       "/settings/tokens",
       "/settings/notifications",

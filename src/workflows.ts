@@ -130,7 +130,7 @@ export class WorkflowRepository {
         id TEXT PRIMARY KEY, name TEXT NOT NULL, source_yaml TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'draft', active_revision INTEGER, enabled INTEGER NOT NULL DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        team_id TEXT NOT NULL DEFAULT 'default',
+        team_id TEXT NOT NULL,
         FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE RESTRICT
       );
       CREATE TABLE IF NOT EXISTS workflow_revisions (
