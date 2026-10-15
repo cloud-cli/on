@@ -10,7 +10,7 @@ export default function () {
   const inviteEmail = ref("");
   const inviteLink = ref("");
   const webhooks = ref([]);
-  const webhookProvider = ref("github");
+  const webhookProvider = ref("");
   const webhookUrl = ref("");
   const webhookSecret = ref("");
   const message = ref("");
@@ -95,6 +95,9 @@ export default function () {
     });
   const setScope = (scope, event) => {
     scope.selected = event.target.checked;
+  };
+  const setFileMode = (event) => {
+    fileMode.value = event.target.checked;
   };
   const setSecretFile = async (event) => {
     const file = event.target.files?.[0];
@@ -279,6 +282,7 @@ export default function () {
     issueKey,
     revokeKey,
     setScope,
+    setFileMode,
     secrets,
     secretName,
     secretValue,

@@ -12,7 +12,7 @@
   </head>
   <body class="min-h-screen bg-flow-background p-4 font-sans text-flow-foreground md:p-6">
     <template app
-      ><main class="mx-auto max-w-6xl space-y-5 py-6">
+      ><main class="w-full space-y-5 py-2">
         <header class="flex flex-wrap items-center justify-between gap-3 border-b border-flow-border pb-3">
           <h1 class="text-2xl font-semibold">{{ teamName }} workspace</h1>
           <nav aria-label="Workspace settings sections" class="flex flex-wrap justify-end gap-1.5">
@@ -26,19 +26,19 @@
               >Webhooks</a
             >
             <a href="#team-runners" class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
-              >Runners</a
+              >Task Runners</a
+            >
+            <a
+              href="#workspace-secrets"
+              class-hidden="!isAdmin"
+              class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
+              >Task Runner Secrets</a
             >
             <a
               href="#workspace-api-keys"
               class-hidden="!isAdmin"
               class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
               >API keys</a
-            >
-            <a
-              href="#workspace-secrets"
-              class-hidden="!isAdmin"
-              class="rounded-md border border-flow-border px-2.5 py-1.5 text-xs font-medium"
-              >Secrets</a
             >
           </nav>
         </header>
@@ -54,42 +54,6 @@
               members.
             </p>
             <p class="mt-3 text-sm text-flow-muted" role="status">{{ message }}</p>
-            <div class="mt-5 grid gap-4 md:grid-cols-2">
-              <div class="rounded-xl border border-flow-border p-4" class-hidden="!isAdmin">
-                <h3 class="font-medium">Invite a workspace member</h3>
-                <p class="mt-1 text-xs text-flow-muted">
-                  Invitation links expire after seven days and can be used once by the matching email account.
-                </p>
-                <input
-                  bind-value="inviteEmail"
-                  on-input="inviteEmail = $event.target.value"
-                  type="email"
-                  aria-label="Teammate email"
-                  placeholder="name@example.com"
-                  class="mt-3 w-full rounded-lg border border-flow-border px-3 py-2 text-sm"
-                />
-                <button
-                  type="button"
-                  on-click="createInvitation()"
-                  class="mt-3 rounded-lg border border-flow-border px-4 py-2 text-sm"
-                >
-                  Create invite link
-                </button>
-                <template if="inviteLink"
-                  ><div class="mt-3 break-all rounded-lg bg-flow-panel p-3 text-xs">
-                    <a attr-href="inviteLink">{{ inviteLink }}</a
-                    ><button
-                      type="button"
-                      on-click="copyValue(inviteLink)"
-                      aria-label="Copy invitation link"
-                      class="ml-3 underline"
-                    >
-                      Copy
-                    </button>
-                  </div></template
-                >
-              </div>
-            </div>
             <h3 class="mt-6 text-xs font-semibold uppercase tracking-wider text-flow-muted">Current members</h3>
             <ul class="mt-2 space-y-2">
               <template for="member of members"
@@ -97,7 +61,11 @@
                   class="flex items-center justify-between gap-3 rounded-lg border border-flow-border px-3 py-2 text-sm"
                 >
                   {{ member.name || member.email || member.subject }}
-                  <span class="text-xs text-flow-muted">· {{ member.role }}</span>
+                  <span
+                    class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800"
+                    class-hidden="member.role !== 'admin'"
+                    >admin</span
+                  >
                   <button
                     type="button"
                     class="text-xs underline"
@@ -117,6 +85,40 @@
                 </li></template
               >
             </ul>
+            <div class="mt-6 border-t border-flow-border pt-5" class-hidden="!isAdmin">
+              <h3 class="font-medium">Invite a workspace member</h3>
+              <p class="mt-1 text-xs text-flow-muted">
+                Invitation links expire after seven days and can be used once by the matching email account.
+              </p>
+              <form class="mt-3 flex gap-2" on-submit.prevent="createInvitation()">
+                <label class="sr-only" for="invite-email">Teammate email</label>
+                <input
+                  id="invite-email"
+                  bind-value="inviteEmail"
+                  on-input="inviteEmail = $event.target.value"
+                  type="email"
+                  aria-label="Teammate email"
+                  placeholder="name@example.com"
+                  class="min-w-0 flex-1 rounded-lg border border-flow-border px-3 py-2 text-sm"
+                />
+                <button type="submit" class="whitespace-nowrap rounded-lg border border-flow-border px-4 py-2 text-sm">
+                  Get link
+                </button>
+              </form>
+              <template if="inviteLink"
+                ><div class="mt-3 break-all rounded-lg bg-flow-panel p-3 text-xs">
+                  <a attr-href="inviteLink">{{ inviteLink }}</a
+                  ><button
+                    type="button"
+                    on-click="copyValue(inviteLink)"
+                    aria-label="Copy invitation link"
+                    class="ml-3 underline"
+                  >
+                    Copy
+                  </button>
+                </div></template
+              >
+            </div>
           </section>
           <section
             id="team-webhooks"
@@ -124,7 +126,7 @@
             class-hidden="!isAdmin"
             aria-labelledby="team-webhooks-title"
           >
-            <h2 id="team-webhooks-title" class="text-lg font-semibold">Workspace webhooks</h2>
+            <h2 id="team-webhooks-title" class="text-lg font-semibold">Webhooks</h2>
             <p class="mt-1 text-sm text-flow-muted">
               Each registration has its own URL and signing secret. Copy both when created; the signing secret is only
               shown once.
@@ -133,8 +135,8 @@
               <input
                 bind-value="webhookProvider"
                 on-input="webhookProvider = $event.target.value"
-                aria-label="Webhook provider"
-                value="github"
+                aria-label="Webhook URL slug"
+                placeholder="Webhook URL slug."
                 maxlength="64"
                 pattern="[a-z0-9-]+"
                 class="min-w-0 flex-1 rounded-lg border border-flow-border px-3 py-2 text-sm"
@@ -189,7 +191,7 @@
             class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
             aria-labelledby="team-runners-title"
           >
-            <h2 id="team-runners-title" class="text-lg font-semibold">Runners</h2>
+            <h2 id="team-runners-title" class="text-lg font-semibold">Task Runners</h2>
             <p class="mt-1 text-sm text-flow-muted">
               Workspace-scoped runners and shared runners available to this workspace.
             </p>
@@ -199,7 +201,7 @@
               class-hidden="!isAdmin"
               class="mt-3 rounded-lg border border-flow-border px-4 py-2 text-sm"
             >
-              Create workspace runner enrollment code
+              Activate runner
             </button>
             <template if="enrollmentCode"
               ><p class="mt-2 break-all rounded-lg bg-flow-panel p-3 text-sm">
@@ -264,12 +266,76 @@
             </ul>
           </section>
           <section
+            id="workspace-secrets"
+            class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
+            class-hidden="!isAdmin"
+            aria-labelledby="workspace-secrets-title"
+          >
+            <h2 id="workspace-secrets-title" class="text-lg font-semibold">Task Runner Secrets</h2>
+            <p class="mt-1 text-sm text-flow-muted">
+              Encrypted, write-only values available to workflows in this workspace.
+            </p>
+            <div class="mt-4 grid gap-3">
+              <label class="sr-only" for="workspace-secret-name">Secret name</label>
+              <input
+                id="workspace-secret-name"
+                bind-value="secretName"
+                on-input="secretName = $event.target.value"
+                placeholder="NPM_TOKEN"
+                class="rounded-lg border border-flow-border px-3 py-2 font-mono text-sm uppercase"
+              />
+              <label class="flex items-center gap-2 text-sm"
+                ><input type="checkbox" bind-checked="fileMode" on-change="setFileMode($event)" /> Binary file
+                secret</label
+              >
+              <template if="!fileMode"
+                ><label class="sr-only" for="workspace-secret-value">Secret value</label
+                ><input
+                  id="workspace-secret-value"
+                  bind-value="secretValue"
+                  on-input="secretValue = $event.target.value"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="Secret value"
+                  class="rounded-lg border border-flow-border px-3 py-2 font-mono text-sm"
+              /></template>
+              <template if="fileMode"
+                ><label class="sr-only" for="workspace-secret-file">Secret file</label
+                ><input
+                  id="workspace-secret-file"
+                  on-change="setSecretFile($event)"
+                  type="file"
+                  class="rounded-lg border border-flow-border px-3 py-2 text-sm"
+                /><span class="text-xs text-flow-muted">{{ secretFileName }}</span></template
+              >
+              <div>
+                <button
+                  type="button"
+                  on-click="saveSecret()"
+                  class="rounded-lg border border-flow-primary/60 px-3 py-2 text-sm font-medium text-flow-primary"
+                >
+                  Save secret
+                </button>
+              </div>
+            </div>
+            <ul class="mt-4 space-y-2" aria-label="Workspace secrets">
+              <template for="secret of secrets"
+                ><li
+                  class="flex items-center justify-between gap-3 rounded-lg border border-flow-border px-3 py-2 text-sm"
+                >
+                  <code>{{ secret }}</code
+                  ><button type="button" on-click="deleteSecret(secret)" class="text-rose-700 underline">Delete</button>
+                </li></template
+              >
+            </ul>
+          </section>
+          <section
             id="workspace-api-keys"
             class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
             class-hidden="!isAdmin"
             aria-labelledby="workspace-api-keys-title"
           >
-            <h2 id="workspace-api-keys-title" class="text-lg font-semibold">Workspace API keys</h2>
+            <h2 id="workspace-api-keys-title" class="text-lg font-semibold">API keys</h2>
             <p class="mt-1 text-sm text-flow-muted">
               Keys are limited to this workspace. Give each key only the scopes its automation needs.
             </p>
@@ -279,7 +345,7 @@
                 id="workspace-key-name"
                 bind-value="keyName"
                 on-input="keyName = $event.target.value"
-                placeholder="Deploy bot"
+                placeholder="API key name"
                 class="rounded-lg border border-flow-border px-3 py-2 text-sm"
               />
               <button
@@ -319,70 +385,6 @@
                   ><button type="button" on-click="revokeKey(key)" class="shrink-0 text-rose-700 underline">
                     Revoke
                   </button>
-                </li></template
-              >
-            </ul>
-          </section>
-          <section
-            id="workspace-secrets"
-            class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
-            class-hidden="!isAdmin"
-            aria-labelledby="workspace-secrets-title"
-          >
-            <h2 id="workspace-secrets-title" class="text-lg font-semibold">Workspace secrets</h2>
-            <p class="mt-1 text-sm text-flow-muted">
-              Encrypted, write-only values available to workflows in this workspace.
-            </p>
-            <div class="mt-4 grid gap-3">
-              <label class="sr-only" for="workspace-secret-name">Secret name</label>
-              <input
-                id="workspace-secret-name"
-                bind-value="secretName"
-                on-input="secretName = $event.target.value"
-                placeholder="NPM_TOKEN"
-                class="rounded-lg border border-flow-border px-3 py-2 font-mono text-sm uppercase"
-              />
-              <label class="flex items-center gap-2 text-sm"
-                ><input type="checkbox" bind-checked="fileMode" on-change="fileMode = $event.target.checked" /> Binary
-                file secret</label
-              >
-              <template if="!fileMode"
-                ><label class="sr-only" for="workspace-secret-value">Secret value</label
-                ><input
-                  id="workspace-secret-value"
-                  bind-value="secretValue"
-                  on-input="secretValue = $event.target.value"
-                  type="password"
-                  autocomplete="new-password"
-                  placeholder="Secret value"
-                  class="rounded-lg border border-flow-border px-3 py-2 font-mono text-sm"
-              /></template>
-              <template if="fileMode"
-                ><label class="sr-only" for="workspace-secret-file">Secret file</label
-                ><input
-                  id="workspace-secret-file"
-                  on-change="setSecretFile($event)"
-                  type="file"
-                  class="rounded-lg border border-flow-border px-3 py-2 text-sm"
-                /><span class="text-xs text-flow-muted">{{ secretFileName }}</span></template
-              >
-              <div>
-                <button
-                  type="button"
-                  on-click="saveSecret()"
-                  class="rounded-lg border border-flow-primary/60 px-3 py-2 text-sm font-medium text-flow-primary"
-                >
-                  Save secret
-                </button>
-              </div>
-            </div>
-            <ul class="mt-4 space-y-2" aria-label="Workspace secrets">
-              <template for="secret of secrets"
-                ><li
-                  class="flex items-center justify-between gap-3 rounded-lg border border-flow-border px-3 py-2 text-sm"
-                >
-                  <code>{{ secret }}</code
-                  ><button type="button" on-click="deleteSecret(secret)" class="text-rose-700 underline">Delete</button>
                 </li></template
               >
             </ul>
