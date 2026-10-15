@@ -37,6 +37,12 @@ describe("team settings UI", () => {
     expect(html).toContain('placeholder="API key name"');
     expect(html).not.toContain('value="github"');
     expect(html).toContain('on-change="setFileMode($event)"');
+    expect(html).toContain('on-input="setWebhookProvider($event)"');
+    expect(setup).toContain("webhookProvider.value = event.target.value");
+    expect(setup).toContain("const provider = webhookProvider.value.trim()");
+    expect(setup).toContain("JSON.stringify({ provider })");
+    expect(setup).toContain("/^[a-z0-9-]+$/.test(provider)");
+    expect(html).not.toContain('on-input="webhookProvider = $event.target.value"');
     expect(html).not.toContain("fileMode = $event.target.checked");
     expect(setup).toContain("const setFileMode = (event) =>");
     expect(setup).toContain("fileMode.value = event.target.checked");

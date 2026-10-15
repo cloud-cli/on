@@ -99,6 +99,21 @@ export default function () {
   const setFileMode = (event) => {
     fileMode.value = event.target.checked;
   };
+  const setInviteEmail = (event) => {
+    inviteEmail.value = event.target.value;
+  };
+  const setWebhookProvider = (event) => {
+    webhookProvider.value = event.target.value;
+  };
+  const setSecretName = (event) => {
+    secretName.value = event.target.value;
+  };
+  const setSecretValue = (event) => {
+    secretValue.value = event.target.value;
+  };
+  const setKeyName = (event) => {
+    keyName.value = event.target.value;
+  };
   const setSecretFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -165,9 +180,13 @@ export default function () {
     });
   const createWebhook = () =>
     act(async () => {
+      const provider = webhookProvider.value.trim();
+      if (!/^[a-z0-9-]+$/.test(provider)) {
+        throw new Error("Webhook URL slugs must contain only lowercase letters, numbers, and hyphens.");
+      }
       const result = await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/webhooks`, {
         method: "POST",
-        body: JSON.stringify({ provider: webhookProvider.value }),
+        body: JSON.stringify({ provider }),
       });
       webhookUrl.value = `${location.origin}${result.url}`;
       webhookSecret.value = result.signingSecret;
@@ -263,7 +282,9 @@ export default function () {
     message,
     error,
     createInvitation,
+    setInviteEmail,
     createWebhook,
+    setWebhookProvider,
     revokeWebhook,
     copyValue,
     toggleMemberRole,
@@ -277,6 +298,7 @@ export default function () {
     setSharedRunner,
     keys,
     keyName,
+    setKeyName,
     keyToken,
     scopeOptions,
     issueKey,
@@ -285,7 +307,9 @@ export default function () {
     setFileMode,
     secrets,
     secretName,
+    setSecretName,
     secretValue,
+    setSecretValue,
     fileMode,
     secretFileName,
     setSecretFile,

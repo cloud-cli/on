@@ -101,7 +101,7 @@
                 <input
                   id="invite-email"
                   bind-value="inviteEmail"
-                  on-input="inviteEmail = $event.target.value"
+                  on-input="setInviteEmail($event)"
                   type="email"
                   aria-label="Teammate email"
                   placeholder="name@example.com"
@@ -140,7 +140,7 @@
             <div class="mt-4 flex gap-2">
               <input
                 bind-value="webhookProvider"
-                on-input="webhookProvider = $event.target.value"
+                on-input="setWebhookProvider($event)"
                 aria-label="Webhook URL slug"
                 placeholder="Webhook URL slug."
                 maxlength="64"
@@ -286,7 +286,7 @@
               <input
                 id="workspace-secret-name"
                 bind-value="secretName"
-                on-input="secretName = $event.target.value"
+                on-input="setSecretName($event)"
                 placeholder="NPM_TOKEN"
                 class="rounded-lg border border-flow-border px-3 py-2 font-mono text-sm uppercase"
               />
@@ -299,7 +299,7 @@
                 ><input
                   id="workspace-secret-value"
                   bind-value="secretValue"
-                  on-input="secretValue = $event.target.value"
+                  on-input="setSecretValue($event)"
                   type="password"
                   autocomplete="new-password"
                   placeholder="Secret value"
@@ -350,7 +350,7 @@
               <input
                 id="workspace-key-name"
                 bind-value="keyName"
-                on-input="keyName = $event.target.value"
+                on-input="setKeyName($event)"
                 placeholder="API key name"
                 class="rounded-lg border border-flow-border px-3 py-2 text-sm"
               />
