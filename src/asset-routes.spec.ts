@@ -56,4 +56,14 @@ describe("canonical setup-script asset routes", () => {
     expect(response.writeHead).toHaveBeenCalledWith(404, expect.any(Object));
     expect(response.end).toHaveBeenCalledOnce();
   });
+
+  it("serves the workspace route helper from the canonical asset namespace", async () => {
+    const response = await request("/assets/workspace-path.mjs");
+
+    expect(response.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-cache",
+      "Content-Type": "text/javascript; charset=utf-8",
+    });
+    expect(response.end).toHaveBeenCalledOnce();
+  });
 });

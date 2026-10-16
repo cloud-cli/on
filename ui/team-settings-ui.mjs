@@ -1,8 +1,9 @@
 import { onInit, ref } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
+import { workspaceIdFromPathname } from "@app/workspace-path.mjs";
 
 export default function () {
-  const teamId = decodeURIComponent(location.pathname.split("/")[2] || "");
+  const teamId = workspaceIdFromPathname(location.pathname);
   const members = ref([]);
   const isAdmin = ref(false);
   const teamName = ref("");

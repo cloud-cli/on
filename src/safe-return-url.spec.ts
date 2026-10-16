@@ -74,6 +74,7 @@ describe("isExemptFromGlobalOidcAuth", () => {
     expect(isExemptFromGlobalOidcAuth("/service-worker.js", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/api-client.mjs", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/preferences.mjs", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/assets/workspace-path.mjs", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/app-header.mjs", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/assets/app-router.mjs", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/assets/dashboard.mjs", "GET")).toBe(true);

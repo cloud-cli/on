@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { generateTeamSettingsHtml } from "./team-settings-ui.js";
 import { generateSettingsHtml } from "./settings-ui.js";
 import setup from "./team-settings-ui.mjs?raw";
+import { workspaceIdFromPathname } from "./workspace-path.mjs";
 import { WebhookServer } from "../src/server.js";
 
 describe("team settings UI", () => {
@@ -84,12 +85,22 @@ describe("team settings UI", () => {
   });
 
   it("loads and mutates only the team identified by the route", () => {
-    expect(setup).toContain('location.pathname.split("/")[2]');
+    expect(setup).toContain("workspaceIdFromPathname(location.pathname)");
+    expect(setup).not.toContain('location.pathname.split("/")[2]');
     expect(setup).toContain("request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/members`)");
     expect(setup).toContain("request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/invitations`");
     expect(setup).toContain("request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/webhooks`");
     expect(setup).toContain('"X-Team-ID": teamId');
     expect(setup).toContain("You are not a member of this workspace.");
+  });
+
+  it.each([
+    ["/ui/workspaces/team-a/settings", "team-a"],
+    ["/ui/teams/team-b/settings", "team-b"],
+    ["/workspaces/team%2Da/settings", "team-a"],
+    ["/ui/workspaces/team-a/runs", ""],
+  ])("extracts the workspace id from %s", (pathname, expected) => {
+    expect(workspaceIdFromPathname(pathname)).toBe(expected);
   });
   it("keeps team settings focused on the selected team", () => {
     expect(generateTeamSettingsHtml()).toContain("Workspace members share workflows");
