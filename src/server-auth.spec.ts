@@ -570,6 +570,20 @@ describe("workflow and secret settings authentication", () => {
 });
 
 describe("canonical route boundaries", () => {
+  it("redirects the site root to the canonical dashboard route", async () => {
+    const response = { writeHead: vi.fn(), end: vi.fn() };
+    await (WebhookServer.prototype as any).handleRequest.call(
+      {},
+      { method: "GET", url: "/?filter=failed", headers: { host: "flow.test" } },
+      response,
+    );
+    expect(response.writeHead).toHaveBeenCalledWith(302, {
+      Location: "/ui/runs?filter=failed",
+      "Cache-Control": "no-store",
+    });
+    expect(response.end).toHaveBeenCalledOnce();
+  });
+
   it.each(["/api/jobs", "/webhooks/github", "/runs", "/workflows", "/on.css", "/assets/"])(
     "rejects legacy public URL %s",
     async (url) => {

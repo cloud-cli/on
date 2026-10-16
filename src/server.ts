@@ -205,6 +205,10 @@ export class WebhookServer {
       return res.end(JSON.stringify({ error: "Use the versioned API route under /api/v1" }));
     }
     const externalPath = url.pathname;
+    if (externalPath === "/" && (req.method === "GET" || req.method === "HEAD")) {
+      res.writeHead(302, { Location: `/ui/runs${url.search}`, "Cache-Control": "no-store" });
+      return res.end();
+    }
     const isVersionedApiPath = externalPath === "/api/v1" || externalPath.startsWith("/api/v1/");
     if (isVersionedApiPath) {
       url.pathname = internalApiPath(url.pathname, req.method || "GET");
