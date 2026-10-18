@@ -46,40 +46,49 @@
             <button
               type="button"
               on-click="copyRunUrl()"
-              class="inline-flex items-center gap-2 rounded-full border border-flow-border px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+              class="inline-flex items-center gap-2 rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
               title="Copy URL"
+              aria-label="Copy URL"
             >
-              <lucide-icon icon="link" size="15"></lucide-icon>Copy URL
+              <lucide-icon icon="link" size="15"></lucide-icon><span class="hidden sm:inline">Copy URL</span>
             </button>
             <button
               type="button"
               on-click="downloadLogs()"
-              class="inline-flex items-center gap-2 rounded-full border border-flow-border px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+              class="inline-flex items-center gap-2 rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
               class-hidden="!report.canViewLogs"
               title="Download logs"
+              aria-label="Download logs"
             >
-              <lucide-icon icon="download" size="15"></lucide-icon>Download Logs
+              <lucide-icon icon="download" size="15"></lucide-icon><span class="hidden sm:inline">Download Logs</span>
             </button>
             <template if="report.status === 'running'">
               <button
-                class="rounded-full border border-rose-300 px-4 py-1.5 text-sm text-rose-700 hover:border-rose-400 disabled:opacity-50"
+                class="inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-3 py-1.5 text-sm text-rose-700 hover:border-rose-400 disabled:opacity-50"
                 on-click="cancelJob()"
                 bind-disabled.bool="cancelling"
+                attr-aria-label="cancelling ? 'Cancelling run' : 'Cancel run'"
+                title="Cancel run"
               >
-                {{ cancelling ? 'Cancelling...' : 'Cancel' }}
+                <lucide-icon bind-icon="cancelling ? 'loader-circle' : 'circle-stop'" size="15"></lucide-icon>
+                <span class="hidden sm:inline">{{ cancelling ? 'Cancelling...' : 'Cancel' }}</span>
               </button>
             </template>
             <template if="report.status !== 'running'">
               <div class="relative flex items-center gap-1">
                 <button
-                  class="rounded-full border border-flow-border px-4 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+                  class="inline-flex items-center gap-2 rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
                   on-click="restartJob()"
+                  bind-disabled.bool="restartLoading"
+                  aria-label="Restart run"
+                  title="Restart run"
                 >
-                  Restart
+                  <lucide-icon bind-icon="restartLoading ? 'loader-circle' : 'rotate-cw'" size="15"></lucide-icon>
+                  <span class="hidden sm:inline">{{ restartLoading ? 'Restarting...' : 'Restart' }}</span>
                 </button>
                 <details class="relative" data-restart-menu>
                   <summary
-                    class="cursor-pointer list-none rounded-full border border-flow-border p-2 text-flow-secondary outline-none hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                    class="cursor-pointer list-none rounded-full border border-flow-border bg-white p-2 text-flow-secondary outline-none hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                     aria-label="More restart options"
                   >
                     <lucide-icon icon="chevron-down" size="14"></lucide-icon>
@@ -99,6 +108,14 @@
               </div>
             </template>
           </div>
+          <template if="restartError">
+            <p
+              class="basis-full rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800"
+              role="alert"
+            >
+              {{ restartError }}
+            </p>
+          </template>
         </header>
         <section
           class="detail-meta grid divide-y divide-flow-border rounded-xl border border-flow-border bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0"
@@ -246,9 +263,11 @@
                 on-click="selectDetailTab(tab.id)"
                 class="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-t-md border-b-2 border-transparent px-2 pb-3 pt-2 text-sm text-flow-secondary transition-colors hover:bg-flow-panel hover:text-flow-primary aria-[selected=true]:border-flow-primary aria-[selected=true]:bg-flow-green-bg aria-[selected=true]:font-bold aria-[selected=true]:text-[#174522] sm:w-auto sm:justify-start sm:px-3"
                 attr-aria-selected="tab.isActive ? 'true' : 'false'"
+                attr-aria-label="tab.label"
+                attr-title="tab.label"
               >
                 <lucide-icon bind-icon="tab.icon" size="15"></lucide-icon>
-                {{ tab.label }}
+                <span class="sr-only sm:not-sr-only">{{ tab.label }}</span>
               </button>
             </template>
           </nav>

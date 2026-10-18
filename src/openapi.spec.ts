@@ -56,6 +56,11 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api/v1/auth/session"].get.security).toEqual([{ oidcSessionCookie: [] }]);
     expect(spec.paths["/api/v1/auth/token"].get.security).toEqual([{ oidcSessionCookie: [] }]);
     expect(spec.paths["/api/v1/jobs/{jobId}/restart"]).toHaveProperty("post");
+    const restart = spec.paths["/api/v1/jobs/{jobId}/restart"].post;
+    expect(restart.responses).toHaveProperty("201");
+    expect(restart.requestBody.required).toBe(false);
+    expect(restart.requestBody.content["application/json"].schema.properties.inputs.type).toBe("object");
+    expect(restart.parameters).toContainEqual({ $ref: "#/components/parameters/WorkspaceId" });
     const rename = spec.paths["/api/v1/runners/{runnerId}"].put;
     expect(rename.security).toEqual([{ oidcAdminSession: [] }]);
     expect(rename.requestBody.content["application/json"].schema.properties.name).toMatchObject({

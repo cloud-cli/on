@@ -75,6 +75,82 @@ describe("browser admin-route authorization", () => {
   });
 });
 
+describe("job restart endpoint", () => {
+  function response() {
+    return { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+  }
+
+  it("accepts inputs and returns the created run with HTTP 201", async () => {
+    const queue = {
+      getJobForTeam: vi.fn().mockResolvedValue({ id: 42 }),
+      restartJob: vi.fn().mockResolvedValue(43),
+    };
+    const events = { publish: vi.fn() };
+    const readJson = vi.fn().mockResolvedValue({ inputs: { branch: "next" } });
+    const server = {
+      requireScope: vi.fn().mockResolvedValue(true),
+      requireTeam: vi.fn().mockResolvedValue("workspace-1"),
+      queue,
+      events,
+      readJson,
+    };
+    const res = response();
+
+    await (WebhookServer.prototype as any).handleRestartJob.call(
+      server,
+      { headers: { "content-length": "27" } },
+      "42",
+      res,
+    );
+
+    expect(server.requireScope).toHaveBeenCalledWith(expect.anything(), res, "runs:control");
+    expect(queue.getJobForTeam).toHaveBeenCalledWith("workspace-1", "42");
+    expect(queue.restartJob).toHaveBeenCalledWith("42", { branch: "next" });
+    expect(events.publish).toHaveBeenCalledWith("jobs.available", { teamId: "workspace-1" });
+    expect(res.writeHead).toHaveBeenCalledWith(201, { "Content-Type": "application/json" });
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ id: 43 }));
+  });
+
+  it("allows an empty POST body for default-input restarts", async () => {
+    const queue = {
+      getJobForTeam: vi.fn().mockResolvedValue({ id: 42 }),
+      restartJob: vi.fn().mockResolvedValue(43),
+    };
+    const server = {
+      requireScope: vi.fn().mockResolvedValue(true),
+      requireTeam: vi.fn().mockResolvedValue("workspace-1"),
+      queue,
+      events: { publish: vi.fn() },
+    };
+    const res = response();
+
+    await (WebhookServer.prototype as any).handleRestartJob.call(server, { headers: {} }, "42", res);
+
+    expect(queue.restartJob).toHaveBeenCalledWith("42", {});
+    expect(res.writeHead).toHaveBeenCalledWith(201, { "Content-Type": "application/json" });
+  });
+
+  it("returns a validation error for invalid restart inputs", async () => {
+    const server = {
+      requireScope: vi.fn().mockResolvedValue(true),
+      requireTeam: vi.fn().mockResolvedValue("workspace-1"),
+      queue: { getJobForTeam: vi.fn().mockResolvedValue({ id: 42 }) },
+      readJson: vi.fn().mockResolvedValue({ inputs: [] }),
+    };
+    const res = response();
+
+    await (WebhookServer.prototype as any).handleRestartJob.call(
+      server,
+      { headers: { "content-length": "2" } },
+      "42",
+      res,
+    );
+
+    expect(res.writeHead).toHaveBeenCalledWith(400, { "Content-Type": "application/json; charset=utf-8" });
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: "Restart inputs must be a JSON object" }));
+  });
+});
+
 describe("OIDC callback and browser error pages", () => {
   function response() {
     return { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };

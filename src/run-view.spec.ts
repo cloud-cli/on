@@ -286,5 +286,14 @@ describe("run view", () => {
 
     expect(html).toContain("attr-aria-selected=\"tab.isActive ? 'true' : 'false'\"");
     expect(html).toContain("aria-[pressed=true]:font-bold");
+    expect(html).toContain("bg-white px-3 py-1.5");
+    expect(html).toContain('aria-label="Copy URL"');
+    expect(html).toContain('aria-label="Restart run"');
+    expect(html).toContain('class="hidden sm:inline"');
+    expect(html).toContain('class="sr-only sm:not-sr-only"');
+    expect(html).toContain('attr-aria-label="tab.label"');
+    expect(runSetup).toContain('restartError = ref("")');
+    expect(runSetup).toContain("result.error || `Restart failed (${response.status})`");
+    expect(html).toContain('role="alert"');
   });
 });

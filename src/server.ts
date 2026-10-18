@@ -3231,7 +3231,16 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return;
     }
     const body = req.headers["content-length"] || req.headers["transfer-encoding"] ? await this.readJson(req, res) : {};
-    if (!body || (body.inputs !== undefined && (typeof body.inputs !== "object" || Array.isArray(body.inputs)))) {
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body) ||
+      (body.inputs !== undefined && (!body.inputs || typeof body.inputs !== "object" || Array.isArray(body.inputs)))
+    ) {
+      if (!res.headersSent) {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "Restart inputs must be a JSON object" }));
+      }
       return;
     }
     const id = await this.queue.restartJob(jobId, body.inputs || {});

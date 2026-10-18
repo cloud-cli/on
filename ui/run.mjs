@@ -17,6 +17,8 @@ export default function setup() {
   const aiLoading = ref(false);
   const manualRestartOpen = ref(false);
   const manualRestartLoading = ref(false);
+  const restartLoading = ref(false);
+  const restartError = ref("");
   const manualInputs = ref([]);
   let previousRunsLoaded = false;
   const selectedStep = ref(0);
@@ -312,14 +314,29 @@ export default function setup() {
     await requestAiHelp(aiStepId.value, question);
   };
   const restartJob = async () => {
-    const response = await apiFetch(`/api/v1/jobs/${report.value.jobId}/restart`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ inputs: report.value.inputs || {} }),
-    });
-    if (response.ok) {
-      const { id } = await response.json();
-      navigateTo(`/ui/runs/${id}`);
+    if (restartLoading.value) {
+      return;
+    }
+    restartLoading.value = true;
+    restartError.value = "";
+    try {
+      const response = await apiFetch(`/api/v1/jobs/${report.value.jobId}/restart`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ inputs: report.value.inputs || {} }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || `Restart failed (${response.status})`);
+      }
+      if (result.id === undefined || result.id === null) {
+        throw new Error("Restart failed: the server did not return a new run ID");
+      }
+      navigateTo(`/ui/runs/${result.id}`);
+    } catch (error) {
+      restartError.value = error instanceof Error ? error.message : "Restart failed. Please try again.";
+    } finally {
+      restartLoading.value = false;
     }
   };
   const openManualRestart = (event) => {
@@ -356,10 +373,14 @@ export default function setup() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ inputs }),
       });
+      const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(`Restart failed: ${response.status}`);
+        throw new Error(result.error || `Restart failed (${response.status})`);
       }
-      const { id } = await response.json();
+      const { id } = result;
+      if (id === undefined || id === null) {
+        throw new Error("Restart failed: the server did not return a new run ID");
+      }
       navigateTo(`/ui/runs/${id}`);
     } catch (error) {
       aiError.value = error.message;
@@ -490,6 +511,8 @@ export default function setup() {
     previousRuns,
     manualRestartOpen,
     manualRestartLoading,
+    restartLoading,
+    restartError,
     manualInputs,
     aiMessages,
     aiStepId,
