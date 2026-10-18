@@ -65,6 +65,11 @@ Designed with a strict **security-first boundary**, native **JavaScript AST eval
 
 ---
 
+## Feature requests
+
+Proposed, not-yet-implemented capabilities and their acceptance criteria are tracked in
+[docs/feature-requests.md](docs/feature-requests.md).
+
 ## 📦 Project Structure
 
 ```text
