@@ -80,6 +80,18 @@
   --color-flow-red-bg: #452925;
   --color-flow-blue-bg: #25354b;
 }
+
+@media (max-width: 639px) {
+  .run-actions details[open] {
+    flex: 0 0 100%;
+    width: 100%;
+  }
+
+  .run-actions details[open] > summary {
+    margin-left: auto;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not([data-theme="dark"]) {
     color-scheme: dark;

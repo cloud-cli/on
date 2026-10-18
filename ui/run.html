@@ -42,7 +42,7 @@
               >
             </h1>
           </div>
-          <div class="flex items-center gap-2 shrink-0">
+          <div class="run-actions flex w-full flex-wrap items-center gap-2 shrink-0 sm:w-auto">
             <button
               type="button"
               on-click="copyRunUrl()"
@@ -75,37 +75,35 @@
               </button>
             </template>
             <template if="report.status !== 'running'">
-              <div class="relative flex items-center gap-1">
-                <button
-                  class="inline-flex items-center gap-2 rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
-                  on-click="restartJob()"
-                  bind-disabled.bool="restartLoading"
-                  aria-label="Restart run"
-                  title="Restart run"
+              <button
+                class="inline-flex items-center gap-2 rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+                on-click="restartJob()"
+                bind-disabled.bool="restartLoading"
+                aria-label="Restart run"
+                title="Restart run"
+              >
+                <lucide-icon bind-icon="restartLoading ? 'loader-circle' : 'rotate-cw'" size="15"></lucide-icon>
+                <span class="hidden sm:inline">{{ restartLoading ? 'Restarting...' : 'Restart' }}</span>
+              </button>
+              <details class="relative" data-restart-menu>
+                <summary
+                  class="flex w-fit cursor-pointer list-none rounded-full border border-flow-border bg-white p-2 text-flow-secondary outline-none hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                  aria-label="More restart options"
                 >
-                  <lucide-icon bind-icon="restartLoading ? 'loader-circle' : 'rotate-cw'" size="15"></lucide-icon>
-                  <span class="hidden sm:inline">{{ restartLoading ? 'Restarting...' : 'Restart' }}</span>
-                </button>
-                <details class="relative" data-restart-menu>
-                  <summary
-                    class="cursor-pointer list-none rounded-full border border-flow-border bg-white p-2 text-flow-secondary outline-none hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
-                    aria-label="More restart options"
+                  <lucide-icon icon="chevron-down" size="14"></lucide-icon>
+                </summary>
+                <div
+                  class="restart-menu-panel mt-2 w-full rounded-xl border border-flow-border bg-white p-2 shadow-xl sm:absolute sm:right-0 sm:top-full sm:z-20 sm:mt-2 sm:w-56"
+                >
+                  <button
+                    type="button"
+                    on-click="openManualRestart($event)"
+                    class="w-full rounded-lg px-3 py-2 text-left text-sm text-flow-foreground hover:bg-flow-panel"
                   >
-                    <lucide-icon icon="chevron-down" size="14"></lucide-icon>
-                  </summary>
-                  <div
-                    class="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-flow-border bg-white p-2 shadow-xl"
-                  >
-                    <button
-                      type="button"
-                      on-click="openManualRestart($event)"
-                      class="w-full rounded-lg px-3 py-2 text-left text-sm text-flow-foreground hover:bg-flow-panel"
-                    >
-                      Restart with inputs
-                    </button>
-                  </div>
-                </details>
-              </div>
+                    Restart with inputs
+                  </button>
+                </div>
+              </details>
             </template>
           </div>
           <template if="restartError">
@@ -252,7 +250,7 @@
           aria-label="Run details"
         >
           <nav
-            class="grid grid-cols-2 gap-1 border-b border-flow-border px-3 pt-3 sm:flex sm:flex-wrap sm:gap-1.5 sm:px-6"
+            class="grid grid-cols-5 gap-0.5 border-b border-flow-border px-2 pt-2 sm:flex sm:flex-wrap sm:gap-1.5 sm:px-6 sm:pt-3"
             role="tablist"
             aria-label="Run details tabs"
           >
@@ -261,13 +259,13 @@
                 type="button"
                 role="tab"
                 on-click="selectDetailTab(tab.id)"
-                class="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-t-md border-b-2 border-transparent px-2 pb-3 pt-2 text-sm text-flow-secondary transition-colors hover:bg-flow-panel hover:text-flow-primary aria-[selected=true]:border-flow-primary aria-[selected=true]:bg-flow-green-bg aria-[selected=true]:font-bold aria-[selected=true]:text-[#174522] sm:w-auto sm:justify-start sm:px-3"
+                class="inline-flex min-w-0 w-full cursor-pointer items-center justify-center gap-2 rounded-t-md border-b-2 border-transparent px-1 pb-2 pt-2 text-xs text-flow-secondary transition-colors hover:bg-flow-panel hover:text-flow-primary aria-[selected=true]:border-flow-primary aria-[selected=true]:bg-flow-green-bg aria-[selected=true]:font-bold aria-[selected=true]:text-[#174522] sm:w-auto sm:justify-start sm:px-3 sm:pb-3 sm:text-sm"
                 attr-aria-selected="tab.isActive ? 'true' : 'false'"
                 attr-aria-label="tab.label"
                 attr-title="tab.label"
               >
                 <lucide-icon bind-icon="tab.icon" size="15"></lucide-icon>
-                <span class="sr-only sm:not-sr-only">{{ tab.label }}</span>
+                <span class="sr-only">{{ tab.label }}</span>
               </button>
             </template>
           </nav>

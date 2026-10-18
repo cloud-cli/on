@@ -283,6 +283,7 @@ describe("run view", () => {
 
   it("gives the selected tab and step a clear active treatment", () => {
     const html = readFileSync(resolve(process.cwd(), "ui/run.html"), "utf8");
+    const css = readFileSync(resolve(process.cwd(), "ui/index.css"), "utf8");
 
     expect(html).toContain("attr-aria-selected=\"tab.isActive ? 'true' : 'false'\"");
     expect(html).toContain("aria-[pressed=true]:font-bold");
@@ -290,8 +291,15 @@ describe("run view", () => {
     expect(html).toContain('aria-label="Copy URL"');
     expect(html).toContain('aria-label="Restart run"');
     expect(html).toContain('class="hidden sm:inline"');
-    expect(html).toContain('class="sr-only sm:not-sr-only"');
+    expect(html).toContain("grid-cols-5");
+    expect(html).toContain('class="sr-only">{{ tab.label }}</span>');
     expect(html).toContain('attr-aria-label="tab.label"');
+    expect(html).toContain("sm:absolute sm:right-0 sm:top-full sm:z-20");
+    expect(html).toContain('class="run-actions flex w-full flex-wrap items-center gap-2 shrink-0 sm:w-auto"');
+    expect(css).toContain(".run-actions details[open]");
+    expect(css).toContain("flex: 0 0 100%");
+    expect(css).toContain(".run-actions details[open] > summary");
+    expect(css).toContain("margin-left: auto");
     expect(runSetup).toContain('restartError = ref("")');
     expect(runSetup).toContain("result.error || `Restart failed (${response.status})`");
     expect(html).toContain('role="alert"');
