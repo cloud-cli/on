@@ -47,4 +47,20 @@ describe("team data schema initialization order", () => {
     await expect(ensureTeamDataSchema()).rejects.toThrow(/Job 42 has no valid workspace owner/);
     expect(database.run).not.toHaveBeenCalled();
   });
+
+  it("preserves workspace-owned historical jobs after their workflow definition is deleted", async () => {
+    database.all
+      .mockResolvedValueOnce([{ name: "id" }, { name: "team_id" }])
+      .mockResolvedValueOnce([{ name: "id" }, { name: "team_id" }])
+      .mockResolvedValueOnce([{ name: "id" }, { name: "team_id" }])
+      .mockResolvedValueOnce([{ name: "id" }, { name: "team_id" }]);
+    database.get.mockResolvedValue(null);
+
+    await expect(ensureTeamDataSchema()).resolves.toBeUndefined();
+
+    const ownershipCheck = database.get.mock.calls[0][0];
+    expect(ownershipCheck).toContain("teams.id IS NULL");
+    expect(ownershipCheck).toContain("workflows.id IS NOT NULL AND jobs.team_id != workflows.team_id");
+    expect(ownershipCheck).not.toContain("workflows.id IS NULL");
+  });
 });

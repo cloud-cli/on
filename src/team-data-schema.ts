@@ -40,7 +40,7 @@ export async function ensureTeamDataSchema(): Promise<void> {
       `SELECT jobs.id FROM jobs
        LEFT JOIN workflows ON workflows.id = jobs.workflow_id
        LEFT JOIN teams ON teams.id = jobs.team_id
-       WHERE workflows.id IS NULL OR teams.id IS NULL OR jobs.team_id != workflows.team_id
+       WHERE teams.id IS NULL OR (workflows.id IS NOT NULL AND jobs.team_id != workflows.team_id)
        LIMIT 1`,
     );
     if (unscopedJob) {
