@@ -1,9 +1,48 @@
 import db from "./db-client.js";
+import YAML from "yaml";
 
 type Migration = {
   version: string;
   apply: () => Promise<void>;
 };
+
+function canonicalWorkflowId(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("Workflow ID migration encountered a missing or invalid ID");
+  }
+  const id = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!id || id.length > 128) {
+    throw new Error("Workflow ID migration encountered an ID outside the supported format");
+  }
+  return id;
+}
+
+function withWorkflowId(sourceYaml: string, id: string): string {
+  const line = `id: ${JSON.stringify(id)}`;
+  let updated: string;
+  if (/^id\s*:/m.test(sourceYaml)) {
+    updated = sourceYaml.replace(/^id\s*:.*/m, line);
+  } else {
+    const nameLine = sourceYaml.search(/^name\s*:/m);
+    if (nameLine < 0) {
+      throw new Error("Workflow ID migration could not find a top-level name field");
+    }
+    updated = `${sourceYaml.slice(0, nameLine)}${line}\n${sourceYaml.slice(nameLine)}`;
+  }
+  if (yamlWorkflowId(updated) !== id) {
+    throw new Error("Workflow ID migration could not safely add a top-level ID");
+  }
+  return updated;
+}
+
+function yamlWorkflowId(sourceYaml: string): string | undefined {
+  const parsed = YAML.parse(sourceYaml);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed.id : undefined;
+}
 
 const migrations: Migration[] = [
   {
@@ -171,6 +210,94 @@ const migrations: Migration[] = [
         { s: "ALTER TABLE workflows_after_team_fk RENAME TO workflows", m: "run" },
         ...indexes.map((index: any) => ({ s: index.sql, m: "run" })),
       ]);
+    },
+  },
+  {
+    version: "009_workflow_definition_ids",
+    async apply() {
+      const columns = await db.all("PRAGMA table_info(workflows)");
+      const hasDefinitionId = columns.some((column: any) => column.name === "definition_id");
+      const workflowRows = await db.all(
+        `SELECT id, team_id, source_yaml${hasDefinitionId ? ", definition_id" : ""} FROM workflows`,
+      );
+      const revisionRows = await db.all(
+        "SELECT workflow_id, revision, source_yaml, normalized_json FROM workflow_revisions ORDER BY workflow_id, revision",
+      );
+      const latestRevision = new Map<string, any>();
+      const statements: Array<{ s: string; d?: unknown[]; m: string }> = [];
+      const plannedIds = new Map<string, string>();
+
+      if (!hasDefinitionId) {
+        statements.push({ s: "ALTER TABLE workflows ADD COLUMN definition_id TEXT", m: "run" });
+      }
+
+      for (const revision of revisionRows) {
+        const definition = JSON.parse(revision.normalized_json);
+        const sourceId = yamlWorkflowId(revision.source_yaml);
+        const id = canonicalWorkflowId(sourceId || definition.id || revision.workflow_id);
+        const sourceYaml = withWorkflowId(revision.source_yaml, id);
+        definition.id = id;
+        statements.push({
+          s: "UPDATE workflow_revisions SET source_yaml = ?, normalized_json = ? WHERE workflow_id = ? AND revision = ?",
+          d: [sourceYaml, JSON.stringify(definition), revision.workflow_id, revision.revision],
+          m: "run",
+        });
+        latestRevision.set(revision.workflow_id, { id, revision: Number(revision.revision), sourceYaml });
+      }
+
+      for (const workflow of workflowRows) {
+        const latest = latestRevision.get(workflow.id);
+        const id = canonicalWorkflowId(
+          yamlWorkflowId(workflow.source_yaml) || workflow.definition_id || latest?.id || workflow.id,
+        );
+        const teamId = workflow.team_id || "";
+        const scopeKey = `${teamId}\u0000${id}`;
+        const previousWorkflow = plannedIds.get(scopeKey);
+        if (previousWorkflow && previousWorkflow !== workflow.id) {
+          throw new Error(`Workflow ID migration found a duplicate ID in one workspace: ${id}`);
+        }
+        plannedIds.set(scopeKey, workflow.id);
+        statements.push({
+          s: "UPDATE workflows SET definition_id = ?, source_yaml = ? WHERE id = ?",
+          d: [id, withWorkflowId(workflow.source_yaml, id), workflow.id],
+          m: "run",
+        });
+        if (latest && latest.id !== id) {
+          const revision = revisionRows.find(
+            (row: any) => row.workflow_id === workflow.id && Number(row.revision) === latest.revision,
+          );
+          const definition = JSON.parse(revision.normalized_json);
+          definition.id = id;
+          statements.push({
+            s: "UPDATE workflow_revisions SET source_yaml = ?, normalized_json = ? WHERE workflow_id = ? AND revision = ?",
+            d: [withWorkflowId(revision.source_yaml, id), JSON.stringify(definition), workflow.id, latest.revision],
+            m: "run",
+          });
+        }
+      }
+
+      if (typeof db.transaction !== "function") {
+        throw new Error("Workflow ID migration requires database transactions");
+      }
+      statements.push(
+        {
+          s: "CREATE UNIQUE INDEX IF NOT EXISTS idx_workflows_team_definition_id ON workflows(team_id, definition_id)",
+          m: "run",
+        },
+        {
+          s: `CREATE TRIGGER IF NOT EXISTS workflows_definition_id_required_insert
+              BEFORE INSERT ON workflows WHEN NEW.definition_id IS NULL OR trim(NEW.definition_id) = ''
+              BEGIN SELECT RAISE(ABORT, 'Workflow definition ID is required'); END`,
+          m: "run",
+        },
+        {
+          s: `CREATE TRIGGER IF NOT EXISTS workflows_definition_id_required_update
+              BEFORE UPDATE OF definition_id ON workflows WHEN NEW.definition_id IS NULL OR trim(NEW.definition_id) = ''
+              BEGIN SELECT RAISE(ABORT, 'Workflow definition ID is required'); END`,
+          m: "run",
+        },
+      );
+      await db.transaction(statements);
     },
   },
 ];

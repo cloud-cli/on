@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { parseWorkflow } from './workflows.js';
+import { describe, expect, it } from "vitest";
+import { parseWorkflow } from "./workflows.js";
 
-describe('parseWorkflow', () => {
-  it('keeps webhook and time triggers in a portable DB workflow', () => {
+describe("parseWorkflow", () => {
+  it("keeps webhook and time triggers in a portable DB workflow", () => {
     const [workflow] = parseWorkflow(`
+id: nightly-build
 name: Nightly build
 on:
   github:
@@ -20,18 +21,21 @@ steps:
   - run: true
 `);
 
-    expect(workflow.id).toBe('nightly-build');
-    expect(workflow.on.provider).toBe('github');
-    expect(workflow.schedule?.[0].cron).toBe('0 2 * * *');
-    expect(workflow.solar?.[0].event).toBe('sunrise');
+    expect(workflow.id).toBe("nightly-build");
+    expect(workflow.on.provider).toBe("github");
+    expect(workflow.schedule?.[0].cron).toBe("0 2 * * *");
+    expect(workflow.solar?.[0].event).toBe("sunrise");
   });
 
-  it('rejects workflow includes', () => {
-    expect(() => parseWorkflow('name: Invalid\nincludes: [base.yml]\non: {generic: {}}\nsteps: [{run: true}]')).toThrow('includes');
+  it("rejects workflow includes", () => {
+    expect(() => parseWorkflow("name: Invalid\nincludes: [base.yml]\non: {generic: {}}\nsteps: [{run: true}]")).toThrow(
+      "includes",
+    );
   });
 
-  it('defaults step timeouts and retries', () => {
+  it("defaults step timeouts and retries", () => {
     const [workflow] = parseWorkflow(`
+id: defaults
 name: Defaults
 on: { generic: {} }
 steps:
@@ -42,8 +46,9 @@ steps:
     expect(workflow.steps[0].timeoutMs).toBe(30_000);
   });
 
-  it('normalizes Docker volume and argument options', () => {
+  it("normalizes Docker volume and argument options", () => {
     const [workflow] = parseWorkflow(`
+id: container
 name: Container
 on: { generic: {} }
 steps:
@@ -53,12 +58,13 @@ steps:
     dockerArgs: ['--network=host']
 `);
 
-    expect(workflow.steps[0].volumes).toEqual(['secrets-store:/secrets']);
-    expect(workflow.steps[0].dockerArgs).toEqual(['--network=host']);
+    expect(workflow.steps[0].volumes).toEqual(["secrets-store:/secrets"]);
+    expect(workflow.steps[0].dockerArgs).toEqual(["--network=host"]);
   });
 
-  it('normalizes artifact and cache storage settings', () => {
+  it("normalizes artifact and cache storage settings", () => {
     const [workflow] = parseWorkflow(`
+id: stored-files
 name: Stored files
 on: { generic: {} }
 artifacts:
@@ -70,12 +76,13 @@ steps:
   - run: 'true'
 `);
 
-    expect(workflow.artifacts).toEqual({ paths: ['dist'] });
-    expect(workflow.cache).toEqual({ key: 'cache-${inputs.branch}', paths: ['node_modules'] });
+    expect(workflow.artifacts).toEqual({ paths: ["dist"] });
+    expect(workflow.cache).toEqual({ key: "cache-${inputs.branch}", paths: ["node_modules"] });
   });
 
-  it('preserves secret file mappings', () => {
+  it("preserves secret file mappings", () => {
     const [workflow] = parseWorkflow(`
+id: signing
 name: Signing
 on: { generic: {} }
 secretFiles:
@@ -84,11 +91,12 @@ steps:
   - run: 'true'
 `);
 
-    expect(workflow.secretFiles).toEqual({ '.config/signing.key': 'SIGNING_KEY' });
+    expect(workflow.secretFiles).toEqual({ ".config/signing.key": "SIGNING_KEY" });
   });
 
-  it('preserves generic workflow plugin settings', () => {
+  it("preserves generic workflow plugin settings", () => {
     const [workflow] = parseWorkflow(`
+id: github-status
 name: GitHub status
 on: { github: { events: [push] } }
 plugins:
@@ -100,11 +108,14 @@ steps:
   - run: 'true'
 `);
 
-    expect(workflow.plugins).toEqual([{ name: 'github-status', secrets: { GITHUB_TOKEN: '${secrets.GITHUB_TOKEN}' }, context: 'ci/build' }]);
+    expect(workflow.plugins).toEqual([
+      { name: "github-status", secrets: { GITHUB_TOKEN: "${secrets.GITHUB_TOKEN}" }, context: "ci/build" },
+    ]);
   });
 
-  it('preserves matrix definitions for trigger-time expansion', () => {
+  it("preserves matrix definitions for trigger-time expansion", () => {
     const [workflow] = parseWorkflow(`
+id: matrix-build
 name: Matrix build
 matrix:
   node: [18, 20]
@@ -116,7 +127,7 @@ steps:
     expect(workflow.matrix).toEqual({ node: [18, 20] });
   });
 
-  it('keeps an explicit identity separate from the display name', () => {
+  it("keeps an explicit identity separate from the display name", () => {
     const [workflow] = parseWorkflow(`
 id: release-pipeline
 name: Release pipeline
@@ -125,16 +136,31 @@ steps:
   - run: 'true'
 `);
 
-    expect(workflow.id).toBe('release-pipeline');
-    expect(workflow.name).toBe('Release pipeline');
+    expect(workflow.id).toBe("release-pipeline");
+    expect(workflow.name).toBe("Release pipeline");
   });
 
-  it('validates retry and timeout settings', () => {
-    expect(() => parseWorkflow(`name: Invalid\non: { generic: {} }\nretries: -1\nsteps: [{run: 'true'}]`)).toThrow(
-      'retries must be a non-negative integer',
+  it("requires an explicit id and canonicalizes it independently of the name", () => {
+    expect(() => parseWorkflow(`name: Build\non: { generic: {} }\nsteps: [{run: 'true'}]`)).toThrow(
+      "Workflow id is required",
     );
-    expect(() => parseWorkflow(`name: Invalid\non: { generic: {} }\nsteps: [{run: 'true', timeoutMs: 0}]`)).toThrow(
-      'step.timeoutMs must be a positive integer',
+    const [workflow] = parseWorkflow(`id: Release Pipeline\nname: Build\non: { generic: {} }\nsteps: [{run: 'true'}]`);
+    expect(workflow.id).toBe("release-pipeline");
+    expect(workflow.name).toBe("Build");
+  });
+
+  it("rejects IDs that cannot be canonicalized to a stable identifier", () => {
+    expect(() => parseWorkflow(`id: '---'\nname: Build\non: { generic: {} }\nsteps: [{run: 'true'}]`)).toThrow(
+      "Workflow id must contain",
     );
+  });
+
+  it("validates retry and timeout settings", () => {
+    expect(() =>
+      parseWorkflow(`id: invalid\nname: Invalid\non: { generic: {} }\nretries: -1\nsteps: [{run: 'true'}]`),
+    ).toThrow("retries must be a non-negative integer");
+    expect(() =>
+      parseWorkflow(`id: invalid\nname: Invalid\non: { generic: {} }\nsteps: [{run: 'true', timeoutMs: 0}]`),
+    ).toThrow("step.timeoutMs must be a positive integer");
   });
 });

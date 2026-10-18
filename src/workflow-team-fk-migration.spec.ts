@@ -22,6 +22,7 @@ describe("workflow team foreign-key migration", () => {
           "005_add_teams",
           "006_scope_push_subscriptions_to_teams",
           "007_scope_api_keys_to_teams",
+          "009_workflow_definition_ids",
         ].map((version) => ({ version }));
       }
       if (sql === "PRAGMA table_info(workflows)") {
@@ -131,6 +132,7 @@ describe("workflow team foreign-key migration", () => {
           "005_add_teams",
           "006_scope_push_subscriptions_to_teams",
           "007_scope_api_keys_to_teams",
+          "009_workflow_definition_ids",
         ].map((version) => ({ version }));
       }
       if (sql === "PRAGMA table_info(workflows)") {

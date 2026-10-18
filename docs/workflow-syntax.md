@@ -14,6 +14,7 @@ This is the living documentation for workflow authors. It is organized using the
 Create a draft in the authenticated workflow editor, or send the YAML to the API:
 
 ```yaml
+id: hello
 name: Hello
 
 on:
@@ -40,6 +41,7 @@ curl -X POST http://localhost:11235/api/v1/webhooks/generic \
 ### Build a GitHub Workflow
 
 ```yaml
+id: build
 name: Build
 
 on:
@@ -83,6 +85,7 @@ Workspace webhook registrations can use any provider slug, including a provider 
 Alias workflows do not inherit `on.github`'s server-side filters or `github.fileExists` helper. Normalize and filter in workflow steps using `inputs.body` and `inputs.request.headers`; use `on: { alias: {} }`. The `on.github` provider path remains the legacy compatibility path: it continues to produce normalized GitHub inputs and apply existing `events`, repository/branch/path filters and `github.fileExists` conditions.
 
 ```yaml
+id: github-intake
 name: GitHub intake (alias)
 on:
   scm-hook: {}
@@ -167,6 +170,7 @@ Arguments are not interpreted or shell-expanded by the runner. They are passed a
 Keep the matrix in the workflow definition:
 
 ```yaml
+id: package
 name: Package
 
 matrix:
@@ -431,3 +435,9 @@ The stored revision remains one canonical workflow. When a trigger matches, the 
 ### Reuse and Imports
 
 Filesystem imports were removed because workers no longer load workflow files. Future step reuse should operate on database-owned definitions or explicit reusable step mechanisms, keeping revisioning and authorization visible to the control plane.
+
+# Workflow identity
+
+Every workflow definition must include an explicit `id`, separate from its human-readable `name`. IDs are canonicalized to lowercase hyphen-separated ASCII letters and numbers, and must be unique within a workspace. This YAML ID is the stable reference for dispatch; the database management key is separate. Changing the name does not change identity, while changing `id` creates a new definition identity and can require downstream dispatch references to be updated.
+
+On databases that already contain workflows, migration 009 backfills each stored revision with its existing normalized ID (or management key when none exists) and updates the editable source YAML. Standalone backups are not changed automatically: add a stable `id` before importing or restoring them. Reuse the prior management ID when possible. Missing IDs fail validation, and duplicate IDs within one workspace are rejected.

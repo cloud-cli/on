@@ -3,7 +3,7 @@
   "$id": "https://runner.example.com/workflow.schema.json",
   "title": "WorkflowDefinition",
   "type": "object",
-  "required": ["name", "steps"],
+  "required": ["id", "name", "steps"],
   "additionalProperties": false,
   "properties": {
     "name": {
@@ -13,8 +13,9 @@
 
     "id": {
       "type": "string",
-      "pattern": "^[a-z0-9-]+$",
-      "description": "Optional workflow identity. The management API ID is authoritative after creation."
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Required stable workflow identity. It is trimmed, lowercased, and non-alphanumeric separators are normalized to hyphens."
     },
 
     "tags": {

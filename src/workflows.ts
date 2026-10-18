@@ -17,12 +17,16 @@ export interface StoredWorkflow {
 }
 
 function workflowId(value: unknown): string {
-  const id = String(value || "")
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("Workflow id is required");
+  }
+  const id = value
+    .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, "-")
+    .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  if (!id) {
-    throw new Error("Workflow requires a name or id");
+  if (!id || id.length > 128) {
+    throw new Error("Workflow id must contain 1 to 128 letters, numbers, or hyphens");
   }
   return id;
 }
@@ -36,6 +40,10 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
   if (parsed.includes) {
     throw new Error("includes is not supported for database workflows");
   }
+  if (parsed.id === undefined || parsed.id === null || parsed.id === "") {
+    throw new Error("Workflow id is required");
+  }
+  const canonicalId = workflowId(parsed.id);
   if (typeof parsed.name !== "string" || !parsed.name.trim()) {
     throw new Error("Workflow name is required");
   }
@@ -95,7 +103,7 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
 
   return [
     {
-      id: workflowId(parsed.id || parsed.name),
+      id: canonicalId,
       name: parsed.name,
       matrix: parsed.matrix,
       on: { ...(trigger as object), provider },
@@ -127,7 +135,7 @@ export class WorkflowRepository {
   async init(): Promise<void> {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS workflows (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, source_yaml TEXT NOT NULL,
+        id TEXT PRIMARY KEY, definition_id TEXT, name TEXT NOT NULL, source_yaml TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'draft', active_revision INTEGER, enabled INTEGER NOT NULL DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         team_id TEXT NOT NULL,
@@ -165,28 +173,26 @@ export class WorkflowRepository {
     return workflows;
   }
 
-  async saveDraft(id: string, sourceYaml: string, enabled = true): Promise<StoredWorkflow> {
-    const workflows = this.validate(sourceYaml);
-    if (workflows.length !== 1) {
-      throw new Error("Workflow must contain exactly one definition");
+  private async assertDefinitionIdIsUnique(
+    teamId: string | undefined,
+    workflowKey: string,
+    definitionId: string,
+  ): Promise<void> {
+    const rows = teamId
+      ? await db.all("SELECT id, definition_id FROM workflows WHERE team_id = ?", [teamId])
+      : await db.all("SELECT id, definition_id FROM workflows");
+    for (const row of rows) {
+      if (row.id !== workflowKey && row.definition_id === definitionId) {
+        throw new Error(`Workflow id \"${definitionId}\" already exists in this workspace`);
+      }
     }
-    const canonicalId = workflowId(id);
-    workflows[0].id = canonicalId;
-    const previous = await db.get(
-      "SELECT COALESCE(MAX(revision), 0) AS revision FROM workflow_revisions WHERE workflow_id = ?",
-      [canonicalId],
-    );
-    const revision = Number(previous?.revision || 0) + 1;
-    await db.run(
-      `INSERT INTO workflows (id, name, source_yaml, status, enabled) VALUES (?, ?, ?, 'draft', ?)
-      ON CONFLICT(id) DO UPDATE SET name = excluded.name, source_yaml = excluded.source_yaml, status = 'draft', enabled = excluded.enabled, updated_at = CURRENT_TIMESTAMP`,
-      [canonicalId, workflows[0].name, sourceYaml, enabled ? 1 : 0],
-    );
-    await db.run(
-      "INSERT INTO workflow_revisions (workflow_id, revision, source_yaml, normalized_json) VALUES (?, ?, ?, ?)",
-      [canonicalId, revision, sourceYaml, JSON.stringify(workflows[0])],
-    );
-    return { id: canonicalId, name: workflows[0].name, sourceYaml, revision, status: "draft", enabled };
+  }
+
+  async saveDraft(id: string, sourceYaml: string, enabled = true): Promise<StoredWorkflow> {
+    void id;
+    void sourceYaml;
+    void enabled;
+    throw new Error("Workspace ID is required; use saveDraftForTeam");
   }
 
   async saveDraftForTeam(teamId: string, id: string, sourceYaml: string, enabled = true): Promise<StoredWorkflow> {
@@ -195,30 +201,38 @@ export class WorkflowRepository {
       throw new Error("Workflow must contain exactly one definition");
     }
     const canonicalId = workflowId(id);
-    workflows[0].id = canonicalId;
     const existing = await db.get("SELECT team_id FROM workflows WHERE id = ?", [canonicalId]);
     if (existing && existing.team_id !== teamId) {
       throw new Error("Workflow not found");
     }
+    await this.assertDefinitionIdIsUnique(teamId, canonicalId, workflows[0].id);
     const revision = await db.get(
       "SELECT COALESCE(MAX(revision), 0) AS revision FROM workflow_revisions WHERE workflow_id = ?",
       [canonicalId],
     );
     const nextRevision = Number(revision?.revision || 0) + 1;
-    await db.run(
-      `INSERT INTO workflows (id, name, source_yaml, status, enabled, team_id) VALUES (?, ?, ?, 'draft', ?, ?)
-      ON CONFLICT(id) DO UPDATE SET name = excluded.name, source_yaml = excluded.source_yaml, status = 'draft', enabled = excluded.enabled,
-      updated_at = CURRENT_TIMESTAMP WHERE workflows.team_id = excluded.team_id`,
-      [canonicalId, workflows[0].name, sourceYaml, enabled ? 1 : 0, teamId],
-    );
+    if (typeof db.transaction !== "function") {
+      throw new Error("Saving workflow drafts requires database transactions");
+    }
+    await db.transaction([
+      {
+        s: `INSERT INTO workflows (id, definition_id, name, source_yaml, status, enabled, team_id) VALUES (?, ?, ?, ?, 'draft', ?, ?)
+        ON CONFLICT(id) DO UPDATE SET definition_id = excluded.definition_id, name = excluded.name, source_yaml = excluded.source_yaml, status = 'draft', enabled = excluded.enabled,
+        updated_at = CURRENT_TIMESTAMP WHERE workflows.team_id = excluded.team_id`,
+        d: [canonicalId, workflows[0].id, workflows[0].name, sourceYaml, enabled ? 1 : 0, teamId],
+        m: "run",
+      },
+      {
+        s: `INSERT INTO workflow_revisions (workflow_id, revision, source_yaml, normalized_json)
+        SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM workflows WHERE id = ? AND team_id = ?)`,
+        d: [canonicalId, nextRevision, sourceYaml, JSON.stringify(workflows[0]), canonicalId, teamId],
+        m: "run",
+      },
+    ]);
     const owner = await db.get("SELECT team_id FROM workflows WHERE id = ?", [canonicalId]);
     if (!owner || owner.team_id !== teamId) {
       throw new Error("Workflow not found");
     }
-    await db.run(
-      "INSERT INTO workflow_revisions (workflow_id, revision, source_yaml, normalized_json) VALUES (?, ?, ?, ?)",
-      [canonicalId, nextRevision, sourceYaml, JSON.stringify(workflows[0])],
-    );
     return { id: canonicalId, name: workflows[0].name, sourceYaml, revision: nextRevision, status: "draft", enabled };
   }
 
@@ -269,7 +283,8 @@ export class WorkflowRepository {
     if (!workflow) {
       return null;
     }
-    this.validate(workflow.source_yaml);
+    const [definition] = this.validate(workflow.source_yaml);
+    await this.assertDefinitionIdIsUnique(undefined, id, definition.id);
     const revision = await db.get("SELECT MAX(revision) AS revision FROM workflow_revisions WHERE workflow_id = ?", [
       id,
     ]);
@@ -292,7 +307,8 @@ export class WorkflowRepository {
     if (!workflow) {
       return null;
     }
-    this.validate(workflow.source_yaml);
+    const [definition] = this.validate(workflow.source_yaml);
+    await this.assertDefinitionIdIsUnique(teamId, id, definition.id);
     const revision = await db.get("SELECT MAX(revision) AS revision FROM workflow_revisions WHERE workflow_id = ?", [
       id,
     ]);

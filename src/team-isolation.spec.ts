@@ -15,7 +15,11 @@ describe("team data isolation queries", () => {
     const workflows = new WorkflowRepository();
 
     await expect(
-      workflows.saveDraftForTeam("team-a", "private-flow", "name: Private\non: {generic: {}}\nsteps: [{run: 'true'}]"),
+      workflows.saveDraftForTeam(
+        "team-a",
+        "private-flow",
+        "id: private-flow\nname: Private\non: {generic: {}}\nsteps: [{run: 'true'}]",
+      ),
     ).rejects.toThrow("Workflow not found");
     expect(database.run).not.toHaveBeenCalled();
   });
