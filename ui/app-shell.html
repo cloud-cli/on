@@ -100,7 +100,7 @@
                 <lucide-icon bind-icon="isDarkTheme ? 'sun' : 'moon'" size="19" aria-hidden="true"></lucide-icon>
               </button>
               <div
-                class="flex min-w-0 max-w-[calc(100vw-4rem)] cursor-pointer items-center gap-2 rounded-full border border-gray-200 bg-white py-1.5 px-1.5 shadow-sm transition-shadow hover:shadow-md sm:max-w-none sm:gap-4 sm:pr-4 dark:bg-[#18231b] dark:border-[#303d34]"
+                class="flex min-w-0 max-w-[calc(100vw-4rem)] items-center sm:cursor-pointer sm:gap-4 sm:rounded-full sm:border sm:border-gray-200 sm:bg-white sm:px-1.5 sm:py-1.5 sm:shadow-sm sm:transition-shadow sm:hover:shadow-md sm:max-w-none sm:pr-4 dark:sm:border-[#303d34] dark:sm:bg-[#18231b]"
                 role="group"
                 aria-label="Signed-in user"
               >
@@ -121,7 +121,7 @@
                   attr-href="oidcProviderUrl ? oidcProviderUrl + '/me' : null"
                   target="_blank"
                   rel="noopener"
-                  class="flex min-w-0 max-w-[calc(100vw-7rem)] flex-col justify-center text-flow-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary sm:max-w-none"
+                  class="hidden min-w-0 max-w-[calc(100vw-7rem)] flex-col justify-center text-flow-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary sm:flex sm:max-w-none"
                   aria-label="Open profile at identity provider in a new tab"
                 >
                   <span class="truncate text-sm font-semibold leading-tight">{{ user.name || user.email }}</span>

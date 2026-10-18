@@ -46,6 +46,8 @@ describe("Flow application shell", () => {
     expect(html).toContain('aria-label="Signed-in user"');
     expect(html).toContain("max-w-[calc(100vw-4rem)]");
     expect(html).toContain("max-w-[calc(100vw-7rem)]");
+    expect(html).toContain('class="hidden min-w-0 max-w-[calc(100vw-7rem)] flex-col');
+    expect(html).toContain("sm:flex sm:max-w-none");
     expect(html).toContain('class="truncate text-sm font-semibold leading-tight"');
     expect(html).toContain('class="truncate text-[10px] leading-tight text-flow-secondary"');
     expect(html).toContain('on-click="toggleTheme()"');
