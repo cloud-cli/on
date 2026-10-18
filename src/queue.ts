@@ -63,6 +63,37 @@ export class QueueManager {
     return Number(res?.lastInsertRowid ?? res?.id ?? 0);
   }
 
+  /** Enqueue once for a source job/step; unique dispatch key makes retries safe. */
+  async enqueueDispatch(
+    workflowId: string,
+    workflowRevision: number,
+    payload: JobPayload,
+    requiredTags: string[],
+    teamId: string,
+    parentId: string | number,
+    dispatchKey: string,
+  ): Promise<number> {
+    await db.run(
+      `INSERT INTO jobs (parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id, dispatch_key)
+       SELECT ?, ?, ?, ?, '', ?, ?, ?
+       WHERE EXISTS (SELECT 1 FROM workflows WHERE id = ? AND team_id = ?)
+       ON CONFLICT(dispatch_key) DO NOTHING`,
+      [
+        parentId,
+        workflowId,
+        workflowRevision,
+        JSON.stringify(requiredTags),
+        JSON.stringify(payload),
+        teamId,
+        dispatchKey,
+        workflowId,
+        teamId,
+      ],
+    );
+    const existing = await db.get("SELECT id FROM jobs WHERE dispatch_key = ? AND team_id = ?", [dispatchKey, teamId]);
+    return Number(existing?.id || 0);
+  }
+
   /**
    * Atomically claims the oldest pending job compatible with this worker.
    * Requires SQLite >= 3.35 for the RETURNING clause.
@@ -395,7 +426,8 @@ export class QueueManager {
         lease_token_hash TEXT,
         lease_expires_at DATETIME,
         lease_fenced INTEGER NOT NULL DEFAULT 0,
-        lease_completed INTEGER NOT NULL DEFAULT 0
+        lease_completed INTEGER NOT NULL DEFAULT 0,
+        dispatch_key TEXT UNIQUE
       );
 
       CREATE TABLE IF NOT EXISTS step_logs (
@@ -439,6 +471,8 @@ export class QueueManager {
     await db.run("ALTER TABLE jobs ADD COLUMN lease_expires_at DATETIME").catch(() => {});
     await db.run("ALTER TABLE jobs ADD COLUMN lease_fenced INTEGER NOT NULL DEFAULT 0").catch(() => {});
     await db.run("ALTER TABLE jobs ADD COLUMN lease_completed INTEGER NOT NULL DEFAULT 0").catch(() => {});
+    await db.run("ALTER TABLE jobs ADD COLUMN dispatch_key TEXT").catch(() => {});
+    await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dispatch_key ON jobs(dispatch_key)");
   }
 
   /**

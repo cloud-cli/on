@@ -181,9 +181,18 @@
         },
         "timeoutMs": { "type": "integer", "minimum": 1000 },
         "run": { "type": "string", "description": "Shell/Docker script execution" },
-        "eval": { "type": "string", "description": "In-process JS function execution" }
+        "eval": { "type": "string", "description": "In-process JS function execution" },
+        "dispatch": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target workflow ID or unique name; requires API runner lease"
+        },
+        "with": {
+          "description": "Structured object passed as downstream inputs; may be an expression when used with dispatch"
+        }
       },
       "oneOf": [
+        { "required": ["dispatch", "with"], "not": { "anyOf": [{ "required": ["run"] }, { "required": ["eval"] }] } },
         { "required": ["run"], "not": { "required": ["eval"] } },
         { "required": ["eval"], "not": { "required": ["run"] } }
       ]

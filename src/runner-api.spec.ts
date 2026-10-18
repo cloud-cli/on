@@ -35,6 +35,22 @@ describe("RunnerApi", () => {
     await expect(api.secrets(lease)).resolves.toEqual({ DEPLOY_TOKEN: "redacted" });
   });
 
+  it("dispatches through the authenticated lease endpoint with structured inputs", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ jobId: 8 })));
+    const api = new RunnerApi("https://runner.example", "credential", fetcher as typeof fetch);
+    const lease = { leaseId: "lease-1", leaseToken: "fence", job: { id: 3 }, workflow: {} };
+    await api.dispatch(lease, 3, "handoff", "target-id", { repository: { name: "demo" } });
+    const [url, request] = fetcher.mock.calls[0];
+    expect(url).toEqual(new URL("https://runner.example/api/v1/runner/leases/lease-1/dispatch"));
+    expect(new Headers(request?.headers).get("x-runner-lease-token")).toBe("fence");
+    expect(JSON.parse(String(request?.body))).toEqual({
+      jobId: 3,
+      stepId: "handoff",
+      target: "target-id",
+      inputs: { repository: { name: "demo" } },
+    });
+  });
+
   it("treats update events as hints and uses the authenticated REST update protocol", async () => {
     const fetcher = vi
       .fn()

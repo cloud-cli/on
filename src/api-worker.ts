@@ -276,5 +276,8 @@ function createLeaseQueue(api: RunnerApi, lease: RunnerLease, job: JobRecord): W
       }
       return cancelled;
     },
+    async dispatch(jobId, stepId, target, inputs) {
+      return api.dispatch(lease, jobId, stepId, target, inputs);
+    },
   };
 }

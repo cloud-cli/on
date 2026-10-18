@@ -768,7 +768,7 @@ export class WebhookServer {
       return;
     }
     const runnerLeaseMatch = url.pathname.match(
-      /^\/api\/v1\/runner\/leases\/([^/]+)(?:\/(renew|workflow|secrets|report|logs|files|complete|release))?$/,
+      /^\/api\/v1\/runner\/leases\/([^/]+)(?:\/(renew|workflow|secrets|report|logs|files|complete|release|dispatch))?$/,
     );
     if (runnerLeaseMatch) {
       const [, leaseId, action] = runnerLeaseMatch;
@@ -793,6 +793,22 @@ export class WebhookServer {
       }
       if (job.lease_completed && !(req.method === "POST" && action === "complete")) {
         res.writeHead(409, { "Cache-Control": "no-store" }).end();
+        return;
+      }
+      if (req.method === "POST" && action === "dispatch") {
+        const body = await this.readJson(req, res);
+        if (body === null && res.headersSent) {
+          return;
+        }
+        try {
+          const dispatched = await this.dispatchFromLease(job, body);
+          res
+            .writeHead(202, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+            .end(JSON.stringify(dispatched));
+        } catch (error: any) {
+          const status = error.status || 400;
+          res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
+        }
         return;
       }
       if (req.method === "GET" && action === "workflow") {
@@ -1647,6 +1663,71 @@ sessionStorage.removeItem('runner-pending-team-invite');
     res.end(JSON.stringify({ jobs: jobs.map((id) => ({ id, provider })) }));
   }
 
+  /** Resolve/enqueue a child run only from a live, team-owned runner lease. */
+  private async dispatchFromLease(job: any, body: any) {
+    const fail = (status: number, message: string): never => {
+      const error: any = new Error(message);
+      error.status = status;
+      throw error;
+    };
+    if (
+      !body ||
+      body.jobId !== job.id ||
+      typeof body.stepId !== "string" ||
+      !/^[\w.-]{1,100}$/.test(body.stepId) ||
+      typeof body.target !== "string" ||
+      !body.target.trim() ||
+      !body.inputs ||
+      typeof body.inputs !== "object" ||
+      Array.isArray(body.inputs) ||
+      job.status !== "running" ||
+      !job.team_id
+    ) {
+      fail(400, "Invalid dispatch request");
+    }
+    if (Buffer.byteLength(JSON.stringify(body.inputs)) > 256_000) {
+      fail(413, "Dispatch inputs exceed 256KB");
+    }
+    const depth = await db.get(
+      `WITH RECURSIVE ancestors(id, parentId, depth) AS (
+         SELECT id, parentId, 0 FROM jobs WHERE id = ? AND team_id = ?
+         UNION ALL SELECT p.id, p.parentId, ancestors.depth + 1 FROM jobs p JOIN ancestors ON p.id = ancestors.parentId
+         WHERE p.team_id = ? AND ancestors.depth < 10
+       ) SELECT MAX(depth) AS depth FROM ancestors`,
+      [job.id, job.team_id, job.team_id],
+    );
+    if (Number(depth?.depth || 0) >= 5) {
+      fail(400, "Dispatch depth limit exceeded");
+    }
+    const candidates = await this.workflows.publishedForTeam(job.team_id);
+    const matches = candidates.filter(
+      ({ workflowId, definition }) =>
+        workflowId === body.target || definition.id === body.target || definition.name === body.target,
+    );
+    if (matches.length !== 1) {
+      fail(
+        matches.length ? 409 : 404,
+        matches.length ? "Workflow target name is ambiguous" : "Workflow not found in workspace",
+      );
+    }
+    const { workflowId, definition, revision } = matches[0];
+    const tags = await resolveMatrixTags(definition.tags, {}, body.inputs);
+    const downstreamId = await this.queue.enqueueDispatch(
+      workflowId,
+      revision,
+      { inputs: body.inputs },
+      tags,
+      job.team_id,
+      job.id,
+      `dispatch:${job.id}:${body.stepId}`,
+    );
+    if (!downstreamId) {
+      fail(404, "Workflow target is not workspace-owned");
+    }
+    this.events.publish("jobs.available", { tags, teamId: job.team_id });
+    return { jobId: downstreamId, workflowId, parentId: job.id };
+  }
+
   private async handleWorkflowRun(req: http.IncomingMessage, res: http.ServerResponse, workflowId: string) {
     const teamId = await this.requireTeam(req, res);
     if (!teamId) {
@@ -1837,8 +1918,39 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return { inputs, isValid, secretValues: dbSecrets };
       }
 
-      const inputs = JSON.parse(rawBuffer.toString("utf-8"));
-      return { isValid: true, inputs, secretValues: dbSecrets };
+      // Provider registrations are routing labels, not parsers. Verify the
+      // GitHub-compatible signature against the untouched request bytes and
+      // expose the transport envelope for workflow-owned normalization.
+      const signature = headers["x-hub-signature-256"];
+      // A configured secret always makes a signature mandatory, regardless
+      // of whether it came from a per-registration secret or workspace secret.
+      // Alias ingress is an authenticated webhook boundary; never accept an
+      // unsigned request merely because a workspace has not configured a key.
+      let isValid = false;
+      if (secret && signature) {
+        const expected = `sha256=${crypto.createHmac("sha256", secret).update(rawBuffer).digest("hex")}`;
+        const suppliedBytes = Buffer.from(String(signature));
+        const expectedBytes = Buffer.from(expected);
+        isValid = suppliedBytes.length === expectedBytes.length && crypto.timingSafeEqual(suppliedBytes, expectedBytes);
+      }
+      const body = JSON.parse(rawBuffer.toString("utf-8"));
+      if (!body || typeof body !== "object" || Array.isArray(body) || !isValid) {
+        return { isValid: false, inputs: null, secretValues: dbSecrets };
+      }
+      // Only forward event metadata needed by intake workflows. An arbitrary
+      // webhook header may contain a credential and is persisted with inputs.
+      const safeHeaderNames = new Set([
+        "content-type",
+        "user-agent",
+        "x-github-event",
+        "x-github-delivery",
+        "x-github-hook-id",
+      ]);
+      const safeHeaders = Object.fromEntries(
+        Object.entries(headers).filter(([name]) => safeHeaderNames.has(name.toLowerCase())),
+      );
+      const inputs = { ...body, body, raw: body, headers: safeHeaders, request: { body, headers: safeHeaders } };
+      return { isValid, inputs, secretValues: dbSecrets };
     } catch {
       return { isValid: false, inputs: null, secretValues: dbSecrets };
     }

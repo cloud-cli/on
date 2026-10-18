@@ -76,6 +76,36 @@ on:
 
 The helper is only available to GitHub workflows. A missing file returns `false`; unsafe paths and failed lookups do not trigger the workflow.
 
+#### Provider aliases and workflow-owned normalization
+
+Workspace webhook registrations can use any provider slug, including a provider alias configured for a GitHub sender. For a non-built-in slug the server does not normalize the provider payload: it verifies `X-Hub-Signature-256` against the registration signing secret (or the workspace secret named `<SLUG>_WEBHOOK_SECRET`) using the original request bytes, parses JSON, and supplies `inputs.body` and `inputs.request.headers` to the workflow. Only an allowlist of event metadata headers is forwarded; credentials and arbitrary custom headers are omitted. `inputs.raw` is also the parsed JSON value; it is **not** the original byte sequence. A valid signing secret and signature are required; unsigned alias ingress is rejected. Configure a registration signing secret rather than relying on an unscoped environment variable.
+
+Alias workflows do not inherit `on.github`'s server-side filters or `github.fileExists` helper. Normalize and filter in workflow steps using `inputs.body` and `inputs.request.headers`; use `on: { alias: {} }`. The `on.github` provider path remains the legacy compatibility path: it continues to produce normalized GitHub inputs and apply existing `events`, repository/branch/path filters and `github.fileExists` conditions.
+
+```yaml
+name: GitHub intake (alias)
+on:
+  scm-hook: {}
+steps:
+  - id: normalize
+    eval: "({ event: inputs.request.headers['x-github-event'], repository: inputs.body.repository?.full_name, ref: inputs.body.ref, raw: inputs.body })"
+```
+
+### Dispatch structured output to another workflow
+
+An API runner may use a dispatch-only step to pass structured step outputs as downstream workflow inputs. `dispatch` accepts a stable workflow ID or an exact, unique workflow name; `with` is an expression evaluated in the source workflow context. The downstream target must be published in the same workspace.
+
+```yaml
+steps:
+  - id: normalize
+    eval: "({ repository: inputs.body.repository.full_name, event: inputs.request.headers['x-github-event'] })"
+  - id: handoff
+    dispatch: build-and-test # workflow ID; a unique workflow name is also accepted
+    with: steps.normalize.outputs
+```
+
+The handoff is server-authenticated with the active runner lease; workflows do not need embedded API keys or shell `curl` calls. The downstream `inputs` is the structured object (not a JSON-encoded string), and the downstream run's parent is the source job. Dispatch is idempotent per source job and step, including runner/step retries. Inputs are limited to 256 KiB and dispatch ancestry to five downstream levels. A dispatch-only step requires the lease-based API runner; a local non-API worker fails it explicitly rather than bypassing server authorization.
+
 ## How-To Guides
 
 ### Reference Another Environment Value

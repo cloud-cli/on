@@ -426,7 +426,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": ["renew", "workflow", "secrets", "report", "logs", "files", "complete", "release"]
+            "enum": ["renew", "workflow", "secrets", "report", "logs", "files", "complete", "release", "dispatch"]
           }
         }
       ],
@@ -449,13 +449,16 @@
       },
       "post": {
         "tags": ["runners"],
-        "summary": "Renew, upload logs/files, complete, or release a lease",
+        "summary": "Renew, upload logs/files, complete, release, or dispatch a child workflow",
         "security": [
           {
             "bearerAuth": []
           }
         ],
         "responses": {
+          "202": {
+            "description": "Child workflow dispatched; repeated source job/step requests return the same child job"
+          },
           "204": {
             "description": "Operation accepted"
           },

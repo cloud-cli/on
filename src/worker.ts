@@ -600,6 +600,60 @@ async function executeSingleStep(params: {
     }
   }
 
+  if (step.dispatch) {
+    const started = Date.now();
+    try {
+      if (!params.queue.dispatch) {
+        throw new Error("Workflow dispatch requires an authenticated API runner lease");
+      }
+      const targetInputs =
+        typeof step.with === "string"
+          ? await SafeExpressionEvaluator.evaluateExpression(step.with, executionContext)
+          : step.with;
+      if (!targetInputs || typeof targetInputs !== "object" || Array.isArray(targetInputs)) {
+        throw new Error("Dispatch inputs must evaluate to a JSON object");
+      }
+      const result = await params.queue.dispatch(
+        params.jobId,
+        step.id || `step-${stepIndex}`,
+        step.dispatch,
+        targetInputs,
+      );
+      const outputs = result && typeof result === "object" ? result : { jobId: result };
+      executionContext.steps[step.id!] = { status: "success", exitCode: 0, outputs };
+      return {
+        failed: false,
+        cancelled: false,
+        skipped: false,
+        report: {
+          id: step.id!,
+          name: step.name!,
+          status: "success",
+          durationMs: Date.now() - started,
+          exitCode: 0,
+          outputs,
+          logContent: "",
+        },
+      };
+    } catch (error: any) {
+      return {
+        failed: true,
+        cancelled: false,
+        skipped: false,
+        report: {
+          id: step.id!,
+          name: step.name!,
+          status: "failed",
+          durationMs: Date.now() - started,
+          exitCode: 1,
+          error: error?.message || String(error),
+          outputs: {},
+          logContent: "",
+        },
+      };
+    }
+  }
+
   try {
     const evaluatedStepEnv = await evaluateEnv(step.env, executionContext);
     const stepContext: StepContext = {

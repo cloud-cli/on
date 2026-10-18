@@ -139,6 +139,7 @@ export interface WorkflowStep {
   run?: string;
   eval?: string;
   dispatch?: string;
+  with?: unknown;
   image?: string;
   volumes?: string[];
   dockerArgs?: string[];
@@ -297,6 +298,7 @@ export interface WorkerExecutionQueue {
   ): Promise<void>;
   getStoredFiles(kind: "artifact" | "cache", ownerKey: string): Promise<Array<{ path: string; content: string }>>;
   isCancelled(jobId: string | number): Promise<boolean>;
+  dispatch?(jobId: string | number, stepId: string, target: string, inputs: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface ContextualizedProcessable extends Processable {

@@ -144,6 +144,21 @@ export class RunnerApi {
     );
   }
 
+  dispatch(
+    lease: RunnerLease,
+    jobId: string | number,
+    stepId: string,
+    target: string,
+    inputs: unknown,
+  ): Promise<unknown> {
+    return this.request(
+      `/api/v1/runner/leases/${encodeURIComponent(lease.leaseId)}/dispatch`,
+      "POST",
+      { jobId, stepId, target, inputs },
+      lease.leaseToken,
+    );
+  }
+
   release(lease: RunnerLease): Promise<unknown> {
     return this.request(
       `/api/v1/runner/leases/${encodeURIComponent(lease.leaseId)}/release`,

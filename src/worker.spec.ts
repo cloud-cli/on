@@ -1,9 +1,48 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { Processable, WorkflowExecutionReport } from './types.js';
-import { processJob } from './worker.js';
+import { describe, expect, it, vi } from "vitest";
+import type { Processable, WorkflowExecutionReport } from "./types.js";
+import { processJob } from "./worker.js";
 
-describe('incremental workflow reports', () => {
-  it('persists every step transition and output', async () => {
+describe("incremental workflow reports", () => {
+  it("hands structured step outputs to an authenticated dispatch queue", async () => {
+    const dispatch = vi.fn(async () => ({ jobId: 91, workflowId: "downstream", parentId: 9 }));
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+      dispatch,
+    };
+    await processJob({
+      workerId: "test-worker",
+      job: {
+        id: 9,
+        workflow_id: "intake",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "test-worker",
+        payload: JSON.stringify({ inputs: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({}) },
+      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver: {},
+      workflow: {
+        id: "intake",
+        name: "Intake",
+        on: { provider: "alias" },
+        steps: [
+          { id: "normalize", eval: '({ repository: "org/repo", labels: ["main"] })' },
+          { id: "handoff", dispatch: "downstream", with: "steps.normalize.outputs" },
+        ],
+      },
+    } as Processable);
+    expect(dispatch).toHaveBeenCalledWith(9, "handoff", "downstream", { repository: "org/repo", labels: ["main"] });
+  });
+
+  it("persists every step transition and output", async () => {
     const reports: WorkflowExecutionReport[] = [];
     const logs: Array<{ stepId: string; content: string }> = [];
     const queue = {
@@ -19,63 +58,70 @@ describe('incremental workflow reports', () => {
       isCancelled: vi.fn(async () => false),
     };
     const payload = {
-      inputs: { repo: 'example' },
+      inputs: { repo: "example" },
     };
     const workflow = {
-      id: 'incremental',
-      name: 'Incremental',
-      on: { provider: 'generic' },
+      id: "incremental",
+      name: "Incremental",
+      on: { provider: "generic" },
       env: {
-        image: '${inputs.repo}',
-        image_tag: '${env.image}:latest',
+        image: "${inputs.repo}",
+        image_tag: "${env.image}:latest",
       },
       steps: [
-        { id: 'first', eval: '({ image: env.image, tag: env.image_tag, ci: env.CI, job: env.CI_JOB_ID, name: env.CI_JOB_NAME })' },
-        { id: 'second', eval: '({ value: 2 })' },
+        {
+          id: "first",
+          eval: "({ image: env.image, tag: env.image_tag, ci: env.CI, job: env.CI_JOB_ID, name: env.CI_JOB_NAME })",
+        },
+        { id: "second", eval: "({ value: 2 })" },
       ],
     };
 
     await processJob({
-      workerId: 'test-worker',
+      workerId: "test-worker",
       job: {
         id: 1,
-        workflow_id: 'incremental',
+        workflow_id: "incremental",
         workflow_revision: 1,
-        required_tags: '[]',
+        required_tags: "[]",
         concurrency_key: null,
-        status: 'running',
-        worker_id: 'test-worker',
+        status: "running",
+        worker_id: "test-worker",
         payload: JSON.stringify(payload),
         created_at: new Date().toISOString(),
       },
       queue,
       secrets: { getAll: () => ({}) },
-      config: { storagePath: '/tmp', serverUrl: 'http://runner.test', env: {}, plugins: [] },
+      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
       driver: {},
       workflow,
     } as Processable);
 
     expect(reports.map((report) => report.steps.map((step) => step.status))).toEqual([
-      ['pending', 'pending'],
-      ['pending', 'pending'],
-      ['running', 'pending'],
-      ['success', 'pending'],
-      ['success', 'running'],
-      ['success', 'success'],
-      ['success', 'success'],
+      ["pending", "pending"],
+      ["pending", "pending"],
+      ["running", "pending"],
+      ["success", "pending"],
+      ["success", "running"],
+      ["success", "success"],
+      ["success", "success"],
     ]);
     expect(reports.at(-1)?.steps.map((step) => step.outputs)).toEqual([
-      { image: 'example', tag: 'example:latest', ci: 'true', job: '1', name: 'Incremental' },
+      { image: "example", tag: "example:latest", ci: "true", job: "1", name: "Incremental" },
       { value: 2 },
     ]);
     expect(logs).toEqual([
-      { stepId: 'first', content: '[JS EVAL OUTPUT]:\n{\n  "image": "example",\n  "tag": "example:latest",\n  "ci": "true",\n  "job": "1",\n  "name": "Incremental"\n}' },
-      { stepId: 'second', content: '[JS EVAL OUTPUT]:\n{\n  "value": 2\n}' },
+      {
+        stepId: "first",
+        content:
+          '[JS EVAL OUTPUT]:\n{\n  "image": "example",\n  "tag": "example:latest",\n  "ci": "true",\n  "job": "1",\n  "name": "Incremental"\n}',
+      },
+      { stepId: "second", content: '[JS EVAL OUTPUT]:\n{\n  "value": 2\n}' },
     ]);
-    expect(queue.completeJob).toHaveBeenCalledWith(1, 'success', expect.any(Object));
+    expect(queue.completeJob).toHaveBeenCalledWith(1, "success", expect.any(Object));
   });
 
-  it('retries failed steps according to the workflow setting', async () => {
+  it("retries failed steps according to the workflow setting", async () => {
     let attempts = 0;
     const queue = {
       saveReport: vi.fn(async () => {}),
@@ -87,38 +133,38 @@ describe('incremental workflow reports', () => {
       execute: vi.fn(() => ({
         done: Promise.resolve({ exitCode: ++attempts === 2 ? 0 : 1, durationMs: 1 }),
         cancel: async () => {},
-        logFilePath: '',
+        logFilePath: "",
       })),
-      readLog: vi.fn(async () => ''),
+      readLog: vi.fn(async () => ""),
     };
 
     await processJob({
-      workerId: 'test-worker',
+      workerId: "test-worker",
       job: {
         id: 2,
-        workflow_id: 'retry-workflow',
+        workflow_id: "retry-workflow",
         workflow_revision: 1,
-        required_tags: '[]',
+        required_tags: "[]",
         concurrency_key: null,
-        status: 'running',
-        worker_id: 'test-worker',
+        status: "running",
+        worker_id: "test-worker",
         payload: JSON.stringify({ inputs: {} }),
         created_at: new Date().toISOString(),
       },
       queue,
       secrets: { getAll: () => ({}) },
-      config: { storagePath: '/tmp', serverUrl: 'http://runner.test', env: {}, plugins: [] },
+      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
       driver,
       workflow: {
-        id: 'retry-workflow',
-        name: 'Retry workflow',
-        on: { provider: 'generic' },
+        id: "retry-workflow",
+        name: "Retry workflow",
+        on: { provider: "generic" },
         retries: 1,
-        steps: [{ id: 'retry', run: 'false' }],
+        steps: [{ id: "retry", run: "false" }],
       },
     } as Processable);
 
     expect(driver.execute).toHaveBeenCalledTimes(2);
-    expect(queue.completeJob).toHaveBeenCalledWith(2, 'success', expect.any(Object));
+    expect(queue.completeJob).toHaveBeenCalledWith(2, "success", expect.any(Object));
   });
 });

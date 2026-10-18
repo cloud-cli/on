@@ -968,6 +968,223 @@ describe("team authorization", () => {
   });
 });
 
+describe("generic webhook ingress", () => {
+  it("accepts arbitrary provider aliases with a valid GitHub HMAC and preserves raw request data", async () => {
+    const crypto = await import("node:crypto");
+    const raw = Buffer.from('{"ref":"refs/heads/main"}');
+    const secret = "workspace-signing-secret";
+    const signature = `sha256=${crypto.createHmac("sha256", secret).update(raw).digest("hex")}`;
+    const server = {
+      secretRepository: { getAllForTeam: vi.fn(async () => ({})) },
+      preprocessors: { get: vi.fn(() => undefined) },
+    };
+
+    const result = await (WebhookServer.prototype as any).preprocess.call(
+      server,
+      "arbitrary-provider",
+      { "x-hub-signature-256": signature, "x-github-event": "push" },
+      raw,
+      "workspace-a",
+      secret,
+    );
+
+    expect(result.isValid).toBe(true);
+    expect(result.inputs.body).toEqual({ ref: "refs/heads/main" });
+    expect(result.inputs.request.headers["x-github-event"]).toBe("push");
+    expect(result.inputs.raw).toEqual(result.inputs.body);
+  });
+
+  it("routes a signed alias payload into alias-matched intake workflows", async () => {
+    const crypto = await import("node:crypto");
+    const raw = Buffer.from('{"repository":{"full_name":"org/demo"}}');
+    const secret = "intake-secret";
+    const signature = `sha256=${crypto.createHmac("sha256", secret).update(raw).digest("hex")}`;
+    const matched = vi.fn(async () => []);
+    const server = {
+      readRequest: vi.fn(async () => ({
+        rawBuffer: raw,
+        headers: { "x-hub-signature-256": signature, "x-github-event": "push" },
+      })),
+      secretRepository: { getAllForTeam: vi.fn(async () => ({})) },
+      preprocessors: new Map(),
+      workflowsLoaded: Promise.resolve(),
+      workflows: {
+        publishedForTeam: vi.fn(async () => [{ definition: { on: { provider: "scm-hook" } }, revision: 1 }]),
+      },
+      matchWorkflows: matched,
+    };
+    (server as any).preprocess = (...args: any[]) => (WebhookServer.prototype as any).preprocess.call(server, ...args);
+    const response = { headersSent: false, writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    await (WebhookServer.prototype as any).handleWebhook.call(server, "scm-hook", {}, response, "team-a", secret);
+    expect(matched).toHaveBeenCalledWith(
+      "scm-hook",
+      expect.objectContaining({
+        body: { repository: { full_name: "org/demo" } },
+        request: expect.objectContaining({ headers: { "x-github-event": "push" } }),
+      }),
+      expect.any(Array),
+      {},
+      "team-a",
+    );
+  });
+
+  it("does not match or enqueue workflows when the signature is invalid", async () => {
+    const matched = vi.fn(async () => []);
+    const server = {
+      readRequest: vi.fn(async () => ({
+        rawBuffer: Buffer.from("{}"),
+        headers: { "x-hub-signature-256": "sha256=bad" },
+      })),
+      secretRepository: { getAllForTeam: vi.fn(async () => ({})) },
+      preprocessors: new Map(),
+      workflowsLoaded: Promise.resolve(),
+      workflows: { publishedForTeam: vi.fn(async () => []) },
+      matchWorkflows: matched,
+    };
+    (server as any).preprocess = (...args: any[]) => (WebhookServer.prototype as any).preprocess.call(server, ...args);
+    const response = { headersSent: false, writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+    await (WebhookServer.prototype as any).handleWebhook.call(server, "scm-hook", {}, response, "team-a", "secret");
+    expect(response.writeHead).toHaveBeenCalledWith(401, { "Content-Type": "application/json" });
+    expect(matched).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid signatures and does not parse them as accepted payloads", async () => {
+    const server = {
+      secretRepository: { getAllForTeam: vi.fn(async () => ({})) },
+      preprocessors: { get: vi.fn(() => undefined) },
+    };
+    const result = await (WebhookServer.prototype as any).preprocess.call(
+      server,
+      "provider-alias",
+      { "x-hub-signature-256": "sha256=invalid" },
+      Buffer.from("{}"),
+      "workspace-a",
+      "signing-secret",
+    );
+    expect(result.isValid).toBe(false);
+  });
+
+  it("rejects unsigned requests when a provider-specific workspace secret is resolved", async () => {
+    const server = {
+      secretRepository: { getAllForTeam: vi.fn(async () => ({ ALIAS_WEBHOOK_SECRET: "workspace-secret" })) },
+      preprocessors: { get: vi.fn(() => undefined) },
+    };
+    const result = await (WebhookServer.prototype as any).preprocess.call(
+      server,
+      "alias",
+      {},
+      Buffer.from("{}"),
+      "workspace-a",
+    );
+    expect(result.isValid).toBe(false);
+  });
+
+  it("rejects unsigned requests when no secret is configured", async () => {
+    const server = {
+      secretRepository: { getAllForTeam: vi.fn(async () => ({})) },
+      preprocessors: { get: vi.fn(() => undefined) },
+    };
+    const result = await (WebhookServer.prototype as any).preprocess.call(
+      server,
+      "alias",
+      {},
+      Buffer.from("{}"),
+      "workspace-a",
+    );
+    expect(result.isValid).toBe(false);
+  });
+
+  it("forwards only safe event metadata and drops credential-like custom headers", async () => {
+    const raw = Buffer.from("{}");
+    const secret = "workspace-secret";
+    const crypto = await import("node:crypto");
+    const signature = `sha256=${crypto.createHmac("sha256", secret).update(raw).digest("hex")}`;
+    const server = {
+      secretRepository: { getAllForTeam: vi.fn(async () => ({})) },
+      preprocessors: { get: vi.fn(() => undefined) },
+    };
+    const result = await (WebhookServer.prototype as any).preprocess.call(
+      server,
+      "alias",
+      {
+        "x-hub-signature-256": signature,
+        "x-github-event": "push",
+        "content-type": "application/json",
+        "x-api-key": "must-not-leak",
+        "proxy-authorization": "must-not-leak",
+      },
+      raw,
+      "workspace-a",
+      secret,
+    );
+    expect(result.isValid).toBe(true);
+    expect(result.inputs.request.headers).toEqual({ "x-github-event": "push", "content-type": "application/json" });
+  });
+});
+
+describe("runner-lease workflow dispatch", () => {
+  it.each([
+    ["workflow ID", "build-id"],
+    ["unique workflow name", "Build workflow"],
+  ])("dispatches by %s with structured inputs and source parent linkage", async (_label, target) => {
+    const get = vi.spyOn(db, "get").mockResolvedValue({ depth: 0 } as never);
+    const definition = { id: "build-id", name: "Build workflow", tags: [] };
+    const server: any = {
+      workflows: {
+        publishedForTeam: vi.fn(async (teamId: string) =>
+          teamId === "team-a" ? [{ workflowId: "build-id", definition, revision: 4 }] : [],
+        ),
+      },
+      queue: {
+        enqueueDispatch: vi.fn(async (...args: unknown[]) => {
+          expect(args).toEqual([
+            "build-id",
+            4,
+            { inputs: { repo: { name: "demo" } } },
+            [],
+            "team-a",
+            32,
+            "dispatch:32:handoff",
+          ]);
+          return 99;
+        }),
+      },
+      events: { publish: vi.fn() },
+    };
+    try {
+      const result = await WebhookServer.prototype["dispatchFromLease"].call(
+        server,
+        { id: 32, team_id: "team-a", status: "running" },
+        { jobId: 32, stepId: "handoff", target, inputs: { repo: { name: "demo" } } },
+      );
+      expect(result).toEqual({ jobId: 99, workflowId: "build-id", parentId: 32 });
+    } finally {
+      get.mockRestore();
+    }
+  });
+
+  it("does not resolve a target outside the source workspace", async () => {
+    const get = vi.spyOn(db, "get").mockResolvedValue({ depth: 0 } as never);
+    const server: any = {
+      workflows: { publishedForTeam: vi.fn(async () => []) },
+      queue: { enqueueDispatch: vi.fn() },
+      events: { publish: vi.fn() },
+    };
+    try {
+      await expect(
+        WebhookServer.prototype["dispatchFromLease"].call(
+          server,
+          { id: 32, team_id: "team-a", status: "running" },
+          { jobId: 32, stepId: "handoff", target: "other-team-flow", inputs: {} },
+        ),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(server.queue.enqueueDispatch).not.toHaveBeenCalled();
+    } finally {
+      get.mockRestore();
+    }
+  });
+});
+
 describe("admin user-management authorization", () => {
   const makeResponse = () => ({
     writeHead: vi.fn().mockReturnThis(),

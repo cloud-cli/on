@@ -60,6 +60,33 @@ describe("QueueManager.listJobs", () => {
   });
 });
 
+describe("QueueManager.enqueueDispatch", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("uses a stable unique source-step key and returns the existing job on retry", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ json: async () => ({ lastInsertRowid: 0 }) })
+      .mockResolvedValueOnce({ json: async () => ({ id: 71 }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const id = await new QueueManager("test").enqueueDispatch(
+      "downstream",
+      3,
+      { inputs: { value: { ok: true } } },
+      [],
+      "team-a",
+      12,
+      "dispatch:12:handoff",
+    );
+    expect(id).toBe(71);
+    const [insertRequest, lookupRequest] = fetchMock.mock.calls;
+    const insert = JSON.parse(String(insertRequest[1].body));
+    expect(insert.s).toContain("ON CONFLICT(dispatch_key) DO NOTHING");
+    expect(insert.d).toContain("dispatch:12:handoff");
+    expect(JSON.parse(String(lookupRequest[1].body)).s).toContain("WHERE dispatch_key = ? AND team_id = ?");
+  });
+});
+
 describe("QueueManager.claimNextJob", () => {
   afterEach(() => vi.unstubAllGlobals());
 
