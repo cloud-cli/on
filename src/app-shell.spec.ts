@@ -44,9 +44,13 @@ describe("Flow application shell", () => {
     expect(html).not.toContain("overflow-hidden bg-flow-background");
     expect(html).toContain('role="group"');
     expect(html).toContain('aria-label="Signed-in user"');
+    expect(html).toContain("max-w-[calc(100vw-4rem)]");
+    expect(html).toContain("max-w-[calc(100vw-7rem)]");
+    expect(html).toContain('class="truncate text-sm font-semibold leading-tight"');
+    expect(html).toContain('class="truncate text-[10px] leading-tight text-flow-secondary"');
     expect(html).toContain('on-click="toggleTheme()"');
-    expect(html).toContain('class="flex items-center justify-end gap-4');
-    expect(html).toContain('md:flex"');
+    expect(html).toContain('class="flex items-center justify-end gap-2');
+    expect(html).toContain("md:flex md:flex-col");
     expect(html).toContain("isDarkTheme ? 'sun' : 'moon'");
     expect(html).toContain("isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'");
     expect(shellSetup).toContain('setAuthPreference("theme", nextTheme)');

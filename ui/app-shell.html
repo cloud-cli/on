@@ -88,7 +88,7 @@
           </nav>
         </aside>
         <div class="min-h-dvh min-w-0 pb-20 md:pb-0">
-          <header class="flex items-center justify-end gap-4 px-4 pt-4 sm:px-6 lg:px-8">
+          <header class="flex items-center justify-end gap-2 px-4 pt-4 sm:gap-4 sm:px-6 lg:px-8">
             <template if="userAuthenticated">
               <button
                 type="button"
@@ -100,7 +100,7 @@
                 <lucide-icon bind-icon="isDarkTheme ? 'sun' : 'moon'" size="19" aria-hidden="true"></lucide-icon>
               </button>
               <div
-                class="hidden cursor-pointer items-center gap-4 rounded-full border border-gray-200 bg-white py-1.5 px-1.5 shadow-sm transition-shadow hover:shadow-md sm:pr-4 dark:bg-[#18231b] dark:border-[#303d34] md:flex"
+                class="flex min-w-0 max-w-[calc(100vw-4rem)] cursor-pointer items-center gap-2 rounded-full border border-gray-200 bg-white py-1.5 px-1.5 shadow-sm transition-shadow hover:shadow-md sm:max-w-none sm:gap-4 sm:pr-4 dark:bg-[#18231b] dark:border-[#303d34]"
                 role="group"
                 aria-label="Signed-in user"
               >
@@ -121,11 +121,11 @@
                   attr-href="oidcProviderUrl ? oidcProviderUrl + '/me' : null"
                   target="_blank"
                   rel="noopener"
-                  class="hidden flex-col justify-center text-flow-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary sm:flex"
+                  class="flex min-w-0 max-w-[calc(100vw-7rem)] flex-col justify-center text-flow-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-flow-primary sm:max-w-none"
                   aria-label="Open profile at identity provider in a new tab"
                 >
-                  <span class="text-sm font-semibold leading-tight">{{ user.name || user.email }}</span>
-                  <span class="text-[10px] leading-tight text-flow-secondary">{{ user.email }}</span>
+                  <span class="truncate text-sm font-semibold leading-tight">{{ user.name || user.email }}</span>
+                  <span class="truncate text-[10px] leading-tight text-flow-secondary">{{ user.email }}</span>
                 </a>
               </div>
             </template>
