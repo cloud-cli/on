@@ -60,6 +60,15 @@ describe("dashboard", () => {
     expect(html).toContain('on-submit.prevent="applyFilter()"');
     expect(html).toContain('on-input="setFilter($event)"');
     expect(html).toContain("All workflows");
+    expect(html).toContain("workflows.length === 0");
+    expect(html).toContain('href="/ui/workflows/new"');
+    expect(html).toContain('on-click="retryWorkflows()"');
+    expect(html).toContain("!workflowsLoading && !workflowsError && workflows.length > 0");
+    expect(dashboardSetup).toContain("workflowsLoading = ref(true)");
+    expect(dashboardSetup).toContain("workflowsError = ref(false)");
+    expect(dashboardSetup).toContain("workflowGeneration++");
+    expect(dashboardSetup).toContain("if (generation === workflowGeneration)");
+    expect(dashboardSetup).toContain("if (!Array.isArray(items))");
     expect(dashboardSetup).toContain("encodeURIComponent(activeFilter.value)");
     expect(dashboardSetup).toContain("/^[A-Za-z0-9_-]+:.+$/.test(activeFilter.value)");
     expect(dashboardSetup).toContain("if (searchInProgress && !isSearch) {");

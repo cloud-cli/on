@@ -14,6 +14,8 @@ export default function setup() {
     activeFilter = ref(""),
     pushConfigured = ref(false);
   const workflows = ref([]),
+    workflowsLoading = ref(true),
+    workflowsError = ref(false),
     workers = ref([]),
     workflowFilter = ref(""),
     workerFilter = ref(""),
@@ -91,21 +93,44 @@ export default function setup() {
       console.warn("Timezone preference unavailable; using system timezone", preference.legacyError);
     }
   };
+  let workflowGeneration = 0;
   const loadOptions = async () => {
+    const generation = ++workflowGeneration;
+    workflowsLoading.value = true;
+    workflowsError.value = false;
     const load = async (url, key, target, getLabel) => {
       try {
         const response = await apiFetch(url, { headers: { accept: "application/json" } });
         if (!response.ok) {
+          if (key === "workflows") {
+            throw new Error(`Loading workflows failed: ${response.status}`);
+          }
           return;
         }
-        const items = (await response.json())[key] || [];
-        target.value = items.map((item) => ({ id: item.id || item.workerId, name: getLabel(item) }));
+        const payload = await response.json();
+        const items = payload?.[key];
+        if (!Array.isArray(items)) {
+          if (key === "workflows") {
+            throw new Error("Loading workflows returned an invalid response");
+          }
+          return;
+        }
+        if (generation === workflowGeneration) {
+          target.value = items.map((item) => ({ id: item.id || item.workerId, name: getLabel(item) }));
+        }
       } catch {
+        if (key === "workflows" && generation === workflowGeneration) {
+          workflowsError.value = true;
+        }
         /* Filters remain optional when scope is unavailable. */
       }
     };
     await Promise.all([
-      load("/api/v1/workflows", "workflows", workflows, (item) => item.name || "Workflow"),
+      load("/api/v1/workflows", "workflows", workflows, (item) => item.name || "Workflow").finally(() => {
+        if (generation === workflowGeneration) {
+          workflowsLoading.value = false;
+        }
+      }),
       load("/api/v1/workers", "workers", workers, (item) => item.name || item.workerId || "Worker"),
     ]);
   };
@@ -396,11 +421,14 @@ export default function setup() {
   };
   const hasNextPage = () => page.value < Math.ceil(filteredJobs().length / pageSize) || hasMore.value;
   const switchWorkspace = () => {
+    workflowGeneration++;
     refreshGeneration++;
     refreshPending = false;
     searchInProgress = false;
     jobs.value = [];
     workflows.value = [];
+    workflowsLoading.value = true;
+    workflowsError.value = false;
     workers.value = [];
     hasMore.value = false;
     page.value = 1;
@@ -423,6 +451,7 @@ export default function setup() {
     void loadOptions();
     void refreshJobs(true);
   };
+  const retryWorkflows = () => void loadOptions();
   onInit(() => {
     const params = new URLSearchParams(window.location.search);
     const initialSearch = params.get("search")?.trim() || "";
@@ -463,6 +492,9 @@ export default function setup() {
     visibleJobs,
     statusTabs,
     workflows,
+    workflowsLoading,
+    workflowsError,
+    retryWorkflows,
     workers,
     workflowFilter,
     workerFilter,
