@@ -529,3 +529,39 @@ Upstream documentation consulted during this design review; pin and revalidate e
 - [CEL Go](https://github.com/cel-expr/cel-go), canonical import path `cel.dev/cel-go`: typed expression compilation, stateless evaluation and language semantics. The former `github.com/google/cel-go` repository now directs new integrations to the canonical path.
 - [Expr](https://github.com/expr-lang/expr): Go-oriented expression evaluation and compile-time checking.
 - [Starlark Go](https://github.com/google/starlark-go): expression/script embedding, cancellation/step budgets, and explicit warning that hard memory isolation requires operating-system support.
+
+## 11. Release and distribution model
+
+The primary motivation for a Go runner is a single, dependency-free executable per platform.
+
+- Build with `CGO_ENABLED=0` and cross-compile one artifact per `GOOS/GOARCH` (Linux amd64/arm64, macOS, Windows as needed).
+- Publish artifacts directly to GitHub Releases. No npm registry, no package manifest, no registry credentials, and no dependency on Node.js or npm at runtime.
+- Operators download the matching binary, place it on a machine, and start it. Version upgrades are a binary replacement plus service restart.
+- Node.js is an optional external tool only on machines where workflows use `eval:`. Runners advertise `node-eval` capability in heartbeats; only runners with that capability may claim `eval:` jobs.
+- Systemd unit files and container image definitions are separate, versioned alongside the binary but not embedded in it.
+
+## 12. Plugins and preprocessors move to workflows
+
+Keep the runner core lean and generic. The binary must not contain:
+
+- A JS plugin registry (`registerWorkflowPlugin`, `PluginManager`).
+- A webhook preprocessor registry (`GitHubPreprocessor`).
+- OIDC, user, team, or secret management.
+
+Plugins become explicit workflow steps:
+
+- GitHub commit statuses are emitted by a `run:` step calling `curl`/`gh`, or a dedicated lightweight step. Secret mapping remains explicit in the workflow definition.
+- Webhook signature validation stays on the coordinator. Normalization, filtering, and field extraction move into workflow expressions or dedicated intake steps.
+- The runner's responsibility is limited to claiming leases, executing steps, reporting results, and uploading logs/artifacts.
+
+The coordinator remains the only process with database access. The runner remains API-only and starts without `DATABASE_URL`.
+
+## 13. Revised recommendation
+
+Given the single-binary and lean-core goals:
+
+1. Build an API-only Go runner using the existing authenticated runner lease protocol.
+2. Implement a minimal Go expression interpreter for conditions and `${...}` interpolation, supporting only a fixed set of globals: `String`, `Number`, `Boolean`, `JSON`, and explicit runner helpers.
+3. Drop embedded `eval:` from the core evaluator. Offer `eval:` as an optional Node.js subprocess step, gated by runner capability.
+4. Move GitHub status and webhook normalization out of the runner and into workflow steps or coordinator-side preprocessors.
+5. Release cross-platform binaries through GitHub Releases.
