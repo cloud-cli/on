@@ -17,25 +17,26 @@ describe("team settings UI", () => {
     expect(html).toContain('class-hidden="!isAdmin"');
     expect(html).toContain('script setup src="/assets/team-settings-ui.mjs"');
     expect(html).not.toContain("Personal settings</a>");
-    expect(html.match(/rounded-xl border border-flow-border bg-flow-card p-5/g)).toHaveLength(5);
+    expect(html.match(/rounded-xl border border-flow-border bg-flow-card p-5/g)).toHaveLength(6);
     expect(html).toContain('aria-label="Workspace settings sections"');
     expect(html).toContain(
       'class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-flow-border bg-flow-background py-2"',
     );
     expect(
       html.match(/rounded-md border border-flow-border bg-white px-2\.5 py-1\.5 text-xs font-medium/g),
-    ).toHaveLength(5);
+    ).toHaveLength(7);
     expect(html).toContain('href="#team-members"');
     expect(html).toContain('href="#team-webhooks"');
     expect(html).toContain('href="#team-runners"');
-    expect(html).toContain('href="#workspace-api-keys"');
+    expect(html).toContain('href="#workspace-permissions"');
+    expect(html).toContain('href="#workspace-tokens"');
     expect(html).toContain('href="#workspace-secrets"');
     expect(html).toContain('<h2 id="team-runners-title" class="text-lg font-semibold">Task Runners</h2>');
-    expect(html).toContain('<h2 id="workspace-api-keys-title" class="text-lg font-semibold">API keys</h2>');
+    expect(html).toContain('<h2 id="workspace-tokens-title" class="text-lg font-semibold">Agents &amp; tokens</h2>');
     expect(html).toContain('<h2 id="workspace-secrets-title" class="text-lg font-semibold">Task Runner Secrets</h2>');
     expect(html).toContain("bg-flow-warning/10");
     expect(html).toContain("text-flow-warning");
-    expect(html).toContain('placeholder="API key name"');
+    expect(html).toContain('placeholder="Agent name, e.g. nightly-deploy"');
     expect(html).not.toContain('value="github"');
     expect(html).toContain('on-change="setFileMode($event)"');
     expect(html).toContain('on-input="setWebhookProvider($event)"');
@@ -53,14 +54,15 @@ describe("team settings UI", () => {
     expect(html).toContain('class="w-full space-y-5 py-2"');
   });
 
-  it("places invitation entry after members and secrets before API keys", () => {
+  it("places invitation entry after members and permissions before agent tokens", () => {
     const html = generateTeamSettingsHtml();
     const members = html.indexOf('id="team-members"');
     const invitationForm = html.indexOf('on-submit.prevent="createInvitation()"');
     const invitationSection = html.lastIndexOf('class="mt-6 border-t border-flow-border pt-5"', invitationForm);
     const webhooks = html.indexOf('id="team-webhooks"');
     const secrets = html.indexOf('id="workspace-secrets"');
-    const apiKeys = html.indexOf('id="workspace-api-keys"');
+    const tokens = html.indexOf('id="workspace-tokens"');
+    const permissions = html.indexOf('id="workspace-permissions"');
 
     expect(invitationForm).toBeGreaterThan(members);
     expect(invitationForm).toBeLessThan(webhooks);
@@ -68,7 +70,8 @@ describe("team settings UI", () => {
     expect(html.slice(invitationSection, webhooks)).toContain('class="mt-3 flex gap-2"');
     expect(html.slice(invitationSection, webhooks)).toContain("Get link");
     expect(secrets).toBeGreaterThan(webhooks);
-    expect(apiKeys).toBeGreaterThan(secrets);
+    expect(permissions).toBeGreaterThan(secrets);
+    expect(tokens).toBeGreaterThan(permissions);
   });
 
   it("puts webhooks in their own section after workspace members", () => {
@@ -87,9 +90,9 @@ describe("team settings UI", () => {
   it("loads and mutates only the team identified by the route", () => {
     expect(setup).toContain("workspaceIdFromPathname(location.pathname)");
     expect(setup).not.toContain('location.pathname.split("/")[2]');
-    expect(setup).toContain("request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/members`)");
-    expect(setup).toContain("request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/invitations`");
-    expect(setup).toContain("request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/webhooks`");
+    expect(setup).toContain('workspaceUrl("/permissions")');
+    expect(setup).toContain('workspaceUrl("/invitations")');
+    expect(setup).toContain('workspaceUrl("/webhooks")');
     expect(setup).toContain('"X-Team-ID": teamId');
     expect(setup).toContain("You are not a member of this workspace.");
   });
@@ -103,19 +106,19 @@ describe("team settings UI", () => {
     expect(workspaceIdFromPathname(pathname)).toBe(expected);
   });
   it("keeps team settings focused on the selected team", () => {
-    expect(generateTeamSettingsHtml()).toContain("Workspace members share workflows");
+    expect(generateTeamSettingsHtml()).toContain("Workspace members");
     expect(setup).not.toContain('request("/api/v1/teams",');
   });
 
-  it("manages workspace secrets and scoped API keys in workspace settings only", () => {
+  it("manages workspace secrets, permissions, agents, and tokens in workspace settings only", () => {
     const html = generateTeamSettingsHtml();
-    expect(html).toContain("API keys");
+    expect(html).toContain("Agents &amp; tokens");
     expect(html).toContain("Task Runner Secrets");
-    expect(html).toContain("Copy this key now. It cannot be shown again.");
-    expect(setup).toContain("/api/v1/workspaces/${encodeURIComponent(teamId)}/api-keys");
+    expect(html).toContain("Copy this token now. It cannot be shown again.");
+    expect(setup).toContain('workspaceUrl("/tokens")');
     expect(setup).toContain("/api/v1/secrets/");
     expect(setup).toContain('"X-Team-ID": teamId');
-    expect(generateSettingsHtml()).not.toContain("API keys");
+    expect(generateSettingsHtml()).not.toContain("Agents &amp; tokens");
     expect(generateSettingsHtml()).not.toContain("Secrets");
   });
 
@@ -135,7 +138,7 @@ describe("team settings UI", () => {
   it("keeps loop interpolations intact when the template is formatted", () => {
     const html = generateTeamSettingsHtml();
     expect(html).toContain("<span>{{ runner.version }}</span>");
-    expect(html).toContain("<span>{{ scope.label }}</span>");
+    expect(html).toContain("{{ row.label }}");
   });
   it("offers team selection links from the landing UI", async () => {
     const { readFileSync } = await import("node:fs");

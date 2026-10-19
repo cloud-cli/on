@@ -115,13 +115,13 @@
             </div>
             <div class="border-b border-flow-border bg-flow-panel px-4 py-4 sm:px-5">
               <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div class="w-full lg:max-w-xs">
+                <div class="w-full lg:max-w-xs" class-hidden="selectedId">
                   <label for="workflow-workspace" class="sr-only">Workspace</label>
                   <select
                     id="workflow-workspace"
                     bind-value="selectedWorkspaceId"
                     on-change="setWorkspace($event)"
-                    bind-disabled="workspacesLoading || selectedId"
+                    bind-disabled="workspacesLoading"
                     class="w-full rounded-lg border border-flow-border bg-flow-card px-3 py-2.5 text-sm text-flow-foreground outline-none focus:border-flow-primary disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     <option value="">Select a workspace</option>
@@ -136,6 +136,7 @@
                       type="checkbox"
                       bind-checked="enabled"
                       on-change="setEnabled($event)"
+                      bind-disabled="busy || readOnly"
                       class="h-4 w-4 rounded border-flow-border bg-flow-panel text-flow-primary focus:ring-2 focus:ring-flow-primary/20"
                     />
                     Enabled
@@ -166,7 +167,7 @@
                       aria-label="Publish workflow"
                       title="Publish workflow"
                       on-click="publish()"
-                      bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"
+                      bind-disabled="busy || !selectedId || source !== savedSource"
                       class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-success/50 px-3 py-2.5 text-sm font-medium text-flow-success transition hover:bg-flow-success/10 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <lucide-icon icon="rocket" size="16"></lucide-icon>

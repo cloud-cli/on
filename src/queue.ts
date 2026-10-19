@@ -17,6 +17,8 @@ const CURRENT_RUNNER_AUTHORIZATION = `EXISTS (
 )`;
 
 export class QueueManager {
+  private readonly purgingTeams = new Set<string>();
+  private readonly activeStorageWrites = new Map<string, Set<Promise<void>>>();
   private readonly fileStorage = new FileStorage();
 
   constructor(private workerId: string) {}
@@ -41,7 +43,10 @@ export class QueueManager {
     // If a concurrency key is provided, cancel existing pending/running jobs in that group
     if (concurrencyKey) {
       await db.run(
-        `UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE team_id = (SELECT team_id FROM workflows WHERE id = ?)
+        `UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE team_id = (
+           SELECT workflows.team_id FROM workflows JOIN teams ON teams.id = workflows.team_id
+           WHERE workflows.id = ? AND teams.deleting_at IS NULL
+         )
          AND concurrency_key = ? AND status IN ('pending', 'running');`,
         [workflowId, concurrencyKey],
       );
@@ -49,7 +54,9 @@ export class QueueManager {
 
     const res = await db.run(
       `INSERT INTO jobs (workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id)
-      VALUES (?, ?, ?, ?, ?, (SELECT team_id FROM workflows WHERE id = ?));`,
+       SELECT ?, ?, ?, ?, ?, workflows.team_id FROM workflows
+       JOIN teams ON teams.id = workflows.team_id
+       WHERE workflows.id = ? AND teams.deleting_at IS NULL`,
       [
         workflowId,
         workflowRevision,
@@ -60,7 +67,11 @@ export class QueueManager {
       ],
     );
 
-    return Number(res?.lastInsertRowid ?? res?.id ?? 0);
+    const jobId = Number(res?.lastInsertRowid ?? res?.id ?? 0);
+    if (!jobId) {
+      throw new Error("Workflow workspace is unavailable or being deleted");
+    }
+    return jobId;
   }
 
   /** Enqueue once for a source job/step; unique dispatch key makes retries safe. */
@@ -76,7 +87,10 @@ export class QueueManager {
     await db.run(
       `INSERT INTO jobs (parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id, dispatch_key)
        SELECT ?, ?, ?, ?, '', ?, ?, ?
-       WHERE EXISTS (SELECT 1 FROM workflows WHERE id = ? AND team_id = ?)
+       WHERE EXISTS (
+         SELECT 1 FROM workflows JOIN teams ON teams.id = workflows.team_id
+         WHERE workflows.id = ? AND workflows.team_id = ? AND teams.deleting_at IS NULL
+       )
        ON CONFLICT(dispatch_key) DO NOTHING`,
       [
         parentId,
@@ -112,7 +126,8 @@ export class QueueManager {
       WHERE id = (
         SELECT id FROM jobs
         WHERE status = 'pending'
-          AND NOT EXISTS (
+         AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND teams.deleting_at IS NULL)
+         AND NOT EXISTS (
             SELECT 1
             FROM json_each(COALESCE(jobs.required_tags, '[]')) AS required_tag
             WHERE required_tag.value NOT IN (SELECT value FROM json_each(?))
@@ -288,7 +303,12 @@ export class QueueManager {
       );
     }
 
-    const activeWorkflow = await db.get("SELECT active_revision FROM workflows WHERE id = ?", [job.workflow_id]);
+    const activeWorkflow = await db.get(
+      `SELECT workflows.active_revision FROM workflows
+       JOIN teams ON teams.id = workflows.team_id
+       WHERE workflows.id = ? AND teams.deleting_at IS NULL`,
+      [job.workflow_id],
+    );
     const activeRevision = Number(activeWorkflow?.active_revision);
     if (!Number.isSafeInteger(activeRevision) || activeRevision < 1) {
       throw new Error(`Workflow ${job.workflow_id} has no active revision`);
@@ -307,13 +327,13 @@ export class QueueManager {
        )
        SELECT id, workflow_id, ?, required_tags, concurrency_key, ?, team_id,
                'pending', NULL, NULL, NULL, NULL
-       FROM jobs
-       WHERE id = ?
+        FROM jobs JOIN teams ON teams.id = jobs.team_id
+        WHERE jobs.id = ? AND teams.deleting_at IS NULL
        RETURNING *`,
       [activeRevision, JSON.stringify(payload), jobId],
     );
 
-    return newJob.id;
+    return newJob?.id;
   }
 
   /**
@@ -602,11 +622,15 @@ export class QueueManager {
   /** Save or replace the durable log snapshot for a step. */
   async saveStepLog(jobId: string | number, stepId: string, logContent: string): Promise<void> {
     await db.run(
-      `INSERT INTO step_logs (job_id, step_id, log_content) VALUES (?, ?, ?)
+      `INSERT INTO step_logs (job_id, step_id, log_content)
+       SELECT ?, ?, ? WHERE EXISTS (
+         SELECT 1 FROM jobs JOIN teams ON teams.id = jobs.team_id
+         WHERE jobs.id = ? AND teams.deleting_at IS NULL
+       )
        ON CONFLICT(job_id, step_id) DO UPDATE SET
          log_content = excluded.log_content,
          created_at = CURRENT_TIMESTAMP`,
-      [jobId, stepId, timestampLogLines(logContent)],
+      [jobId, stepId, timestampLogLines(logContent), jobId],
     );
   }
 
@@ -621,8 +645,10 @@ export class QueueManager {
     const result = await db.run(
       `INSERT INTO step_logs (job_id, step_id, log_content)
        SELECT ?, ?, ? WHERE EXISTS (
-         SELECT 1 FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
-          AND status IN ('running', 'cancelled') AND lease_fenced = 0 AND lease_completed = 0
+          SELECT 1 FROM jobs JOIN teams ON teams.id = jobs.team_id
+           WHERE jobs.id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
+           AND status IN ('running', 'cancelled') AND lease_fenced = 0 AND lease_completed = 0
+            AND teams.deleting_at IS NULL
            AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
        )
        ON CONFLICT(job_id, step_id) DO UPDATE SET log_content = excluded.log_content, created_at = CURRENT_TIMESTAMP`,
@@ -649,15 +675,51 @@ export class QueueManager {
     ownerKey: string,
     files: Array<{ path: string; content: string }>,
   ): Promise<void> {
-    if (this.fileStorage.enabled) {
-      return this.fileStorage.save(`${kind}/${ownerKey}`, files);
+    const owner =
+      kind === "artifact"
+        ? await db.get(
+            `SELECT jobs.team_id AS teamId FROM jobs JOIN teams ON teams.id = jobs.team_id
+             WHERE jobs.id = ? AND teams.deleting_at IS NULL`,
+            [ownerKey],
+          )
+        : await db.get(
+            `SELECT workflows.team_id AS teamId FROM workflows JOIN teams ON teams.id = workflows.team_id
+             WHERE workflows.id = ? AND teams.deleting_at IS NULL`,
+            [ownerKey.split(":", 1)[0]],
+          );
+    if (!owner || this.purgingTeams.has(owner.teamId)) {
+      return;
     }
-    for (const file of files) {
-      await db.run(
-        `INSERT INTO stored_files (kind, owner_key, file_path, content) VALUES (?, ?, ?, ?)
-         ON CONFLICT(kind, owner_key, file_path) DO UPDATE SET content = excluded.content, created_at = CURRENT_TIMESTAMP`,
-        [kind, ownerKey, file.path, file.content],
-      );
+    await this.trackStorageWrite(owner.teamId, async () => {
+      if (this.fileStorage.enabled) {
+        await this.fileStorage.save(`${kind}/${ownerKey}`, files);
+        return;
+      }
+      for (const file of files) {
+        await db.run(
+          `INSERT INTO stored_files (kind, owner_key, file_path, content) VALUES (?, ?, ?, ?)
+           ON CONFLICT(kind, owner_key, file_path) DO UPDATE SET content = excluded.content, created_at = CURRENT_TIMESTAMP`,
+          [kind, ownerKey, file.path, file.content],
+        );
+      }
+    });
+  }
+
+  private async trackStorageWrite(teamId: string, write: () => Promise<void>): Promise<void> {
+    if (this.purgingTeams.has(teamId)) {
+      return;
+    }
+    const writes = this.activeStorageWrites.get(teamId) || new Set<Promise<void>>();
+    const pending = Promise.resolve().then(write);
+    writes.add(pending);
+    this.activeStorageWrites.set(teamId, writes);
+    try {
+      await pending;
+    } finally {
+      writes.delete(pending);
+      if (!writes.size) {
+        this.activeStorageWrites.delete(teamId);
+      }
     }
   }
 
@@ -687,8 +749,10 @@ export class QueueManager {
       const result = await db.run(
         `INSERT INTO stored_files (kind, owner_key, file_path, content)
          SELECT ?, ?, ?, ? WHERE EXISTS (
-           SELECT 1 FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
-           AND status = 'running' AND lease_fenced = 0 AND lease_completed = 0
+           SELECT 1 FROM jobs JOIN teams ON teams.id = jobs.team_id
+            WHERE jobs.id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
+            AND status = 'running' AND lease_fenced = 0 AND lease_completed = 0
+            AND teams.deleting_at IS NULL
            AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
          )
          ON CONFLICT(kind, owner_key, file_path) DO UPDATE SET content = excluded.content, created_at = CURRENT_TIMESTAMP`,
@@ -732,6 +796,48 @@ export class QueueManager {
       [kind, String(jobId)],
     );
     return runnerFiles.length ? runnerFiles : this.getStoredFiles(kind, String(jobId));
+  }
+
+  /**
+   * Permanently purge one workspace-owned run and everything derived from it:
+   * step logs, stored artifacts and caches, and saved AI requests.
+   */
+  async deleteJobForTeam(teamId: string, jobId: string | number): Promise<boolean> {
+    const job = await this.getJobForTeam(teamId, jobId);
+    if (!job) {
+      return false;
+    }
+    if (this.fileStorage.enabled) {
+      await this.fileStorage.delete(`artifact/${jobId}`);
+    }
+    const statements = [
+      { s: "DELETE FROM step_logs WHERE job_id = ?", d: [jobId], m: "run" },
+      { s: "DELETE FROM stored_files WHERE owner_key = ?", d: [String(jobId)], m: "run" },
+      { s: "DELETE FROM ai_requests WHERE job_id = ?", d: [jobId], m: "run" },
+      { s: "UPDATE jobs SET parentId = NULL WHERE parentId = ? AND team_id = ?", d: [jobId, teamId], m: "run" },
+      { s: "DELETE FROM jobs WHERE id = ? AND team_id = ?", d: [jobId, teamId], m: "run" },
+    ];
+    if (typeof db.transaction !== "function") {
+      throw new Error("Atomic transactions are required to delete run data");
+    }
+    await db.transaction(statements);
+    return true;
+  }
+
+  /** Purge external workspace files before the owning SQL records are removed. */
+  async deleteJobsForTeam(teamId: string): Promise<void> {
+    this.purgingTeams.add(teamId);
+    await Promise.all(this.activeStorageWrites.get(teamId) || []);
+    const workflowRows = await db.all("SELECT id FROM workflows WHERE team_id = ?", [teamId]);
+    const jobs = await db.all("SELECT id FROM jobs WHERE team_id = ?", [teamId]);
+    if (this.fileStorage.enabled) {
+      for (const workflow of workflowRows) {
+        await this.fileStorage.delete(`cache/${workflow.id}:`);
+      }
+      for (const job of jobs) {
+        await this.fileStorage.delete(`artifact/${job.id}`);
+      }
+    }
   }
 
   async updateWorkerPresence(worker: {

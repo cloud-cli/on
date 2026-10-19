@@ -4,8 +4,20 @@ export default function () {
   const workers = ref([]);
   const runners = ref([]);
   const users = ref([]);
+  const systemUsers = ref([]);
+  const workspaces = ref([]);
+  const tokens = ref([]);
   const message = ref("");
   const enrollmentMessage = ref("");
+  const agentName = ref("");
+  const agentEmail = ref("");
+  const tokenSubject = ref("");
+  const tokenName = ref("");
+  const tokenValue = ref("");
+  const workspaceId = ref("");
+  const canManageUsers = ref(false);
+  const canManageRunners = ref(false);
+  const canManagePolicy = ref(false);
   const api = async (url, options = {}) => {
     const response = await fetch(url, {
       credentials: "same-origin",
@@ -20,14 +32,43 @@ export default function () {
   };
   const load = async () => {
     try {
-      [workers.value, runners.value, users.value] = await Promise.all([
-        api("/api/v1/workers").then((result) => result.workers || []),
-        api("/api/v1/runners").then((result) => result.runners || []),
-        api("/api/v1/users").then((result) => result.users || []),
-      ]);
+      const session = await api("/api/v1/auth/session");
+      const capabilities = session.user?.capabilities || [];
+      canManageUsers.value = capabilities.includes("platform.users.manage");
+      canManageRunners.value = capabilities.includes("platform.runners.manage");
+      canManagePolicy.value = capabilities.includes("platform.policy.manage");
+      workers.value = (await api("/api/v1/workers").then((result) => result.workers || [])) || [];
+      if (canManageRunners.value) {
+        runners.value = (await api("/api/v1/runners").then((result) => result.runners || [])) || [];
+      }
+      users.value = canManageUsers.value ? await api("/api/v1/users").then((result) => result.users || []) : [];
+      systemUsers.value = canManageUsers.value
+        ? await api("/api/v1/system-users").then((result) => result.systemUsers || [])
+        : [];
+      workspaces.value = canManageUsers.value
+        ? await api("/api/v1/platform/workspaces").then((result) => result.workspaces || [])
+        : [];
+      workspaceId.value = workspaceId.value || workspaces.value[0]?.id || "";
+      await loadTokens();
     } catch (error) {
       message.value = error.message;
     }
+  };
+  const loadTokens = async () => {
+    if (!workspaceId.value) {
+      tokens.value = [];
+      return;
+    }
+    try {
+      const result = await api(`/api/v1/workspaces/${encodeURIComponent(workspaceId.value)}/tokens`);
+      tokens.value = result.tokens || [];
+    } catch {
+      tokens.value = [];
+    }
+  };
+  const setWorkspace = async (event) => {
+    workspaceId.value = event.target.value;
+    await loadTokens();
   };
   const enroll = async () => {
     try {
@@ -94,13 +135,109 @@ export default function () {
       event.target.value = user.role;
     }
   };
+  const createSystemUser = async () => {
+    try {
+      await api("/api/v1/system-users", {
+        method: "POST",
+        body: JSON.stringify({ name: agentName.value, email: agentEmail.value || undefined }),
+      });
+      agentName.value = "";
+      agentEmail.value = "";
+      message.value = "System user created. Grant it workspace membership from the workspace settings page.";
+      await load();
+    } catch (error) {
+      message.value = error.message;
+    }
+  };
+  const setAgentName = (event) => {
+    agentName.value = event.target.value;
+  };
+  const setAgentEmail = (event) => {
+    agentEmail.value = event.target.value;
+  };
+  const toggleSystemUser = async (principal) => {
+    try {
+      await api(`/api/v1/system-users/${encodeURIComponent(principal.subject)}`, {
+        method: "PUT",
+        body: JSON.stringify({ disabled: !principal.disabled }),
+      });
+      await load();
+    } catch (error) {
+      message.value = error.message;
+    }
+  };
+  const deleteSystemUser = async (principal) => {
+    if (!window.confirm(`Permanently delete ${principal.name || principal.subject} and all of its tokens?`)) {
+      return;
+    }
+    try {
+      await api(`/api/v1/system-users/${encodeURIComponent(principal.subject)}`, { method: "DELETE" });
+      await load();
+    } catch (error) {
+      message.value = error.message;
+    }
+  };
+  const setTokenSubject = (event) => {
+    tokenSubject.value = event.target.value;
+  };
+  const setTokenName = (event) => {
+    tokenName.value = event.target.value;
+  };
+  const issueToken = async () => {
+    try {
+      const result = await api(`/api/v1/workspaces/${encodeURIComponent(workspaceId.value)}/tokens`, {
+        method: "POST",
+        body: JSON.stringify({ subject: tokenSubject.value, name: tokenName.value }),
+      });
+      tokenValue.value = result.token;
+      tokenName.value = "";
+      await loadTokens();
+    } catch (error) {
+      message.value = error.message;
+    }
+  };
+  const revokeToken = async (token) => {
+    if (!window.confirm(`Revoke ${token.name}?`)) {
+      return;
+    }
+    try {
+      await api(`/api/v1/workspaces/${encodeURIComponent(workspaceId.value)}/tokens/${encodeURIComponent(token.id)}`, {
+        method: "DELETE",
+      });
+      await loadTokens();
+    } catch (error) {
+      message.value = error.message;
+    }
+  };
   onInit(() => void load());
   return {
     workers,
     runners,
     users,
+    systemUsers,
+    workspaces,
+    tokens,
     message,
     enrollmentMessage,
+    agentName,
+    agentEmail,
+    tokenSubject,
+    tokenName,
+    tokenValue,
+    workspaceId,
+    canManageUsers,
+    canManageRunners,
+    canManagePolicy,
+    setWorkspace,
+    setAgentName,
+    setAgentEmail,
+    createSystemUser,
+    toggleSystemUser,
+    deleteSystemUser,
+    setTokenSubject,
+    setTokenName,
+    issueToken,
+    revokeToken,
     enroll,
     renameRunner,
     revokeRunner,

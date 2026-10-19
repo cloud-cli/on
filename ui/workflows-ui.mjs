@@ -150,12 +150,27 @@ export default function () {
   };
 
   const setWorkspace = async (event) => {
-    if (selectedId.value) {
-      return;
-    }
     const workspaceId = event.target.value;
     if (!availableWorkspaces.value.some((workspace) => workspace.id === workspaceId)) {
-      selectedWorkspaceId.value = "";
+      event.target.value = selectedWorkspaceId.value;
+      return;
+    }
+    const sourceWorkspaceId = selectedWorkspaceId.value;
+    if (selectedId.value && workspaceId !== sourceWorkspaceId) {
+      await run(async () => {
+        if (readOnly) {
+          throw new Error("Revision snapshots cannot be moved between workspaces.");
+        }
+        await api(`/api/v1/workflows/${selectedId.value}/transfer`, {
+          method: "POST",
+          headers: { "X-Team-ID": sourceWorkspaceId },
+          body: JSON.stringify({ targetWorkspaceId: workspaceId }),
+        });
+        selectedWorkspaceId.value = workspaceId;
+        persistWorkspaceSelection(workspaceId);
+        await openWorkflow(selectedId.value);
+        showNotice("Draft moved to the selected workspace.");
+      });
       return;
     }
     selectedWorkspaceId.value = workspaceId;
@@ -338,8 +353,26 @@ export default function () {
     source.value = value;
     validate();
   };
-  const setEnabled = (event) => {
-    enabled.value = event.target.checked;
+  const setEnabled = async (event) => {
+    const nextEnabled = event.target.checked;
+    if (!selectedId.value || readOnly) {
+      enabled.value = nextEnabled;
+      return;
+    }
+    const previous = enabled.value;
+    await run(async () => {
+      await api(`/api/v1/workflows/${selectedId.value}/enabled`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: nextEnabled }),
+      });
+      enabled.value = nextEnabled;
+      savedEnabled.value = nextEnabled;
+      showNotice(nextEnabled ? "Workflow enabled." : "Workflow disabled.");
+    });
+    if (noticeError.value) {
+      enabled.value = previous;
+      event.target.checked = previous;
+    }
   };
   const setSecretName = (event) => {
     secretName.value = event.target.value;

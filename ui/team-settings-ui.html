@@ -41,10 +41,21 @@
               >Task Runner Secrets</a
             >
             <a
-              href="#workspace-api-keys"
+              href="#workspace-permissions"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
+              >Permissions</a
+            >
+            <a
+              href="#workspace-tokens"
               class-hidden="!isAdmin"
               class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
-              >API keys</a
+              >Agents &amp; tokens</a
+            >
+            <a
+              href="#workspace-danger"
+              class-hidden="!isAdmin"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
+              >Danger zone</a
             >
           </nav>
         </header>
@@ -56,8 +67,8 @@
           >
             <h2 id="team-members-title" class="text-lg font-semibold">Workspace members</h2>
             <p class="mt-1 text-sm text-flow-muted">
-              Workspace members share workflows, runs, logs, artifacts, and secrets. Only workspace admins can invite
-              members.
+              Viewers audit CI results. Collaborators can read logs, inputs, and artifacts, dispatch runs, and edit
+              workflows. Admins add destructive actions, membership, secrets, runners, and tokens.
             </p>
             <p class="mt-3 text-sm text-flow-muted" role="status">{{ message }}</p>
             <h3 class="mt-6 text-xs font-semibold uppercase tracking-wider text-flow-muted">Current members</h3>
@@ -66,24 +77,32 @@
                 ><li
                   class="flex items-center justify-between gap-3 rounded-lg border border-flow-border px-3 py-2 text-sm"
                 >
-                  {{ member.name || member.email || member.subject }}
+                  <span class="min-w-0">
+                    {{ member.name || 'Unnamed member' }}
+                    <span class="ml-2 text-xs text-flow-muted"
+                      >{{ member.kind === 'system' ? 'agent' : 'person' }}</span
+                    >
+                  </span>
                   <span
                     class="rounded border border-flow-warning/30 bg-flow-warning/10 px-1.5 py-0.5 text-xs font-medium text-flow-warning"
                     class-hidden="member.role !== 'admin'"
-                    >admin</span
+                    >{{ roleLabels[member.role] || member.role }}</span
+                  >
+                  <span class="text-xs text-flow-muted" class-hidden="member.role === 'admin'"
+                    >{{ roleLabels[member.role] || member.role }}</span
                   >
                   <button
                     type="button"
                     class="text-xs underline"
-                    class-hidden="!isAdmin"
-                    on-click="toggleMemberRole(member)"
+                    class-hidden="!canManage"
+                    on-click="editMember(member.subject)"
                   >
-                    {{ member.role === 'admin' ? 'Make member' : 'Make admin' }}
+                    Edit permissions
                   </button>
                   <button
                     type="button"
                     class="text-xs text-rose-700 underline"
-                    class-hidden="!isAdmin || member.role !== 'member'"
+                    class-hidden="!canManage || member.role === 'admin'"
                     on-click="removeMember(member)"
                   >
                     Remove
@@ -91,7 +110,7 @@
                 </li></template
               >
             </ul>
-            <div class="mt-6 border-t border-flow-border pt-5" class-hidden="!isAdmin">
+            <div class="mt-6 border-t border-flow-border pt-5" class-hidden="!canManage">
               <h3 class="font-medium">Invite a workspace member</h3>
               <p class="mt-1 text-xs text-flow-muted">
                 Invitation links expire after seven days and can be used once by the matching email account.
@@ -336,64 +355,235 @@
             </ul>
           </section>
           <section
-            id="workspace-api-keys"
+            id="workspace-permissions"
+            class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
+            class-hidden="!canManage"
+            aria-labelledby="workspace-permissions-title"
+          >
+            <h2 id="workspace-permissions-title" class="text-lg font-semibold">Permissions</h2>
+            <p class="mt-1 text-sm text-flow-muted">
+              Roles are presets. Tick or untick a capability to add an explicit grant or restriction for one member. An
+              explicit restriction always wins.
+            </p>
+            <label class="mt-4 block text-sm font-medium" for="permission-member">Member</label>
+            <select
+              id="permission-member"
+              bind-value="selectedMember"
+              on-change="editMember($event.target.value)"
+              class="mt-1 w-full rounded-lg border border-flow-border px-3 py-2 text-sm"
+            >
+              <option value="">Choose a member…</option>
+              <template for="member of members"
+                ><option attr-value="member.subject">
+                  {{ member.name || member.email || member.subject }} ({{ roleLabels[member.role] || member.role }})
+                </option></template
+              >
+            </select>
+            <template if="selectedMember"
+              ><div class="mt-4">
+                <label class="block text-sm font-medium" for="permission-role">Base role</label>
+                <select
+                  id="permission-role"
+                  bind-value="draftRole"
+                  on-change="setDraftRole($event)"
+                  class="mt-1 w-full rounded-lg border border-flow-border px-3 py-2 text-sm"
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="collaborator">Collaborator</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div class="mt-5 overflow-x-auto">
+                <table class="w-full min-w-[44rem] border-collapse text-sm">
+                  <caption class="sr-only">
+                    Workspace permission matrix for the selected member
+                  </caption>
+                  <thead>
+                    <tr class="border-b border-flow-border text-left text-xs uppercase tracking-wider text-flow-muted">
+                      <th scope="col" class="py-2 pr-3 font-semibold">Capability</th>
+                      <th scope="col" class="px-2 py-2 font-semibold">Viewer</th>
+                      <th scope="col" class="px-2 py-2 font-semibold">Collaborator</th>
+                      <th scope="col" class="px-2 py-2 font-semibold">Admin</th>
+                      <th scope="col" class="px-2 py-2 font-semibold">This member</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template for="row of permissionRows">
+                      <template if="row.kind === 'group'">
+                        <tr>
+                          <th
+                            scope="colgroup"
+                            colspan="5"
+                            class="pt-5 pb-1 text-left text-xs font-semibold uppercase tracking-wider text-flow-primary"
+                          >
+                            {{ row.label }} · {{ row.description }}
+                          </th>
+                        </tr>
+                      </template>
+                      <template if="row.kind === 'capability'">
+                        <tr class="border-b border-flow-border/60">
+                          <th scope="row" class="py-2 pr-3 text-left font-normal">
+                            <span class="block font-medium">{{ row.label }}</span>
+                            <span class="block text-xs text-flow-muted">{{ row.description }}</span>
+                          </th>
+                          <td class="px-2 py-2 text-center">{{ row.viewer ? '✓' : '·' }}</td>
+                          <td class="px-2 py-2 text-center">{{ row.collaborator ? '✓' : '·' }}</td>
+                          <td class="px-2 py-2 text-center">{{ row.admin ? '✓' : '·' }}</td>
+                          <td class="px-2 py-2 text-center">
+                            <input
+                              type="checkbox"
+                              bind-checked="row.checked"
+                              on-change="toggleCapability(row)"
+                              attr-aria-label="'Allow ' + row.label"
+                            />
+                            <span class="ml-1 text-xs text-flow-warning" class-hidden="!row.overridden"
+                              >{{ row.overrideLabel }}</span
+                            >
+                          </td>
+                        </tr>
+                      </template>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+              <p class="mt-3 text-xs text-flow-muted">
+                “granted” and “denied” mark explicit overrides. Leaving the box at the role preset removes the override.
+              </p>
+              <button
+                type="button"
+                on-click="savePermissions()"
+                bind-disabled="savingPermissions || !canManage"
+                class="mt-4 rounded-lg bg-flow-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {{ savingPermissions ? 'Saving…' : 'Save permissions' }}
+              </button></template
+            >
+          </section>
+          <section
+            id="workspace-tokens"
             class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
             class-hidden="!isAdmin"
-            aria-labelledby="workspace-api-keys-title"
+            aria-labelledby="workspace-tokens-title"
           >
-            <h2 id="workspace-api-keys-title" class="text-lg font-semibold">API keys</h2>
+            <h2 id="workspace-tokens-title" class="text-lg font-semibold">Agents &amp; tokens</h2>
             <p class="mt-1 text-sm text-flow-muted">
-              Keys are limited to this workspace. Give each key only the scopes its automation needs.
+              Agents and automations are system users. A token acts as its system user and carries exactly that
+              principal’s live permissions — it can never exceed the Collaborator preset.
             </p>
             <div class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <label class="sr-only" for="workspace-key-name">Key name</label>
+              <label class="sr-only" for="agent-name">Agent name</label>
               <input
-                id="workspace-key-name"
-                bind-value="keyName"
-                on-input="setKeyName($event)"
-                placeholder="API key name"
+                id="agent-name"
+                bind-value="agentName"
+                on-input="setAgentName($event)"
+                placeholder="Agent name, e.g. nightly-deploy"
                 class="rounded-lg border border-flow-border px-3 py-2 text-sm"
               />
               <button
                 type="button"
-                on-click="issueKey()"
-                class="rounded-lg border border-flow-primary/60 px-3 py-2 text-sm font-medium text-flow-primary"
+                on-click="addSystemUser()"
+                class="rounded-lg border border-flow-border px-4 py-2 text-sm"
               >
-                Generate key
+                Add agent
               </button>
             </div>
-            <fieldset class="mt-4 grid gap-2 sm:grid-cols-2">
-              <legend class="mb-2 text-xs font-semibold uppercase tracking-wider text-flow-muted">Scopes</legend>
-              <template for="scope of scopeOptions"
-                ><label class="flex items-center gap-2 text-sm"
-                  ><input type="checkbox" bind-checked="scope.selected" on-change="setScope(scope, $event)" />
-                  <span>{{ scope.label }}</span></label
-                ></template
+            <h3 class="mt-6 text-xs font-semibold uppercase tracking-wider text-flow-muted">Issue a token</h3>
+            <div class="mt-2 grid gap-3 sm:grid-cols-2">
+              <label class="text-sm"
+                ><span class="mb-1 block text-xs text-flow-muted">Owner</span>
+                <select
+                  bind-value="tokenSubject"
+                  on-change="setTokenSubject($event)"
+                  class="w-full rounded-lg border border-flow-border px-3 py-2 text-sm"
+                >
+                  <option value="">Choose an agent…</option>
+                  <template for="member of systemUsers"
+                    ><option attr-value="member.subject">{{ member.name || member.subject }}</option></template
+                  >
+                </select></label
               >
-            </fieldset>
+              <label class="text-sm"
+                ><span class="mb-1 block text-xs text-flow-muted">Token name</span>
+                <input
+                  bind-value="tokenName"
+                  on-input="setTokenName($event)"
+                  placeholder="CI deploy key"
+                  class="w-full rounded-lg border border-flow-border px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              on-click="issueToken()"
+              class="mt-3 rounded-lg border border-flow-primary/60 px-3 py-2 text-sm font-medium text-flow-primary"
+            >
+              Issue token
+            </button>
             <div
               class="mt-4 rounded-lg border border-flow-primary/20 bg-flow-panel p-3"
               role="alert"
-              class-hidden="!keyToken"
+              class-hidden="!tokenValue"
             >
-              <p class="text-sm font-semibold">Copy this key now. It cannot be shown again.</p>
-              <code class="mt-2 block select-all break-all font-mono text-xs">{{ keyToken }}</code>
-              <button type="button" on-click="keyToken = ''" class="mt-2 text-xs underline">Hide key</button>
+              <p class="text-sm font-semibold">Copy this token now. It cannot be shown again.</p>
+              <code class="mt-2 block select-all break-all font-mono text-xs">{{ tokenValue }}</code>
+              <button type="button" on-click="tokenValue = ''" class="mt-2 text-xs underline">Hide token</button>
             </div>
-            <ul class="mt-4 space-y-2" aria-label="Workspace API keys">
-              <template for="key of keys"
+            <ul class="mt-4 space-y-2" aria-label="Workspace automation tokens">
+              <template for="token of tokens"
                 ><li
                   class="flex items-center justify-between gap-3 rounded-lg border border-flow-border px-3 py-2 text-sm"
                 >
                   <span class="min-w-0"
-                    ><strong>{{ key.name }}</strong
-                    ><span class="block break-words text-xs text-flow-muted">{{ key.scopes.join(', ') }}</span></span
-                  ><button type="button" on-click="revokeKey(key)" class="shrink-0 text-rose-700 underline">
+                    ><strong>{{ token.name }}</strong
+                    ><span class="block break-words text-xs text-flow-muted"
+                      >{{ token.subject }} · last used {{ token.lastUsedAt || 'never' }}</span
+                    ></span
+                  ><button type="button" on-click="revokeToken(token)" class="shrink-0 text-rose-700 underline">
                     Revoke
                   </button>
                 </li></template
               >
             </ul>
+            <p class="mt-3 text-sm text-flow-muted" class-hidden="tokens.length">No automation tokens yet.</p>
+          </section>
+          <section
+            id="workspace-danger"
+            class="scroll-mt-6 rounded-xl border border-rose-300 bg-flow-card p-5"
+            class-hidden="!isAdmin"
+            aria-labelledby="workspace-danger-title"
+          >
+            <h2 id="workspace-danger-title" class="text-lg font-semibold">Danger zone</h2>
+            <div class="mt-4 grid gap-6 md:grid-cols-2">
+              <div>
+                <h3 class="font-medium">Rename workspace</h3>
+                <div class="mt-2 flex gap-2">
+                  <label class="sr-only" for="workspace-name">New workspace name</label>
+                  <input
+                    id="workspace-name"
+                    bind-value="newTeamName"
+                    on-input="setNewTeamName($event)"
+                    placeholder="New workspace name"
+                    class="min-w-0 flex-1 rounded-lg border border-flow-border px-3 py-2 text-sm"
+                  />
+                  <button type="button" on-click="renameWorkspace()" class="rounded-lg border px-3 py-2 text-sm">
+                    Rename
+                  </button>
+                </div>
+              </div>
+              <div>
+                <h3 class="font-medium text-rose-700">Delete workspace</h3>
+                <p class="mt-1 text-xs text-flow-muted">
+                  Permanently removes every workflow, run, log, artifact, secret, webhook, and runner in this workspace.
+                </p>
+                <button
+                  type="button"
+                  on-click="deleteWorkspace()"
+                  class="mt-2 rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white"
+                >
+                  Delete workspace
+                </button>
+              </div>
+            </div>
           </section>
         </div>
         <p class="text-sm text-rose-700" role="alert" class-hidden="!error">{{ error }}</p>

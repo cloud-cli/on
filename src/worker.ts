@@ -289,7 +289,37 @@ async function fetchJobSecrets(
  * Processes a single job sequentially
  */
 export async function processJob(p: Processable) {
-  const { workerId, job, config, secrets, queue } = p;
+  const { workerId, job, config, secrets } = p;
+  const redactValue = (value: any): any => {
+    if (typeof value === "string") {
+      return secrets.redactText(value);
+    }
+    if (Array.isArray(value)) {
+      return value.map(redactValue);
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactValue(item)]));
+    }
+    return value;
+  };
+  const queue = new Proxy(p.queue, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (property === "saveStepLog") {
+        return (jobId: string | number, stepId: string, content: string) =>
+          value.call(target, jobId, stepId, secrets.redactText(content));
+      }
+      if (property === "saveReport") {
+        return (jobId: string | number, report: WorkflowExecutionReport) =>
+          value.call(target, jobId, redactValue(report));
+      }
+      if (property === "completeJob") {
+        return (jobId: string | number, status: string, report: WorkflowExecutionReport) =>
+          value.call(target, jobId, status, redactValue(report));
+      }
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
   console.log(`\n[${workerId}] 📦 Claimed Job #${job.id} (Workflow: ${job.workflow_id})`);
 
   const payload = (typeof job.payload === "string" ? JSON.parse(job.payload) : job.payload) as JobPayload;
@@ -305,7 +335,7 @@ export async function processJob(p: Processable) {
     throw new Error(`Matrix variant for job ${job.id} was not found`);
   }
   const resolvedWorkflow = candidateWorkflow as typeof p.workflow;
-  const processable = { ...p, workflow: resolvedWorkflow };
+  const processable = { ...p, queue, workflow: resolvedWorkflow };
   const steps = resolvedWorkflow.steps;
   const inputs = payload.inputs || {};
   const jobStartTime = Date.now();

@@ -58,4 +58,28 @@ describe("team data isolation queries", () => {
     expect(database.all.mock.calls[0][0]).toContain("team_id = ?");
     expect(database.all.mock.calls[0][1]).toEqual(["team-a"]);
   });
+
+  it("updates only a workflow's enabled flag without changing publication state", async () => {
+    database.run.mockResolvedValue({ changes: 1 });
+    const workflows = new WorkflowRepository();
+
+    await expect(workflows.setEnabledForTeam("team-a", "flow", false)).resolves.toBe(true);
+
+    expect(database.run.mock.calls[0][0]).toContain("SET enabled = ?");
+    expect(database.run.mock.calls[0][0]).not.toContain("status =");
+    expect(database.run.mock.calls[0][1]).toEqual([0, "team-a", "flow"]);
+  });
+
+  it("moves only unexecuted drafts between explicitly authorized workspace ids", async () => {
+    database.run.mockResolvedValue({ changes: 1 });
+    const workflows = new WorkflowRepository();
+
+    await expect(workflows.transferDraftForTeam("team-a", "team-b", "flow")).resolves.toBe(true);
+
+    const [sql, params] = database.run.mock.calls[0];
+    expect(sql).toContain("team_id = ? AND status = 'draft'");
+    expect(sql).toContain("NOT EXISTS (SELECT 1 FROM jobs");
+    expect(sql).toContain("NOT EXISTS (SELECT 1 FROM scheduled_runs");
+    expect(params).toEqual(["team-b", "flow", "team-a"]);
+  });
 });

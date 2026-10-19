@@ -268,6 +268,28 @@ export class WorkflowRepository {
       : null;
   }
 
+  async setEnabledForTeam(teamId: string, id: string, enabled: boolean): Promise<boolean> {
+    const result = await db.run(
+      "UPDATE workflows SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE team_id = ? AND id = ?",
+      [enabled ? 1 : 0, teamId, id],
+    );
+    return Number(result?.changes || 0) === 1;
+  }
+
+  async transferDraftForTeam(sourceTeamId: string, targetTeamId: string, id: string): Promise<boolean> {
+    if (sourceTeamId === targetTeamId) {
+      return Boolean(await this.getForTeam(sourceTeamId, id));
+    }
+    const result = await db.run(
+      `UPDATE workflows SET team_id = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND team_id = ? AND status = 'draft'
+         AND NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.workflow_id = workflows.id)
+         AND NOT EXISTS (SELECT 1 FROM scheduled_runs WHERE scheduled_runs.workflow_id = workflows.id)`,
+      [targetTeamId, id, sourceTeamId],
+    );
+    return Number(result?.changes || 0) === 1;
+  }
+
   async deleteForTeam(teamId: string, id: string): Promise<boolean> {
     if (!(await this.getForTeam(teamId, id))) {
       return false;

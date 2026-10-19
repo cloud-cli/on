@@ -7,6 +7,17 @@ function makeResponse() {
 
 function makeServer(scopes: string[] | null = ["workflows:read", "workflows:write"], workflows = {}) {
   const server: any = {
+    authorizer: {
+      workspace: vi.fn(async (_req, res, capability) => {
+        const needed = capability === "workflows.view" ? "workflows:read" : "workflows:write";
+        if (!scopes?.includes(needed)) {
+          res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: `Missing required capability: ${capability}` }));
+          return null;
+        }
+        return { principal: { subject: "system:test" }, teamId: "workspace-a" };
+      }),
+    },
     oidc: {
       userFromCookie: vi.fn(() => undefined),
       scopesForToken: vi.fn(async () => null),
@@ -30,11 +41,19 @@ function makeServer(scopes: string[] | null = ["workflows:read", "workflows:writ
       saveDraftForTeam: vi.fn(async () => ({ id: "test", sourceYaml: "name: Test" })),
       delete: vi.fn(async () => true),
       deleteForTeam: vi.fn(async () => true),
+      setEnabledForTeam: vi.fn(async () => true),
+      transferDraftForTeam: vi.fn(async () => true),
       ...workflows,
+    },
+    principals: {
+      principal: vi.fn(async () => ({ subject: "system:test", role: "collaborator" })),
+      recordAudit: vi.fn(async () => {}),
     },
     handleWorkflowPublish: vi.fn(),
     isAdmin: () => false,
   };
+  server.requireWorkspaceCapability = (req, res, capability) =>
+    (WebhookServer.prototype as any).requireWorkspaceCapability.call(server, req, res, capability);
   server.oidcBearer = (req) => (WebhookServer.prototype as any).oidcBearer.call(server, req);
   server.hasScope = (req, scope) => (WebhookServer.prototype as any).hasScope.call(server, req, scope);
   server.requireAuthenticatedApiRequest = (req, res) =>
@@ -93,7 +112,7 @@ describe("scoped workflow API v1", () => {
       res,
     );
 
-    expect(server.requireTeam).toHaveBeenCalledOnce();
+    expect(server.authorizer.workspace).toHaveBeenCalledOnce();
     expect(server.workflows.getForTeam).toHaveBeenCalledWith("workspace-a", "test");
     expect(server.workflows.get).not.toHaveBeenCalled();
     expect(res.writeHead).toHaveBeenCalledWith(200, {
@@ -105,7 +124,11 @@ describe("scoped workflow API v1", () => {
 
   it("does not list workflows when workspace authorization fails", async () => {
     const server = makeServer();
-    server.requireTeam.mockResolvedValue(null);
+    server.authorizer.workspace.mockImplementation(async (_req, res) => {
+      res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ error: "Missing required capability: workflows.view" }));
+      return null;
+    });
     const res = makeResponse();
 
     await (WebhookServer.prototype as any).handleRequest.call(server, makeRequest("GET", "/api/v1/workflows"), res);
@@ -124,7 +147,7 @@ describe("scoped workflow API v1", () => {
     );
 
     expect(res.writeHead).toHaveBeenCalledWith(403, { "Content-Type": "application/json; charset=utf-8" });
-    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: "Missing required scope: workflows:write" }));
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: "Missing required capability: workflows.delete" }));
     expect(server.workflows.delete).not.toHaveBeenCalled();
   });
 
@@ -164,6 +187,46 @@ describe("scoped workflow API v1", () => {
     expect(res.end).toHaveBeenCalledOnce();
   });
 
+  it("updates a workflow's enabled flag without converting it to a draft", async () => {
+    const server = makeServer(["workflows:write"]);
+    const res = makeResponse();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      makeRequest("PATCH", "/api/v1/workflows/test/enabled", { enabled: false }),
+      res,
+    );
+
+    expect(server.workflows.setEnabledForTeam).toHaveBeenCalledWith("workspace-a", "test", false);
+    expect(server.workflows.saveDraftForTeam).not.toHaveBeenCalled();
+    expect(server.principals.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "workflow.disable", target: "test", teamId: "workspace-a" }),
+    );
+    expect(res.writeHead).toHaveBeenCalledWith(204);
+  });
+
+  it("moves a draft only after edit authorization in both workspaces", async () => {
+    const server = makeServer(["workflows:write"]);
+    const res = makeResponse();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      makeRequest("POST", "/api/v1/workflows/test/transfer", { targetWorkspaceId: "workspace-b" }),
+      res,
+    );
+
+    expect(server.authorizer.workspace).toHaveBeenNthCalledWith(1, expect.anything(), res, "workflows.edit", undefined);
+    expect(server.authorizer.workspace).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      res,
+      "workflows.edit",
+      "workspace-b",
+    );
+    expect(server.workflows.transferDraftForTeam).toHaveBeenCalledWith("workspace-a", "workspace-b", "test");
+    expect(res.writeHead).toHaveBeenCalledWith(204);
+  });
+
   it("requires authentication before reading workflows", async () => {
     const server = makeServer(null);
     const res = makeResponse();
@@ -172,7 +235,7 @@ describe("scoped workflow API v1", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(server, req, res);
 
-    expect(res.writeHead).toHaveBeenCalledWith(401, { "Content-Type": "application/json; charset=utf-8" });
+    expect(res.writeHead).toHaveBeenCalledWith(403, { "Content-Type": "application/json; charset=utf-8" });
     expect(server.workflows.listForTeam).not.toHaveBeenCalled();
   });
 

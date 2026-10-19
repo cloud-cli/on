@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const database = vi.hoisted(() => ({ all: vi.fn(), get: vi.fn(), run: vi.fn(), exec: vi.fn() }));
+const database = vi.hoisted(() => ({ all: vi.fn(), get: vi.fn(), run: vi.fn(), exec: vi.fn(), transaction: vi.fn() }));
 vi.mock("./db-client.js", () => ({ default: database }));
 import { TeamRepository } from "./teams.js";
 
 describe("team invitations", () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    database.transaction.mockResolvedValue([]);
+  });
 
   it("stores only a hash of a random invite token and applies expiry", async () => {
     const result = await new TeamRepository().createInvitation("team-a", "ADA@example.test", "admin");
@@ -22,28 +25,54 @@ describe("team invitations", () => {
     expect(await new TeamRepository().acceptInvitation("raw-token", "user-sub", "wrong@example.test")).toBe("invalid");
     expect(database.run).not.toHaveBeenCalled();
     expect(database.get.mock.calls[0][0]).toContain("julianday(expires_at) > julianday('now')");
-    expect(database.get.mock.calls[0][0]).toContain("RETURNING team_id");
+    expect(database.get.mock.calls[0][0]).toContain("SELECT id, team_id FROM team_invitations");
   });
 
   it("accepts a valid invitation once, atomically adding membership", async () => {
-    database.get.mockResolvedValue({ team_id: "team-a" });
+    database.get.mockResolvedValueOnce({ id: "invite-1", team_id: "team-a" }).mockResolvedValueOnce({ present: 1 });
     expect(await new TeamRepository().acceptInvitation("raw-token", "user-sub", "ada@example.test")).toBe("accepted");
-    expect(database.get.mock.calls[0][0]).toContain("UPDATE team_invitations");
-    expect(database.run).toHaveBeenCalledOnce();
-    expect(database.run.mock.calls[0][1]).toEqual(["team-a", "user-sub"]);
+    const statements = database.transaction.mock.calls[0][0];
+    expect(statements).toHaveLength(2);
+    expect(statements[0].s).toContain("UPDATE team_invitations SET accepted_at = ?");
+    expect(statements[1].s).toContain("INSERT INTO team_members");
+    expect(statements[1].s).toContain("accepted_at = ?");
+    expect(statements[1].d.slice(0, 3)).toEqual(["team-a", "user-sub", "invite-1"]);
+    expect(database.run).not.toHaveBeenCalled();
   });
 
-  it("allows team admins to remove regular members but protects team admins", async () => {
-    const repository = new TeamRepository();
-    database.get.mockResolvedValueOnce({ role: "admin" }).mockResolvedValueOnce({ role: "member" });
-    database.run.mockResolvedValue({ changes: 1 });
+  it("creates workspace and owner membership atomically", async () => {
+    await new TeamRepository().createTeam("  Release  ", "owner");
+    const statements = database.transaction.mock.calls[0][0];
+    expect(statements).toHaveLength(2);
+    expect(statements[0].s).toContain("INSERT INTO teams");
+    expect(statements[0].d[1]).toBe("Release");
+    expect(statements[1].s).toContain("INSERT INTO team_members");
+    expect(statements[1].d[1]).toBe("owner");
+  });
 
-    await expect(repository.removeMember("team-a", "admin-1")).resolves.toBe("admin");
-    expect(database.run).not.toHaveBeenCalled();
-    await expect(repository.removeMember("team-a", "member-1")).resolves.toBe("removed");
-    expect(database.run).toHaveBeenCalledWith(
-      "DELETE FROM team_members WHERE team_id = ? AND subject = ? AND role = 'member'",
-      ["team-a", "member-1"],
+  it("fences a workspace before external job files are purged", async () => {
+    database.run.mockResolvedValue({ changes: 1 });
+    await expect(new TeamRepository().markWorkspaceDeleting("team-a")).resolves.toBe(true);
+    expect(database.run.mock.calls[0][0]).toContain("SET deleting_at = COALESCE");
+    expect(database.run.mock.calls[0][1]).toEqual(["team-a"]);
+  });
+
+  it("deletes run data, workflows, and workspace records in one transaction", async () => {
+    database.get.mockResolvedValue({ id: "team-a" });
+    await expect(new TeamRepository().deleteWorkspace("team-a")).resolves.toBe(true);
+
+    const statements = database.transaction.mock.calls[0][0];
+    const jobDeletion = statements.findIndex(({ s }: { s: string }) => s === "DELETE FROM jobs WHERE team_id = ?");
+    const workflowDeletion = statements.findIndex(
+      ({ s }: { s: string }) => s === "DELETE FROM workflows WHERE team_id = ?",
     );
+    const workspaceDeletion = statements.findIndex(({ s }: { s: string }) => s === "DELETE FROM teams WHERE id = ?");
+    expect(jobDeletion).toBeGreaterThan(-1);
+    expect(workflowDeletion).toBeGreaterThan(jobDeletion);
+    expect(workspaceDeletion).toBeGreaterThan(workflowDeletion);
+    expect(statements.find(({ s }: { s: string }) => s.includes("DELETE FROM stored_files"))?.d).toEqual([
+      "team-a",
+      "team-a",
+    ]);
   });
 });

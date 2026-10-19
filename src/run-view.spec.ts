@@ -198,10 +198,10 @@ describe("run view", () => {
     expect(source).toContain('class="flex flex-wrap items-center gap-x-2');
     expect(source).toContain('on-click="selectStep(step.index)"');
     expect(source).toContain('class="block min-w-0 flex-1 truncate"');
-    expect(source).toContain('class-hidden="!isAdmin"');
+    expect(source).toContain('class-hidden="!report.canViewLogs"');
     expect(source).toContain("attr-href=\"'/ui/workflows/' + report.workflowId\"");
-    expect(source).toContain("loadAdminRole");
-    expect(source).toContain('session.user?.role === "admin"');
+    expect(source).toContain("canEditWorkflow");
+    expect(source).toContain('class-hidden="!report.canEditWorkflow"');
     expect(source).toContain("attr-aria-pressed=\"step.isSelected ? 'true' : 'false'\"");
     expect(source).toContain("attr-aria-label=\"(step.name || step.id || 'Step') + ', ' + upper(step.status)\"");
     expect(source).toContain('bind-innerhtml="stepLog(selectedStepReport)"');

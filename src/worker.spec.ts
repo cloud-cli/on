@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Processable, WorkflowExecutionReport } from "./types.js";
 import { processJob } from "./worker.js";
+import { SecretStore } from "./secrets.js";
 
 describe("incremental workflow reports", () => {
   it("hands structured step outputs to an authenticated dispatch queue", async () => {
@@ -26,7 +27,7 @@ describe("incremental workflow reports", () => {
         created_at: new Date().toISOString(),
       },
       queue,
-      secrets: { getAll: () => ({}) },
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
       config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
       driver: {},
       workflow: {
@@ -91,7 +92,7 @@ describe("incremental workflow reports", () => {
         created_at: new Date().toISOString(),
       },
       queue,
-      secrets: { getAll: () => ({}) },
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
       config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
       driver: {},
       workflow,
@@ -152,7 +153,7 @@ describe("incremental workflow reports", () => {
         created_at: new Date().toISOString(),
       },
       queue,
-      secrets: { getAll: () => ({}) },
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
       config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
       driver,
       workflow: {
@@ -166,5 +167,52 @@ describe("incremental workflow reports", () => {
 
     expect(driver.execute).toHaveBeenCalledTimes(2);
     expect(queue.completeJob).toHaveBeenCalledWith(2, "success", expect.any(Object));
+  });
+
+  it("redacts secret values before persisting captured step logs", async () => {
+    const logs: string[] = [];
+    const reports: WorkflowExecutionReport[] = [];
+    const queue = {
+      saveReport: vi.fn(async (_jobId: string | number, report: WorkflowExecutionReport) => reports.push(report)),
+      saveStepLog: vi.fn(async (_jobId: string | number, _stepId: string, content: string) => logs.push(content)),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+    };
+    const secrets = new SecretStore();
+    secrets.replace({ DEPLOY_TOKEN: "sensitive-token-value" });
+    expect(secrets.redactText("sensitive-token-value")).toBe("****");
+    const redactSpy = vi.spyOn(secrets, "redactText");
+
+    await processJob({
+      workerId: "test-worker",
+      job: {
+        id: 4,
+        workflow_id: "redaction-workflow",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "test-worker",
+        payload: JSON.stringify({ inputs: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets,
+      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver: {},
+      workflow: {
+        id: "redaction-workflow",
+        name: "Redaction workflow",
+        on: { provider: "generic" },
+        steps: [{ id: "emit", eval: '({ token: "sensitive-token-value" })' }],
+      },
+    } as Processable);
+
+    expect(logs).toHaveLength(1);
+    expect(redactSpy).toHaveBeenCalled();
+    expect(logs[0]).not.toContain("sensitive-token-value");
+    expect(logs[0]).toContain("****");
+    expect(JSON.stringify(reports)).not.toContain("sensitive-token-value");
+    expect(JSON.stringify(reports)).toContain("****");
   });
 });

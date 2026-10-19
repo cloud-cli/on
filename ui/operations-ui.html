@@ -2,7 +2,9 @@
   <main class="space-y-5">
     <header>
       <h1 class="text-2xl font-semibold">Operations</h1>
-      <p class="text-sm text-flow-muted">Global runner and user administration.</p>
+      <p class="text-sm text-flow-muted">
+        Global runners, identities, and automation tokens. Workspace permissions live in each workspace’s settings.
+      </p>
     </header>
     <section class="rounded-xl border border-flow-border bg-white p-5" aria-labelledby="workers-title">
       <h2 id="workers-title" class="text-lg font-semibold">Worker presence</h2>
@@ -16,7 +18,11 @@
       </ul>
       <p class="text-sm text-flow-muted" class-hidden="workers.length">No workers currently reporting.</p>
     </section>
-    <section class="rounded-xl border border-flow-border bg-white p-5" aria-labelledby="runners-title">
+    <section
+      class="rounded-xl border border-flow-border bg-white p-5"
+      class-hidden="!canManageRunners"
+      aria-labelledby="runners-title"
+    >
       <h2 id="runners-title" class="text-lg font-semibold">Runners</h2>
       <button class="mt-3 rounded-lg bg-flow-primary px-3 py-2 text-sm font-medium text-white" on-click="enroll()">
         Create enrollment code
@@ -33,19 +39,167 @@
         >
       </ul>
     </section>
-    <section class="rounded-xl border border-flow-border bg-white p-5" aria-labelledby="users-title">
-      <h2 id="users-title" class="text-lg font-semibold">OIDC users</h2>
+    <section
+      class="rounded-xl border border-flow-border bg-white p-5"
+      class-hidden="!canManageUsers"
+      aria-labelledby="users-title"
+    >
+      <h2 id="users-title" class="text-lg font-semibold">People</h2>
+      <p class="mt-1 text-sm text-flow-muted">
+        Human identities. Platform administrators manage every workspace’s lifecycle; workspace data still requires
+        explicit membership.
+      </p>
       <ul class="mt-3 space-y-3">
         <template for="user of users"
           ><li class="flex flex-wrap items-center gap-3 text-sm">
             <span>{{ user.name || user.email || user.id }}</span
             ><select attr-value="user.role" on-change="setRole(user, $event)">
               <option value="user">User</option>
-              <option value="admin">Admin</option>
+              <option value="admin">Platform admin</option>
             </select>
           </li></template
         >
       </ul>
+    </section>
+    <section
+      class="rounded-xl border border-flow-border bg-white p-5"
+      class-hidden="!canManageUsers"
+      aria-labelledby="system-users-title"
+    >
+      <h2 id="system-users-title" class="text-lg font-semibold">System users</h2>
+      <p class="mt-1 text-sm text-flow-muted">
+        AI agents and automations. They hold no global capabilities and can never be workspace admins.
+      </p>
+      <div class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+        <label class="text-sm"
+          ><span class="mb-1 block text-xs text-flow-muted">Name</span>
+          <input
+            bind-value="agentName"
+            on-input="setAgentName($event)"
+            placeholder="nightly-deploy"
+            class="w-full rounded-lg border border-flow-border px-3 py-2 text-sm"
+          />
+        </label>
+        <label class="text-sm"
+          ><span class="mb-1 block text-xs text-flow-muted">Contact email (optional)</span>
+          <input
+            bind-value="agentEmail"
+            on-input="setAgentEmail($event)"
+            type="email"
+            placeholder="ops@example.com"
+            class="w-full rounded-lg border border-flow-border px-3 py-2 text-sm"
+          />
+        </label>
+        <button
+          type="button"
+          on-click="createSystemUser()"
+          class="self-end rounded-lg border border-flow-primary/60 px-3 py-2 text-sm font-medium text-flow-primary"
+        >
+          Create system user
+        </button>
+      </div>
+      <ul class="mt-4 space-y-2">
+        <template for="principal of systemUsers"
+          ><li
+            class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-flow-border px-3 py-2 text-sm"
+          >
+            <span
+              >{{ principal.name || principal.subject }}
+              <span class="text-xs text-flow-muted">{{ principal.disabled ? '· disabled' : '' }}</span></span
+            >
+            <span class="flex gap-2"
+              ><button type="button" class="rounded border px-2 py-1" on-click="toggleSystemUser(principal)">
+                {{ principal.disabled ? 'Enable' : 'Disable' }}</button
+              ><button
+                type="button"
+                class="rounded border px-2 py-1 text-rose-700"
+                on-click="deleteSystemUser(principal)"
+              >
+                Delete
+              </button></span
+            >
+          </li></template
+        >
+      </ul>
+      <p class="mt-2 text-sm text-flow-muted" class-hidden="systemUsers.length">No system users yet.</p>
+    </section>
+    <section
+      class="rounded-xl border border-flow-border bg-white p-5"
+      class-hidden="!canManageUsers"
+      aria-labelledby="tokens-title"
+    >
+      <h2 id="tokens-title" class="text-lg font-semibold">Automation tokens</h2>
+      <p class="mt-1 text-sm text-flow-muted">
+        Tokens act as their owning system user. Their powers are that principal’s live workspace permissions.
+      </p>
+      <label class="mt-3 block text-sm" for="token-workspace"
+        ><span class="mb-1 block text-xs text-flow-muted">Workspace</span>
+        <select
+          id="token-workspace"
+          bind-value="workspaceId"
+          on-change="setWorkspace($event)"
+          class="w-full rounded-lg border border-flow-border px-3 py-2 text-sm"
+        >
+          <template for="workspace of workspaces"
+            ><option attr-value="workspace.id">{{ workspace.name }}</option></template
+          >
+        </select></label
+      >
+      <div class="mt-3 grid gap-3 sm:grid-cols-2">
+        <label class="text-sm"
+          ><span class="mb-1 block text-xs text-flow-muted">Owner</span>
+          <select
+            bind-value="tokenSubject"
+            on-change="setTokenSubject($event)"
+            class="w-full rounded-lg border border-flow-border px-3 py-2 text-sm"
+          >
+            <option value="">Choose a system user…</option>
+            <template for="principal of systemUsers"
+              ><option attr-value="principal.subject">{{ principal.name || principal.subject }}</option></template
+            >
+          </select></label
+        >
+        <label class="text-sm"
+          ><span class="mb-1 block text-xs text-flow-muted">Token name</span>
+          <input
+            bind-value="tokenName"
+            on-input="setTokenName($event)"
+            placeholder="deploy key"
+            class="w-full rounded-lg border border-flow-border px-3 py-2 text-sm"
+          />
+        </label>
+      </div>
+      <button
+        type="button"
+        on-click="issueToken()"
+        class="mt-3 rounded-lg border border-flow-primary/60 px-3 py-2 text-sm font-medium text-flow-primary"
+      >
+        Issue token
+      </button>
+      <div
+        class="mt-4 rounded-lg border border-flow-primary/20 bg-flow-panel p-3"
+        role="alert"
+        class-hidden="!tokenValue"
+      >
+        <p class="text-sm font-semibold">Copy this token now. It cannot be shown again.</p>
+        <code class="mt-2 block select-all break-all font-mono text-xs">{{ tokenValue }}</code>
+        <button type="button" on-click="tokenValue = ''" class="mt-2 text-xs underline">Hide token</button>
+      </div>
+      <ul class="mt-4 space-y-2">
+        <template for="token of tokens"
+          ><li class="flex items-center justify-between gap-3 rounded-lg border border-flow-border px-3 py-2 text-sm">
+            <span class="min-w-0"
+              ><strong>{{ token.name }}</strong
+              ><span class="block break-words text-xs text-flow-muted"
+                >{{ token.subject }} · last used {{ token.lastUsedAt || 'never' }}</span
+              ></span
+            ><button type="button" on-click="revokeToken(token)" class="shrink-0 text-rose-700 underline">
+              Revoke
+            </button>
+          </li></template
+        >
+      </ul>
+      <p class="mt-2 text-sm text-flow-muted" class-hidden="tokens.length">No tokens in this workspace.</p>
     </section>
     <p role="status" class="text-sm text-flow-muted">{{ message }}</p>
   </main>

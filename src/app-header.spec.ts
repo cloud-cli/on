@@ -20,9 +20,9 @@ describe("app header", () => {
     expect(headerTemplate).not.toContain("Preview</a>");
   });
 
-  it("shows Operations only when the session role is admin", () => {
+  it("shows Operations only when the session has platform operations access", () => {
     expect(headerTemplate).toContain('href="/ui/operations"');
-    expect(headerTemplate).toContain("userRole !== 'admin'");
-    expect(headerSetup).toContain('userRole.value = session.user?.role || ""');
+    expect(headerTemplate).toContain("canViewOperations");
+    expect(headerSetup).toContain('capability.startsWith("platform.")');
   });
 });

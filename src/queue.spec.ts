@@ -85,6 +85,18 @@ describe("QueueManager.enqueueDispatch", () => {
     expect(insert.d).toContain("dispatch:12:handoff");
     expect(JSON.parse(String(lookupRequest[1].body)).s).toContain("WHERE dispatch_key = ? AND team_id = ?");
   });
+
+  it("does not enqueue jobs after workspace deletion has begun", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ json: async () => ({ lastInsertRowid: 0 }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(new QueueManager("test").enqueue("flow", 1, { inputs: {} })).rejects.toThrow("being deleted");
+
+    const request = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(request.s).toContain("JOIN teams ON teams.id = workflows.team_id");
+    expect(request.s).toContain("teams.deleting_at IS NULL");
+    expect(request.d.at(-1)).toBe("flow");
+  });
 });
 
 describe("QueueManager.claimNextJob", () => {
@@ -189,7 +201,7 @@ describe("QueueManager.restartJob", () => {
     expect(request.m).toBe("get");
     expect(request.s).toContain("'pending', NULL, NULL, NULL, NULL");
     expect(request.s).toContain("team_id");
-    expect(request.s).toContain("WHERE id = ?");
+    expect(request.s).toContain("WHERE jobs.id = ? AND teams.deleting_at IS NULL");
     expect(request.d).toEqual([7, JSON.stringify({ inputs: {} }), 42]);
   });
 });

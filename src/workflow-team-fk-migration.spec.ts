@@ -9,8 +9,15 @@ describe("workflow team foreign-key migration", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     database.transaction.mockResolvedValue([]);
-    database.get.mockResolvedValue({
-      sql: "CREATE TABLE workflows (id TEXT PRIMARY KEY, name TEXT NOT NULL, source_yaml TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', active_revision INTEGER, enabled INTEGER NOT NULL DEFAULT 1, created_at DATETIME, updated_at DATETIME, team_id TEXT NOT NULL DEFAULT 'default')",
+    database.get.mockImplementation(async (sql: string) => {
+      if (sql.includes("name = 'team_members'")) {
+        return {
+          sql: "CREATE TABLE team_members (team_id TEXT, subject TEXT, role TEXT CHECK(role IN ('viewer','collaborator','admin')), created_at DATETIME)",
+        };
+      }
+      return {
+        sql: "CREATE TABLE workflows (id TEXT PRIMARY KEY, name TEXT NOT NULL, source_yaml TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', active_revision INTEGER, enabled INTEGER NOT NULL DEFAULT 1, created_at DATETIME, updated_at DATETIME, team_id TEXT NOT NULL DEFAULT 'default')",
+      };
     });
     database.all.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT version FROM schema_migrations")) {
@@ -37,6 +44,16 @@ describe("workflow team foreign-key migration", () => {
           "updated_at",
           "team_id",
         ].map((name) => ({ name }));
+      }
+      if (sql === "PRAGMA table_info(teams)") {
+        return [{ name: "id" }, { name: "name" }];
+      }
+      if (
+        sql === "PRAGMA table_info(team_members)" ||
+        sql === "PRAGMA table_info(oidc_users)" ||
+        sql === "PRAGMA table_info(api_keys)"
+      ) {
+        return [];
       }
       if (sql.includes("LEFT JOIN teams")) {
         return [];
@@ -90,9 +107,17 @@ describe("workflow team foreign-key migration", () => {
       if (sql === "PRAGMA table_info(api_keys)") {
         return [];
       }
+      if (sql === "PRAGMA table_info(teams)") {
+        return [{ name: "id" }, { name: "name" }];
+      }
       return [];
     });
     database.get.mockImplementation(async (sql: string) => {
+      if (sql.includes("name = 'team_members'")) {
+        return {
+          sql: "CREATE TABLE team_members (team_id TEXT, subject TEXT, role TEXT CHECK(role IN ('viewer','collaborator','admin')), created_at DATETIME)",
+        };
+      }
       if (sql.includes("sqlite_master") && sql.includes("name = 'workflows'")) {
         return {
           sql: "CREATE TABLE workflows (id TEXT PRIMARY KEY, team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE RESTRICT)",
@@ -108,15 +133,79 @@ describe("workflow team foreign-key migration", () => {
   });
 
   it("keeps a fresh schema that already declares the workspace foreign key", async () => {
-    database.get.mockResolvedValue({
-      sql: "CREATE TABLE workflows (id TEXT, team_id TEXT, FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE RESTRICT)",
+    database.get.mockImplementation(async (sql: string) => ({
+      sql: sql.includes("name = 'team_members'")
+        ? "CREATE TABLE team_members (team_id TEXT, subject TEXT, role TEXT CHECK(role IN ('viewer','collaborator','admin')), created_at DATETIME)"
+        : "CREATE TABLE workflows (id TEXT, team_id TEXT, FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE RESTRICT)",
+    }));
+
+    await runMigrations();
+
+    const migrationStatements = database.transaction.mock.calls.flatMap(([statements]) =>
+      statements.map(({ s }: { s: string }) => s),
+    );
+    expect(migrationStatements).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("workflows_after_team_fk")]),
+    );
+    expect(database.run).toHaveBeenCalledWith("INSERT INTO schema_migrations (version) VALUES (?)", [
+      "008_workflows_team_foreign_key",
+    ]);
+  });
+
+  it("adds the workspace deletion fence atomically", async () => {
+    database.all.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT version FROM schema_migrations")) {
+        return [
+          "001_add_workflow_enabled",
+          "002_add_push_subscriptions",
+          "003_add_push_delivery_history",
+          "004_add_ai_requests",
+          "005_add_teams",
+          "006_scope_push_subscriptions_to_teams",
+          "007_scope_api_keys_to_teams",
+          "008_workflows_team_foreign_key",
+          "009_workflow_definition_ids",
+          "010_unified_principals_and_permissions",
+        ].map((version) => ({ version }));
+      }
+      if (sql === "PRAGMA table_info(teams)") {
+        return [{ name: "id" }, { name: "name" }];
+      }
+      return [];
     });
 
     await runMigrations();
 
-    expect(database.transaction).not.toHaveBeenCalled();
+    expect(database.transaction).toHaveBeenCalledWith([
+      { s: "ALTER TABLE teams ADD COLUMN deleting_at DATETIME", m: "run" },
+    ]);
     expect(database.run).toHaveBeenCalledWith("INSERT INTO schema_migrations (version) VALUES (?)", [
-      "008_workflows_team_foreign_key",
+      "011_workspace_deletion_fence",
+    ]);
+  });
+
+  it("does not record the workspace deletion fence when the teams table is missing", async () => {
+    database.all.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT version FROM schema_migrations")) {
+        return [
+          "001_add_workflow_enabled",
+          "002_add_push_subscriptions",
+          "003_add_push_delivery_history",
+          "004_add_ai_requests",
+          "005_add_teams",
+          "006_scope_push_subscriptions_to_teams",
+          "007_scope_api_keys_to_teams",
+          "008_workflows_team_foreign_key",
+          "009_workflow_definition_ids",
+          "010_unified_principals_and_permissions",
+        ].map((version) => ({ version }));
+      }
+      return [];
+    });
+
+    await expect(runMigrations()).rejects.toThrow("teams table is missing");
+    expect(database.run).not.toHaveBeenCalledWith("INSERT INTO schema_migrations (version) VALUES (?)", [
+      "011_workspace_deletion_fence",
     ]);
   });
 

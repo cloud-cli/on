@@ -9,11 +9,13 @@ describe("global operations page", () => {
     const html = generateOperationsHtml();
     expect(html).toContain("Worker presence");
     expect(html).toContain("Runners");
-    expect(html).toContain("OIDC users");
+    expect(html).toContain("People");
+    expect(html).toContain("System users");
+    expect(html).toContain("Automation tokens");
     expect(setup).toContain("/api/v1/workers");
     expect(setup).toContain("/api/v1/runner-enrollments");
     expect(setup).toContain("/api/v1/runners/");
-    expect(setup).toContain("/api/v1/users/");
+    expect(setup).toContain("/api/v1/system-users");
     expect(setup).not.toMatch(/api-keys|secrets/);
   });
 
@@ -21,6 +23,7 @@ describe("global operations page", () => {
     expect(server).toContain('url.pathname === "/operations"');
     expect(server).toContain('url.pathname === "/pages/operations.html"');
     expect(router).toContain('path === "/operations"');
-    expect(server).toContain("requireAdminSession(req, res)");
+    expect(server).toContain('"platform.users.view"');
+    expect(server).toContain('"platform.runners.view"');
   });
 });

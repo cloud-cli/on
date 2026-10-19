@@ -62,7 +62,7 @@
             >
               <lucide-icon icon="download" size="15"></lucide-icon><span class="hidden sm:inline">Download Logs</span>
             </button>
-            <template if="report.status === 'running'">
+            <template if="report.status === 'running' && report.canControl">
               <button
                 class="inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-3 py-1.5 text-sm text-rose-700 hover:border-rose-400 disabled:opacity-50"
                 on-click="cancelJob()"
@@ -74,7 +74,7 @@
                 <span class="hidden sm:inline">{{ cancelling ? 'Cancelling...' : 'Cancel' }}</span>
               </button>
             </template>
-            <template if="report.status !== 'running'">
+            <template if="report.status !== 'running' && report.canControl">
               <button
                 class="inline-flex items-center gap-2 rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
                 on-click="restartJob()"
@@ -263,6 +263,7 @@
                 attr-aria-selected="tab.isActive ? 'true' : 'false'"
                 attr-aria-label="tab.label"
                 attr-title="tab.label"
+                class-hidden="!tab.visible"
               >
                 <lucide-icon bind-icon="tab.icon" size="15"></lucide-icon>
                 <span class="sr-only">{{ tab.label }}</span>
@@ -377,7 +378,7 @@
               </div>
             </div>
           </div>
-          <div class-hidden="detailTab !== 'inputs'">
+          <div class-hidden="detailTab !== 'inputs' || !report.canViewInputs">
             <code-block
               language="json"
               theme="googlecode"
@@ -386,7 +387,7 @@
             ></code-block>
           </div>
           <div class-hidden="detailTab !== 'artifacts'">
-            <div class-hidden="!report.canViewLogs || !report.artifacts.length">
+            <div class-hidden="!report.canViewArtifacts || !report.artifacts.length">
               <ul class="divide-y divide-flow-border">
                 <template for="artifact of report.artifacts">
                   <li class="px-5 py-4">
@@ -400,8 +401,12 @@
                 </template>
               </ul>
             </div>
-            <p class="p-6 text-sm text-flow-secondary" class-hidden="report.canViewLogs && report.artifacts.length">
-              No artifacts available for this run.
+            <p
+              class="p-6 text-sm text-flow-secondary"
+              class-hidden="report.canViewArtifacts && report.artifacts.length"
+            >
+              {{ report.canViewArtifacts ? 'No artifacts available for this run.' : 'You do not have access to this
+              run\'s artifacts.' }}
             </p>
           </div>
           <div class-hidden="detailTab !== 'history'">
@@ -424,7 +429,7 @@
             <p class="p-6 text-sm text-flow-secondary" class-hidden="previousRuns.length">No previous runs.</p>
           </div>
           <div class-hidden="detailTab !== 'source'">
-            <div class="flex justify-end border-b border-flow-border px-4 py-2" class-hidden="!isAdmin">
+            <div class="flex justify-end border-b border-flow-border px-4 py-2" class-hidden="!report.canEditWorkflow">
               <a
                 attr-href="'/ui/workflows/' + report.workflowId"
                 class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-flow-primary outline-none transition hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
@@ -504,7 +509,7 @@
             </form>
           </aside>
         </template>
-        <template if="report.canViewLogs && report.artifacts.length">
+        <template if="report.canViewArtifacts && report.artifacts.length">
           <details class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
             <summary
               class="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 outline-none transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60"

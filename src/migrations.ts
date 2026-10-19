@@ -300,6 +300,140 @@ const migrations: Migration[] = [
       await db.transaction(statements);
     },
   },
+  {
+    version: "010_unified_principals_and_permissions",
+    async apply() {
+      const statements: Array<{ s: string; d?: unknown[]; m: string }> = [];
+      // Human and system principals share one directory. System users have a
+      // synthetic subject and can never hold a global administrator role.
+      const userColumns = await db.all("PRAGMA table_info(oidc_users)");
+      if (userColumns.length) {
+        const names = new Set(userColumns.map((column: any) => column.name));
+        if (!names.has("kind")) {
+          statements.push({ s: "ALTER TABLE oidc_users ADD COLUMN kind TEXT NOT NULL DEFAULT 'human'", m: "run" });
+        }
+        if (!names.has("disabled_at")) {
+          statements.push({ s: "ALTER TABLE oidc_users ADD COLUMN disabled_at DATETIME", m: "run" });
+        }
+        if (!names.has("created_by")) {
+          statements.push({ s: "ALTER TABLE oidc_users ADD COLUMN created_by TEXT", m: "run" });
+        }
+      }
+
+      const membership = await db.get("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'team_members'");
+      const membershipSql = typeof membership?.sql === "string" ? membership.sql : "";
+      if (membershipSql && (!membershipSql.includes("'viewer'") || !membershipSql.includes("'collaborator'"))) {
+        const columns = await db.all("PRAGMA table_info(team_members)");
+        const names = columns.map((column: any) => column.name);
+        const required = ["team_id", "subject", "role", "created_at"];
+        if (!required.every((name) => names.includes(name))) {
+          throw new Error("Cannot migrate legacy workspace membership: required columns are missing");
+        }
+        {
+          const copy = `INSERT INTO team_members_v2 (team_id, subject, role, created_at)
+            SELECT team_id, subject, CASE WHEN role = 'admin' THEN 'admin' ELSE 'collaborator' END,
+                   COALESCE(created_at, CURRENT_TIMESTAMP)
+            FROM team_members`;
+          statements.push(
+            {
+              s: `CREATE TABLE team_members_v2 (
+                team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+                subject TEXT NOT NULL REFERENCES oidc_users(subject) ON DELETE CASCADE,
+                role TEXT NOT NULL CHECK(role IN ('viewer','collaborator','admin')),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(team_id, subject)
+              )`,
+              m: "run",
+            },
+            { s: copy, m: "run" },
+            { s: "DROP TABLE team_members", m: "run" },
+            { s: "ALTER TABLE team_members_v2 RENAME TO team_members", m: "run" },
+          );
+        }
+      }
+
+      statements.push(
+        {
+          s: `CREATE TABLE IF NOT EXISTS workspace_permission_overrides (
+          team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+          subject TEXT NOT NULL REFERENCES oidc_users(subject) ON DELETE CASCADE,
+          capability TEXT NOT NULL,
+          effect TEXT NOT NULL CHECK(effect IN ('allow','deny')),
+          granted_by TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY(team_id, subject, capability)
+        )`,
+          m: "run",
+        },
+        {
+          s: "CREATE INDEX IF NOT EXISTS idx_workspace_permission_overrides_subject ON workspace_permission_overrides(subject, team_id)",
+          m: "run",
+        },
+        {
+          s: `CREATE TABLE IF NOT EXISTS principal_tokens (
+          id TEXT PRIMARY KEY,
+          subject TEXT NOT NULL REFERENCES oidc_users(subject) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          token_hash TEXT NOT NULL UNIQUE,
+          created_by TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          last_used_at DATETIME,
+          revoked_at DATETIME
+        )`,
+          m: "run",
+        },
+        {
+          s: "CREATE INDEX IF NOT EXISTS idx_principal_tokens_subject ON principal_tokens(subject, revoked_at)",
+          m: "run",
+        },
+        {
+          s: `CREATE TABLE IF NOT EXISTS authorization_audit (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          actor TEXT,
+          action TEXT NOT NULL,
+          target TEXT,
+          team_id TEXT,
+          detail TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+          m: "run",
+        },
+        {
+          s: "CREATE INDEX IF NOT EXISTS idx_authorization_audit_team ON authorization_audit(team_id, created_at)",
+          m: "run",
+        },
+      );
+
+      // Legacy workspace keys have no owner, so they cannot provide principal
+      // parity. Disable every one instead of guessing an owner.
+      const keyColumns = await db.all("PRAGMA table_info(api_keys)");
+      if (keyColumns.some((column: any) => column.name === "revoked_at")) {
+        statements.push({ s: "UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE revoked_at IS NULL", m: "run" });
+      }
+      if (statements.length) {
+        if (typeof db.transaction !== "function") {
+          throw new Error("Atomic transactions are required for migration 010");
+        }
+        await db.transaction(statements);
+      }
+    },
+  },
+  {
+    version: "011_workspace_deletion_fence",
+    async apply() {
+      const columns = await db.all("PRAGMA table_info(teams)");
+      if (!columns.length) {
+        throw new Error("Cannot apply workspace deletion fence: teams table is missing");
+      }
+      if (columns.some((column: any) => column.name === "deleting_at")) {
+        return;
+      }
+      if (typeof db.transaction !== "function") {
+        throw new Error("Atomic transactions are required for migration 011");
+      }
+      await db.transaction([{ s: "ALTER TABLE teams ADD COLUMN deleting_at DATETIME", m: "run" }]);
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

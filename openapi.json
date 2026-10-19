@@ -3,7 +3,7 @@
   "info": {
     "title": "On Workflow Runner API",
     "version": "1.0.0",
-    "description": "Control-plane, job, workflow, webhook, event, secret, artifact, and notification APIs. All application APIs are under /api/v1; OIDC browser flows are handled separately."
+    "description": "Control-plane, job, workflow, webhook, event, secret, artifact, and notification APIs. All application APIs are under /api/v1; OIDC browser flows are handled separately. Active OIDC access tokens with the exact `admin` scope have platform-wide administrator authority on authenticated management APIs."
   },
   "servers": [
     {
@@ -62,6 +62,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "requestBody": {
@@ -202,6 +205,9 @@
         "security": [
           {
             "oidcAdminSession": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -221,6 +227,9 @@
         "security": [
           {
             "oidcAdminSession": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -248,6 +257,9 @@
         "security": [
           {
             "oidcAdminSession": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -305,6 +317,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -352,6 +367,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -369,6 +387,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -496,6 +517,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -542,6 +566,115 @@
         }
       }
     },
+    "/api/v1/workflows/{workflowId}/enabled": {
+      "patch": {
+        "tags": ["workflows"],
+        "summary": "Enable or disable a workflow without changing its publication state",
+        "description": "Requires workflows.edit in the selected workspace. This operation changes only the enabled flag and never creates a draft revision or publishes the workflow.",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["enabled"],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Enabled flag updated"
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{workflowId}/transfer": {
+      "post": {
+        "tags": ["workflows"],
+        "summary": "Move an unexecuted workflow draft to another workspace",
+        "description": "Requires workflows.edit in both the source workspace (X-Team-ID) and target workspace. Published or executed workflows cannot be transferred.",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["targetWorkspaceId"],
+                "properties": {
+                  "targetWorkspaceId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Draft moved"
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Workflow is not an unexecuted draft"
+          }
+        }
+      }
+    },
     "/api/v1/workflows/{workflowId}": {
       "get": {
         "tags": ["workflows"],
@@ -553,6 +686,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -601,6 +737,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -656,6 +795,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -689,6 +831,9 @@
         "security": [
           {
             "oidcAdminSession": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -878,6 +1023,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -970,6 +1118,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -1021,6 +1172,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -1131,6 +1285,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -1253,6 +1410,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "requestBody": {
@@ -1289,6 +1449,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "requestBody": {
@@ -1344,6 +1507,9 @@
         "security": [
           {
             "oidcAdminSession": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -1374,6 +1540,9 @@
         "security": [
           {
             "oidcAdminSession": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -1427,6 +1596,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -1451,6 +1623,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "requestBody": {
@@ -1490,6 +1665,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -1516,6 +1694,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -1547,6 +1728,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -1570,6 +1754,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -1599,6 +1786,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -1626,6 +1816,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -1678,6 +1871,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -1712,6 +1908,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "requestBody": {
@@ -1742,6 +1941,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "requestBody": {
@@ -1778,6 +1980,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -1792,6 +1997,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "requestBody": {
@@ -1825,6 +2033,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -1871,6 +2082,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -1926,6 +2140,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -1966,6 +2183,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "requestBody": {
@@ -2004,6 +2224,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -2033,6 +2256,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -2047,6 +2273,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "requestBody": {
@@ -2086,6 +2315,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -2136,6 +2368,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ]
       },
@@ -2186,6 +2421,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ]
       }
@@ -2197,6 +2435,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -2244,6 +2485,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -2274,6 +2518,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -2349,6 +2596,9 @@
           },
           {
             "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "requestBody": {
@@ -2434,6 +2684,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -2473,6 +2726,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -2492,6 +2748,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -2531,6 +2790,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -2557,6 +2819,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -2589,6 +2854,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -2636,6 +2904,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -2670,6 +2941,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "parameters": [
@@ -2708,6 +2982,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "requestBody": {
@@ -2761,6 +3038,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -2786,6 +3066,9 @@
         "security": [
           {
             "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
           }
         ],
         "responses": {
@@ -2830,6 +3113,12 @@
         "type": "http",
         "scheme": "bearer",
         "description": "RUNNER_WORKER_SECRET"
+      },
+      "oidcAdminBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "OIDC access token",
+        "description": "Platform-wide administrator access. Requires an active OIDC access token whose introspected scope contains the exact `admin` scope. This is a highly privileged automation credential."
       }
     },
     "parameters": {

@@ -4,6 +4,7 @@ export default function () {
   const authConfigured = ref(false);
   const authenticated = ref(false);
   const userRole = ref("");
+  const canViewOperations = ref(false);
   const userName = ref("");
   const userPhoto = ref("");
   const teams = ref([]);
@@ -42,6 +43,8 @@ export default function () {
       authConfigured.value = session.configured;
       authenticated.value = session.authenticated;
       userRole.value = session.user?.role || "";
+      const capabilities = session.user?.capabilities || [];
+      canViewOperations.value = capabilities.some((capability) => capability.startsWith("platform."));
       userName.value = session.user?.name || session.user?.email || "";
       userPhoto.value = session.user?.photo || "";
       await loadTeams();
@@ -56,6 +59,7 @@ export default function () {
     authConfigured,
     authenticated,
     userRole,
+    canViewOperations,
     userName,
     userPhoto,
     teams,

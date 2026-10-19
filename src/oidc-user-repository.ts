@@ -28,7 +28,9 @@ export class OidcUserRepository {
   }
 
   async list(): Promise<OidcUserRecord[]> {
-    const rows = await db.all("SELECT subject, name, email, role FROM oidc_users ORDER BY name, email, subject");
+    const rows = await db.all(
+      "SELECT subject, name, email, role FROM oidc_users WHERE COALESCE(kind, 'human') = 'human' ORDER BY name, email, subject",
+    );
     return rows.map((row: any) => ({
       id: row.subject,
       name: row.name || undefined,

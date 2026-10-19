@@ -1,11 +1,15 @@
-import { onInit, ref } from "@li3/web";
+import { computed, onInit, ref } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
 import { workspaceIdFromPathname } from "@app/workspace-path.mjs";
 
 export default function () {
   const teamId = workspaceIdFromPathname(location.pathname);
   const members = ref([]);
+  const groups = ref([]);
+  const roles = ref({});
+  const roleLabels = ref({});
   const isAdmin = ref(false);
+  const canManage = ref(false);
   const teamName = ref("");
   const newTeamName = ref("");
   const inviteEmail = ref("");
@@ -21,26 +25,22 @@ export default function () {
   const availableRunners = ref([]);
   const enrollmentCode = ref("");
   const enrollmentExpiresAt = ref("");
-  const keys = ref([]);
-  const keyName = ref("");
-  const keyToken = ref("");
-  const scopeOptions = ref([
-    { name: "workflows:read", label: "Read workflows", selected: true },
-    { name: "workflows:write", label: "Modify workflows", selected: false },
-    { name: "logs:read", label: "Read logs", selected: false },
-    { name: "artifacts:read", label: "Read artifacts", selected: false },
-    { name: "runs:control", label: "Control runs", selected: false },
-    { name: "runs:dispatch", label: "Dispatch runs", selected: false },
-    { name: "workers:read", label: "Read workers", selected: false },
-    { name: "secrets:read", label: "Read secret names", selected: false },
-    { name: "secrets:write", label: "Manage secrets", selected: false },
-  ]);
+  const tokens = ref([]);
+  const tokenName = ref("");
+  const tokenSubject = ref("");
+  const agentName = ref("");
+  const tokenValue = ref("");
   const secrets = ref([]);
   const secretName = ref("");
   const secretValue = ref("");
   const fileMode = ref(false);
   const secretFileName = ref("");
   const secretFileData = ref("");
+  const selectedMember = ref("");
+  const permissionRows = ref([]);
+  const draftRole = ref("collaborator");
+  const draftOverrides = ref([]);
+  const savingPermissions = ref(false);
   const request = async (url, options = {}) => {
     const response = await apiFetch(url, {
       ...options,
@@ -51,52 +51,107 @@ export default function () {
         "X-Team-ID": teamId,
       },
     });
-    const result = await response.json().catch(() => ({}));
+    const result = response.status === 204 ? {} : await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(result.error || `Request failed (${response.status})`);
     }
     return result;
   };
+  const workspaceUrl = (suffix = "") => `/api/v1/workspaces/${encodeURIComponent(teamId)}${suffix}`;
   const load = async () => {
-    const { members: results = [] } = await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/members`);
-    members.value = results;
-    const { webhooks: registrations = [] } = await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/webhooks`);
+    const permissions = await request(workspaceUrl("/permissions"));
+    members.value = permissions.members || [];
+    groups.value = permissions.groups || [];
+    roles.value = permissions.roles || {};
+    roleLabels.value = permissions.roleLabels || {};
+    canManage.value = Boolean(permissions.canManage);
+    const { webhooks: registrations = [] } = await request(workspaceUrl("/webhooks"));
     webhooks.value = registrations;
     const runners = await request(`/api/v1/teams/${encodeURIComponent(teamId)}/runners`);
     teamRunners.value = runners.team || [];
     sharedRunners.value = runners.shared || [];
     availableRunners.value = runners.available || [];
-    keys.value = isAdmin.value
-      ? (await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/api-keys`)).keys || []
-      : [];
     secrets.value = (await request("/api/v1/secrets")).secrets || [];
+    const canSeeTokens = canManage.value;
+    tokens.value = canSeeTokens ? (await request(workspaceUrl("/tokens"))).tokens || [] : [];
+    if (selectedMember.value && !members.value.some((member) => member.subject === selectedMember.value)) {
+      selectedMember.value = "";
+    }
+    if (selectedMember.value) {
+      editMember(selectedMember.value);
+    }
   };
-  const issueKey = () =>
+  const roleCapabilities = (role) => new Set(roles.value[role] || []);
+  const systemUsers = computed(() => members.value.filter((member) => member.kind === "system"));
+  const buildRows = () => {
+    const base = roleCapabilities(draftRole.value);
+    const overrides = new Map(draftOverrides.value.map((entry) => [entry.capability, entry.effect]));
+    const presetFor = (role, capability) => roleCapabilities(role).has(capability);
+    const rows = [];
+    for (const group of groups.value || []) {
+      rows.push({ kind: "group", id: group.id, label: group.label, description: group.description });
+      for (const entry of group.capabilities) {
+        const override = overrides.get(entry.capability);
+        const effective = override ? override === "allow" : base.has(entry.capability);
+        rows.push({
+          kind: "capability",
+          capability: entry.capability,
+          label: entry.label,
+          description: entry.description,
+          checked: effective,
+          overridden: Boolean(override),
+          overrideLabel: override === "allow" ? "granted" : override === "deny" ? "denied" : "",
+          viewer: presetFor("viewer", entry.capability),
+          collaborator: presetFor("collaborator", entry.capability),
+          admin: presetFor("admin", entry.capability),
+        });
+      }
+    }
+    permissionRows.value = rows;
+  };
+  const editMember = (subject) => {
+    const member = members.value.find((entry) => entry.subject === subject);
+    selectedMember.value = member?.subject || "";
+    draftRole.value = member?.role || "collaborator";
+    draftOverrides.value = [...(member?.overrides || [])];
+    buildRows();
+  };
+  const setDraftRole = (event) => {
+    draftRole.value = event.target.value;
+    buildRows();
+  };
+  const toggleCapability = (capability) => {
+    const base = roleCapabilities(draftRole.value);
+    const overrides = new Map(draftOverrides.value.map((entry) => [entry.capability, entry.effect]));
+    const current = overrides.has(capability.capability)
+      ? overrides.get(capability.capability) === "allow"
+      : base.has(capability.capability);
+    const next = !current;
+    if (next === base.has(capability.capability)) {
+      overrides.delete(capability.capability);
+    } else {
+      overrides.set(capability.capability, next ? "allow" : "deny");
+    }
+    draftOverrides.value = [...overrides].map(([name, effect]) => ({ capability: name, effect }));
+    buildRows();
+  };
+  const savePermissions = () =>
     act(async () => {
-      const result = await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/api-keys`, {
-        method: "POST",
-        body: JSON.stringify({
-          name: keyName.value,
-          scopes: scopeOptions.value.filter((scope) => scope.selected).map((scope) => scope.name),
-        }),
-      });
-      keyToken.value = result.token;
-      keyName.value = "";
-      await load();
-    });
-  const revokeKey = (key) =>
-    act(async () => {
-      if (!confirm(`Revoke ${key.name}? Any automation using it will stop working.`)) {
+      if (!selectedMember.value) {
         return;
       }
-      await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/api-keys/${encodeURIComponent(key.id)}`, {
-        method: "DELETE",
-      });
-      await load();
+      savingPermissions.value = true;
+      try {
+        await request(workspaceUrl(`/members/${encodeURIComponent(selectedMember.value)}`), {
+          method: "PUT",
+          body: JSON.stringify({ role: draftRole.value, overrides: draftOverrides.value }),
+        });
+        await load();
+        message.value = "Permissions saved.";
+      } finally {
+        savingPermissions.value = false;
+      }
     });
-  const setScope = (scope, event) => {
-    scope.selected = event.target.checked;
-  };
   const setFileMode = (event) => {
     fileMode.value = event.target.checked;
   };
@@ -112,8 +167,17 @@ export default function () {
   const setSecretValue = (event) => {
     secretValue.value = event.target.value;
   };
-  const setKeyName = (event) => {
-    keyName.value = event.target.value;
+  const setNewTeamName = (event) => {
+    newTeamName.value = event.target.value;
+  };
+  const setTokenName = (event) => {
+    tokenName.value = event.target.value;
+  };
+  const setAgentName = (event) => {
+    agentName.value = event.target.value;
+  };
+  const setTokenSubject = (event) => {
+    tokenSubject.value = event.target.value;
   };
   const setSecretFile = async (event) => {
     const file = event.target.files?.[0];
@@ -170,9 +234,38 @@ export default function () {
       error.value = reason.message;
     }
   };
+  const renameWorkspace = () =>
+    act(async () => {
+      const name = newTeamName.value.trim();
+      if (!name) {
+        throw new Error("Enter a workspace name.");
+      }
+      const result = await request(workspaceUrl(), {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      });
+      teamName.value = result.workspace?.name || name;
+      newTeamName.value = "";
+      message.value = "Workspace renamed.";
+      window.dispatchEvent(new Event("runner-teams-updated"));
+    });
+  const deleteWorkspace = () =>
+    act(async () => {
+      const typed = window.prompt(
+        `This permanently deletes ${teamName.value}, including every workflow, run, log, artifact, secret, and runner. Type the workspace name to confirm.`,
+      );
+      if (typed === null) {
+        return;
+      }
+      if (typed.trim() !== teamName.value) {
+        throw new Error("The workspace name did not match. Nothing was deleted.");
+      }
+      await request(workspaceUrl(), { method: "DELETE" });
+      window.location.assign("/ui/runs");
+    });
   const createInvitation = () =>
     act(async () => {
-      const result = await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/invitations`, {
+      const result = await request(workspaceUrl("/invitations"), {
         method: "POST",
         body: JSON.stringify({ email: inviteEmail.value }),
       });
@@ -185,7 +278,7 @@ export default function () {
       if (!/^[a-z0-9-]+$/.test(provider)) {
         throw new Error("Webhook URL slugs must contain only lowercase letters, numbers, and hyphens.");
       }
-      const result = await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/webhooks`, {
+      const result = await request(workspaceUrl("/webhooks"), {
         method: "POST",
         body: JSON.stringify({ provider }),
       });
@@ -199,12 +292,7 @@ export default function () {
       if (!confirm(`Revoke this ${registration.provider} webhook? Its URL and signing secret will stop working.`)) {
         return;
       }
-      await request(
-        `/api/v1/workspaces/${encodeURIComponent(teamId)}/webhooks/${encodeURIComponent(registration.id)}`,
-        {
-          method: "DELETE",
-        },
-      );
+      await request(workspaceUrl(`/webhooks/${encodeURIComponent(registration.id)}`), { method: "DELETE" });
       await load();
       message.value = "Webhook revoked.";
     });
@@ -237,20 +325,51 @@ export default function () {
       });
       await load();
     });
-  const toggleMemberRole = (member) =>
-    act(async () => {
-      const role = member.role === "admin" ? "member" : "admin";
-      await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/members/${encodeURIComponent(member.subject)}`, {
-        method: "PUT",
-        body: JSON.stringify({ role }),
-      });
-      await load();
-    });
   const removeMember = (member) =>
     act(async () => {
-      await request(`/api/v1/workspaces/${encodeURIComponent(teamId)}/members/${encodeURIComponent(member.subject)}`, {
-        method: "DELETE",
+      if (!confirm(`Remove ${member.name || "Unnamed member"} from this workspace?`)) {
+        return;
+      }
+      await request(workspaceUrl(`/members/${encodeURIComponent(member.subject)}`), { method: "DELETE" });
+      if (selectedMember.value === member.subject) {
+        selectedMember.value = "";
+        permissionRows.value = [];
+      }
+      await load();
+    });
+  const addSystemUser = () =>
+    act(async () => {
+      const name = agentName.value.trim();
+      if (!name) {
+        throw new Error("Enter a name for the agent or automation.");
+      }
+      const result = await request(workspaceUrl("/system-users"), {
+        method: "POST",
+        body: JSON.stringify({ name }),
       });
+      agentName.value = "";
+      message.value = `${result.systemUser.name} was added as a collaborator. Issue a token for it below.`;
+      await load();
+    });
+  const issueToken = () =>
+    act(async () => {
+      if (!tokenSubject.value) {
+        throw new Error("Choose the system user that should own this token.");
+      }
+      const result = await request(workspaceUrl("/tokens"), {
+        method: "POST",
+        body: JSON.stringify({ subject: tokenSubject.value, name: tokenName.value }),
+      });
+      tokenValue.value = result.token;
+      tokenName.value = "";
+      await load();
+    });
+  const revokeToken = (token) =>
+    act(async () => {
+      if (!confirm(`Revoke ${token.name}? Any automation using it will stop working immediately.`)) {
+        return;
+      }
+      await request(workspaceUrl(`/tokens/${encodeURIComponent(token.id)}`), { method: "DELETE" });
       await load();
     });
   onInit(async () => {
@@ -270,10 +389,18 @@ export default function () {
     }
   });
   return {
+    teamId,
     teamName,
-    members,
-    isAdmin,
     newTeamName,
+    setNewTeamName,
+    renameWorkspace,
+    deleteWorkspace,
+    members,
+    groups,
+    roles,
+    roleLabels,
+    isAdmin,
+    canManage,
     inviteEmail,
     inviteLink,
     webhooks,
@@ -288,7 +415,6 @@ export default function () {
     setWebhookProvider,
     revokeWebhook,
     copyValue,
-    toggleMemberRole,
     removeMember,
     teamRunners,
     sharedRunners,
@@ -297,24 +423,36 @@ export default function () {
     enrollmentExpiresAt,
     createRunnerEnrollment,
     setSharedRunner,
-    keys,
-    keyName,
-    setKeyName,
-    keyToken,
-    scopeOptions,
-    issueKey,
-    revokeKey,
-    setScope,
-    setFileMode,
+    systemUsers,
+    agentName,
+    setAgentName,
+    addSystemUser,
+    tokens,
+    tokenName,
+    setTokenName,
+    tokenSubject,
+    setTokenSubject,
+    tokenValue,
+    issueToken,
+    revokeToken,
     secrets,
     secretName,
     setSecretName,
     secretValue,
     setSecretValue,
     fileMode,
+    setFileMode,
     secretFileName,
     setSecretFile,
     saveSecret,
     deleteSecret,
+    selectedMember,
+    permissionRows,
+    draftRole,
+    editMember,
+    setDraftRole,
+    toggleCapability,
+    savePermissions,
+    savingPermissions,
   };
 }

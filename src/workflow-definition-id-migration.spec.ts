@@ -41,6 +41,9 @@ describe("workflow definition ID backfill migration", () => {
       if (sql === "PRAGMA table_info(workflows)") {
         return ["id", "team_id", "source_yaml", "definition_id"].map((name) => ({ name }));
       }
+      if (sql === "PRAGMA table_info(teams)") {
+        return [{ name: "id" }, { name: "name" }];
+      }
       return [];
     });
   });
@@ -52,6 +55,9 @@ describe("workflow definition ID backfill migration", () => {
       }
       if (sql === "PRAGMA table_info(workflows)") {
         return ["id", "team_id", "source_yaml", "definition_id"].map((name) => ({ name }));
+      }
+      if (sql === "PRAGMA table_info(teams)") {
+        return [{ name: "id" }, { name: "name" }];
       }
       if (sql === "SELECT id, team_id, source_yaml, definition_id FROM workflows") {
         return [workflowRow("record-key")];
@@ -89,6 +95,9 @@ describe("workflow definition ID backfill migration", () => {
       }
       if (sql === "PRAGMA table_info(workflows)") {
         return ["id", "team_id", "source_yaml", "definition_id"].map((name) => ({ name }));
+      }
+      if (sql === "PRAGMA table_info(teams)") {
+        return [{ name: "id" }, { name: "name" }];
       }
       if (sql === "SELECT id, team_id, source_yaml, definition_id FROM workflows") {
         return [workflowRow("one"), workflowRow("two")];

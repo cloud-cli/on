@@ -77,6 +77,7 @@ describe("workflow management UI", () => {
     expect(source).toContain("Save draft");
     expect(source).toContain('href="/ui/workflows/new"');
     expect(source).toContain('id="workflow-workspace"');
+    expect(source).toContain('class-hidden="selectedId"');
     expect(source).toContain('bind-value="selectedWorkspaceId"');
     expect(source).toContain('on-change="setWorkspace($event)"');
     expect(source).toContain('<label for="workflow-workspace" class="sr-only">Workspace</label>');
@@ -110,9 +111,11 @@ describe("workflow management UI", () => {
     expect(source).toContain("/api/v1/ai/workflow-help");
     expect(source).toContain("Accept suggestion");
     expect(source).toContain('aria-label="Save workflow draft"');
-    expect(source).toContain(
-      'bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"',
-    );
+    expect(source).toContain('bind-disabled="busy || !selectedId || source !== savedSource"');
+    expect(workflowsSetup).toContain("/api/v1/workflows/${selectedId.value}/transfer");
+    expect(workflowsSetup).toContain("targetWorkspaceId: workspaceId");
+    expect(workflowsSetup).toContain("/api/v1/workflows/${selectedId.value}/enabled");
+    expect(workflowsSetup).toContain('method: "PATCH"');
     expect(source).toContain('aria-labelledby="workflow-list-title"');
     expect(source).toContain(
       "attr-href=\"'/ui/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)\"",

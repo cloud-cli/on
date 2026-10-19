@@ -25,14 +25,18 @@ export default function setup() {
   const detailTab = ref("logs");
   const logSearch = ref("");
   const wrapLogs = ref(true);
-  const isAdmin = ref(false);
   const detailTabs = computed(() =>
     [
-      { id: "logs", label: "Logs & steps", icon: "terminal" },
-      { id: "inputs", label: "Inputs", icon: "code" },
-      { id: "artifacts", label: "Artifacts", icon: "box" },
-      { id: "history", label: "History", icon: "list-clock" },
-      { id: "source", label: "Workflow source", icon: "file-code" },
+      { id: "logs", label: "Logs & steps", icon: "terminal", visible: Boolean(report.value.canViewLogs) },
+      { id: "inputs", label: "Inputs", icon: "code", visible: Boolean(report.value.canViewInputs) },
+      { id: "artifacts", label: "Artifacts", icon: "box", visible: Boolean(report.value.canViewArtifacts) },
+      { id: "history", label: "History", icon: "list-clock", visible: true },
+      {
+        id: "source",
+        label: "Workflow source",
+        icon: "file-code",
+        visible: Boolean(report.value.canViewLogs && report.value.workflowSourceYaml),
+      },
     ].map((tab) => ({ ...tab, isActive: detailTab.value === tab.id })),
   );
   const now = ref(Date.now());
@@ -160,15 +164,6 @@ export default function setup() {
     if (preference.legacyError) {
       console.warn("Timezone preference unavailable; using system timezone", preference.legacyError);
     }
-  };
-  const loadAdminRole = async () => {
-    const response = await apiFetch("/api/v1/session", { headers: { accept: "application/json" } });
-    if (!response.ok) {
-      return;
-    }
-
-    const session = await response.json();
-    isAdmin.value = session.user?.role === "admin";
   };
   const artifactUrl = (path) => `/api/v1/runs/${report.value.jobId}/artifacts/${encodeURIComponent(path)}`;
   const downloadArtifact = async (event, path) => {
@@ -423,6 +418,9 @@ export default function setup() {
       const previousStatus = report.value.status;
       const nextReport = await response.json();
       report.value = nextReport;
+      if (!detailTabs.value.find((tab) => tab.id === detailTab.value && tab.visible)) {
+        detailTab.value = detailTabs.value.find((tab) => tab.visible)?.id || "history";
+      }
       if (previousStatus !== "failed" && nextReport.status === "failed") {
         const failedIndex = (nextReport.steps || []).findIndex((step) => step.status === "failed");
         if (failedIndex >= 0) {
@@ -479,7 +477,6 @@ export default function setup() {
   onInit(() => {
     document.addEventListener("pointerdown", handleOutsideRestartMenu);
     void refreshRun();
-    void loadAdminRole().catch((error) => console.error("Unable to load run editor access", error));
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/assets/service-worker.js", { scope: "/ui/" }).catch((error) => {
         console.error("Service worker registration failed", error);
@@ -507,7 +504,6 @@ export default function setup() {
 
   return {
     report,
-    isAdmin,
     previousRuns,
     manualRestartOpen,
     manualRestartLoading,
