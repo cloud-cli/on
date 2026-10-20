@@ -59,23 +59,41 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
   if (parsed.retries !== undefined && (!Number.isInteger(parsed.retries) || parsed.retries < 0)) {
     throw new Error("retries must be a non-negative integer");
   }
-  const steps = parsed.steps.map((step: any) => {
-    const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
-    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
-      throw new Error("step.timeoutMs must be a positive integer");
+  const parseSteps = (stepList: any[], label: string) =>
+    stepList.map((step: any) => {
+      const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
+      if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+        throw new Error(`${label}.timeoutMs must be a positive integer`);
+      }
+      const volumes =
+        step.volumes === undefined ? undefined : Array.isArray(step.volumes) ? step.volumes : [step.volumes];
+      const dockerArgs =
+        step.dockerArgs === undefined
+          ? undefined
+          : Array.isArray(step.dockerArgs)
+            ? step.dockerArgs
+            : [step.dockerArgs];
+      if (volumes?.some((volume: unknown) => typeof volume !== "string" || !volume.trim())) {
+        throw new Error(`${label}.volumes must contain non-empty strings`);
+      }
+      if (dockerArgs?.some((arg: unknown) => typeof arg !== "string")) {
+        throw new Error(`${label}.dockerArgs must contain strings`);
+      }
+      return { ...step, timeoutMs, volumes, dockerArgs };
+    });
+  if (parsed.post !== undefined && !Array.isArray(parsed.post)) {
+    throw new Error("Workflow post must be an array of steps");
+  }
+  const steps = parseSteps(parsed.steps, "step");
+  const post = parseSteps(parsed.post || [], "post step");
+  const stepIds = new Set<string>();
+  for (const [index, step] of [...steps, ...post].entries()) {
+    const id = step.id || `step-${index}`;
+    if (stepIds.has(id)) {
+      throw new Error("Workflow step IDs must be unique across steps and post steps");
     }
-    const volumes =
-      step.volumes === undefined ? undefined : Array.isArray(step.volumes) ? step.volumes : [step.volumes];
-    const dockerArgs =
-      step.dockerArgs === undefined ? undefined : Array.isArray(step.dockerArgs) ? step.dockerArgs : [step.dockerArgs];
-    if (volumes?.some((volume: unknown) => typeof volume !== "string" || !volume.trim())) {
-      throw new Error("step.volumes must contain non-empty strings");
-    }
-    if (dockerArgs?.some((arg: unknown) => typeof arg !== "string")) {
-      throw new Error("step.dockerArgs must contain strings");
-    }
-    return { ...step, timeoutMs, volumes, dockerArgs };
-  });
+    stepIds.add(id);
+  }
   const artifacts =
     parsed.artifacts === undefined
       ? undefined
@@ -111,6 +129,7 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
       solar: Array.isArray(parsed.on.solar) ? parsed.on.solar : undefined,
       concurrency: parsed.concurrency,
       steps,
+      post,
       retries: parsed.retries ?? 0,
       env: parsed.env,
       artifacts,

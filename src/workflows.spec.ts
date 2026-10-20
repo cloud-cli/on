@@ -46,6 +46,21 @@ steps:
     expect(workflow.steps[0].timeoutMs).toBe(30_000);
   });
 
+  it("parses and validates post steps as regular steps", () => {
+    const yaml = `id: post\nname: Post\non: { generic: {} }\nsteps: [{ id: main, run: 'true' }]\npost: [{ id: cleanup, run: 'echo \${job.status}' }]`;
+    const [workflow] = parseWorkflow(yaml);
+    expect(workflow.post?.[0].timeoutMs).toBe(30_000);
+    expect(() => parseWorkflow(yaml.replace("id: cleanup", "id: main"))).toThrow("unique");
+    expect(() =>
+      parseWorkflow(
+        `id: implicit-id\nname: IDs\non: { generic: {} }\nsteps: [{ run: 'true' }]\npost: [{ id: step-0, run: 'true' }]`,
+      ),
+    ).toThrow("unique");
+    expect(() =>
+      parseWorkflow(`id: invalid-post\nname: Invalid\non: { generic: {} }\nsteps: [{ run: 'true' }]\npost: {}`),
+    ).toThrow("post must be an array");
+  });
+
   it("normalizes Docker volume and argument options", () => {
     const [workflow] = parseWorkflow(`
 id: container

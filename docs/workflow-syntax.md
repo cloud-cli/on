@@ -84,6 +84,8 @@ Workspace webhook registrations can use any provider slug, including a provider 
 
 Alias workflows do not inherit `on.github`'s server-side filters or `github.fileExists` helper. Normalize and filter in workflow steps using `inputs.body` and `inputs.request.headers`; use `on: { alias: {} }`. The `on.github` provider path remains the legacy compatibility path: it continues to produce normalized GitHub inputs and apply existing `events`, repository/branch/path filters and `github.fileExists` conditions.
 
+The migration fixture at `tests/test.yaml` uses the isolated `github-test` alias. Its trigger expression accepts only pushes to `cloud-cli/on-github-workflow-migration-test` on `main`, then an `eval` step reports normalized repository, owner, repo, ref/branch, SHA, and commit message. It posts pending/final commit statuses from ordinary workflow steps using the workspace-managed `GITHUB_TOKEN`; no token value belongs in YAML. The fixture deliberately avoids the production `github` provider, so it can validate raw payload handling and workflow-owned status reporting without changing legacy webhook behavior. `tests/runner.config.mjs` does not register a GitHub status plugin.
+
 ```yaml
 id: github-intake
 name: GitHub intake (alias)

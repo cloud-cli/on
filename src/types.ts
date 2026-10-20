@@ -159,6 +159,7 @@ export interface WorkflowDefinition {
   /** Number of additional attempts for a failed step. */
   retries?: number;
   steps: WorkflowStep[];
+  post?: WorkflowStep[];
   env?: Record<string, string>;
   artifacts?: {
     paths: string[];
@@ -312,6 +313,7 @@ export interface JobExecutionContext {
   env: Record<string, string>;
   secrets: Record<string, string>;
   steps: Record<string, { status: string; exitCode: number; outputs: any }>;
+  job?: { status: FinalJobStatus; runUrl: string };
   workingDir: string;
   logsDir: string;
   files: {

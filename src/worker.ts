@@ -337,11 +337,13 @@ export async function processJob(p: Processable) {
   const resolvedWorkflow = candidateWorkflow as typeof p.workflow;
   const processable = { ...p, queue, workflow: resolvedWorkflow };
   const steps = resolvedWorkflow.steps;
+  const postSteps = resolvedWorkflow.post || [];
   const inputs = payload.inputs || {};
   const jobStartTime = Date.now();
   const storagePath = Path.join(config.storagePath, `job-${job.id}`);
   const logsDir = Path.join(storagePath, "logs");
   const workingDir = Path.join(storagePath, "wd");
+  const runUrl = new URL(`/ui/runs/${job.id}`, config.serverUrl).toString();
 
   // Step Execution Context available in expressions: ${steps.step1.outputs.id}
   const executionContext: JobExecutionContext = {
@@ -351,6 +353,7 @@ export async function processJob(p: Processable) {
       CI: "true",
       CI_JOB_ID: String(job.id),
       CI_JOB_NAME: resolvedWorkflow.name,
+      CI_JOB_URL: runUrl,
     },
     secrets: secrets.getAll(),
     steps: {},
@@ -360,7 +363,7 @@ export async function processJob(p: Processable) {
   };
   let cacheKey = "";
 
-  const stepReports = steps.map((step, index): StepReport => {
+  const stepReports = [...steps, ...postSteps].map((step, index): StepReport => {
     step.id ||= `step-${index}`;
     step.name ||= step.id;
 
@@ -392,6 +395,7 @@ export async function processJob(p: Processable) {
       CI: "true",
       CI_JOB_ID: String(job.id),
       CI_JOB_NAME: resolvedWorkflow.name,
+      CI_JOB_URL: runUrl,
     });
     writeSecretFiles(resolvedWorkflow.secretFiles, secrets, workingDir);
     cacheKey = resolvedWorkflow.cache
@@ -433,7 +437,7 @@ export async function processJob(p: Processable) {
     jobId: String(job.id),
     workflowName: resolvedWorkflow.name,
     inputs,
-    runUrl: new URL(`/ui/runs/${job.id}`, config.serverUrl).toString(),
+    runUrl,
   };
   await pluginManager.triggerWorkflowStart(workflowContext);
 
@@ -458,6 +462,18 @@ export async function processJob(p: Processable) {
     } catch (error: any) {
       console.error(`[${workerId}] ⚠️ Failed to store workflow files:`, error);
       finalStatus = "failed";
+    }
+  }
+
+  // Lifecycle hooks begin only after setup succeeds, and post-step failures are non-fatal.
+  executionContext.env.CI_JOB_STATUS = finalStatus;
+  executionContext.job = { status: finalStatus, runUrl };
+  if (postSteps.length) {
+    const postContext = { ...context, steps: postSteps };
+    try {
+      await processSteps(postContext, executionReport, steps.length, true);
+    } catch (error) {
+      console.error(`[${workerId}] Post steps failed:`, error);
     }
   }
 
@@ -486,6 +502,8 @@ interface ProcessStepsOutput {
 async function processSteps(
   p: ContextualizedProcessable,
   executionReport: WorkflowExecutionReport,
+  reportOffset = 0,
+  nonFatal = false,
 ): Promise<ProcessStepsOutput> {
   const { driver, workerId, queue, config, job, payload, steps, executionContext } = p;
   const stepReports = executionReport.steps;
@@ -497,8 +515,9 @@ async function processSteps(
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
       const stepStartedAt = new Date().toISOString();
-      stepReports[i] = {
-        ...stepReports[i],
+      const reportIndex = reportOffset + i;
+      stepReports[reportIndex] = {
+        ...stepReports[reportIndex],
         status: "running",
         durationMs: 0,
         exitCode: undefined,
@@ -538,22 +557,22 @@ async function processSteps(
       }
 
       if (stepResult.report) {
-        stepReports[i] = {
+        stepReports[reportIndex] = {
           ...stepResult.report,
           startedAt: stepStartedAt,
           finishedAt: new Date().toISOString(),
         };
       } else if (stepResult.skipped) {
-        stepReports[i] = {
-          ...stepReports[i],
+        stepReports[reportIndex] = {
+          ...stepReports[reportIndex],
           status: "skipped",
           durationMs: 0,
           exitCode: 0,
           finishedAt: new Date().toISOString(),
         };
       } else {
-        stepReports[i] = {
-          ...stepReports[i],
+        stepReports[reportIndex] = {
+          ...stepReports[reportIndex],
           status: "failed",
           durationMs: 0,
           exitCode: 1,
@@ -570,25 +589,25 @@ async function processSteps(
         break;
       }
 
-      if (stepResult.cancelled) {
+      if (stepResult.cancelled && !nonFatal) {
         cancelled = true;
         failed = true;
         break;
       }
 
-      if (stepResult.failed) {
+      if (stepResult.failed && !nonFatal) {
         failed = true;
         break;
       }
     }
   } catch (e) {
     console.log("🛑 Step failed", e);
-    failed = true;
+    failed = !nonFatal;
   }
 
   // Mark unexecuted steps as skipped
   if (processedSteps < steps.length) {
-    fillSkippedSteps(steps, processedSteps, stepReports);
+    fillSkippedSteps(steps, processedSteps, stepReports, reportOffset);
     executionReport.durationMs = Date.now() - Date.parse(executionReport.startedAt);
     await queue.saveReport(job.id, executionReport);
     void notifyJobChange(config, job.id);
@@ -1056,11 +1075,11 @@ async function executeRunStep(params: {
 /**
  * Fills skipped step records when execution stops early
  */
-function fillSkippedSteps(steps: any[], startIndex: number, stepReports: StepReport[]) {
+function fillSkippedSteps(steps: any[], startIndex: number, stepReports: StepReport[], reportOffset = 0) {
   for (let j = startIndex; j < steps.length; j++) {
     const skippedStep = steps[j];
     const stepId = skippedStep.id || `step-${j}`;
-    stepReports[j] = {
+    stepReports[reportOffset + j] = {
       id: stepId,
       name: skippedStep.name || stepId,
       status: "skipped",

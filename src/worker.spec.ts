@@ -4,6 +4,116 @@ import { processJob } from "./worker.js";
 import { SecretStore } from "./secrets.js";
 
 describe("incremental workflow reports", () => {
+  it("runs post steps after success and keeps post failures non-fatal", async () => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+    };
+    const driver = {
+      execute: vi.fn(() => ({
+        done: Promise.resolve({ exitCode: 1, durationMs: 1 }),
+        cancel: vi.fn(async () => {}),
+        logFilePath: "",
+      })),
+      readLog: vi.fn(async () => "status request failed"),
+    };
+    await processJob({
+      workerId: "post-worker",
+      job: {
+        id: 20,
+        workflow_id: "post-success",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "post-worker",
+        payload: JSON.stringify({ inputs: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
+      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver,
+      workflow: {
+        id: "post-success",
+        name: "Post success",
+        on: { provider: "generic" },
+        steps: [{ id: "main", eval: "({ ok: true })" }],
+        post: [
+          { id: "status-failure", run: "false" },
+          { id: "observe-result", eval: "({ status: job.status, envStatus: env.CI_JOB_STATUS, runUrl: job.runUrl })" },
+        ],
+      },
+    } as Processable);
+
+    const report = queue.completeJob.mock.calls[0][2];
+    expect(queue.completeJob).toHaveBeenCalledWith(20, "success", expect.any(Object));
+    expect(report.steps.map((step: any) => step.status)).toEqual(["success", "failed", "success"]);
+    expect(report.steps[2].outputs).toEqual({
+      status: "success",
+      envStatus: "success",
+      runUrl: "http://runner.test/ui/runs/20",
+    });
+  });
+
+  it("runs post steps after a failed main step with the terminal status", async () => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+    };
+    const driver = {
+      execute: vi.fn(() => ({
+        done: Promise.resolve({ exitCode: 1, durationMs: 1 }),
+        cancel: vi.fn(async () => {}),
+        logFilePath: "",
+      })),
+      readLog: vi.fn(async () => "main task failed"),
+    };
+    await processJob({
+      workerId: "post-worker",
+      job: {
+        id: 21,
+        workflow_id: "post-failure",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "post-worker",
+        payload: JSON.stringify({ inputs: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
+      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver,
+      workflow: {
+        id: "post-failure",
+        name: "Post failure",
+        on: { provider: "generic" },
+        steps: [
+          { id: "main", run: "false" },
+          { id: "not-run", run: "true" },
+        ],
+        post: [
+          { id: "observe-result", eval: "({ status: job.status, envStatus: env.CI_JOB_STATUS, runUrl: job.runUrl })" },
+        ],
+      },
+    } as Processable);
+
+    const report = queue.completeJob.mock.calls[0][2];
+    expect(queue.completeJob).toHaveBeenCalledWith(21, "failed", expect.any(Object));
+    expect(report.steps.map((step: any) => step.status)).toEqual(["failed", "skipped", "success"]);
+    expect(report.steps[2].outputs).toEqual({
+      status: "failed",
+      envStatus: "failed",
+      runUrl: "http://runner.test/ui/runs/21",
+    });
+  });
+
   it("hands structured step outputs to an authenticated dispatch queue", async () => {
     const dispatch = vi.fn(async () => ({ jobId: 91, workflowId: "downstream", parentId: 9 }));
     const queue = {
