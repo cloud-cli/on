@@ -1,0 +1,9 @@
+[Unit]
+Description=Build and update the Flow2 runner from the dev branch
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/sbin/update-flow2-runner
