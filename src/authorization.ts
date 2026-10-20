@@ -121,10 +121,12 @@ export class RequestAuthorizer {
       return principal;
     }
     const oidcUser = await this.oidc?.userFromAccessToken(token);
-    if (!oidcUser) {
+    const opaqueIdentity = oidcUser ? undefined : await this.oidc?.identityForToken(token);
+    const subject = oidcUser?.id || opaqueIdentity?.subject;
+    if (!subject) {
       return { status: 401, error: "Bearer credential is invalid or revoked" };
     }
-    const resolved = await this.principals.principal(oidcUser.id);
+    const resolved = await this.principals.principal(subject);
     if (!resolved || resolved.disabled) {
       return { status: 401, error: "Authentication required" };
     }
@@ -242,8 +244,8 @@ export class RequestAuthorizer {
     if (!token || !this.oidc) {
       return false;
     }
-    const [user, scopes] = await Promise.all([this.oidc.userFromAccessToken(token), this.oidc.scopesForToken(token)]);
-    return Boolean(user && user.id === principal.subject && scopes?.includes("admin"));
+    const identity = await this.oidc.identityForToken(token);
+    return Boolean(identity && identity.subject === principal.subject && identity.scopes.includes("admin"));
   }
 
   /**

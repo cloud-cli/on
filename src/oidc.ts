@@ -295,6 +295,24 @@ export class OidcClient {
     }
   }
 
+  async identityForToken(token: string): Promise<{ subject: string; scopes: string[] } | null> {
+    if (!token || token.length > 16_384) {
+      return null;
+    }
+    try {
+      const result = await tokenIntrospection(await this.getIntrospectionConfiguration(), token);
+      if (!result.active || typeof result.sub !== "string" || !result.sub.trim()) {
+        return null;
+      }
+      const rawScope = result.scope;
+      const scopes =
+        typeof rawScope === "string" ? rawScope.split(/\s+/).filter(Boolean) : Array.isArray(rawScope) ? rawScope : [];
+      return { subject: result.sub, scopes };
+    } catch {
+      return null;
+    }
+  }
+
   async tokenApiRequest(cookieHeader: string | undefined, path: string, init: RequestInit = {}, accessToken?: string) {
     const session = this.sessionFromCookie(cookieHeader);
     const bearer = accessToken || session?.tokens.access_token;

@@ -15,6 +15,7 @@ const setup = (overrides: any = {}) => {
     userFromCookie: vi.fn(),
     userFromAccessToken: vi.fn(),
     scopesForToken: vi.fn(async () => []),
+    identityForToken: vi.fn(async () => null),
   };
   const principals = { principal: vi.fn(), tokenPrincipal: vi.fn(), membership: vi.fn(), ...overrides };
   return { auth: new RequestAuthorizer(oidc as any, principals as any), oidc, principals };
@@ -54,6 +55,20 @@ describe("RequestAuthorizer", () => {
       status: 401,
       error: "Bearer credential is invalid or revoked",
     });
+  });
+
+  it("accepts active introspected opaque tokens by subject, but rejects inactive or subjectless tokens", async () => {
+    const { auth, principals, oidc } = setup();
+    principals.tokenPrincipal.mockResolvedValue(null);
+    oidc.userFromAccessToken.mockResolvedValue(undefined);
+    oidc.identityForToken.mockResolvedValue({ subject: "opaque-user", scopes: ["runs:read"] });
+    principals.principal.mockResolvedValue(human("opaque-user"));
+    await expect(auth.resolve(request({ authorization: "Bearer opaque" }))).resolves.toMatchObject({
+      principal: { subject: "opaque-user" },
+      source: "token",
+    });
+    oidc.identityForToken.mockResolvedValue(null);
+    await expect(auth.resolve(request({ authorization: "Bearer opaque" }))).resolves.toMatchObject({ status: 401 });
   });
 
   it("rejects mismatched credentials without looking up the session principal", async () => {
@@ -166,6 +181,7 @@ describe("RequestAuthorizer", () => {
     const tokenRequest = request({ authorization: "Bearer oidc-admin", "x-team-id": "unrelated-workspace" });
     oidc.userFromAccessToken.mockResolvedValue({ id: "automation-user" });
     oidc.scopesForToken.mockResolvedValue(["openid", "admin"]);
+    oidc.identityForToken.mockResolvedValue({ subject: "automation-user", scopes: ["openid", "admin"] });
     principals.tokenPrincipal.mockResolvedValue(null);
     principals.principal.mockResolvedValue(human("automation-user"));
     principals.membership.mockResolvedValue(null);
@@ -193,18 +209,22 @@ describe("RequestAuthorizer", () => {
     principals.membership.mockResolvedValue(null);
 
     oidc.scopesForToken.mockResolvedValue(["openid", "profile"]);
+    oidc.identityForToken.mockResolvedValue({ subject: "automation-user", scopes: ["openid", "profile"] });
     const missingScope = response();
     await expect(auth.workspace(tokenRequest, missingScope as any, "secrets.manage")).resolves.toBeNull();
     expect(missingScope.writeHead).toHaveBeenCalledWith(404, expect.anything());
 
     oidc.scopesForToken.mockResolvedValue(null);
+    oidc.identityForToken.mockResolvedValue(null);
     const inactive = response();
     await expect(auth.platform(tokenRequest, inactive as any, "platform.users.manage")).resolves.toBeNull();
     expect(inactive.writeHead).toHaveBeenCalledWith(403, expect.anything());
 
     oidc.scopesForToken.mockResolvedValue(["admin"]);
+    oidc.identityForToken.mockResolvedValue({ subject: "automation-user", scopes: ["admin"] });
     principals.tokenPrincipal.mockResolvedValue(human("automation-user"));
     oidc.scopesForToken.mockResolvedValue([]);
+    oidc.identityForToken.mockResolvedValue({ subject: "automation-user", scopes: [] });
     const apiKey = response();
     await expect(auth.platform(tokenRequest, apiKey as any, "platform.users.manage")).resolves.toBeNull();
     expect(apiKey.writeHead).toHaveBeenCalledWith(403, expect.anything());
@@ -221,6 +241,7 @@ describe("RequestAuthorizer", () => {
     oidc.userFromCookie.mockReturnValue({ id: "browser-user" });
     oidc.userFromAccessToken.mockResolvedValue({ id: "automation-user" });
     oidc.scopesForToken.mockResolvedValue(["admin"]);
+    oidc.identityForToken.mockResolvedValue({ subject: "automation-user", scopes: ["admin"] });
     principals.principal.mockResolvedValue(human("automation-user"));
     const res = response();
 
