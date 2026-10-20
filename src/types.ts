@@ -280,6 +280,7 @@ export interface WorkflowExecutionReport {
 
 export interface Processable {
   workerId: string;
+  executionId?: string;
   job: JobRecord;
   queue: WorkerExecutionQueue;
   secrets: SecretStore;

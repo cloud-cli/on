@@ -1,4 +1,5 @@
 import FS from "node:fs";
+import { createHash } from "node:crypto";
 import Path from "node:path";
 import { resolveDriver } from "./drivers/index.js";
 import { QueueManager } from "./queue.js";
@@ -340,7 +341,10 @@ export async function processJob(p: Processable) {
   const postSteps = resolvedWorkflow.post || [];
   const inputs = payload.inputs || {};
   const jobStartTime = Date.now();
-  const storagePath = Path.join(config.storagePath, `job-${job.id}`);
+  const jobStoragePath = Path.join(config.storagePath, `job-${job.id}`);
+  const storagePath = p.executionId
+    ? Path.join(jobStoragePath, `execution-${createHash("sha256").update(p.executionId).digest("hex")}`)
+    : jobStoragePath;
   const logsDir = Path.join(storagePath, "logs");
   const workingDir = Path.join(storagePath, "wd");
   const runUrl = new URL(`/ui/runs/${job.id}`, config.serverUrl).toString();

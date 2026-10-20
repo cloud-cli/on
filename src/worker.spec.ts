@@ -4,6 +4,51 @@ import { processJob } from "./worker.js";
 import { SecretStore } from "./secrets.js";
 
 describe("incremental workflow reports", () => {
+  it("isolates workspace paths by lease identity and keeps each lease path stable", async () => {
+    const workspaceDirs: string[] = [];
+    const makeRun = async (executionId: string) => {
+      const queue = {
+        saveReport: vi.fn(async () => {}),
+        saveStepLog: vi.fn(async () => {}),
+        completeJob: vi.fn(async () => {}),
+        isCancelled: vi.fn(async () => false),
+      };
+      const driver = {
+        execute: vi.fn((context: any) => {
+          workspaceDirs.push(context.workingDir);
+          return { done: Promise.resolve({ exitCode: 0, durationMs: 1 }), cancel: vi.fn(), logFilePath: "" };
+        }),
+        readLog: vi.fn(async () => ""),
+      };
+      await processJob({
+        executionId,
+        workerId: "lease-worker",
+        job: {
+          id: 123,
+          workflow_id: "lease",
+          workflow_revision: 1,
+          required_tags: "[]",
+          concurrency_key: null,
+          status: "running",
+          worker_id: "lease-worker",
+          payload: JSON.stringify({ inputs: {} }),
+          created_at: new Date().toISOString(),
+        },
+        queue,
+        secrets: { getAll: () => ({}), redactText: (text: string) => text },
+        config: { storagePath: "/tmp/workspace-test", serverUrl: "http://runner.test", env: {}, plugins: [] },
+        driver,
+        workflow: { id: "lease", name: "Lease", on: { provider: "generic" }, steps: [{ id: "main", run: "echo ok" }] },
+      } as Processable);
+    };
+    await makeRun("lease-one");
+    await makeRun("lease-two");
+    await makeRun("lease-one");
+    expect(workspaceDirs[0]).not.toBe(workspaceDirs[1]);
+    expect(workspaceDirs[0]).toBe(workspaceDirs[2]);
+    expect(workspaceDirs[0]).toContain("execution-");
+  });
+
   it("runs post steps after success and keeps post failures non-fatal", async () => {
     const queue = {
       saveReport: vi.fn(async () => {}),

@@ -226,6 +226,7 @@ async function executeLease(api: RunnerApi, lease: RunnerLease, config: RunnerCo
     const { processJob } = await import("./worker.js");
     await processJob({
       workerId: config.runnerId || "node-runner",
+      executionId: lease.leaseId,
       job,
       queue,
       secrets,

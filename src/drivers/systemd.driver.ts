@@ -9,6 +9,8 @@ import { debug } from "../debug.js";
 import { TimestampedLogWriter } from "../timestamped-log.js";
 
 const execAsync = promisify(exec);
+const SYSTEMD_OUTPUT_LINE =
+  /^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] (?:Running as unit:|Finished with result:|CPU time consumed:|Memory peak:)/;
 
 export class SystemdDriver implements ExecutionDriver {
   name = "systemd";
@@ -193,11 +195,9 @@ export class SystemdDriver implements ExecutionDriver {
 
   async readLog(file: string) {
     const content = await readFile(file, "utf-8");
-    const start = content.includes("Running as unit: ") ? content.indexOf("\n") + 1 : 0;
-    const end = content.includes("Finished with result: ")
-      ? content.lastIndexOf("Finished with result: ")
-      : content.length;
-
-    return content.slice(start, end);
+    return content
+      .split(/(?<=\n)/)
+      .filter((line) => !SYSTEMD_OUTPUT_LINE.test(line))
+      .join("");
   }
 }
