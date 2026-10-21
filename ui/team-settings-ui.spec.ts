@@ -13,6 +13,7 @@ describe("team settings UI", () => {
     expect(html).toContain("Get link");
     expect(html).toContain("Invite by OIDC subject");
     expect(html).toContain('aria-label="OIDC subject"');
+    expect(html).toContain("member.kind === 'agent' ? 'Agent' : 'Person'");
     expect(html).toContain("Create webhook");
     expect(html).toContain("Webhook URL slug.");
     expect(html).toContain('for="member of members"');

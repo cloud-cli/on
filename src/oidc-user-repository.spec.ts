@@ -26,6 +26,17 @@ describe("OIDC user management repository", () => {
     ]);
   });
 
+  it("marks Agent subjects separately and excludes them from the human user roster", async () => {
+    const repository = new OidcUserRepository();
+    await repository.upsert({ id: "agent_build-runner", role: "agent" });
+    expect(database.run.mock.calls[0][0]).toContain("preferred_username, kind)");
+    expect(database.run.mock.calls[0][1].at(-1)).toBe("agent");
+
+    database.all.mockResolvedValue([]);
+    await repository.list();
+    expect(database.all.mock.calls.at(-1)?.[0]).toContain("subject NOT GLOB 'agent_*'");
+  });
+
   it("does not update a nonexistent user", async () => {
     database.get.mockResolvedValue(null);
 

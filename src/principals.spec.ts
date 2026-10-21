@@ -35,6 +35,8 @@ describe("PrincipalRepository", () => {
       platformCapabilities: [],
       disabled: true,
     });
+    db.get.mockResolvedValueOnce(person("agent_job-runner", { role: "admin" }));
+    expect(await repo().principal("agent_job-runner")).toMatchObject({ kind: "agent", platformRole: "user" });
   });
 
   it("hashes token lookups, rejects invalid/disabled tokens, and records use", async () => {
@@ -52,7 +54,19 @@ describe("PrincipalRepository", () => {
     db.run.mockClear();
     db.get.mockResolvedValueOnce({ ...person("system:legacy", { kind: "system" }), token_id: "legacy" });
     expect(await r.tokenPrincipal("legacy-system-token")).toBeNull();
+    db.get.mockResolvedValueOnce({ ...person("agent_build", { kind: "human" }), token_id: "agent-token" });
+    expect(await r.tokenPrincipal("legacy-agent-token")).toBeNull();
     expect(db.run).not.toHaveBeenCalled();
+  });
+
+  it("identifies Agent identities in workspace member listings", async () => {
+    db.all
+      .mockResolvedValueOnce([
+        { subject: "agent_runner", name: "Runner", email: null, platform_role: "user", kind: "human", role: "member" },
+      ])
+      .mockResolvedValueOnce([]);
+
+    await expect(repo().listMembers("workspace")).resolves.toMatchObject([{ kind: "agent", role: "collaborator" }]);
   });
 
   it("loads membership, handles disabled/non-members, legacy roles and overrides", async () => {

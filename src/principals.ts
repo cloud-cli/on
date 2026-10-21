@@ -16,7 +16,7 @@ import {
 
 const digest = (value: string) => crypto.createHash("sha256").update(value).digest("hex");
 
-export type PrincipalKind = "human" | "system";
+export type PrincipalKind = "human" | "agent" | "system";
 export type PlatformRole = "user" | "admin";
 
 export type Principal = {
@@ -49,6 +49,17 @@ export type WorkspaceMemberView = {
   disabled: boolean;
 };
 
+function principalKind(row: { kind?: unknown; subject?: unknown }): PrincipalKind {
+  if (row.kind === "system") {
+    return "system";
+  }
+  // The Auth provider reserves the agent_ subject namespace for Agent identities.
+  if (row.kind === "agent" || (typeof row.subject === "string" && row.subject.startsWith("agent_"))) {
+    return "agent";
+  }
+  return "human";
+}
+
 export function memberViewForCaller(member: WorkspaceMemberView, canManage: boolean): Partial<WorkspaceMemberView> {
   if (canManage) {
     return member;
@@ -57,8 +68,8 @@ export function memberViewForCaller(member: WorkspaceMemberView, canManage: bool
 }
 
 function normalizePrincipal(row: any): Principal {
-  const kind: PrincipalKind = row.kind === "system" ? "system" : "human";
-  const platformRole: PlatformRole = kind === "system" ? "user" : row.role === "admin" ? "admin" : "user";
+  const kind = principalKind(row);
+  const platformRole: PlatformRole = kind !== "human" ? "user" : row.role === "admin" ? "admin" : "user";
   return {
     subject: row.subject,
     kind,
@@ -146,7 +157,7 @@ export class PrincipalRepository {
        WHERE t.token_hash = ? AND t.revoked_at IS NULL`,
       [digest(token)],
     );
-    if (!row || row.disabled_at || row.kind === "system") {
+    if (!row || row.disabled_at || principalKind(row) !== "human") {
       return null;
     }
     await db.run("UPDATE principal_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?", [row.token_id]);
@@ -200,7 +211,7 @@ export class PrincipalRepository {
       bySubject.set(row.subject, list);
     }
     return rows.map((row: any) => {
-      const kind: PrincipalKind = row.kind === "system" ? "system" : "human";
+      const kind = principalKind(row);
       const role = isWorkspaceRole(row.role) ? row.role : roleFromLegacyMemberRole(row.role);
       const memberOverrides = bySubject.get(row.subject) || [];
       return {
@@ -235,7 +246,7 @@ export class PrincipalRepository {
     if (!existing || !principal) {
       return "not-found";
     }
-    if (principal.kind === "system" || principal.disabled) {
+    if (principal.kind !== "human" || principal.disabled) {
       return "not-found";
     }
     const sanitized = sanitizeWorkspaceOverrides(overrides);
@@ -303,7 +314,7 @@ export class PrincipalRepository {
     if (!principal) {
       return "not-found";
     }
-    if (principal.kind === "system" || principal.disabled) {
+    if (principal.kind !== "human" || principal.disabled) {
       return "not-found";
     }
     const existing = await db.get("SELECT 1 AS present FROM team_members WHERE team_id = ? AND subject = ?", [

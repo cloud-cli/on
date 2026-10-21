@@ -20,9 +20,17 @@ export class OidcUserRepository {
 
   async upsert(user: OidcUser) {
     await db.run(
-      `INSERT INTO oidc_users (subject, email, name, photo, preferred_username) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(subject) DO UPDATE SET email = excluded.email, name = excluded.name, photo = excluded.photo, preferred_username = excluded.preferred_username, updated_at = CURRENT_TIMESTAMP`,
-      [user.id, user.email || null, user.name || null, user.photo || null, user.preferred_username || null],
+      `INSERT INTO oidc_users (subject, email, name, photo, preferred_username, kind) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(subject) DO UPDATE SET email = excluded.email, name = excluded.name, photo = excluded.photo,
+        preferred_username = excluded.preferred_username, kind = excluded.kind, updated_at = CURRENT_TIMESTAMP`,
+      [
+        user.id,
+        user.email || null,
+        user.name || null,
+        user.photo || null,
+        user.preferred_username || null,
+        user.role === "agent" || user.id.startsWith("agent_") ? "agent" : "human",
+      ],
     );
   }
 
@@ -38,7 +46,7 @@ export class OidcUserRepository {
 
   async list(): Promise<OidcUserRecord[]> {
     const rows = await db.all(
-      "SELECT subject, name, email, role FROM oidc_users WHERE COALESCE(kind, 'human') = 'human' ORDER BY name, email, subject",
+      "SELECT subject, name, email, role FROM oidc_users WHERE COALESCE(kind, 'human') = 'human' AND subject NOT GLOB 'agent_*' ORDER BY name, email, subject",
     );
     return rows.map((row: any) => ({
       id: row.subject,

@@ -73,7 +73,7 @@
                 >
                   <span class="min-w-0">
                     {{ member.name || 'Unnamed member' }}
-                    <span class="ml-2 text-xs text-flow-muted">person</span>
+                    <span class="ml-2 text-xs text-flow-muted">{{ member.kind === 'agent' ? 'Agent' : 'Person' }}</span>
                   </span>
                   <span
                     class="rounded border border-flow-warning/30 bg-flow-warning/10 px-1.5 py-0.5 text-xs font-medium text-flow-warning"
