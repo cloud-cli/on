@@ -3,7 +3,7 @@
   "info": {
     "title": "On Workflow Runner API",
     "version": "1.0.0",
-    "description": "Control-plane, job, workflow, webhook, event, secret, artifact, and notification APIs. All application APIs are under /api/v1; OIDC browser flows are handled separately. Active OIDC access tokens with the exact `admin` scope have platform-wide administrator authority on authenticated management APIs."
+    "description": "Control-plane, job, workflow, webhook, event, secret, artifact, and notification APIs. All application APIs are under /api/v1; /api is a compatibility alias. The OpenAPI document at /api/v1 is public. OIDC browser flows are handled separately. Active OIDC access tokens with the exact `admin` scope have platform-wide administrator authority on authenticated management APIs."
   },
   "servers": [
     {
@@ -2275,17 +2275,7 @@
       "get": {
         "tags": ["discovery"],
         "summary": "Get this OpenAPI specification",
-        "security": [
-          {
-            "oidcSessionCookie": []
-          },
-          {
-            "bearerAuth": []
-          },
-          {
-            "oidcAdminBearer": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "OpenAPI JSON document",
@@ -2296,9 +2286,6 @@
                 }
               }
             }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
