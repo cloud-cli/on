@@ -21,6 +21,7 @@ describe("Flow application shell", () => {
     expect(shellSetup).toContain('import "@app/api-client.mjs"');
     expect(shellSetup).toContain('activeSection.value = "workflows"');
     expect(html).toContain('"@app/": "/assets/"');
+    expect(html).toContain('"yaml": "https://esm.sh/yaml@2.9.0"');
     expect(html).toContain('aria-label="Primary navigation"');
     expect(html).toContain('aria-label="Mobile navigation"');
     expect(html).toContain("bottom-0 z-50");
