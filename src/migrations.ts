@@ -434,6 +434,44 @@ const migrations: Migration[] = [
       await db.transaction([{ s: "ALTER TABLE teams ADD COLUMN deleting_at DATETIME", m: "run" }]);
     },
   },
+
+  {
+    version: "012_retire_flow_system_principals",
+    async apply() {
+      const tables = await db.all("SELECT name FROM sqlite_master WHERE type = 'table'");
+      const names = new Set(tables.map((table: any) => table.name));
+      if (!names.has("oidc_users")) {
+        return;
+      }
+      const statements: Array<{ s: string; m: string }> = [];
+      if (names.has("principal_tokens")) {
+        statements.push({
+          s: "UPDATE principal_tokens SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP) WHERE subject IN (SELECT subject FROM oidc_users WHERE kind = 'system')",
+          m: "run",
+        });
+      }
+      if (names.has("team_members")) {
+        statements.push({
+          s: "DELETE FROM team_members WHERE subject IN (SELECT subject FROM oidc_users WHERE kind = 'system')",
+          m: "run",
+        });
+      }
+      if (names.has("workspace_permission_overrides")) {
+        statements.push({
+          s: "DELETE FROM workspace_permission_overrides WHERE subject IN (SELECT subject FROM oidc_users WHERE kind = 'system')",
+          m: "run",
+        });
+      }
+      statements.push({
+        s: "UPDATE oidc_users SET disabled_at = COALESCE(disabled_at, CURRENT_TIMESTAMP) WHERE kind = 'system'",
+        m: "run",
+      });
+      if (typeof db.transaction !== "function") {
+        throw new Error("Atomic transactions are required for migration 012");
+      }
+      await db.transaction(statements);
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

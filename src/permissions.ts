@@ -28,8 +28,6 @@ export const WORKSPACE_CAPABILITIES = [
   "webhooks.manage",
   "runners.view",
   "runners.manage",
-  "tokens.view",
-  "tokens.manage",
   "settings.manage",
 ] as const;
 
@@ -82,8 +80,6 @@ const ADMIN: readonly WorkspaceCapability[] = [
   "webhooks.manage",
   "runners.view",
   "runners.manage",
-  "tokens.view",
-  "tokens.manage",
   "settings.manage",
 ];
 
@@ -102,14 +98,14 @@ export const WORKSPACE_ROLE_LABELS: Readonly<Record<WorkspaceRole, string>> = {
 export const WORKSPACE_ROLE_DESCRIPTIONS: Readonly<Record<WorkspaceRole, string>> = {
   viewer: "Audit CI results: run status, workflow names, and summaries. No logs or changes.",
   collaborator: "Day-to-day work: logs, artifacts, dispatch and rerun, and workflow editing.",
-  admin: "Workspace owner: destructive cleanup, members, secrets, runners, webhooks, and tokens.",
+  admin: "Workspace owner: destructive cleanup, members, secrets, runners, and webhooks.",
 };
 
 export const PLATFORM_ADMIN_CAPABILITIES: readonly GlobalCapability[] = GLOBAL_CAPABILITIES;
 
 export const GLOBAL_CAPABILITY_LABELS: Readonly<Record<GlobalCapability, string>> = {
-  "platform.users.view": "View users and system users",
-  "platform.users.manage": "Create, disable, and assign system users",
+  "platform.users.view": "View people",
+  "platform.users.manage": "Manage people and platform roles",
   "platform.workspaces.delete": "Delete workspaces",
   "platform.runners.view": "View all runners",
   "platform.runners.manage": "Enroll, update, rename, and revoke runners",
@@ -219,7 +215,7 @@ export const WORKSPACE_CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
   {
     id: "automation",
     label: "Automation",
-    description: "Webhooks, runners, and API tokens.",
+    description: "Webhooks and runners.",
     capabilities: [
       { capability: "webhooks.view", label: "View webhooks", description: "See webhook registrations." },
       { capability: "webhooks.manage", label: "Manage webhooks", description: "Create and revoke webhooks." },
@@ -228,16 +224,6 @@ export const WORKSPACE_CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
         capability: "runners.manage",
         label: "Manage runners",
         description: "Activate runners and change shared-runner grants.",
-      },
-      {
-        capability: "tokens.view",
-        label: "View tokens",
-        description: "See automation tokens bound to this workspace.",
-      },
-      {
-        capability: "tokens.manage",
-        label: "Manage tokens",
-        description: "Issue and revoke automation tokens for system users in this workspace.",
       },
     ],
   },

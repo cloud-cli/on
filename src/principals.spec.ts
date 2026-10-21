@@ -165,7 +165,7 @@ describe("PrincipalRepository", () => {
     db.get
       .mockResolvedValueOnce({ role: "viewer" })
       .mockResolvedValueOnce(person("system:x", { kind: "system", role: "user" }));
-    expect(await r.setMemberPermissions("t", "system:x", "admin", [], "a")).toBe("system-user-elevation");
+    expect(await r.setMemberPermissions("t", "system:x", "admin", [], "a")).toBe("system-user-retired");
     db.get
       .mockResolvedValueOnce({ role: "viewer" })
       .mockResolvedValueOnce(person())
@@ -219,7 +219,7 @@ describe("PrincipalRepository", () => {
     db.get.mockResolvedValueOnce(null);
     expect(await r.addMember("t", "x", "viewer", "a")).toBe("not-found");
     db.get.mockResolvedValueOnce(person("sys", { kind: "system" }));
-    expect(await r.addMember("t", "sys", "admin", "a")).toBe("system-user-elevation");
+    expect(await r.addMember("t", "sys", "admin", "a")).toBe("system-user-retired");
     db.get.mockResolvedValueOnce(person()).mockResolvedValueOnce({ present: 1 });
     expect(await r.addMember("t", "x", "viewer", "a")).toBe("exists");
     db.get.mockResolvedValueOnce(person()).mockResolvedValueOnce(null);

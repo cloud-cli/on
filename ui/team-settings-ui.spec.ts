@@ -17,26 +17,23 @@ describe("team settings UI", () => {
     expect(html).toContain('class-hidden="!isAdmin"');
     expect(html).toContain('script setup src="/assets/team-settings-ui.mjs"');
     expect(html).not.toContain("Personal settings</a>");
-    expect(html.match(/rounded-xl border border-flow-border bg-flow-card p-5/g)).toHaveLength(6);
+    expect(html.match(/rounded-xl border border-flow-border bg-flow-card p-5/g)).toHaveLength(5);
     expect(html).toContain('aria-label="Workspace settings sections"');
     expect(html).toContain(
       'class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-flow-border bg-flow-background py-2"',
     );
     expect(
       html.match(/rounded-md border border-flow-border bg-white px-2\.5 py-1\.5 text-xs font-medium/g),
-    ).toHaveLength(7);
+    ).toHaveLength(6);
     expect(html).toContain('href="#team-members"');
     expect(html).toContain('href="#team-webhooks"');
     expect(html).toContain('href="#team-runners"');
     expect(html).toContain('href="#workspace-permissions"');
-    expect(html).toContain('href="#workspace-tokens"');
     expect(html).toContain('href="#workspace-secrets"');
     expect(html).toContain('<h2 id="team-runners-title" class="text-lg font-semibold">Task Runners</h2>');
-    expect(html).toContain('<h2 id="workspace-tokens-title" class="text-lg font-semibold">Agents &amp; tokens</h2>');
     expect(html).toContain('<h2 id="workspace-secrets-title" class="text-lg font-semibold">Task Runner Secrets</h2>');
     expect(html).toContain("bg-flow-warning/10");
     expect(html).toContain("text-flow-warning");
-    expect(html).toContain('placeholder="Agent name, e.g. nightly-deploy"');
     expect(html).not.toContain('value="github"');
     expect(html).toContain('on-change="setFileMode($event)"');
     expect(html).toContain('on-input="setWebhookProvider($event)"');
@@ -54,7 +51,7 @@ describe("team settings UI", () => {
     expect(html).toContain('class="w-full space-y-5 py-2"');
   });
 
-  it("places invitation entry after members and permissions before agent tokens", () => {
+  it("places invitation entry after members and permissions", () => {
     const html = generateTeamSettingsHtml();
     const members = html.indexOf('id="team-members"');
     const invitationForm = html.indexOf('on-submit.prevent="createInvitation()"');
@@ -71,7 +68,7 @@ describe("team settings UI", () => {
     expect(html.slice(invitationSection, webhooks)).toContain("Get link");
     expect(secrets).toBeGreaterThan(webhooks);
     expect(permissions).toBeGreaterThan(secrets);
-    expect(tokens).toBeGreaterThan(permissions);
+    expect(tokens).toBe(-1);
   });
 
   it("puts webhooks in their own section after workspace members", () => {
@@ -110,14 +107,13 @@ describe("team settings UI", () => {
     expect(setup).not.toContain('request("/api/v1/teams",');
   });
 
-  it("manages workspace secrets, permissions, agents, and tokens in workspace settings only", () => {
+  it("manages workspace secrets and permissions without principal tokens", () => {
     const html = generateTeamSettingsHtml();
-    expect(html).toContain("Agents &amp; tokens");
+    expect(html).not.toContain("Agents &amp; tokens");
     expect(html).toContain("Task Runner Secrets");
-    expect(html).toContain("Copy this token now. It cannot be shown again.");
-    expect(setup).toContain('workspaceUrl("/tokens")');
     expect(setup).toContain("/api/v1/secrets/");
     expect(setup).toContain('"X-Team-ID": teamId');
+    expect(setup).not.toMatch(/system-users|tokens/);
     expect(generateSettingsHtml()).not.toContain("Agents &amp; tokens");
     expect(generateSettingsHtml()).not.toContain("Secrets");
   });

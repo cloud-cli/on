@@ -375,8 +375,8 @@ export class PrincipalRepository {
   }
 
   /**
-   * Replace one member's role and sparse overrides atomically. System users may
-   * never exceed Collaborator, and every elevation is recorded.
+   * Replace one member's role and sparse overrides atomically; every elevation
+   * is recorded.
    */
   async setMemberPermissions(
     teamId: string,
@@ -384,7 +384,7 @@ export class PrincipalRepository {
     role: WorkspaceRole,
     overrides: readonly PermissionOverride[],
     actor: string,
-  ): Promise<"updated" | "not-found" | "last-admin" | "system-user-elevation"> {
+  ): Promise<"updated" | "not-found" | "last-admin" | "system-user-retired"> {
     if (!isWorkspaceRole(role)) {
       throw new Error("Unknown workspace role");
     }
@@ -393,11 +393,10 @@ export class PrincipalRepository {
     if (!existing || !principal) {
       return "not-found";
     }
-    if (principal.kind === "system" && role === "admin") {
-      return "system-user-elevation";
+    if (principal.kind === "system") {
+      return "system-user-retired";
     }
-    const sanitized =
-      principal.kind === "system" ? sanitizeSystemUserOverrides(overrides) : sanitizeWorkspaceOverrides(overrides);
+    const sanitized = sanitizeWorkspaceOverrides(overrides);
     const previousRole = isWorkspaceRole(existing.role) ? existing.role : roleFromLegacyMemberRole(existing.role);
     const statements: Array<{ s: string; d?: unknown[]; m: string }> = [
       {
@@ -448,13 +447,13 @@ export class PrincipalRepository {
     return "updated";
   }
 
-  /** Add an existing principal to a workspace, refusing to elevate system users to admin. */
+  /** Add an existing human principal to a workspace. */
   async addMember(
     teamId: string,
     subject: string,
     role: WorkspaceRole,
     actor: string,
-  ): Promise<"added" | "not-found" | "system-user-elevation" | "exists"> {
+  ): Promise<"added" | "not-found" | "system-user-retired" | "exists"> {
     if (!isWorkspaceRole(role)) {
       throw new Error("Unknown workspace role");
     }
@@ -462,8 +461,8 @@ export class PrincipalRepository {
     if (!principal) {
       return "not-found";
     }
-    if (principal.kind === "system" && role === "admin") {
-      return "system-user-elevation";
+    if (principal.kind === "system") {
+      return "system-user-retired";
     }
     const existing = await db.get("SELECT 1 AS present FROM team_members WHERE team_id = ? AND subject = ?", [
       teamId,

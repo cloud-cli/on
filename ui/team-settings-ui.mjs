@@ -1,4 +1,4 @@
-import { computed, onInit, ref } from "@li3/web";
+import { onInit, ref } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
 import { workspaceIdFromPathname } from "@app/workspace-path.mjs";
 
@@ -25,11 +25,6 @@ export default function () {
   const availableRunners = ref([]);
   const enrollmentCode = ref("");
   const enrollmentExpiresAt = ref("");
-  const tokens = ref([]);
-  const tokenName = ref("");
-  const tokenSubject = ref("");
-  const agentName = ref("");
-  const tokenValue = ref("");
   const secrets = ref([]);
   const secretName = ref("");
   const secretValue = ref("");
@@ -72,8 +67,6 @@ export default function () {
     sharedRunners.value = runners.shared || [];
     availableRunners.value = runners.available || [];
     secrets.value = (await request("/api/v1/secrets")).secrets || [];
-    const canSeeTokens = canManage.value;
-    tokens.value = canSeeTokens ? (await request(workspaceUrl("/tokens"))).tokens || [] : [];
     if (selectedMember.value && !members.value.some((member) => member.subject === selectedMember.value)) {
       selectedMember.value = "";
     }
@@ -82,7 +75,6 @@ export default function () {
     }
   };
   const roleCapabilities = (role) => new Set(roles.value[role] || []);
-  const systemUsers = computed(() => members.value.filter((member) => member.kind === "system"));
   const buildRows = () => {
     const base = roleCapabilities(draftRole.value);
     const overrides = new Map(draftOverrides.value.map((entry) => [entry.capability, entry.effect]));
@@ -337,41 +329,6 @@ export default function () {
       }
       await load();
     });
-  const addSystemUser = () =>
-    act(async () => {
-      const name = agentName.value.trim();
-      if (!name) {
-        throw new Error("Enter a name for the agent or automation.");
-      }
-      const result = await request(workspaceUrl("/system-users"), {
-        method: "POST",
-        body: JSON.stringify({ name }),
-      });
-      agentName.value = "";
-      message.value = `${result.systemUser.name} was added as a collaborator. Issue a token for it below.`;
-      await load();
-    });
-  const issueToken = () =>
-    act(async () => {
-      if (!tokenSubject.value) {
-        throw new Error("Choose the system user that should own this token.");
-      }
-      const result = await request(workspaceUrl("/tokens"), {
-        method: "POST",
-        body: JSON.stringify({ subject: tokenSubject.value, name: tokenName.value }),
-      });
-      tokenValue.value = result.token;
-      tokenName.value = "";
-      await load();
-    });
-  const revokeToken = (token) =>
-    act(async () => {
-      if (!confirm(`Revoke ${token.name}? Any automation using it will stop working immediately.`)) {
-        return;
-      }
-      await request(workspaceUrl(`/tokens/${encodeURIComponent(token.id)}`), { method: "DELETE" });
-      await load();
-    });
   onInit(async () => {
     try {
       const { workspaces = [] } = await request("/api/v1/workspaces");
@@ -423,18 +380,6 @@ export default function () {
     enrollmentExpiresAt,
     createRunnerEnrollment,
     setSharedRunner,
-    systemUsers,
-    agentName,
-    setAgentName,
-    addSystemUser,
-    tokens,
-    tokenName,
-    setTokenName,
-    tokenSubject,
-    setTokenSubject,
-    tokenValue,
-    issueToken,
-    revokeToken,
     secrets,
     secretName,
     setSecretName,

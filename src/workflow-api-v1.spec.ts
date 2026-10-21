@@ -8,6 +8,7 @@ function makeResponse() {
 function makeServer(scopes: string[] | null = ["workflows:read", "workflows:write"], workflows = {}) {
   const server: any = {
     authorizer: {
+      authenticated: vi.fn(async () => ({ principal: { subject: "human:test", kind: "human" }, source: "session" })),
       workspace: vi.fn(async (_req, res, capability) => {
         const needed = capability === "workflows.view" ? "workflows:read" : "workflows:write";
         if (!scopes?.includes(needed)) {
@@ -60,6 +61,7 @@ function makeServer(scopes: string[] | null = ["workflows:read", "workflows:writ
     (WebhookServer.prototype as any).requireAuthenticatedApiRequest.call(server, req, res);
   server.requireWorkflowApiScope = (req, res, scope) =>
     (WebhookServer.prototype as any).requireWorkflowApiScope.call(server, req, res, scope);
+  server.handleTeams = (req, res, url) => (WebhookServer.prototype as any).handleTeams.call(server, req, res, url);
   server.requireTeam = vi.fn(async () => "workspace-a");
   server.readRequest = (req, res) => (WebhookServer.prototype as any).readRequest.call(server, req, res);
   server.readJson = (req, res) => (WebhookServer.prototype as any).readJson.call(server, req, res);
@@ -80,6 +82,30 @@ function makeRequest(method: string, url: string, body?: unknown) {
 }
 
 describe("scoped workflow API v1", () => {
+  it("retires Flow-managed system-user and principal-token endpoints", async () => {
+    const server = makeServer();
+    for (const [method, url] of [
+      ["GET", "/api/v1/system-users"],
+      ["POST", "/api/v1/system-users"],
+      ["PUT", "/api/v1/system-users/system%3Alegacy"],
+      ["DELETE", "/api/v1/workspaces/workspace-a/system-users/system%3Alegacy"],
+      ["GET", "/api/v1/workspaces/workspace-a/tokens"],
+      ["POST", "/api/v1/workspaces/workspace-a/tokens"],
+      ["DELETE", "/api/v1/workspaces/workspace-a/tokens/legacy-token"],
+    ]) {
+      const res = makeResponse();
+      await (WebhookServer.prototype as any).handleRequest.call(server, makeRequest(method, url), res);
+
+      expect(res.writeHead).toHaveBeenCalledWith(410, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
+      expect(res.end).toHaveBeenCalledWith(
+        expect.stringMatching(/Flow-managed (system users|principal tokens) are retired\./),
+      );
+    }
+  });
+
   it("lists only active workflows when requested with a read-scoped key", async () => {
     const workflows = [{ id: "test", sourceYaml: "name: Test", status: "published", enabled: true }];
     const server = makeServer(["workflows:read"], { listActiveForTeam: vi.fn(async () => workflows) });

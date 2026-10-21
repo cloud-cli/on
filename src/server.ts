@@ -1253,88 +1253,16 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return res.end(JSON.stringify({ workspaces: await this.principals.allWorkspaces() }));
     }
 
-    if (req.method === "GET" && url.pathname === "/api/system-users") {
-      if (!(await this.requirePlatformCapability(req, res, "platform.users.view"))) {
-        return;
-      }
-      const principals = (await this.principals.listPrincipals()).filter((entry) => entry.kind === "system");
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-      return res.end(JSON.stringify({ systemUsers: principals }));
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/system-users") {
-      const actor = await this.requirePlatformCapability(req, res, "platform.users.manage");
-      if (!actor) {
-        return;
-      }
-      const body = await this.readJson(req, res);
-      if (!body || typeof body.name !== "string") {
-        if (!res.headersSent) {
-          res.writeHead(400).end(JSON.stringify({ error: "name is required" }));
-        }
-        return;
-      }
-      try {
-        const principal = await this.principals.createSystemUser({
-          name: body.name,
-          actor: actor.principal.subject,
-          email: typeof body.email === "string" ? body.email : undefined,
-        });
-        res.writeHead(201, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-        return res.end(JSON.stringify({ systemUser: principal }));
-      } catch (error: any) {
-        res.writeHead(422, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
-        return;
-      }
-    }
-
-    const systemUserMatch = url.pathname.match(/^\/api\/system-users\/([^/]+)$/);
-    if (systemUserMatch && req.method === "PUT") {
-      const actor = await this.requirePlatformCapability(req, res, "platform.users.manage");
-      if (!actor) {
-        return;
-      }
-      const subject = decodeURIComponent(systemUserMatch[1]);
-      const body = await this.readJson(req, res);
-      if (!body || res.headersSent) {
-        return;
-      }
-      try {
-        const principal = await this.principals.updateSystemUser(
-          subject,
-          {
-            name: typeof body.name === "string" ? body.name : undefined,
-            disabled: typeof body.disabled === "boolean" ? body.disabled : undefined,
-          },
-          actor.principal.subject,
-        );
-        if (!principal) {
-          res.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Not found" }));
-          return;
-        }
-        res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-        return res.end(JSON.stringify({ systemUser: principal }));
-      } catch (error: any) {
-        res.writeHead(422, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
-        return;
-      }
-    }
-    if (systemUserMatch && req.method === "DELETE") {
-      const actor = await this.requirePlatformCapability(req, res, "platform.users.manage");
-      if (!actor) {
-        return;
-      }
-      const subject = decodeURIComponent(systemUserMatch[1]);
-      const removed = await this.principals.deleteSystemUser(subject, actor.principal.subject);
-      res.writeHead(removed ? 204 : 404).end();
-      return;
+    if (url.pathname === "/api/system-users" || /^\/api\/system-users\//.test(url.pathname)) {
+      res.writeHead(410, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ error: "Flow-managed system users are retired." }));
     }
 
     if (url.pathname === "/api/api-keys" || /^\/api\/api-keys\/[^/]+$/.test(url.pathname)) {
       res.writeHead(410, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
       return res.end(
         JSON.stringify({
-          error: "Legacy API keys are retired. Issue a token for a named system user in workspace settings instead.",
+          error: "Legacy API keys are retired.",
         }),
       );
     }
@@ -2376,7 +2304,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
       res.writeHead(410, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
       res.end(
         JSON.stringify({
-          error: "Legacy API keys are retired. Issue a token for a named system user in workspace settings instead.",
+          error: "Legacy API keys are retired.",
         }),
       );
       return;
@@ -2405,96 +2333,17 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return;
     }
 
-    const systemUsersMatch = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/system-users$`));
-    if (systemUsersMatch && req.method === "POST") {
-      const teamId = decodeURIComponent(systemUsersMatch[1]);
-      const authorized = await this.authorizer.workspace(req, res, "tokens.manage", teamId);
-      if (!authorized) {
-        return;
-      }
-      const body = await this.readJson(req, res);
-      if (!body || typeof body.name !== "string") {
-        if (!res.headersSent) {
-          res.writeHead(400).end(JSON.stringify({ error: "name is required" }));
-        }
-        return;
-      }
-      try {
-        const principal = await this.principals.createSystemUser({
-          name: body.name,
-          actor: authorized.principal.subject,
-        });
-        await this.principals.addMember(teamId, principal.subject, "collaborator", authorized.principal.subject);
-        await this.principals.recordAudit({
-          actor: authorized.principal.subject,
-          action: "system-user.create",
-          target: principal.subject,
-          teamId,
-          detail: { name: principal.name },
-        });
-        res.writeHead(201, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ systemUser: principal }));
-      } catch (error: any) {
-        res.writeHead(422, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
-      }
+    const systemUsersMatch = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/system-users(?:/.*)?$`));
+    if (systemUsersMatch) {
+      res.writeHead(410, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ error: "Flow-managed system users are retired." }));
       return;
     }
 
-    const tokensMatch = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/tokens$`));
-    const tokenMatch = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/tokens/([^/]+)$`));
-    if (tokensMatch && req.method === "GET") {
-      const teamId = decodeURIComponent(tokensMatch[1]);
-      if (!(await this.authorizer.workspace(req, res, "tokens.view", teamId))) {
-        return;
-      }
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ tokens: await this.principals.listTokensForWorkspace(teamId) }));
-      return;
-    }
-    if (tokensMatch && req.method === "POST") {
-      const teamId = decodeURIComponent(tokensMatch[1]);
-      const authorized = await this.authorizer.workspace(req, res, "tokens.manage", teamId);
-      if (!authorized) {
-        return;
-      }
-      const body = await this.readJson(req, res);
-      if (!body || typeof body.subject !== "string" || typeof body.name !== "string") {
-        if (!res.headersSent) {
-          res.writeHead(400).end(JSON.stringify({ error: "subject and name are required" }));
-        }
-        return;
-      }
-      const membership = await this.principals.membership(teamId, body.subject);
-      const principal = await this.principals.principal(body.subject);
-      if (!membership || !principal || principal.kind !== "system") {
-        res
-          .writeHead(404, { "Content-Type": "application/json" })
-          .end(JSON.stringify({ error: "A system user in this workspace is required" }));
-        return;
-      }
-      try {
-        const token = await this.principals.issueToken(body.subject, body.name, authorized.principal.subject);
-        res.writeHead(201, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify(token));
-      } catch (error: any) {
-        res.writeHead(422, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
-      }
-      return;
-    }
-    if (tokenMatch && req.method === "DELETE") {
-      const teamId = decodeURIComponent(tokenMatch[1]);
-      const authorized = await this.authorizer.workspace(req, res, "tokens.manage", teamId);
-      if (!authorized) {
-        return;
-      }
-      const tokenId = decodeURIComponent(tokenMatch[2]);
-      const owned = (await this.principals.listTokensForWorkspace(teamId)).some((token) => token.id === tokenId);
-      if (!owned) {
-        res.writeHead(404).end();
-        return;
-      }
-      const revoked = await this.principals.revokeToken(tokenId, authorized.principal.subject, teamId);
-      res.writeHead(revoked ? 204 : 404).end();
+    const tokenRoutes = new RegExp(`^/api/${prefix}/([^/]+)/tokens(?:/.*)?$`);
+    if (tokenRoutes.test(url.pathname)) {
+      res.writeHead(410, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ error: "Flow-managed principal tokens are retired." }));
       return;
     }
 
@@ -2595,8 +2444,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
       const error =
         result === "last-admin"
           ? "A workspace must retain at least one admin"
-          : result === "system-user-elevation"
-            ? "System users cannot be workspace admins"
+          : result === "system-user-retired"
+            ? "Flow-managed system users are retired."
             : "Workspace member not found";
       res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify({ error }));
       return;
@@ -2654,8 +2503,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       const status = result === "not-found" ? 404 : result === "exists" ? 409 : 409;
       const error =
-        result === "system-user-elevation"
-          ? "System users cannot be workspace admins"
+        result === "system-user-retired"
+          ? "Flow-managed system users are retired."
           : result === "exists"
             ? "Principal is already a member"
             : "Principal not found";
