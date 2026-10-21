@@ -52,7 +52,7 @@ describe("SPA router", () => {
     expect(routerSetup).toContain(
       'current.page === "recipes" || current.page === "recipe-editor" ? [] : await checkTeams()',
     );
-    expect(appShell).toContain('href="/ui/recipes"');
+    expect(appShell).not.toContain('href="/ui/recipes"');
     expect(serverSetup).toContain('url.pathname === "/pages/recipes.html"');
   });
 

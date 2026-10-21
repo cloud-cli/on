@@ -48,7 +48,7 @@ export default function setup() {
     ) {
       activeSection.value = "settings";
     } else if (path.startsWith("/recipes")) {
-      activeSection.value = "recipes";
+      activeSection.value = "workflows";
     } else if (path.startsWith("/workflows")) {
       activeSection.value = "workflows";
     } else {

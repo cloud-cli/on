@@ -1,6 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { WebhookServer } from "./server.js";
+import recipeTemplate from "../ui/recipes.html?raw";
+import recipeSetup from "../ui/recipes-ui.mjs?raw";
 
 const htmlFiles = [
   ...readdirSync(new URL("../ui/", import.meta.url))
@@ -65,5 +67,29 @@ describe("canonical setup-script asset routes", () => {
       "Content-Type": "text/javascript; charset=utf-8",
     });
     expect(response.end).toHaveBeenCalledOnce();
+  });
+
+  it("serves the safe recipe insertion helper through the assets namespace", async () => {
+    const response = await request("/assets/recipe-insertion.mjs");
+
+    expect(response.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-cache",
+      "Content-Type": "text/javascript; charset=utf-8",
+    });
+    expect(response.end).toHaveBeenCalledWith(expect.stringContaining("prepareRecipeInsertion"));
+  });
+
+  it("serves and wires the recipe publish page and setup module", async () => {
+    const setup = await request("/assets/pages/recipes-ui.mjs");
+
+    expect(recipeTemplate).toContain('<script setup src="/assets/pages/recipes-ui.mjs"></script>');
+    expect(setup.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-cache",
+      "Content-Type": "text/javascript; charset=utf-8",
+    });
+    expect(setup.end).toHaveBeenCalledWith(recipeSetup);
+    expect(recipeSetup).toContain('root.querySelector("[data-create]").addEventListener("click"');
+    expect(recipeSetup).toContain('form.addEventListener("submit"');
+    expect(recipeSetup).toContain('method: "POST"');
   });
 });

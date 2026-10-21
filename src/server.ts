@@ -122,6 +122,7 @@ import operationsSetup from "../ui/operations-ui.mjs?raw";
 import teamSettingsSetup from "../ui/team-settings-ui.mjs?raw";
 import teamsLandingSetup from "./teams-landing.mjs?raw";
 import workflowsSetup from "../ui/workflows-ui.mjs?raw";
+import recipeInsertionSetup from "../ui/recipe-insertion.mjs?raw";
 import recipesTemplate from "../ui/recipes.html?raw";
 import recipesSetup from "../ui/recipes-ui.mjs?raw";
 import timezoneFormatSource from "../ui/timezone-format.mjs?raw";
@@ -415,6 +416,10 @@ export class WebhookServer {
     if (req.method === "GET" && url.pathname === "/pages/recipes-ui.mjs") {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(recipesSetup);
+    }
+    if (req.method === "GET" && ["/pages/recipe-insertion.mjs", "/recipe-insertion.mjs"].includes(url.pathname)) {
+      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(recipeInsertionSetup);
     }
 
     if (req.method === "GET" && url.pathname === "/app-header.html") {

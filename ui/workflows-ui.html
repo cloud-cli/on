@@ -13,6 +13,7 @@
         "imports": {
           "@app/": "/assets/",
           "@li3/": "https://at-li3.static.apphor.de/",
+          "yaml": "https://esm.sh/yaml@2.9.0",
           "diff": "https://unpkg.com/diff@9.0.0/libesm/index.js"
         }
       }
@@ -61,6 +62,11 @@
                 New workflow
               </a>
             </div>
+            <a
+              href="/ui/recipes"
+              class="mb-4 inline-flex items-center gap-1 text-sm text-flow-primary underline underline-offset-2"
+              >Browse recipe library</a
+            >
             <ul class="divide-y divide-flow-border" aria-label="Workflow definitions">
               <template for="workflow of workflows">
                 <li class="flex min-h-14 items-center gap-3 px-2 py-2">
@@ -233,6 +239,15 @@
                 </template>
                 <template if="!revision"><span class="font-mono">Unsaved draft</span></template>
               </div>
+              <div class="mb-2 flex justify-end" class-hidden="readOnly">
+                <button
+                  type="button"
+                  on-click="openRecipePicker()"
+                  class="rounded-lg border border-flow-border px-3 py-2 text-sm font-medium text-flow-primary hover:bg-flow-sidebar"
+                >
+                  Insert recipe
+                </button>
+              </div>
               <template if="readOnly">
                 <code-block
                   language="yaml"
@@ -277,6 +292,144 @@
             </div>
           </section>
         </section>
+
+        <template if="recipeDialogOpen">
+          <div
+            class="fixed inset-0 z-50 flex items-center justify-center bg-flow-foreground/70 p-2 sm:p-4"
+            role="presentation"
+          >
+            <section
+              data-recipe-dialog
+              class="flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-flow-border bg-flow-panel shadow-2xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="recipe-picker-title"
+              aria-describedby="recipe-picker-hint"
+            >
+              <header class="flex items-center justify-between border-b border-flow-border p-4">
+                <div>
+                  <h2 id="recipe-picker-title" class="text-lg font-semibold">Insert a recipe</h2>
+                  <p id="recipe-picker-hint" class="text-sm text-flow-secondary">
+                    Choose and review an immutable recipe version.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  on-click="closeRecipePicker()"
+                  aria-label="Close recipe picker"
+                  class="min-h-11 min-w-11 rounded p-2"
+                >
+                  Close
+                </button>
+              </header>
+              <div class="min-h-0 space-y-3 overflow-y-auto p-4">
+                <label for="recipe-search" class="block text-sm font-medium">Search recipes</label
+                ><input
+                  id="recipe-search"
+                  bind-value="recipeSearch"
+                  placeholder="Name, namespace, or slug"
+                  class="min-h-11 w-full rounded-lg border border-flow-border bg-flow-card px-3 py-2 text-sm"
+                />
+                <p role="status" aria-live="polite" class="text-sm text-flow-secondary" class-hidden="!recipeLoading">
+                  Loading recipes…
+                </p>
+                <p role="alert" class="text-sm text-flow-error" class-hidden="!recipeError">{{ recipeError }}</p>
+                <ul class="space-y-2">
+                  <template for="recipe of recipes"
+                    ><li class-hidden="!matchesRecipeSearch(recipe, recipeSearch)">
+                      <button
+                        type="button"
+                        on-click="selectRecipe(recipe)"
+                        attr-aria-pressed="selectedRecipe === recipe ? 'true' : 'false'"
+                        bind-disabled="recipe.revoked"
+                        class="min-h-11 w-full rounded-lg border border-flow-border p-3 text-left hover:border-flow-primary disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <span class="block font-semibold">{{ recipe.name }}</span
+                        ><span class="block font-mono text-xs text-flow-secondary"
+                          >{{ recipe.namespace }}/{{ recipe.slug }}@v{{ recipe.version }}<template if="recipe.revoked">
+                            · Revoked — unavailable</template
+                          ></span
+                        >
+                      </button>
+                    </li></template
+                  >
+                </ul>
+                <p
+                  role="status"
+                  class="py-3 text-center text-sm text-flow-secondary"
+                  class-hidden="recipeLoading || !recipeSearch || hasRecipeSearchResults()"
+                >
+                  No recipes match that search.
+                </p>
+                <p
+                  role="status"
+                  class="py-3 text-center text-sm text-flow-secondary"
+                  class-hidden="recipeLoading || recipes.length > 0"
+                >
+                  No recipes are available.
+                </p>
+                <template if="selectedRecipe"
+                  ><div class="space-y-2 rounded-lg border border-flow-border p-3">
+                    <p class="break-all font-mono text-sm">
+                      using: {{ selectedRecipe.namespace }}/{{ selectedRecipe.slug }}@v{{ selectedRecipe.version }}
+                    </p>
+                    <p class="text-xs text-flow-secondary">Source preview</p>
+                    <pre class="max-h-48 overflow-auto rounded bg-slate-950 p-3 text-xs text-white">
+{{ selectedRecipe.sourceYaml }}</pre
+                    >
+                    <template if="recipePreview"
+                      ><p
+                        class="text-sm text-amber-800"
+                        class-hidden="!recipePreview.safe || !recipePreview.replacesSteps"
+                      >
+                        Confirming replaces the workflow’s existing steps with this recipe reference. Other workflow
+                        text remains unchanged.
+                      </p>
+                      <p
+                        class="text-sm text-flow-secondary"
+                        class-hidden="!recipePreview.safe || recipePreview.replacesSteps"
+                      >
+                        This inserts the recipe reference into the empty workflow draft. Review it before saving.
+                      </p>
+                      <p class="text-sm text-flow-error" class-hidden="recipePreview.safe">
+                        {{ recipePreview.reason }}
+                      </p>
+                      <pre
+                        class="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-slate-950 p-3 text-xs text-white"
+                      >
+{{ recipePreview.snippet }}</pre
+                      >
+                    </template>
+                  </div></template
+                >
+              </div>
+              <footer class="flex flex-wrap justify-end gap-2 border-t border-flow-border p-3">
+                <button
+                  type="button"
+                  on-click="closeRecipePicker()"
+                  class="min-h-11 rounded-lg border border-flow-border px-4 py-2 text-sm"
+                >
+                  Cancel</button
+                ><button
+                  type="button"
+                  on-click="copyRecipeSnippet()"
+                  class-hidden="!recipePreview || recipePreview.safe || !selectedRecipe || selectedRecipe.revoked"
+                  class="min-h-11 rounded-lg border border-flow-border px-4 py-2 text-sm"
+                >
+                  Copy snippet</button
+                ><button
+                  type="button"
+                  on-click="insertSelectedRecipe()"
+                  bind-disabled="!selectedRecipe || selectedRecipe.revoked || !recipePreview || !recipePreview.safe"
+                  class="min-h-11 rounded-lg bg-flow-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {{ recipePreview && recipePreview.confirmed ? 'Confirm replacement' : (recipePreview &&
+                  recipePreview.replacesSteps ? 'Review replacement' : 'Insert recipe') }}
+                </button>
+              </footer>
+            </section>
+          </div>
+        </template>
 
         <template if="aiDialogOpen">
           <div

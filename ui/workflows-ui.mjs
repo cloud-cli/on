@@ -2,6 +2,12 @@ import { onDestroy, onInit, ref, templateRef } from "@li3/web";
 import { diffLines } from "diff";
 import { navigateTo } from "@app/app-router.mjs";
 import { apiFetch } from "@app/api-client.mjs";
+import {
+  canInsertRecipe,
+  commitRecipeInsertion,
+  matchesRecipeSearch,
+  prepareRecipeInsertion,
+} from "@app/recipe-insertion.mjs";
 
 export default function () {
   const params = new URLSearchParams(window.location.search);
@@ -53,6 +59,47 @@ export default function () {
   const helpContent = templateRef("helpContent");
   const helpLoaded = ref(false);
   const helpLoading = ref(false);
+  const recipeDialogOpen = ref(false);
+  const recipes = ref([]);
+  const recipeSearch = ref("");
+  const recipeError = ref("");
+  const selectedRecipe = ref(null);
+  const recipeLoading = ref(false);
+  const recipeSnapshot = ref("");
+  const recipePreview = ref(null);
+  const recipeFocusReturn = ref(null);
+  const closeRecipePicker = () => {
+    recipeDialogOpen.value = false;
+    recipePreview.value = null;
+    recipeFocusReturn.value?.focus();
+  };
+  const recipeKeydown = (event) => {
+    if (!recipeDialogOpen.value) {
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeRecipePicker();
+    } else if (event.key === "Tab") {
+      const controls = [
+        ...document.querySelectorAll(
+          "[data-recipe-dialog] button:not(:disabled):not(.hidden):not([hidden]), [data-recipe-dialog] input:not(.hidden):not([hidden])",
+        ),
+      ];
+      if (!controls.length) {
+        return;
+      }
+      if (event.shiftKey && document.activeElement === controls[0]) {
+        event.preventDefault();
+        controls.at(-1).focus();
+      } else if (!event.shiftKey && document.activeElement === controls.at(-1)) {
+        event.preventDefault();
+        controls[0].focus();
+      }
+    }
+  };
+  const hasRecipeSearchResults = () => recipes.value.some((recipe) => matchesRecipeSearch(recipe, recipeSearch.value));
+  document.addEventListener("keydown", recipeKeydown);
   let validationTimer;
 
   const showNotice = (message, error = false, showRunsLink = false) => {
@@ -588,8 +635,74 @@ export default function () {
     aiSuggestion.value = "";
     aiDiffHtml.value = "";
   };
+  const openRecipePicker = async () => {
+    recipeSearch.value = "";
+    recipeError.value = "";
+    selectedRecipe.value = null;
+    recipePreview.value = null;
+    recipeSnapshot.value = source.value;
+    recipeFocusReturn.value = document.activeElement;
+    recipeLoading.value = true;
+    recipeDialogOpen.value = true;
+    requestAnimationFrame(() => document.querySelector("#recipe-search")?.focus());
+    try {
+      const result = await apiFetch("/api/v1/recipes", { headers: { accept: "application/json" } });
+      const body = await result.json();
+      if (!result.ok) {
+        throw new Error(body.error || "Unable to load recipes");
+      }
+      recipes.value = body.recipes || [];
+    } catch (error) {
+      recipeError.value = error.message || "Unable to load recipes";
+    } finally {
+      recipeLoading.value = false;
+    }
+  };
+  const selectRecipe = (recipe) => {
+    selectedRecipe.value = recipe;
+    recipePreview.value = recipe.revoked
+      ? null
+      : prepareRecipeInsertion(source.value, `${recipe.namespace}/${recipe.slug}@v${recipe.version}`);
+  };
+  const insertSelectedRecipe = () => {
+    const recipe = selectedRecipe.value;
+    if (!canInsertRecipe(recipe)) {
+      return;
+    }
+    const result = commitRecipeInsertion(
+      source.value,
+      recipeSnapshot.value,
+      recipePreview.value,
+      recipePreview.value?.confirmed,
+    );
+    if (!result.inserted && !result.needsConfirmation) {
+      recipeError.value = result.reason;
+      return;
+    }
+    if (result.needsConfirmation) {
+      recipePreview.value = { ...recipePreview.value, confirmed: true };
+      return;
+    }
+    source.value = result.source;
+    validate();
+    closeRecipePicker();
+  };
+  const copyRecipeSnippet = async () => {
+    if (!recipePreview.value?.snippet) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(recipePreview.value.snippet);
+      recipeError.value = "Snippet copied. Workflow YAML was not changed.";
+    } catch {
+      recipeError.value = "Clipboard unavailable. Select and copy the snippet below; workflow YAML was not changed.";
+    }
+  };
 
-  onDestroy(() => clearTimeout(validationTimer));
+  onDestroy(() => {
+    clearTimeout(validationTimer);
+    document.removeEventListener("keydown", recipeKeydown);
+  });
 
   onInit(() => {
     const loadEditor = async () => {
@@ -604,6 +717,17 @@ export default function () {
 
   return {
     page,
+    recipeDialogOpen,
+    recipes,
+    recipeSearch,
+    recipeError,
+    selectedRecipe,
+    recipeLoading,
+    recipePreview,
+    matchesRecipeSearch,
+    canInsertRecipe,
+    commitRecipeInsertion,
+    hasRecipeSearchResults,
     workflows,
     availableWorkspaces,
     workspacesLoading,
@@ -659,5 +783,10 @@ export default function () {
     requestAiHelp,
     acceptAiSuggestion,
     rejectAiSuggestion,
+    openRecipePicker,
+    selectRecipe,
+    insertSelectedRecipe,
+    copyRecipeSnippet,
+    closeRecipePicker,
   };
 }

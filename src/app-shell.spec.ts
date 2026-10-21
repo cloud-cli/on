@@ -19,6 +19,7 @@ describe("Flow application shell", () => {
 
   it("provides responsive, accessible navigation around the mounted router", () => {
     expect(shellSetup).toContain('import "@app/api-client.mjs"');
+    expect(shellSetup).toContain('activeSection.value = "workflows"');
     expect(html).toContain('"@app/": "/assets/"');
     expect(html).toContain('aria-label="Primary navigation"');
     expect(html).toContain('aria-label="Mobile navigation"');

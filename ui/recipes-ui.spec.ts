@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import template from "./recipes.html?raw";
 import setup from "./recipes-ui.mjs?raw";
 import shell from "./app-shell.html?raw";
+import workflowTemplate from "./workflows-ui.html?raw";
+import workflowSetup from "./workflows-ui.mjs?raw";
 
 describe("recipe marketplace UI", () => {
   it("keeps the editor focused on YAML, validates its schema, and offers no deletion action", () => {
@@ -22,7 +24,15 @@ describe("recipe marketplace UI", () => {
     expect(setup).not.toMatch(/delete.*recipe/i);
   });
 
-  it("adds recipes to desktop and mobile navigation", () => {
-    expect(shell.match(/href="\/ui\/recipes"/g)).toHaveLength(2);
+  it("keeps recipes out of global navigation and makes the library available from workflows", () => {
+    expect(shell).not.toContain('href="/ui/recipes"');
+    expect(workflowTemplate).toContain("Browse recipe library");
+    expect(workflowTemplate).toContain("Insert recipe");
+    expect(workflowSetup).toContain("insertSelectedRecipe");
+    expect(workflowSetup).toContain("commitRecipeInsertion");
+    expect(workflowSetup).toContain("recipeSnapshot.value");
+    expect(workflowTemplate).toContain("No recipes match that search.");
+    expect(workflowTemplate).toContain("Loading recipes…");
+    expect(workflowTemplate).toContain('bind-disabled="recipe.revoked"');
   });
 });
