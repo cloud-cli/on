@@ -131,10 +131,13 @@ describe("isProtectedUiRoute", () => {
       "/settings/timezone",
       "/workflows",
       "/workflows/new",
+      "/recipes",
+      "/recipes/new",
       "/assets/pages/dashboard.html",
       "/assets/pages/run.html",
       "/assets/pages/help.html",
       "/assets/pages/workflows.html",
+      "/assets/pages/recipes.html",
       "/assets/pages/settings.html",
       "/assets/pages/team-settings.html",
     ];

@@ -40,23 +40,18 @@ export class QueueManager {
     requiredTags: string[] = [],
     concurrencyKey?: string,
   ) {
-    // If a concurrency key is provided, cancel existing pending/running jobs in that group
-    if (concurrencyKey) {
-      await db.run(
-        `UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE team_id = (
-           SELECT workflows.team_id FROM workflows JOIN teams ON teams.id = workflows.team_id
-           WHERE workflows.id = ? AND teams.deleting_at IS NULL
-         )
-         AND concurrency_key = ? AND status IN ('pending', 'running');`,
-        [workflowId, concurrencyKey],
-      );
-    }
-
     const res = await db.run(
       `INSERT INTO jobs (workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id)
        SELECT ?, ?, ?, ?, ?, workflows.team_id FROM workflows
        JOIN teams ON teams.id = workflows.team_id
-       WHERE workflows.id = ? AND teams.deleting_at IS NULL`,
+        WHERE workflows.id = ? AND teams.deleting_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM workflow_revisions wr
+            JOIN recipe_versions rv ON rv.namespace = json_extract(wr.normalized_json, '$._recipeRef.namespace')
+              AND rv.slug = json_extract(wr.normalized_json, '$._recipeRef.slug')
+              AND rv.version = json_extract(wr.normalized_json, '$._recipeRef.version')
+            WHERE wr.workflow_id = workflows.id AND wr.revision = ? AND rv.revoked = 1
+          )`,
       [
         workflowId,
         workflowRevision,
@@ -64,12 +59,21 @@ export class QueueManager {
         concurrencyKey || "",
         JSON.stringify(payload),
         workflowId,
+        workflowRevision,
       ],
     );
 
     const jobId = Number(res?.lastInsertRowid ?? res?.id ?? 0);
     if (!jobId) {
       throw new Error("Workflow workspace is unavailable or being deleted");
+    }
+    if (concurrencyKey) {
+      await db.run(
+        `UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+         WHERE id <> ? AND team_id = (SELECT team_id FROM jobs WHERE id = ?)
+           AND concurrency_key = ? AND status IN ('pending', 'running')`,
+        [jobId, jobId, concurrencyKey],
+      );
     }
     return jobId;
   }
@@ -89,7 +93,14 @@ export class QueueManager {
        SELECT ?, ?, ?, ?, '', ?, ?, ?
        WHERE EXISTS (
          SELECT 1 FROM workflows JOIN teams ON teams.id = workflows.team_id
-         WHERE workflows.id = ? AND workflows.team_id = ? AND teams.deleting_at IS NULL
+          WHERE workflows.id = ? AND workflows.team_id = ? AND teams.deleting_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM workflow_revisions wr
+              JOIN recipe_versions rv ON rv.namespace = json_extract(wr.normalized_json, '$._recipeRef.namespace')
+                AND rv.slug = json_extract(wr.normalized_json, '$._recipeRef.slug')
+                AND rv.version = json_extract(wr.normalized_json, '$._recipeRef.version')
+              WHERE wr.workflow_id = workflows.id AND wr.revision = ? AND rv.revoked = 1
+            )
        )
        ON CONFLICT(dispatch_key) DO NOTHING`,
       [
@@ -102,6 +113,7 @@ export class QueueManager {
         dispatchKey,
         workflowId,
         teamId,
+        workflowRevision,
       ],
     );
     const existing = await db.get("SELECT id FROM jobs WHERE dispatch_key = ? AND team_id = ?", [dispatchKey, teamId]);
@@ -296,13 +308,6 @@ export class QueueManager {
       return;
     }
 
-    if (job.status === "running") {
-      await db.run(
-        `UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP WHERE id = ?;`,
-        [jobId],
-      );
-    }
-
     const activeWorkflow = await db.get(
       `SELECT workflows.active_revision FROM workflows
        JOIN teams ON teams.id = workflows.team_id
@@ -328,11 +333,25 @@ export class QueueManager {
        SELECT id, workflow_id, ?, required_tags, concurrency_key, ?, team_id,
                'pending', NULL, NULL, NULL, NULL
         FROM jobs JOIN teams ON teams.id = jobs.team_id
-        WHERE jobs.id = ? AND teams.deleting_at IS NULL
-       RETURNING *`,
-      [activeRevision, JSON.stringify(payload), jobId],
+         WHERE jobs.id = ? AND teams.deleting_at IS NULL AND NOT EXISTS (
+           SELECT 1 FROM workflow_revisions wr JOIN recipe_versions rv
+             ON rv.namespace = json_extract(wr.normalized_json, '$._recipeRef.namespace')
+             AND rv.slug = json_extract(wr.normalized_json, '$._recipeRef.slug')
+             AND rv.version = json_extract(wr.normalized_json, '$._recipeRef.version')
+           WHERE wr.workflow_id = jobs.workflow_id AND wr.revision = ? AND rv.revoked = 1
+         )
+        RETURNING *`,
+      [activeRevision, JSON.stringify(payload), jobId, activeRevision],
     );
-
+    if (!newJob?.id) {
+      throw new Error("Workflow is unavailable or its pinned recipe has been revoked");
+    }
+    if (job.status === "running") {
+      await db.run(
+        "UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [jobId],
+      );
+    }
     return newJob?.id;
   }
 

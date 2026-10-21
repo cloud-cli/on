@@ -4,6 +4,72 @@ import { processJob } from "./worker.js";
 import { SecretStore } from "./secrets.js";
 
 describe("incremental workflow reports", () => {
+  it("evaluates typed recipe bindings and exposes only explicitly mapped recipe secrets", async () => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+    };
+    const driver = {
+      execute: vi.fn(() => ({
+        done: Promise.resolve({ exitCode: 0, durationMs: 1 }),
+        cancel: vi.fn(),
+        logFilePath: "",
+      })),
+      readLog: vi.fn(async () => ""),
+    };
+    await processJob({
+      workerId: "recipe-worker",
+      job: {
+        id: 124,
+        workflow_id: "recipe",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "recipe-worker",
+        payload: JSON.stringify({ inputs: { count: 3 } }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: {
+        getAll: () => ({ DEPLOY_TOKEN: "mapped-value", OTHER_TOKEN: "unmapped-value" }),
+        redactText: (text: string) => text,
+      },
+      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver,
+      workflow: {
+        id: "recipe",
+        name: "Recipe",
+        on: { provider: "generic" },
+        steps: [
+          {
+            id: "recipe-step",
+            run: 'echo "$COUNT" "$TOKEN"',
+            env: { COUNT: "${inputs.count}", TOKEN: "${secrets.token}" },
+            __recipeTemplate: true,
+          },
+        ],
+        _recipeInputs: { count: "${inputs.count}" },
+        _recipeInputSchema: {
+          type: "object",
+          required: ["count"],
+          properties: { count: { type: "integer" } },
+          additionalProperties: false,
+        },
+        _recipeSecrets: { token: "DEPLOY_TOKEN" },
+      },
+    } as Processable);
+
+    expect(driver.execute.mock.calls[0][0].command).toBe('echo "$COUNT" "$TOKEN"');
+    expect(driver.execute.mock.calls[0][0].env).toMatchObject({ COUNT: "3", TOKEN: "mapped-value" });
+    expect(driver.execute.mock.calls[0][0].env).not.toHaveProperty("OTHER_TOKEN");
+    const report = queue.completeJob.mock.calls[0][2];
+    expect(JSON.stringify(report)).not.toContain("mapped-value");
+    expect(JSON.stringify(report)).not.toContain("unmapped-value");
+  });
+
   it("isolates workspace paths by lease identity and keeps each lease path stable", async () => {
     const workspaceDirs: string[] = [];
     const makeRun = async (executionId: string) => {

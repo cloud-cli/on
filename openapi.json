@@ -52,6 +52,10 @@
     },
     {
       "name": "workspaces"
+    },
+    {
+      "name": "recipes",
+      "description": "Global immutable recipe registry"
     }
   ],
   "paths": {
@@ -3083,6 +3087,199 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/api/v1/recipes": {
+      "get": {
+        "tags": ["recipes"],
+        "summary": "List published recipes",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recipes visible across workspaces"
+          }
+        }
+      },
+      "post": {
+        "tags": ["recipes"],
+        "summary": "Publish the next immutable recipe version",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["slug", "name", "sourceYaml"],
+                "properties": {
+                  "slug": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "sourceYaml": {
+                    "type": "string",
+                    "description": "Recipe YAML containing only inputs and steps"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Published version"
+          },
+          "422": {
+            "description": "Invalid recipe or ownership conflict"
+          }
+        }
+      }
+    },
+    "/api/v1/recipes/validate": {
+      "post": {
+        "tags": ["recipes"],
+        "summary": "Validate recipe YAML and its input JSON Schema",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["sourceYaml"],
+                "properties": { "sourceYaml": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Recipe and input JSON Schema are valid" },
+          "422": { "description": "Invalid recipe or JSON Schema" }
+        }
+      }
+    },
+    "/api/v1/recipes/{namespace}/{slug}/versions/{version}": {
+      "get": {
+        "tags": ["recipes"],
+        "summary": "Read a published recipe version",
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recipe version"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/api/v1/recipes/{namespace}/{slug}/versions/{version}/revoke": {
+      "post": {
+        "tags": ["recipes"],
+        "summary": "Revoke a published recipe version (platform administrator)",
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked"
+          },
+          "403": {
+            "description": "Administrator access required"
           }
         }
       }

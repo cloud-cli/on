@@ -82,6 +82,7 @@ describe("QueueManager.enqueueDispatch", () => {
     const [insertRequest, lookupRequest] = fetchMock.mock.calls;
     const insert = JSON.parse(String(insertRequest[1].body));
     expect(insert.s).toContain("ON CONFLICT(dispatch_key) DO NOTHING");
+    expect(insert.s).toContain("rv.revoked = 1");
     expect(insert.d).toContain("dispatch:12:handoff");
     expect(JSON.parse(String(lookupRequest[1].body)).s).toContain("WHERE dispatch_key = ? AND team_id = ?");
   });
@@ -95,7 +96,9 @@ describe("QueueManager.enqueueDispatch", () => {
     const request = JSON.parse(String(fetchMock.mock.calls[0][1].body));
     expect(request.s).toContain("JOIN teams ON teams.id = workflows.team_id");
     expect(request.s).toContain("teams.deleting_at IS NULL");
-    expect(request.d.at(-1)).toBe("flow");
+    expect(request.s).toContain("rv.revoked = 1");
+    expect(request.d.at(-2)).toBe("flow");
+    expect(request.d.at(-1)).toBe(1);
   });
 });
 
@@ -200,8 +203,9 @@ describe("QueueManager.restartJob", () => {
     const request = JSON.parse(fetchMock.mock.calls[2][1].body);
     expect(request.m).toBe("get");
     expect(request.s).toContain("'pending', NULL, NULL, NULL, NULL");
+    expect(request.s).toContain("rv.revoked = 1");
     expect(request.s).toContain("team_id");
     expect(request.s).toContain("WHERE jobs.id = ? AND teams.deleting_at IS NULL");
-    expect(request.d).toEqual([7, JSON.stringify({ inputs: {} }), 42]);
+    expect(request.d).toEqual([7, JSON.stringify({ inputs: {} }), 42, 7]);
   });
 });

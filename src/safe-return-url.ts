@@ -123,6 +123,7 @@ export function isExemptFromGlobalOidcAuth(pathname: string, method: string): bo
     "/pages/run.mjs",
     "/pages/settings-ui.mjs",
     "/pages/workflows-ui.mjs",
+    "/pages/recipes-ui.mjs",
     "/app-header.html",
     "/app-router.html",
     "/timezone-format.mjs",
@@ -167,7 +168,9 @@ export function isProtectedUiRoute(pathname: string, method: string): boolean {
     /^\/workspaces\/[^/]+\/settings$/.test(pathname) ||
     /^\/settings\/(secrets|tokens|notifications|workers|timezone)$/.test(pathname) ||
     pathname === "/workflows" ||
+    pathname === "/recipes" ||
+    pathname === "/recipes/new" ||
     /^\/workflows\/(new|[a-z0-9-]+)$/.test(pathname) ||
-    /^\/pages\/(dashboard|run|help|workflows|settings|team-settings)\.html$/.test(pathname)
+    /^\/pages\/(dashboard|run|help|workflows|recipes|settings|team-settings)\.html$/.test(pathname)
   );
 }

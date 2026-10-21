@@ -60,6 +60,34 @@ Designed with a strict **security-first boundary**, native **JavaScript AST eval
 - **Built-in Dark Mode Web UI (`/ui/runs`):** Monitor job statuses live, inspect workspace inputs, and view ANSI-colored terminal log streams rendered in real-time.
 - **System & Container Execution Drivers:** Run steps directly as detached host process groups or inside isolated Docker/Systemd transient units.
 - **DB-authored workflows:** Draft, validate, and publish portable YAML workflows through the authenticated API.
+- **Global recipe marketplace:** Authenticated human publishers can publish immutable, versioned recipes at `namespace/slug@vN`. Recipe YAML contains only `inputs:` and `steps:`; namespace is normalized from the OIDC preferred username. Platform administrators may revoke a version, preventing new jobs while queued jobs retain their pinned snapshot.
+
+Recipe parameters are data, not shell interpolation. Reference them from a step's `env:` and use quoted shell variables in `run:`:
+
+```yaml
+inputs:
+  type: object
+  required: [image]
+  properties:
+    image: { type: string }
+steps:
+  - id: build
+    run: docker build --tag "$IMAGE" .
+    env:
+      IMAGE: ${inputs.image}
+```
+
+Workflows pin an exact recipe version and supply normal and secret values separately:
+
+```yaml
+id: deploy-production
+name: Deploy production
+on: { generic: {} }
+using: platform/deploy@v2
+with: { environment: production }
+secrets: { token: "${secrets.DEPLOY_TOKEN}" }
+```
+
 - **Scheduled execution:** Published workflows can run from cron expressions or local sunrise/sunset events.
 - **Encrypted secret storage:** Secret ciphertext is stored in the database; the master key remains on the HTTP server.
 
@@ -328,6 +356,8 @@ Within `${...}`, `if:`, and `eval:` contexts, the following object scopes are ex
 - **`files`**: Workspace-bound file helpers for `if:` and `eval:` expressions: `files.exists('Dockerfile')`, `files.readFile('package.json')`, and `files.join('dist', 'artifact')`. Paths outside the job `workingDir` are rejected.
 - **`BUILTIN_HELPERS`**: JS utilities including `String`, `Number`, `Boolean`, and `JSON.parse` / `JSON.stringify`.
 
+In a recipe workflow, validated `with:` values are added to `inputs` for the pinned recipe steps. Secret inputs are mapped separately and exposed to recipe steps only under their declared aliases. Use step `env:` bindings for shell commands rather than interpolating input values directly into `run:`.
+
 ---
 
 ## 🌐 Webhook Ingress Gateway & Dashboard
@@ -336,19 +366,24 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
 
 ### Endpoint Matrix
 
-| Method                     | Endpoint                                            | Description                                                                                      |
-| -------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| **`POST`**                 | `/api/v1/webhooks/github`                           | Webhook endpoint for GitHub events. Applies GitHub filters and evaluates `on.github.if`.         |
-| **`GET`**                  | `/ui/runs`                                          | **Dashboard:** OIDC-protected live page listing recent jobs.                                     |
-| **`GET`**                  | `/api/v1/jobs?afterId=<id>&beforeId=<id>&limit=<n>` | Dashboard jobs with exclusive lower and upper ID cursors and a limit from 1 to 500 (default 50). |
-| **`GET`**                  | `/ui/runs/:jobId`                                   | **Job Report:** Authenticated interactive trace with step timings and terminal log output.       |
-| **`GET`**                  | `/ui/workflows`                                     | Authenticated workflow list and encrypted secret management UI.                                  |
-| **`GET`**                  | `/ui/workflows/new`, `/ui/workflows/:id`            | Authenticated YAML workflow editor.                                                              |
-| **`POST`**                 | `/api/v1/workflows/validate`                        | Authenticated YAML validation without persistence.                                               |
-| **`GET`, `PUT`, `DELETE`** | `/api/v1/workflows/:id`                             | Authenticated revisioned workflow read, draft save, and deletion.                                |
-| **`POST`**                 | `/api/v1/workflows/:id/publish`                     | Authenticated publication of the latest draft revision.                                          |
-| **`POST`**                 | `/api/v1/workflows/:id/run`                         | Authenticated immediate run of the latest saved draft revision.                                  |
-| **`GET`, `PUT`, `DELETE`** | `/api/v1/secrets`, `/api/v1/secrets/:name`          | Authenticated encrypted secret-name and write-only value management.                             |
+| Method                     | Endpoint                                                    | Description                                                                                      |
+| -------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| **`POST`**                 | `/api/v1/webhooks/github`                                   | Webhook endpoint for GitHub events. Applies GitHub filters and evaluates `on.github.if`.         |
+| **`GET`**                  | `/ui/runs`                                                  | **Dashboard:** OIDC-protected live page listing recent jobs.                                     |
+| **`GET`**                  | `/api/v1/jobs?afterId=<id>&beforeId=<id>&limit=<n>`         | Dashboard jobs with exclusive lower and upper ID cursors and a limit from 1 to 500 (default 50). |
+| **`GET`**                  | `/ui/runs/:jobId`                                           | **Job Report:** Authenticated interactive trace with step timings and terminal log output.       |
+| **`GET`**                  | `/ui/workflows`                                             | Authenticated workflow list and encrypted secret management UI.                                  |
+| **`GET`**                  | `/ui/workflows/new`, `/ui/workflows/:id`                    | Authenticated YAML workflow editor.                                                              |
+| **`POST`**                 | `/api/v1/workflows/validate`                                | Authenticated YAML validation without persistence.                                               |
+| **`GET`, `PUT`, `DELETE`** | `/api/v1/workflows/:id`                                     | Authenticated revisioned workflow read, draft save, and deletion.                                |
+| **`POST`**                 | `/api/v1/workflows/:id/publish`                             | Authenticated publication of the latest draft revision.                                          |
+| **`POST`**                 | `/api/v1/workflows/:id/run`                                 | Authenticated immediate run of the latest saved draft revision.                                  |
+| **`GET`**                  | `/ui/recipes`                                               | Authenticated global recipe marketplace and immutable-version editor.                            |
+| **`GET`, `POST`**          | `/api/v1/recipes`                                           | List published recipes or publish an immutable version (human OIDC users only).                  |
+| **`POST`**                 | `/api/v1/recipes/validate`                                  | Validate recipe YAML and its Draft-07 input JSON Schema without publishing.                      |
+| **`GET`**                  | `/api/v1/recipes/:namespace/:slug/versions/:version`        | Read one exact immutable recipe version.                                                         |
+| **`POST`**                 | `/api/v1/recipes/:namespace/:slug/versions/:version/revoke` | Revoke one version (platform administrator only; no deletion).                                   |
+| **`GET`, `PUT`, `DELETE`** | `/api/v1/secrets`, `/api/v1/secrets/:name`                  | Authenticated encrypted secret-name and write-only value management.                             |
 
 ### Dashboard Features
 

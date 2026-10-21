@@ -2,24 +2,33 @@ import db from "./db-client.js";
 import type { OidcUser } from "./oidc.js";
 
 export type OidcRole = "user" | "admin";
-export type OidcUserRecord = Pick<OidcUser, "id" | "name" | "email"> & { role: OidcRole };
+export type OidcUserRecord = Pick<OidcUser, "id" | "name" | "email" | "preferred_username"> & { role: OidcRole };
 
 export class OidcUserRepository {
   async init() {
     await db.exec(`CREATE TABLE IF NOT EXISTS oidc_users (
-      subject TEXT PRIMARY KEY, email TEXT, name TEXT, photo TEXT,
+      subject TEXT PRIMARY KEY, email TEXT, name TEXT, photo TEXT, preferred_username TEXT,
       role TEXT NOT NULL DEFAULT 'user',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
+    const columns = await db.all("PRAGMA table_info(oidc_users)");
+    if (!columns.some((column: any) => column.name === "preferred_username")) {
+      await db.exec("ALTER TABLE oidc_users ADD COLUMN preferred_username TEXT");
+    }
   }
 
   async upsert(user: OidcUser) {
     await db.run(
-      `INSERT INTO oidc_users (subject, email, name, photo) VALUES (?, ?, ?, ?)
-      ON CONFLICT(subject) DO UPDATE SET email = excluded.email, name = excluded.name, photo = excluded.photo, updated_at = CURRENT_TIMESTAMP`,
-      [user.id, user.email || null, user.name || null, user.photo || null],
+      `INSERT INTO oidc_users (subject, email, name, photo, preferred_username) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(subject) DO UPDATE SET email = excluded.email, name = excluded.name, photo = excluded.photo, preferred_username = excluded.preferred_username, updated_at = CURRENT_TIMESTAMP`,
+      [user.id, user.email || null, user.name || null, user.photo || null, user.preferred_username || null],
     );
+  }
+
+  async preferredUsername(subject: string): Promise<string | null> {
+    const row = await db.get("SELECT preferred_username FROM oidc_users WHERE subject = ?", [subject]);
+    return typeof row?.preferred_username === "string" ? row.preferred_username : null;
   }
 
   async role(subject: string): Promise<OidcRole> {

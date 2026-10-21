@@ -47,6 +47,8 @@ export default function setup() {
       (path.startsWith("/workspaces/") && path.endsWith("/settings"))
     ) {
       activeSection.value = "settings";
+    } else if (path.startsWith("/recipes")) {
+      activeSection.value = "recipes";
     } else if (path.startsWith("/workflows")) {
       activeSection.value = "workflows";
     } else {

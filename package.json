@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "acorn": "^8.18.0",
+    "ajv": "6.15.0",
     "openai": "7.15.0",
     "openid-client": "^6.8.8",
     "web-push": "^3.6.7",

@@ -71,6 +71,9 @@ describe("OpenAPI specification", () => {
     });
     expect(spec.paths["/api/v1/workspaces/{workspaceId}/webhooks/{webhookId}"].delete).toBeDefined();
     expect(spec.paths["/api/v1/webhooks/workspace/{token}"]).toHaveProperty("post");
+    expect(spec.paths["/api/v1/recipes/validate"]).toHaveProperty("post");
+    expect(spec.paths["/api/v1/recipes"]).not.toHaveProperty("delete");
+    expect(spec.paths["/api/v1/recipes/{namespace}/{slug}/versions/{version}"]).not.toHaveProperty("delete");
   });
 
   it("documents only canonical application API routes and runner rename", () => {
@@ -112,6 +115,18 @@ describe("OpenAPI specification", () => {
       { oidcSessionCookie: [] },
       { oidcAdminBearer: [] },
     ]);
+  });
+
+  it("documents authenticated global recipe publishing and administrator revocation without deletion", () => {
+    expect(spec.paths["/api/v1/recipes"].get).toBeDefined();
+    expect(spec.paths["/api/v1/recipes"].post.requestBody.content["application/json"].schema.required).toEqual([
+      "slug",
+      "name",
+      "sourceYaml",
+    ]);
+    expect(spec.paths["/api/v1/recipes/{namespace}/{slug}/versions/{version}"].get).toBeDefined();
+    expect(spec.paths["/api/v1/recipes/{namespace}/{slug}/versions/{version}/revoke"].post).toBeDefined();
+    expect(spec.paths["/api/v1/recipes/{namespace}/{slug}/versions/{version}"].delete).toBeUndefined();
   });
 
   it("documents runner enrollment, inventory, team grants, and lease endpoints", () => {

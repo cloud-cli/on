@@ -45,6 +45,17 @@ describe("SPA router", () => {
     expect(serverSetup).toContain("return this.renderAppShell(res);");
   });
 
+  it("routes global recipes independently of workspace selection", () => {
+    expect(routerSetup).toContain('if (path === "/recipes")');
+    expect(routerSetup).toContain('if (path === "/recipes/new")');
+    expect(routerSetup).toContain('url: "/assets/pages/recipes.html"');
+    expect(routerSetup).toContain(
+      'current.page === "recipes" || current.page === "recipe-editor" ? [] : await checkTeams()',
+    );
+    expect(appShell).toContain('href="/ui/recipes"');
+    expect(serverSetup).toContain('url.pathname === "/pages/recipes.html"');
+  });
+
   it("routes run detail URLs through the app shell and loads the run component on refresh", () => {
     expect(routerSetup).toContain(
       'component: "page-run", url: `/assets/pages/run.html?jobId=${path.split("/").pop()}`',
@@ -94,15 +105,17 @@ describe("SPA router", () => {
     expect(routerSetup).not.toContain("location.reload()");
   });
 
-  it("mounts run details and workflow editors as disposable route components", () => {
-    expect(routerSetup).toContain('!["run", "editor", "team-settings"].includes(current.page)');
+  it("mounts run details and editors as disposable route components", () => {
+    expect(routerSetup).toContain('!["run", "editor", "team-settings", "recipe-editor"].includes(current.page)');
     expect(routerSetup).toContain("activeTransientPage?.remove()");
   });
 
   it("checks team membership before mounting app routes and offers focused first-team onboarding", () => {
     expect(appShell).toContain('data-teamless="checking"');
     expect(routerSetup).toContain('apiFetch("/api/v1/workspaces"');
-    expect(routerSetup).toContain("if (!teams.length)");
+    expect(routerSetup).toContain(
+      'if (!teams.length && current.page !== "recipes" && current.page !== "recipe-editor")',
+    );
     expect(routerSetup).toContain("showOnboarding()");
     expect(routerSetup).toContain('apiFetch("/api/v1/workspaces", {');
     expect(routerSetup).toContain('localStorage.setItem("runner-team-id", team.id)');

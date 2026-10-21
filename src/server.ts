@@ -30,6 +30,7 @@ import { runTemplate } from "../ui/run-view.js";
 import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from "./types.js";
 import { generateWorkflowManagementHtml } from "../ui/workflows-ui.js";
 import { WorkflowRepository } from "./workflows.js";
+import { RecipeRepository, parseRecipe } from "./recipes.js";
 import { debug } from "./debug.js";
 import { OidcClient } from "./oidc.js";
 import { renderErrorPage, type ErrorPageOptions } from "../ui/error-page.js";
@@ -121,6 +122,8 @@ import operationsSetup from "../ui/operations-ui.mjs?raw";
 import teamSettingsSetup from "../ui/team-settings-ui.mjs?raw";
 import teamsLandingSetup from "./teams-landing.mjs?raw";
 import workflowsSetup from "../ui/workflows-ui.mjs?raw";
+import recipesTemplate from "../ui/recipes.html?raw";
+import recipesSetup from "../ui/recipes-ui.mjs?raw";
 import timezoneFormatSource from "../ui/timezone-format.mjs?raw";
 import preferencesSource from "../ui/preferences.mjs?raw";
 import workspacePathSource from "../ui/workspace-path.mjs?raw";
@@ -142,6 +145,7 @@ export class WebhookServer {
   private server: http.Server;
   private preprocessors = new Map<string, WebhookPreprocessor>();
   private workflows = new WorkflowRepository();
+  private recipes = new RecipeRepository();
   private secretRepository = new SecretRepository();
   private queue: QueueManager;
   private secrets: SecretStore;
@@ -185,6 +189,7 @@ export class WebhookServer {
         this.userPreferences.init(),
         this.runners.init(),
         this.workspaceWebhooks.init(),
+        this.recipes.init(),
       ]);
     });
 
@@ -265,8 +270,10 @@ export class WebhookServer {
       url.pathname = externalPath === "/assets" ? "/" : externalPath.slice(7);
     } else if (
       externalPath === "/" ||
-      ["/runs", "/help", "/settings", "/operations", "/teams", "/workspaces", "/workflows"].includes(externalPath) ||
-      /^\/(?:runs|workflows)\//.test(externalPath) ||
+      ["/runs", "/help", "/settings", "/operations", "/teams", "/workspaces", "/workflows", "/recipes"].includes(
+        externalPath,
+      ) ||
+      /^\/(?:runs|workflows|recipes)\//.test(externalPath) ||
       /^\/(?:teams|workspaces|settings)\//.test(externalPath) ||
       externalPath.startsWith("/pages/") ||
       ["/manifest.webmanifest", "/app-icon.svg", "/on.css", "/service-worker.js"].includes(externalPath) ||
@@ -404,6 +411,10 @@ export class WebhookServer {
     if (req.method === "GET" && (url.pathname === "/workflows-ui.mjs" || url.pathname === "/pages/workflows-ui.mjs")) {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(workflowsSetup);
+    }
+    if (req.method === "GET" && url.pathname === "/pages/recipes-ui.mjs") {
+      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(recipesSetup);
     }
 
     if (req.method === "GET" && url.pathname === "/app-header.html") {
@@ -1002,6 +1013,12 @@ export class WebhookServer {
         generateWorkflowManagementHtml(page, id, Number.isSafeInteger(revision) && revision > 0 ? revision : undefined),
       );
     }
+    if (req.method === "GET" && url.pathname === "/pages/recipes.html") {
+      if (!(await this.requireAuthenticatedUser(req, res))) {
+        return;
+      }
+      return this.renderPageComponent(res, "page-recipes", recipesTemplate);
+    }
     if (req.method === "GET" && url.pathname === "/pages/settings.html") {
       if (!(await this.requireAuthenticatedUser(req, res))) {
         return;
@@ -1028,6 +1045,13 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/workflows") {
+      if (!(await this.requireAuthenticatedUser(req, res))) {
+        return;
+      }
+      return this.renderAppShell(res);
+    }
+
+    if (req.method === "GET" && /^\/recipes(?:\/new)?$/.test(url.pathname)) {
       if (!(await this.requireAuthenticatedUser(req, res))) {
         return;
       }
@@ -1556,6 +1580,37 @@ sessionStorage.removeItem('runner-pending-team-invite');
 
     if (url.pathname === "/api/workflows/validate" && req.method === "POST") {
       return this.handleWorkflowValidation(req, res);
+    }
+
+    if (url.pathname === "/api/recipes/validate" && req.method === "POST") {
+      return this.handleRecipeValidation(req, res);
+    }
+    if (url.pathname === "/api/recipes" && req.method === "GET") {
+      return this.handleRecipeList(req, res);
+    }
+    if (url.pathname === "/api/recipes" && req.method === "POST") {
+      return this.handleRecipePublish(req, res);
+    }
+    const recipeVersionMatch = url.pathname.match(
+      /^\/api\/recipes\/([a-z0-9-]+)\/([a-z0-9-]+)\/versions\/(\d+)(\/revoke)?$/,
+    );
+    if (recipeVersionMatch && req.method === "GET" && !recipeVersionMatch[4]) {
+      return this.handleRecipeGet(
+        req,
+        res,
+        recipeVersionMatch[1],
+        recipeVersionMatch[2],
+        Number(recipeVersionMatch[3]),
+      );
+    }
+    if (recipeVersionMatch && req.method === "POST" && recipeVersionMatch[4]) {
+      return this.handleRecipeRevoke(
+        req,
+        res,
+        recipeVersionMatch[1],
+        recipeVersionMatch[2],
+        Number(recipeVersionMatch[3]),
+      );
     }
 
     if (url.pathname === "/api/secrets" && req.method === "GET") {
@@ -3031,13 +3086,127 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return;
     }
     try {
-      const workflows = this.workflows.validate(body.sourceYaml);
+      await this.workflowsLoaded;
+      const workflows = await this.workflows.validateForSave(body.sourceYaml);
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ valid: true, workflows }));
     } catch (error: any) {
       res.writeHead(422, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ valid: false, error: error.message }));
     }
+  }
+
+  private async handleRecipeList(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (!(await this.requireAuthenticatedUser(req, res))) {
+      return;
+    }
+    await this.workflowsLoaded;
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ recipes: await this.recipes.list() }));
+  }
+
+  private async handleRecipeValidation(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (!(await this.requireAuthenticatedUser(req, res))) {
+      return;
+    }
+    const body = await this.readJson(req, res);
+    if (!body || typeof body.sourceYaml !== "string") {
+      if (!res.headersSent) {
+        deny(res, 400, "sourceYaml is required");
+      }
+      return;
+    }
+    try {
+      const recipe = parseRecipe(body.sourceYaml);
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ valid: true, inputs: recipe.inputs }));
+    } catch (error) {
+      res.writeHead(422, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ valid: false, error: error instanceof Error ? error.message : String(error) }));
+    }
+  }
+
+  private async handleRecipeGet(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    namespace: string,
+    slug: string,
+    version: number,
+  ) {
+    if (!(await this.requireAuthenticatedUser(req, res))) {
+      return;
+    }
+    await this.workflowsLoaded;
+    const recipe = await this.recipes.get(namespace, slug, version);
+    if (!recipe) {
+      return res.writeHead(404).end(JSON.stringify({ error: "Recipe not found" }));
+    }
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify(recipe));
+  }
+
+  private async handleRecipePublish(req: http.IncomingMessage, res: http.ServerResponse) {
+    const context = await this.authenticate(req, res);
+    if (!context) {
+      return;
+    }
+    if (context.principal.kind !== "human") {
+      return deny(res, 403, "Only human users may publish recipes");
+    }
+    const body = await this.readJson(req, res);
+    if (
+      !body ||
+      typeof body.slug !== "string" ||
+      typeof body.name !== "string" ||
+      typeof body.sourceYaml !== "string"
+    ) {
+      if (!res.headersSent) {
+        deny(res, 400, "slug, name, and sourceYaml are required");
+      }
+      return;
+    }
+    try {
+      parseRecipe(body.sourceYaml);
+      await this.workflowsLoaded;
+      const username = await this.oidcUsers.preferredUsername(context.principal.subject);
+      const namespace = await this.recipes.getOrCreateNamespace(context.principal.subject, username || "");
+      const recipe = await this.recipes.publish(
+        namespace,
+        body.slug,
+        body.name,
+        context.principal.subject,
+        body.sourceYaml,
+      );
+      res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify(recipe));
+    } catch (error) {
+      deny(res, 422, error instanceof Error ? error.message : "Recipe could not be published");
+    }
+  }
+
+  private async handleRecipeRevoke(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    namespace: string,
+    slug: string,
+    version: number,
+  ) {
+    const admin = await this.requirePlatformCapability(req, res, "platform.policy.manage");
+    if (!admin) {
+      return;
+    }
+    await this.workflowsLoaded;
+    const revoked = await this.recipes.revoke(namespace, slug, version);
+    if (!revoked) {
+      return deny(res, 404, "Recipe version not found");
+    }
+    await this.principals.recordAudit({
+      actor: admin.principal.subject,
+      action: "recipe.version.revoke",
+      target: `${namespace}/${slug}@v${version}`,
+    });
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ revoked: true }));
   }
 
   private async handleWorkflowList(req: http.IncomingMessage, res: http.ServerResponse) {
@@ -3080,6 +3249,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (!teamId) {
       return;
     }
+    await this.workflowsLoaded;
     const body = await this.readJson(req, res);
     if (!body || typeof body.sourceYaml !== "string") {
       if (!res.headersSent) {

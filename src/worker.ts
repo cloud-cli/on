@@ -28,6 +28,7 @@ import { PluginManager } from "./plugins/manager.js";
 import { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
 import { debug } from "./debug.js";
 import { expandMatrix } from "./parser/matrix-expander.js";
+import { validateRecipeInputs } from "./recipe-schema.js";
 import { createWorkflowPlugin } from "./plugins/workflow-registry.js";
 import { RUNNER_VERSION } from "./version.js";
 import { activeStepHandles, shutdownState } from "./worker-state.js";
@@ -339,7 +340,8 @@ export async function processJob(p: Processable) {
   const processable = { ...p, queue, workflow: resolvedWorkflow };
   const steps = resolvedWorkflow.steps;
   const postSteps = resolvedWorkflow.post || [];
-  const inputs = payload.inputs || {};
+  const inputs = { ...(payload.inputs || {}) };
+  const reportInputs = { ...inputs, ...(resolvedWorkflow._recipeInputs || {}) };
   const jobStartTime = Date.now();
   const jobStoragePath = Path.join(config.storagePath, `job-${job.id}`);
   const storagePath = p.executionId
@@ -384,7 +386,7 @@ export async function processJob(p: Processable) {
     job,
     "running",
     jobStartTime,
-    inputs,
+    reportInputs,
     executionContext.env,
     stepReports,
     payload,
@@ -401,6 +403,35 @@ export async function processJob(p: Processable) {
       CI_JOB_NAME: resolvedWorkflow.name,
       CI_JOB_URL: runUrl,
     });
+    if (resolvedWorkflow._recipeInputs) {
+      const evaluateRecipeValue = async (value: unknown): Promise<unknown> => {
+        if (typeof value === "string") {
+          const directExpression = value.match(/^\$\{([\s\S]+)\}$/);
+          if (directExpression) {
+            return SafeExpressionEvaluator.evaluateExpression(directExpression[1], executionContext);
+          }
+          return SafeExpressionEvaluator.evaluateValue(value, executionContext);
+        }
+        if (Array.isArray(value)) {
+          return Promise.all(value.map(evaluateRecipeValue));
+        }
+        if (value && typeof value === "object") {
+          const entries = await Promise.all(
+            Object.entries(value).map(async ([key, item]) => [key, await evaluateRecipeValue(item)] as const),
+          );
+          return Object.fromEntries(entries);
+        }
+        return value;
+      };
+      const resolvedInputs: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(resolvedWorkflow._recipeInputs)) {
+        resolvedInputs[key] = await evaluateRecipeValue(value);
+      }
+      if (resolvedWorkflow._recipeInputSchema) {
+        validateRecipeInputs(resolvedWorkflow._recipeInputSchema, resolvedInputs, "with");
+      }
+      Object.assign(executionContext.inputs, resolvedInputs);
+    }
     writeSecretFiles(resolvedWorkflow.secretFiles, secrets, workingDir);
     cacheKey = resolvedWorkflow.cache
       ? String(await SafeExpressionEvaluator.evaluateValue(resolvedWorkflow.cache.key, executionContext))
@@ -550,6 +581,7 @@ async function processSteps(
           stepIndex: i,
           attempt,
           executionContext,
+          recipeSecrets: p.workflow?._recipeSecrets,
           driver,
           queue,
           config,
@@ -630,16 +662,28 @@ async function executeSingleStep(params: {
   stepIndex: number;
   attempt: number;
   executionContext: JobExecutionContext;
+  recipeSecrets?: Record<string, string>;
   driver: ExecutionDriver;
   queue: WorkerExecutionQueue;
   config: RunnerConfig;
 }): Promise<ExecOutput> {
   const { step, stepIndex, executionContext } = params;
+  const stepExecutionContext =
+    step.__recipeTemplate && params.recipeSecrets
+      ? {
+          ...executionContext,
+          secrets: Object.fromEntries(
+            Object.entries(params.recipeSecrets).flatMap(([alias, source]) =>
+              Object.hasOwn(executionContext.secrets, source) ? [[alias, executionContext.secrets[source]]] : [],
+            ),
+          ),
+        }
+      : executionContext;
   step.id ||= `step-${stepIndex}`;
   step.name ||= step.id;
 
   if (step.if) {
-    const shouldRun = await SafeExpressionEvaluator.evaluateConditions(step.if, executionContext);
+    const shouldRun = await SafeExpressionEvaluator.evaluateConditions(step.if, stepExecutionContext);
 
     if (!shouldRun) {
       debug(`⏩ Skipped step ${step.id} based on condition: ${step.if}`, executionContext);
@@ -661,7 +705,7 @@ async function executeSingleStep(params: {
       }
       const targetInputs =
         typeof step.with === "string"
-          ? await SafeExpressionEvaluator.evaluateExpression(step.with, executionContext)
+          ? await SafeExpressionEvaluator.evaluateExpression(step.with, stepExecutionContext)
           : step.with;
       if (!targetInputs || typeof targetInputs !== "object" || Array.isArray(targetInputs)) {
         throw new Error("Dispatch inputs must evaluate to a JSON object");
@@ -708,7 +752,7 @@ async function executeSingleStep(params: {
   }
 
   try {
-    const evaluatedStepEnv = await evaluateEnv(step.env, executionContext);
+    const evaluatedStepEnv = await evaluateEnv(step.env, stepExecutionContext);
     const stepContext: StepContext = {
       jobId: String(params.jobId),
       step,
@@ -731,9 +775,9 @@ async function executeSingleStep(params: {
     };
 
     if (step.eval) {
-      return executeEvalStep({ ...params, stepContext });
+      return executeEvalStep({ ...params, executionContext: stepExecutionContext, stepContext });
     } else {
-      return executeRunStep({ ...params, stepContext });
+      return executeRunStep({ ...params, executionContext: stepExecutionContext, stepContext });
     }
   } catch (e: any) {
     const errorMessage = e?.message || String(e);

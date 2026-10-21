@@ -144,6 +144,12 @@ export default function () {
     if (path === "/workflows") {
       return { component: "page-workflows", url: "/assets/pages/workflows.html?page=workflows", page: "workflows" };
     }
+    if (path === "/recipes") {
+      return { component: "page-recipes", url: "/assets/pages/recipes.html", page: "recipes" };
+    }
+    if (path === "/recipes/new") {
+      return { component: "page-recipe-editor", url: "/assets/pages/recipes.html?editor=1", page: "recipe-editor" };
+    }
     const workflowEditor = path.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
     if (workflowEditor) {
       return {
@@ -158,16 +164,16 @@ export default function () {
   const navigate = async (replace = false) => {
     const currentNavigation = ++navigationId;
     try {
-      const teams = await checkTeams();
+      const current = route();
+      const teams = current.page === "recipes" || current.page === "recipe-editor" ? [] : await checkTeams();
       if (currentNavigation !== navigationId) {
         return;
       }
-      if (!teams.length) {
+      if (!teams.length && current.page !== "recipes" && current.page !== "recipe-editor") {
         showOnboarding();
         return;
       }
       document.body.dataset.teamless = "false";
-      const current = route();
       if (current.teamId) {
         if (!teams.some((team) => team.id === current.teamId)) {
           throw new Error("You are not a member of this team.");
@@ -192,7 +198,7 @@ export default function () {
           '<h1 class="text-xl font-semibold">404 — Page not found</h1><p class="mt-2 text-sm">The page you are looking for does not exist. <a href="/ui/runs">Go home</a> or <a href="/ui/runs">view runs</a>.</p>';
         outlet.value.append(routeMessage);
       } else {
-        const persistentPage = !["run", "editor", "team-settings"].includes(current.page);
+        const persistentPage = !["run", "editor", "team-settings", "recipe-editor"].includes(current.page);
         const cacheKey = current.page;
         let component = persistentPage ? mountedPages.get(cacheKey) : null;
         if (!component) {

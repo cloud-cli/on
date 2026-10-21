@@ -4,6 +4,7 @@ import { runMigrations } from "./migrations.js";
 import type { WorkflowDefinition, WorkflowRevision } from "./types.js";
 import { ensureTeamDataSchema } from "./team-data-schema.js";
 import { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
+import { RecipeRepository, validateRecipeInputs, ordinaryRecipeInputSchema } from "./recipes.js";
 
 export { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
 
@@ -79,7 +80,8 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
       if (dockerArgs?.some((arg: unknown) => typeof arg !== "string")) {
         throw new Error(`${label}.dockerArgs must contain strings`);
       }
-      return { ...step, timeoutMs, volumes, dockerArgs };
+      const { __recipeTemplate: _ignoredRecipeMarker, ...workflowStep } = step;
+      return { ...workflowStep, timeoutMs, volumes, dockerArgs };
     });
   if (parsed.post !== undefined && !Array.isArray(parsed.post)) {
     throw new Error("Workflow post must be an array of steps");
@@ -151,6 +153,7 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
 }
 
 export class WorkflowRepository {
+  private recipes = new RecipeRepository();
   async init(): Promise<void> {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS workflows (
@@ -192,6 +195,157 @@ export class WorkflowRepository {
     return workflows;
   }
 
+  private async resolveRecipeWorkflow(sourceYaml: string): Promise<{
+    workflows: WorkflowDefinition[];
+    recipeRef?: { namespace: string; slug: string; version: number };
+    recipeInputs?: Record<string, unknown>;
+    recipeInputSchema?: Record<string, unknown>;
+    recipeSecrets?: Record<string, string>;
+  }> {
+    const parsed = YAML.parse(sourceYaml);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { workflows: this.validate(sourceYaml) };
+    }
+    if (!Object.hasOwn(parsed, "using")) {
+      if (Object.hasOwn(parsed, "with") || Object.hasOwn(parsed, "secrets")) {
+        throw new Error("with and secrets are valid only with using");
+      }
+      return { workflows: this.validate(sourceYaml) };
+    }
+    if (typeof parsed.using !== "string") {
+      throw new Error("using must be namespace/slug@vN");
+    }
+    if (parsed.steps !== undefined) {
+      throw new Error("A workflow must use either steps or using, not both");
+    }
+    const reference = parsed.using.match(/^([a-z0-9][a-z0-9-]{0,62})\/([a-z0-9][a-z0-9-]{0,62})@v([1-9]\d*)$/);
+    if (!reference) {
+      throw new Error("using must be namespace/slug@vN");
+    }
+    const [, namespace, slug, versionText] = reference;
+    const version = Number(versionText);
+    const recipe = await this.recipes.get(namespace, slug, version);
+    if (!recipe) {
+      throw new Error("Recipe version not found");
+    }
+    if (recipe.revoked) {
+      throw new Error("Recipe version has been revoked");
+    }
+    if (!Object.hasOwn(parsed, "with") || !Object.hasOwn(parsed, "secrets")) {
+      throw new Error("using workflows require with and secrets objects");
+    }
+    const normal = parsed.with;
+    const secretRefs = parsed.secrets;
+    if (
+      !normal ||
+      typeof normal !== "object" ||
+      Array.isArray(normal) ||
+      !secretRefs ||
+      typeof secretRefs !== "object" ||
+      Array.isArray(secretRefs)
+    ) {
+      throw new Error("with and secrets must be objects");
+    }
+    const properties = (recipe.inputs as any).properties || {};
+    const ordinarySchema = ordinaryRecipeInputSchema(recipe.inputs);
+    for (const [key, value] of Object.entries(normal)) {
+      if (!properties[key] || properties[key].writeOnly === true) {
+        throw new Error(`Unknown ordinary recipe input: ${key}`);
+      }
+      if (typeof value === "string" && /\$\{\s*secrets\./.test(value)) {
+        throw new Error(`Secret recipe input "${key}" must use the secrets mapping`);
+      }
+      if (!(typeof value === "string" && /^\$\{[\s\S]+\}$/.test(value))) {
+        validateRecipeInputs(properties[key], value, `with.${key}`);
+      }
+    }
+    for (const [key, definition] of Object.entries(properties)) {
+      if (
+        (recipe.inputs as any).required?.includes(key) &&
+        (definition as any)?.writeOnly !== true &&
+        !(key in normal)
+      ) {
+        throw new Error(`Required recipe input is missing: ${key}`);
+      }
+    }
+    for (const [key, value] of Object.entries(secretRefs)) {
+      if (
+        !properties[key] ||
+        (properties[key] as any).writeOnly !== true ||
+        typeof value !== "string" ||
+        !/^\$\{secrets\.[A-Z][A-Z0-9_]*\}$/.test(value)
+      ) {
+        throw new Error(`Invalid recipe secret mapping: ${key}`);
+      }
+    }
+    for (const key of (recipe.inputs as any).required || []) {
+      if (properties[key]?.writeOnly === true && !(key in secretRefs)) {
+        throw new Error(`Required recipe secret is missing: ${key}`);
+      }
+    }
+    const recipeSecrets = Object.fromEntries(
+      Object.entries(secretRefs).map(([alias, reference]) => [
+        alias,
+        (reference as string).match(/^\$\{secrets\.([A-Z][A-Z0-9_]*)\}$/)![1],
+      ]),
+    );
+    const bindings = { ...normal, ...secretRefs };
+    const referenced = new Set<string>();
+    const inspect = (value: any): void => {
+      if (typeof value === "string") {
+        for (const match of value.matchAll(/\$\{inputs\.([A-Za-z0-9_-]+)\}/g)) {
+          referenced.add(match[1]);
+        }
+      } else if (Array.isArray(value)) {
+        value.forEach(inspect);
+      } else if (value && typeof value === "object") {
+        Object.values(value).forEach(inspect);
+      }
+    };
+    inspect(recipe.steps);
+    for (const key of referenced) {
+      if (!(key in bindings)) {
+        throw new Error(`Recipe input is not mapped: ${key}`);
+      }
+    }
+    const rewriteSecrets = (value: any): any => {
+      if (typeof value === "string") {
+        return value.replace(/\$\{inputs\.([A-Za-z0-9_-]+)\}/g, (match, key: string) =>
+          typeof recipeSecrets[key] === "string" ? `\${secrets.${key}}` : match,
+        );
+      }
+      if (Array.isArray(value)) {
+        return value.map(rewriteSecrets);
+      }
+      if (value && typeof value === "object") {
+        return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, rewriteSecrets(item)]));
+      }
+      return value;
+    };
+    const compiled = {
+      ...parsed,
+      steps: recipe.steps.map(rewriteSecrets),
+    };
+    delete compiled.using;
+    delete compiled.with;
+    delete compiled.secrets;
+    const workflows = this.validate(YAML.stringify(compiled));
+    for (const step of workflows[0].steps) {
+      step.__recipeTemplate = true;
+    }
+    return {
+      workflows,
+      recipeRef: { namespace, slug, version },
+      recipeInputs: normal,
+      recipeInputSchema: ordinarySchema,
+      recipeSecrets,
+    };
+  }
+
+  async validateForSave(sourceYaml: string): Promise<WorkflowDefinition[]> {
+    return (await this.resolveRecipeWorkflow(sourceYaml)).workflows;
+  }
+
   private async assertDefinitionIdIsUnique(
     teamId: string | undefined,
     workflowKey: string,
@@ -215,7 +369,8 @@ export class WorkflowRepository {
   }
 
   async saveDraftForTeam(teamId: string, id: string, sourceYaml: string, enabled = true): Promise<StoredWorkflow> {
-    const workflows = this.validate(sourceYaml);
+    const resolved = await this.resolveRecipeWorkflow(sourceYaml);
+    const workflows = resolved.workflows;
     if (workflows.length !== 1) {
       throw new Error("Workflow must contain exactly one definition");
     }
@@ -244,7 +399,24 @@ export class WorkflowRepository {
       {
         s: `INSERT INTO workflow_revisions (workflow_id, revision, source_yaml, normalized_json)
         SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM workflows WHERE id = ? AND team_id = ?)`,
-        d: [canonicalId, nextRevision, sourceYaml, JSON.stringify(workflows[0]), canonicalId, teamId],
+        d: [
+          canonicalId,
+          nextRevision,
+          sourceYaml,
+          JSON.stringify(
+            resolved.recipeRef
+              ? {
+                  ...workflows[0],
+                  _recipeRef: resolved.recipeRef,
+                  _recipeInputs: resolved.recipeInputs,
+                  _recipeInputSchema: resolved.recipeInputSchema,
+                  _recipeSecrets: resolved.recipeSecrets,
+                }
+              : workflows[0],
+          ),
+          canonicalId,
+          teamId,
+        ],
         m: "run",
       },
     ]);
@@ -324,7 +496,7 @@ export class WorkflowRepository {
     if (!workflow) {
       return null;
     }
-    const [definition] = this.validate(workflow.source_yaml);
+    const [definition] = (await this.resolveRecipeWorkflow(workflow.source_yaml)).workflows;
     await this.assertDefinitionIdIsUnique(undefined, id, definition.id);
     const revision = await db.get("SELECT MAX(revision) AS revision FROM workflow_revisions WHERE workflow_id = ?", [
       id,
@@ -348,7 +520,7 @@ export class WorkflowRepository {
     if (!workflow) {
       return null;
     }
-    const [definition] = this.validate(workflow.source_yaml);
+    const [definition] = (await this.resolveRecipeWorkflow(workflow.source_yaml)).workflows;
     await this.assertDefinitionIdIsUnique(teamId, id, definition.id);
     const revision = await db.get("SELECT MAX(revision) AS revision FROM workflow_revisions WHERE workflow_id = ?", [
       id,

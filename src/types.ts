@@ -145,6 +145,8 @@ export interface WorkflowStep {
   dockerArgs?: string[];
   timeoutMs?: number;
   env?: Record<string, string>;
+  /** Internal marker: evaluate recipe template expressions against the pinned job context. */
+  __recipeTemplate?: boolean;
 }
 
 export interface WorkflowDefinition {
@@ -172,6 +174,12 @@ export interface WorkflowDefinition {
   plugins?: WorkflowPluginDefinition[];
   /** Worker capabilities required to execute this workflow */
   tags?: string[];
+  /** Internal immutable recipe inputs carried in a normalized revision snapshot. */
+  _recipeInputs?: Record<string, unknown>;
+  /** Input schema for runtime validation of evaluated recipe bindings. */
+  _recipeInputSchema?: Record<string, unknown>;
+  /** Recipe secret aliases mapped to workspace secret names; never contains values. */
+  _recipeSecrets?: Record<string, string>;
   /** Time triggers stored alongside webhook triggers in DB-authored workflows. */
   schedule?: ScheduleTrigger[];
   solar?: ScheduleTrigger[];
