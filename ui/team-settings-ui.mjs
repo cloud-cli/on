@@ -13,6 +13,7 @@ export default function () {
   const teamName = ref("");
   const newTeamName = ref("");
   const inviteEmail = ref("");
+  const inviteSubject = ref("");
   const inviteLink = ref("");
   const webhooks = ref([]);
   const webhookProvider = ref("");
@@ -150,6 +151,9 @@ export default function () {
   const setInviteEmail = (event) => {
     inviteEmail.value = event.target.value;
   };
+  const setInviteSubject = (event) => {
+    inviteSubject.value = event.target.value;
+  };
   const setWebhookProvider = (event) => {
     webhookProvider.value = event.target.value;
   };
@@ -161,15 +165,6 @@ export default function () {
   };
   const setNewTeamName = (event) => {
     newTeamName.value = event.target.value;
-  };
-  const setTokenName = (event) => {
-    tokenName.value = event.target.value;
-  };
-  const setAgentName = (event) => {
-    agentName.value = event.target.value;
-  };
-  const setTokenSubject = (event) => {
-    tokenSubject.value = event.target.value;
   };
   const setSecretFile = async (event) => {
     const file = event.target.files?.[0];
@@ -263,6 +258,19 @@ export default function () {
       });
       inviteLink.value = new URL(result.link, location.origin).toString();
       message.value = `Invite link expires ${new Date(result.expiresAt).toLocaleString()}.`;
+    });
+  const createSubjectInvitation = () =>
+    act(async () => {
+      const subject = inviteSubject.value;
+      if (!subject) {
+        throw new Error("Enter an OIDC subject.");
+      }
+      const result = await request(workspaceUrl("/invitations"), {
+        method: "POST",
+        body: JSON.stringify({ subject }),
+      });
+      inviteSubject.value = "";
+      message.value = `OIDC subject invitation expires ${new Date(result.expiresAt).toLocaleString()}. Access is granted when that identity signs in.`;
     });
   const createWebhook = () =>
     act(async () => {
@@ -359,6 +367,7 @@ export default function () {
     isAdmin,
     canManage,
     inviteEmail,
+    inviteSubject,
     inviteLink,
     webhooks,
     webhookProvider,
@@ -368,6 +377,8 @@ export default function () {
     error,
     createInvitation,
     setInviteEmail,
+    createSubjectInvitation,
+    setInviteSubject,
     createWebhook,
     setWebhookProvider,
     revokeWebhook,

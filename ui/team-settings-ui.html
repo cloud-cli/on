@@ -136,6 +136,29 @@
                 </div></template
               >
             </div>
+            <div class="mt-5 border-t border-flow-border pt-5" class-hidden="!canManage">
+              <h3 class="font-medium">Invite by OIDC subject</h3>
+              <p class="mt-1 text-xs text-flow-muted">
+                Enter the exact OIDC subject. The invitation expires after seven days and grants Collaborator access
+                only when that identity signs in to Flow.
+              </p>
+              <form class="mt-3 flex gap-2" on-submit.prevent="createSubjectInvitation()">
+                <label class="sr-only" for="invite-subject">OIDC subject</label>
+                <input
+                  id="invite-subject"
+                  bind-value="inviteSubject"
+                  on-input="setInviteSubject($event)"
+                  aria-label="OIDC subject"
+                  autocomplete="off"
+                  maxlength="255"
+                  placeholder="OIDC subject"
+                  class="min-w-0 flex-1 rounded-lg border border-flow-border px-3 py-2 text-sm"
+                />
+                <button type="submit" class="whitespace-nowrap rounded-lg border border-flow-border px-4 py-2 text-sm">
+                  Invite by subject
+                </button>
+              </form>
+            </div>
           </section>
           <section
             id="team-webhooks"

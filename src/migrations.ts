@@ -472,6 +472,22 @@ const migrations: Migration[] = [
       await db.transaction(statements);
     },
   },
+  {
+    version: "013_oidc_subject_workspace_invitations",
+    async apply() {
+      await db.exec(`CREATE TABLE IF NOT EXISTS team_subject_invitations (
+        id TEXT PRIMARY KEY,
+        team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        subject TEXT NOT NULL,
+        expires_at DATETIME NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(team_id, subject)
+      );
+      CREATE INDEX IF NOT EXISTS idx_team_subject_invitations_subject_expiry
+        ON team_subject_invitations(subject, expires_at);`);
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

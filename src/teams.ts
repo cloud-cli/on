@@ -67,6 +67,62 @@ export class TeamRepository {
     return { id, token, expiresAt };
   }
 
+  async createSubjectInvitation(teamId: string, subject: string, creator: string, ttlMs = 7 * 24 * 60 * 60 * 1000) {
+    const target = subject;
+    if (!target || target.length > 255) {
+      throw new Error("A valid OIDC subject is required");
+    }
+    if (!Number.isSafeInteger(ttlMs) || ttlMs < 60_000 || ttlMs > 30 * 24 * 60 * 60 * 1000) {
+      throw new Error("Invitation expiry must be between one minute and 30 days");
+    }
+    if (await db.get("SELECT 1 AS present FROM team_members WHERE team_id = ? AND subject = ?", [teamId, target])) {
+      throw new Error("Workspace member already exists");
+    }
+    const id = opaque(18);
+    const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+    await db.run(
+      `INSERT INTO team_subject_invitations (id, team_id, subject, expires_at, created_by)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(team_id, subject) DO UPDATE SET
+         id = excluded.id, expires_at = excluded.expires_at, created_by = excluded.created_by,
+         created_at = CURRENT_TIMESTAMP`,
+      [id, teamId, target, expiresAt, creator],
+    );
+    return { id, expiresAt };
+  }
+
+  /** Grant pending subject invitations only after that exact OIDC subject authenticates. */
+  async acceptSubjectInvitations(subject: string): Promise<void> {
+    if (!subject) {
+      return;
+    }
+    if (typeof db.transaction !== "function") {
+      throw new Error("Atomic transactions are required to accept OIDC subject invitations");
+    }
+    await db.transaction([
+      {
+        s: `INSERT INTO team_members (team_id, subject, role)
+            SELECT team_id, subject, 'collaborator' FROM team_subject_invitations
+            WHERE subject = ? AND julianday(expires_at) > julianday('now')
+            ON CONFLICT(team_id, subject) DO NOTHING`,
+        d: [subject],
+        m: "run",
+      },
+      {
+        s: `INSERT INTO authorization_audit (actor, action, target, team_id, detail)
+            SELECT ?, 'member.invitation.accept', ?, team_id, ? FROM team_subject_invitations
+            WHERE subject = ? AND julianday(expires_at) > julianday('now') AND changes() > 0`,
+        d: [subject, subject, JSON.stringify({ source: "oidc-subject" }), subject],
+        m: "run",
+      },
+      {
+        s: "DELETE FROM team_subject_invitations WHERE subject = ?",
+        d: [subject],
+        m: "run",
+      },
+    ]);
+  }
+
   async acceptInvitation(token: string, subject: string, email: string): Promise<"accepted" | "invalid"> {
     if (!token || !subject || !email) {
       return "invalid";

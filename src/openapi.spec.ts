@@ -38,8 +38,10 @@ describe("OpenAPI specification", () => {
     });
     expect(spec.components.schemas.JobStatusDetails.required).toEqual(["id", "status", "createdAt", "lastUpdated"]);
     expect(spec.paths["/api/v1/jobs"]).toHaveProperty("get");
-    expect(spec.paths["/api/v1/workspaces/{workspaceId}/api-keys"]).toHaveProperty("post");
-    expect(spec.paths["/api/v1/workspaces/{workspaceId}/api-keys/{keyId}"]).toHaveProperty("delete");
+    expect(spec.paths["/api/v1/api-keys"]).toBeUndefined();
+    expect(spec.paths["/api/v1/api-keys/{keyId}"]).toBeUndefined();
+    expect(spec.paths["/api/v1/workspaces/{workspaceId}/api-keys"]).toBeUndefined();
+    expect(spec.paths["/api/v1/workspaces/{workspaceId}/api-keys/{keyId}"]).toBeUndefined();
     expect(spec.paths["/api/v1/session"].get.security).toEqual([{ oidcSessionCookie: [] }, { oidcAdminBearer: [] }]);
     expect(spec.paths["/api/v1/workflows/{workflowId}"]).toHaveProperty("put");
     expect(spec.paths["/api/v1/workflows/{workflowId}/run"]).toHaveProperty("post");
@@ -62,6 +64,10 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api/v1/webhooks/team/{webhookToken}/{provider}"]).toHaveProperty("post");
     expect(spec.paths["/api/v1/teams"].get.security).toEqual([{ oidcSessionCookie: [] }, { oidcAdminBearer: [] }]);
     expect(spec.paths["/api/v1/teams/{teamId}/invitations"]).toHaveProperty("post");
+    expect(
+      spec.paths["/api/v1/workspaces/{workspaceId}/invitations"].post.requestBody.content["application/json"].schema
+        .oneOf,
+    ).toEqual([{ required: ["email"] }, { required: ["subject"] }]);
     expect(spec.paths["/api/v1/teams/{teamId}/members/{subject}"]).toHaveProperty("delete");
     expect(spec.paths["/api/v1/teams/{teamId}/members/{subject}"]).toHaveProperty("put");
     expect(spec.paths["/api/v1/workspaces/{workspaceId}/members/{subject}"]).toHaveProperty("put");
@@ -78,6 +84,7 @@ describe("OpenAPI specification", () => {
 
   it("documents only canonical application API routes and runner rename", () => {
     expect(Object.keys(spec.paths).every((path) => path === "/api/v1" || path.startsWith("/api/v1/"))).toBe(true);
+    expect(Object.keys(spec.paths).some((path) => /system-users|api-keys|workspace.+\/tokens/.test(path))).toBe(false);
     expect(spec.paths["/api/v1/auth/session"].get.security).toEqual([
       { oidcSessionCookie: [] },
       { oidcAdminBearer: [] },

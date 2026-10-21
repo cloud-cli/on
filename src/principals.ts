@@ -1,13 +1,12 @@
 import crypto from "node:crypto";
 import db from "./db-client.js";
 import {
-  effectiveCapabilitiesFor,
+  effectiveWorkspaceCapabilities,
   elevatedOverrides,
   globalCapabilitiesForRole,
   isWorkspaceCapability,
   isWorkspaceRole,
   roleFromLegacyMemberRole,
-  sanitizeSystemUserOverrides,
   sanitizeWorkspaceOverrides,
   type GlobalCapability,
   type PermissionOverride,
@@ -15,7 +14,6 @@ import {
   type WorkspaceRole,
 } from "./permissions.js";
 
-const opaque = (bytes = 32) => crypto.randomBytes(bytes).toString("base64url");
 const digest = (value: string) => crypto.createHash("sha256").update(value).digest("hex");
 
 export type PrincipalKind = "human" | "system";
@@ -30,14 +28,6 @@ export type Principal = {
   platformRole: PlatformRole;
   platformCapabilities: GlobalCapability[];
   disabled: boolean;
-};
-
-export type PrincipalToken = {
-  id: string;
-  subject: string;
-  name: string;
-  createdAt: string;
-  lastUsedAt: string | null;
 };
 
 export type WorkspaceMembership = {
@@ -82,8 +72,8 @@ function normalizePrincipal(row: any): Principal {
 }
 
 /**
- * Directory of humans and system users, workspace memberships, sparse
- * permission overrides, and principal-bound tokens.
+ * Directory of authenticated identities, workspace memberships, sparse
+ * permission overrides, and authorization audits.
  *
  * Authorization reads this state live on every request so revocation and role
  * changes take effect immediately, even across server instances.
@@ -156,159 +146,11 @@ export class PrincipalRepository {
        WHERE t.token_hash = ? AND t.revoked_at IS NULL`,
       [digest(token)],
     );
-    if (!row || row.disabled_at) {
+    if (!row || row.disabled_at || row.kind === "system") {
       return null;
     }
     await db.run("UPDATE principal_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?", [row.token_id]);
     return normalizePrincipal(row);
-  }
-
-  async listTokens(subject: string): Promise<PrincipalToken[]> {
-    const rows = await db.all(
-      `SELECT id, subject, name, created_at, last_used_at FROM principal_tokens
-       WHERE subject = ? AND revoked_at IS NULL ORDER BY created_at DESC`,
-      [subject],
-    );
-    return rows.map((row: any) => ({
-      id: row.id,
-      subject: row.subject,
-      name: row.name,
-      createdAt: row.created_at,
-      lastUsedAt: row.last_used_at || null,
-    }));
-  }
-
-  async listTokensForWorkspace(teamId: string): Promise<Array<PrincipalToken & { kind: PrincipalKind }>> {
-    const rows = await db.all(
-      `SELECT t.id, t.subject, t.name, t.created_at, t.last_used_at, u.kind
-       FROM principal_tokens t
-       JOIN oidc_users u ON u.subject = t.subject
-       JOIN team_members m ON m.team_id = ? AND m.subject = t.subject
-       WHERE t.revoked_at IS NULL
-       ORDER BY t.created_at DESC`,
-      [teamId],
-    );
-    return rows.map((row: any) => ({
-      id: row.id,
-      subject: row.subject,
-      name: row.name,
-      createdAt: row.created_at,
-      lastUsedAt: row.last_used_at || null,
-      kind: row.kind === "system" ? "system" : "human",
-    }));
-  }
-
-  async issueToken(subject: string, name: string, createdBy: string) {
-    const trimmed = name.trim();
-    if (!trimmed || trimmed.length > 100) {
-      throw new Error("Token name must be between 1 and 100 characters");
-    }
-    const principal = await this.principal(subject);
-    if (!principal || principal.disabled) {
-      throw new Error("Token owner is missing or disabled");
-    }
-    const token = `on_pat_${opaque(32)}`;
-    const id = opaque(18);
-    await db.run("INSERT INTO principal_tokens (id, subject, name, token_hash, created_by) VALUES (?, ?, ?, ?, ?)", [
-      id,
-      subject,
-      trimmed,
-      digest(token),
-      createdBy,
-    ]);
-    await this.recordAudit({
-      actor: createdBy,
-      action: "token.issue",
-      target: subject,
-      detail: { tokenId: id, name: trimmed },
-    });
-    return { id, name: trimmed, subject, token };
-  }
-
-  async revokeToken(id: string, actor: string, teamId?: string): Promise<boolean> {
-    const result = await db.run(
-      "UPDATE principal_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL",
-      [id],
-    );
-    if (Number(result?.changes || 0) > 0) {
-      await this.recordAudit({ actor, action: "token.revoke", target: id, teamId: teamId || null });
-      return true;
-    }
-    return false;
-  }
-
-  async createSystemUser(input: { name: string; actor: string; email?: string }) {
-    const name = input.name.trim();
-    if (!name || name.length > 100) {
-      throw new Error("System user name must be between 1 and 100 characters");
-    }
-    const subject = `system:${opaque(18)}`;
-    await db.run(
-      `INSERT INTO oidc_users (subject, name, email, role, kind, created_by)
-       VALUES (?, ?, ?, 'user', 'system', ?)`,
-      [subject, name, input.email?.trim() || null, input.actor],
-    );
-    await this.recordAudit({ actor: input.actor, action: "system-user.create", target: subject, detail: { name } });
-    return (await this.principal(subject))!;
-  }
-
-  async updateSystemUser(
-    subject: string,
-    input: { name?: string; disabled?: boolean },
-    actor: string,
-  ): Promise<Principal | null> {
-    const principal = await this.principal(subject);
-    if (!principal || principal.kind !== "system") {
-      return null;
-    }
-    if (input.name !== undefined) {
-      const name = input.name.trim();
-      if (!name || name.length > 100) {
-        throw new Error("System user name must be between 1 and 100 characters");
-      }
-      await db.run("UPDATE oidc_users SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE subject = ?", [name, subject]);
-    }
-    if (input.disabled !== undefined) {
-      await db.run("UPDATE oidc_users SET disabled_at = ?, updated_at = CURRENT_TIMESTAMP WHERE subject = ?", [
-        input.disabled ? new Date().toISOString() : null,
-        subject,
-      ]);
-      if (input.disabled) {
-        await db.run(
-          "UPDATE principal_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE subject = ? AND revoked_at IS NULL",
-          [subject],
-        );
-      }
-      await this.recordAudit({
-        actor,
-        action: input.disabled ? "system-user.disable" : "system-user.enable",
-        target: subject,
-      });
-    }
-    return this.principal(subject);
-  }
-
-  async deleteSystemUser(subject: string, actor: string): Promise<boolean> {
-    const principal = await this.principal(subject);
-    if (!principal || principal.kind !== "system") {
-      return false;
-    }
-    await db.run("DELETE FROM principal_tokens WHERE subject = ?", [subject]);
-    await db.run("DELETE FROM workspace_permission_overrides WHERE subject = ?", [subject]);
-    await db.run("DELETE FROM team_members WHERE subject = ?", [subject]);
-    const result = await db.run("DELETE FROM oidc_users WHERE subject = ? AND kind = 'system'", [subject]);
-    if (Number(result?.changes || 0) > 0) {
-      await this.recordAudit({ actor, action: "system-user.delete", target: subject });
-      return true;
-    }
-    return false;
-  }
-
-  async listPrincipals(): Promise<Principal[]> {
-    const rows = await db.all(
-      "SELECT subject, name, email, photo, role, kind, disabled_at FROM oidc_users ORDER BY kind, name, email, subject",
-    );
-    return rows.map(normalizePrincipal);
   }
 
   async membership(teamId: string, subject: string): Promise<WorkspaceMembership | null> {
@@ -322,7 +164,7 @@ export class PrincipalRepository {
     }
     const overrides = await this.overrides(teamId, subject);
     const role = isWorkspaceRole(row.role) ? row.role : roleFromLegacyMemberRole(row.role);
-    const capabilities = effectiveCapabilitiesFor(principal.kind, role, overrides);
+    const capabilities = effectiveWorkspaceCapabilities(role, overrides);
     return { teamId, subject, role, overrides, capabilities: [...capabilities] };
   }
 
@@ -368,7 +210,7 @@ export class PrincipalRepository {
         kind,
         role,
         overrides: memberOverrides,
-        capabilities: [...effectiveCapabilitiesFor(kind, role, memberOverrides)],
+        capabilities: [...effectiveWorkspaceCapabilities(role, memberOverrides)],
         disabled: Boolean(row.disabled_at),
       };
     });
@@ -384,7 +226,7 @@ export class PrincipalRepository {
     role: WorkspaceRole,
     overrides: readonly PermissionOverride[],
     actor: string,
-  ): Promise<"updated" | "not-found" | "last-admin" | "system-user-retired"> {
+  ): Promise<"updated" | "not-found" | "last-admin"> {
     if (!isWorkspaceRole(role)) {
       throw new Error("Unknown workspace role");
     }
@@ -393,8 +235,8 @@ export class PrincipalRepository {
     if (!existing || !principal) {
       return "not-found";
     }
-    if (principal.kind === "system") {
-      return "system-user-retired";
+    if (principal.kind === "system" || principal.disabled) {
+      return "not-found";
     }
     const sanitized = sanitizeWorkspaceOverrides(overrides);
     const previousRole = isWorkspaceRole(existing.role) ? existing.role : roleFromLegacyMemberRole(existing.role);
@@ -453,7 +295,7 @@ export class PrincipalRepository {
     subject: string,
     role: WorkspaceRole,
     actor: string,
-  ): Promise<"added" | "not-found" | "system-user-retired" | "exists"> {
+  ): Promise<"added" | "not-found" | "exists"> {
     if (!isWorkspaceRole(role)) {
       throw new Error("Unknown workspace role");
     }
@@ -461,8 +303,8 @@ export class PrincipalRepository {
     if (!principal) {
       return "not-found";
     }
-    if (principal.kind === "system") {
-      return "system-user-retired";
+    if (principal.kind === "system" || principal.disabled) {
+      return "not-found";
     }
     const existing = await db.get("SELECT 1 AS present FROM team_members WHERE team_id = ? AND subject = ?", [
       teamId,

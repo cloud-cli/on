@@ -40,6 +40,42 @@ describe("team invitations", () => {
     expect(database.run).not.toHaveBeenCalled();
   });
 
+  it("creates a time-limited invitation bound to an exact OIDC subject", async () => {
+    database.get.mockResolvedValue(null);
+    const result = await new TeamRepository().createSubjectInvitation("team-a", " auth-agent-sub ", "admin");
+    const [sql, params] = database.run.mock.calls[0];
+
+    expect(sql).toContain("INSERT INTO team_subject_invitations");
+    expect(sql).toContain("ON CONFLICT(team_id, subject) DO UPDATE");
+    expect(params).toEqual([result.id, "team-a", " auth-agent-sub ", result.expiresAt, "admin"]);
+    expect(Date.parse(result.expiresAt)).toBeGreaterThan(Date.now());
+  });
+
+  it("rejects invitations for existing members and invalid OIDC subjects", async () => {
+    database.get.mockResolvedValueOnce({ present: 1 });
+    await expect(new TeamRepository().createSubjectInvitation("team-a", "member-sub", "admin")).rejects.toThrow(
+      "Workspace member already exists",
+    );
+    await expect(new TeamRepository().createSubjectInvitation("team-a", "", "admin")).rejects.toThrow(
+      "A valid OIDC subject is required",
+    );
+    expect(database.run).not.toHaveBeenCalled();
+  });
+
+  it("consumes pending OIDC subject invitations only for the authenticated subject", async () => {
+    await new TeamRepository().acceptSubjectInvitations("auth-agent-sub");
+    const statements = database.transaction.mock.calls[0][0];
+
+    expect(statements[0].s).toContain("INSERT INTO team_members");
+    expect(statements[0].s).toContain("WHERE subject = ? AND julianday(expires_at) > julianday('now')");
+    expect(statements[0].d).toEqual(["auth-agent-sub"]);
+    expect(statements[1].s).toContain("member.invitation.accept");
+    expect(statements[1].s).toContain("changes() > 0");
+    expect(statements[1].d[0]).toBe("auth-agent-sub");
+    expect(statements[2].s).toContain("DELETE FROM team_subject_invitations WHERE subject = ?");
+    expect(statements[2].d).toEqual(["auth-agent-sub"]);
+  });
+
   it("creates workspace and owner membership atomically", async () => {
     await new TeamRepository().createTeam("  Release  ", "owner");
     const statements = database.transaction.mock.calls[0][0];

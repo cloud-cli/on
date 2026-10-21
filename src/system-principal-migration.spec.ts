@@ -45,5 +45,8 @@ describe("Flow system principal retirement migration", () => {
     expect(statements[2]).toContain("DELETE FROM workspace_permission_overrides");
     expect(statements[3]).toContain("UPDATE oidc_users SET disabled_at = COALESCE(disabled_at, CURRENT_TIMESTAMP)");
     expect(statements.join("\n")).not.toContain("DELETE FROM oidc_users");
+    expect(database.exec).toHaveBeenCalledWith(
+      expect.stringContaining("CREATE TABLE IF NOT EXISTS team_subject_invitations"),
+    );
   });
 });

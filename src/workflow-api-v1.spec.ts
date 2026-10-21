@@ -50,6 +50,7 @@ function makeServer(scopes: string[] | null = ["workflows:read", "workflows:writ
       principal: vi.fn(async () => ({ subject: "system:test", role: "collaborator" })),
       recordAudit: vi.fn(async () => {}),
     },
+    teams: { createSubjectInvitation: vi.fn(async () => ({ id: "invite-1", expiresAt: "2030-01-01T00:00:00.000Z" })) },
     handleWorkflowPublish: vi.fn(),
     isAdmin: () => false,
   };
@@ -82,7 +83,7 @@ function makeRequest(method: string, url: string, body?: unknown) {
 }
 
 describe("scoped workflow API v1", () => {
-  it("retires Flow-managed system-user and principal-token endpoints", async () => {
+  it("does not expose Flow-managed system-user, token, or legacy API-key endpoints", async () => {
     const server = makeServer();
     for (const [method, url] of [
       ["GET", "/api/v1/system-users"],
@@ -92,18 +93,34 @@ describe("scoped workflow API v1", () => {
       ["GET", "/api/v1/workspaces/workspace-a/tokens"],
       ["POST", "/api/v1/workspaces/workspace-a/tokens"],
       ["DELETE", "/api/v1/workspaces/workspace-a/tokens/legacy-token"],
+      ["POST", "/api/v1/api-keys"],
+      ["GET", "/api/v1/workspaces/workspace-a/api-keys"],
     ]) {
       const res = makeResponse();
       await (WebhookServer.prototype as any).handleRequest.call(server, makeRequest(method, url), res);
 
-      expect(res.writeHead).toHaveBeenCalledWith(410, {
-        "Cache-Control": "no-store",
-        "Content-Type": "application/json; charset=utf-8",
-      });
-      expect(res.end).toHaveBeenCalledWith(
-        expect.stringMatching(/Flow-managed (system users|principal tokens) are retired\./),
-      );
+      expect(res.writeHead).toHaveBeenCalledWith(404, expect.any(Object));
+      expect(res.end).toHaveBeenCalledOnce();
     }
+  });
+
+  it("creates workspace invitations bound to an OIDC subject", async () => {
+    const server = makeServer();
+    const res = makeResponse();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      makeRequest("POST", "/api/v1/workspaces/workspace-a/invitations", { subject: "auth-agent-sub" }),
+      res,
+    );
+
+    expect(server.authorizer.workspace).toHaveBeenCalledWith(expect.anything(), res, "members.manage", "workspace-a");
+    expect(server.teams.createSubjectInvitation).toHaveBeenCalledWith("workspace-a", "auth-agent-sub", "system:test");
+    expect(res.writeHead).toHaveBeenCalledWith(201, {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    });
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ expiresAt: "2030-01-01T00:00:00.000Z" }));
   });
 
   it("lists only active workflows when requested with a read-scoped key", async () => {

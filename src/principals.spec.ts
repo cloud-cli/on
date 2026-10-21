@@ -49,72 +49,10 @@ describe("PrincipalRepository", () => {
     expect(db.run).toHaveBeenCalledWith(expect.stringContaining("last_used_at"), ["tok"]);
     db.get.mockResolvedValueOnce({ ...person(), token_id: "disabled", disabled_at: "now" });
     expect(await r.tokenPrincipal("disabled-token")).toBeNull();
-  });
-
-  it("issues hashed tokens only for enabled owners and audits", async () => {
-    db.get.mockResolvedValue(person());
-    const issued = await repo().issueToken("human", "  build  ", "actor");
-    expect(issued.token).toMatch(/^on_pat_/);
-    const insert = db.run.mock.calls.find(([sql]: any[]) => String(sql).includes("INSERT INTO principal_tokens"));
-    expect(insert[1]).toEqual([issued.id, "human", "build", tokenDigest(issued.token), "actor"]);
-    expect(insert[1]).not.toContain(issued.token);
-    expect(db.run).toHaveBeenCalledWith(expect.stringContaining("authorization_audit"), expect.any(Array));
-    db.get.mockResolvedValueOnce(null);
-    await expect(repo().issueToken("missing", "x", "a")).rejects.toThrow("missing or disabled");
-    db.get.mockResolvedValueOnce(person("disabled", { disabled_at: "now" }));
-    await expect(repo().issueToken("disabled", "x", "a")).rejects.toThrow("missing or disabled");
-    await expect(repo().issueToken("human", "  ", "a")).rejects.toThrow("Token name");
-    await expect(repo().issueToken("human", "x".repeat(101), "a")).rejects.toThrow("Token name");
-  });
-
-  it("revokes tokens conditionally and audits successful revocation", async () => {
-    db.run.mockResolvedValueOnce({ changes: 0 });
-    expect(await repo().revokeToken("t", "actor")).toBe(false);
-    db.run.mockResolvedValueOnce({ changes: 1 });
-    expect(await repo().revokeToken("t", "actor", "team")).toBe(true);
-    expect(db.run.mock.calls.at(-1)?.[0]).toContain("authorization_audit");
-  });
-
-  it("creates system users with constrained role/kind and audit", async () => {
-    db.get.mockImplementation(async (_sql: string, params: any[]) =>
-      person(params[0], { kind: "system", role: "user" }),
-    );
-    const created = await repo().createSystemUser({ name: " bot ", actor: "admin" });
-    expect(created.subject).toMatch(/^system:/);
-    expect(created).toMatchObject({ kind: "system", platformRole: "user" });
-    expect(db.run.mock.calls[0][0]).toContain("'user', 'system'");
-    expect(db.run.mock.calls.some(([sql]) => String(sql).includes("authorization_audit"))).toBe(true);
-  });
-
-  it("updates only system users, revokes tokens on disable, and audits state changes", async () => {
-    db.get.mockResolvedValueOnce(person());
-    expect(await repo().updateSystemUser("human", { disabled: true }, "actor")).toBeNull();
-    db.get
-      .mockResolvedValueOnce(person("system:x", { kind: "system", role: "user" }))
-      .mockResolvedValueOnce(person("system:x", { kind: "system", role: "user", disabled_at: "now" }));
-    expect(await repo().updateSystemUser("system:x", { disabled: true }, "actor")).toMatchObject({ kind: "system" });
-    expect(db.run).toHaveBeenCalledWith(expect.stringContaining("UPDATE principal_tokens"), ["system:x"]);
-    expect(
-      db.run.mock.calls.some(
-        ([sql, params]) => String(sql).includes("authorization_audit") && params.includes("system-user.disable"),
-      ),
-    ).toBe(true);
-  });
-
-  it("deletes only system users with dependent records", async () => {
-    db.get.mockResolvedValueOnce(person());
-    expect(await repo().deleteSystemUser("human", "actor")).toBe(false);
+    db.run.mockClear();
+    db.get.mockResolvedValueOnce({ ...person("system:legacy", { kind: "system" }), token_id: "legacy" });
+    expect(await r.tokenPrincipal("legacy-system-token")).toBeNull();
     expect(db.run).not.toHaveBeenCalled();
-    db.get.mockResolvedValueOnce(person("system:x", { kind: "system", role: "user" }));
-    expect(await repo().deleteSystemUser("system:x", "actor")).toBe(true);
-    expect(db.run.mock.calls.slice(0, 4).map(([sql]) => String(sql))).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("principal_tokens"),
-        expect.stringContaining("workspace_permission_overrides"),
-        expect.stringContaining("team_members"),
-        expect.stringContaining("oidc_users"),
-      ]),
-    );
   });
 
   it("loads membership, handles disabled/non-members, legacy roles and overrides", async () => {
@@ -165,7 +103,7 @@ describe("PrincipalRepository", () => {
     db.get
       .mockResolvedValueOnce({ role: "viewer" })
       .mockResolvedValueOnce(person("system:x", { kind: "system", role: "user" }));
-    expect(await r.setMemberPermissions("t", "system:x", "admin", [], "a")).toBe("system-user-retired");
+    expect(await r.setMemberPermissions("t", "system:x", "admin", [], "a")).toBe("not-found");
     db.get
       .mockResolvedValueOnce({ role: "viewer" })
       .mockResolvedValueOnce(person())
@@ -219,7 +157,7 @@ describe("PrincipalRepository", () => {
     db.get.mockResolvedValueOnce(null);
     expect(await r.addMember("t", "x", "viewer", "a")).toBe("not-found");
     db.get.mockResolvedValueOnce(person("sys", { kind: "system" }));
-    expect(await r.addMember("t", "sys", "admin", "a")).toBe("system-user-retired");
+    expect(await r.addMember("t", "sys", "admin", "a")).toBe("not-found");
     db.get.mockResolvedValueOnce(person()).mockResolvedValueOnce({ present: 1 });
     expect(await r.addMember("t", "x", "viewer", "a")).toBe("exists");
     db.get.mockResolvedValueOnce(person()).mockResolvedValueOnce(null);
@@ -232,16 +170,5 @@ describe("PrincipalRepository", () => {
     db.run.mockResolvedValueOnce({ changes: 0 });
     db.get.mockResolvedValueOnce(null);
     expect(await r.removeMember("t", "x", "a")).toBe("not-found");
-  });
-
-  it("maps workspace token rows", async () => {
-    db.all.mockResolvedValue([
-      { id: "id", subject: "bot", name: "n", created_at: "c", last_used_at: null, kind: "system" },
-      { id: "h", subject: "human", name: "h", created_at: "c", kind: "other" },
-    ]);
-    expect(await repo().listTokensForWorkspace("t")).toEqual([
-      { id: "id", subject: "bot", name: "n", createdAt: "c", lastUsedAt: null, kind: "system" },
-      { id: "h", subject: "human", name: "h", createdAt: "c", lastUsedAt: null, kind: "human" },
-    ]);
   });
 });

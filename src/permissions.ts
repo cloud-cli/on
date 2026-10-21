@@ -1,7 +1,7 @@
 /**
  * Canonical authorization vocabulary.
  *
- * Humans and system users share one capability model. A workspace role is a
+ * Workspace members share one capability model. A workspace role is a
  * preset; sparse per-principal overrides can grant or deny individual
  * capabilities on top of it. API tokens never carry their own capabilities:
  * they authenticate a principal, and that principal's live grants decide.
@@ -198,7 +198,7 @@ export const WORKSPACE_CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
   {
     id: "members",
     label: "Members",
-    description: "People and system users in this workspace.",
+    description: "People in this workspace.",
     capabilities: [
       {
         capability: "members.view",
@@ -346,42 +346,8 @@ export const LEGACY_SCOPE_CAPABILITIES: Readonly<Record<string, WorkspaceCapabil
   "secrets:write": "secrets.edit",
 };
 
-/** System users may never hold more than the Collaborator preset. */
-export const SYSTEM_USER_CAPABILITIES: readonly WorkspaceCapability[] = COLLABORATOR;
-
 export function workspaceRoleCapabilities(role: WorkspaceRole): readonly WorkspaceCapability[] {
   return WORKSPACE_ROLE_CAPABILITIES[role];
-}
-
-export function isSystemUserCapability(capability: WorkspaceCapability): boolean {
-  return SYSTEM_USER_CAPABILITIES.includes(capability);
-}
-
-/**
- * Validate overrides for a system user. A system user can be restricted further
- * but cannot be elevated past the Collaborator preset, and cannot be made a
- * workspace admin.
- */
-export function sanitizeSystemUserOverrides(value: unknown): PermissionOverride[] {
-  return sanitizeWorkspaceOverrides(value).filter(
-    (override) => override.effect === "deny" || isSystemUserCapability(override.capability),
-  );
-}
-
-export function effectiveCapabilitiesFor(
-  kind: "human" | "system",
-  role: WorkspaceRole,
-  overrides: readonly PermissionOverride[] = [],
-): Set<WorkspaceCapability> {
-  const effective = effectiveWorkspaceCapabilities(role, overrides);
-  if (kind === "system") {
-    for (const capability of [...effective]) {
-      if (!isSystemUserCapability(capability)) {
-        effective.delete(capability);
-      }
-    }
-  }
-  return effective;
 }
 
 export function globalCapabilitiesForRole(role: "user" | "admin"): GlobalCapability[] {

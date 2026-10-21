@@ -15,6 +15,37 @@ const request = (url: string, method = "GET", headers: Record<string, string> = 
   ({ url, method, headers: { host: "flow.test", ...headers } }) as any;
 
 describe("current IAM route authorization", () => {
+  it("accepts pending subject invitations for the verified OIDC subject after login", async () => {
+    const user = { id: "auth-agent-sub", name: "Automation Agent", email: undefined };
+    const server = {
+      oidc: {
+        enabled: true,
+        completeLogin: vi.fn(async () => ({ cookie: "flow-session=opaque", returnTo: "/ui/runs" })),
+        userFromCookie: vi.fn(() => user),
+        setRole: vi.fn(),
+      },
+      oidcUsers: { upsert: vi.fn(async () => {}), role: vi.fn(async () => "user") },
+      teams: { acceptSubjectInvitations: vi.fn(async () => {}) },
+      oidcRedirectUri: vi.fn(() => "https://flow.test/auth/callback"),
+      isHttps: vi.fn(() => true),
+    } as any;
+    const res = response();
+
+    await (WebhookServer.prototype as any).handleOidcCallback.call(
+      server,
+      request("/auth/callback"),
+      res,
+      new URL("https://flow.test/auth/callback?code=auth-code&state=oidc-state"),
+    );
+
+    expect(server.oidcUsers.upsert).toHaveBeenCalledWith(user);
+    expect(server.teams.acceptSubjectInvitations).toHaveBeenCalledWith("auth-agent-sub");
+    expect(res.writeHead).toHaveBeenCalledWith(
+      302,
+      expect.objectContaining({ Location: "/ui/runs", "Set-Cookie": "flow-session=opaque; Secure" }),
+    );
+  });
+
   it("binds API-key workspace access to its workspace and granted capabilities", async () => {
     const principals = {
       tokenPrincipal: vi.fn(async () => principal({ kind: "api-key" })),

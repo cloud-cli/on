@@ -948,75 +948,6 @@
         }
       }
     },
-    "/api/v1/api-keys": {
-      "get": {
-        "tags": ["discovery"],
-        "summary": "List active API keys",
-        "responses": {
-          "200": {
-            "description": "API key metadata",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiKeyList"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": ["discovery"],
-        "summary": "Issue a scoped API key",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApiKeyIssue"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Key metadata and one-time token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiKeyCreated"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/api-keys/{keyId}": {
-      "delete": {
-        "tags": ["discovery"],
-        "summary": "Revoke an API key",
-        "parameters": [
-          {
-            "name": "keyId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Key revoked"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          }
-        }
-      }
-    },
     "/api/v1/jobs": {
       "get": {
         "tags": ["jobs"],
@@ -2033,7 +1964,7 @@
     "/api/v1/workspaces/{workspaceId}/invitations": {
       "post": {
         "tags": ["workspaces"],
-        "summary": "Create an email-bound team invitation (team admin only)",
+        "summary": "Create a workspace invitation by verified email or OIDC subject (workspace admin only)",
         "security": [
           {
             "oidcSessionCookie": []
@@ -2058,11 +1989,17 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["email"],
+                "oneOf": [{ "required": ["email"] }, { "required": ["subject"] }],
                 "properties": {
                   "email": {
                     "type": "string",
                     "format": "email"
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "description": "Exact OIDC subject; collaborator access is granted only after this subject signs in."
                   }
                 }
               }
@@ -2071,7 +2008,7 @@
         },
         "responses": {
           "201": {
-            "description": "Copyable one-use invite link and expiry"
+            "description": "Expiry; email invitations include a one-use link, subject invitations activate on matching sign-in"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -2330,151 +2267,6 @@
           },
           "404": {
             "description": "Workspace or webhook not found"
-          }
-        }
-      }
-    },
-    "/api/v1/workspaces/{workspaceId}/api-keys": {
-      "get": {
-        "tags": ["discovery"],
-        "summary": "List active API keys",
-        "responses": {
-          "200": {
-            "description": "API key metadata",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiKeyList"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "description": "Workspace administrator required"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "security": [
-          {
-            "oidcSessionCookie": []
-          },
-          {
-            "oidcAdminBearer": []
-          }
-        ]
-      },
-      "post": {
-        "tags": ["discovery"],
-        "summary": "Issue a scoped API key",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApiKeyIssue"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Key metadata and one-time token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiKeyCreated"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "description": "Workspace administrator required"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "security": [
-          {
-            "oidcSessionCookie": []
-          },
-          {
-            "oidcAdminBearer": []
-          }
-        ]
-      }
-    },
-    "/api/v1/workspaces/{workspaceId}/api-keys/{keyId}": {
-      "delete": {
-        "tags": ["workspaces"],
-        "summary": "Revoke an API key owned by a workspace",
-        "security": [
-          {
-            "oidcSessionCookie": []
-          },
-          {
-            "oidcAdminBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "keyId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Revoked"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "description": "Workspace administrator required"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -2748,7 +2540,7 @@
     "/api/v1/teams/{teamId}/invitations": {
       "post": {
         "tags": ["teams"],
-        "summary": "Create team invitation",
+        "summary": "Create a team invitation by verified email or OIDC subject",
         "security": [
           {
             "oidcSessionCookie": []
@@ -2773,9 +2565,16 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "oneOf": [{ "required": ["email"] }, { "required": ["subject"] }],
                 "properties": {
                   "email": {
                     "type": "string"
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "description": "Exact OIDC subject; collaborator access is granted when that subject signs in."
                   }
                 }
               }
@@ -3746,60 +3545,6 @@
           },
           "canViewLogs": {
             "type": "boolean"
-          }
-        }
-      },
-      "ApiKeyIssue": {
-        "type": "object",
-        "required": ["name", "scopes"],
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "scopes": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "workflows:read",
-                "workflows:write",
-                "logs:read",
-                "artifacts:read",
-                "runs:control",
-                "runs:dispatch"
-              ]
-            }
-          }
-        }
-      },
-      "ApiKeyCreated": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/ApiKeyIssue"
-          },
-          {
-            "type": "object",
-            "required": ["id", "token"],
-            "properties": {
-              "id": {
-                "type": "string",
-                "format": "uuid"
-              },
-              "token": {
-                "type": "string"
-              }
-            }
-          }
-        ]
-      },
-      "ApiKeyList": {
-        "type": "object",
-        "properties": {
-          "keys": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ApiKeyCreated"
-            }
           }
         }
       }

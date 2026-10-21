@@ -11,6 +11,8 @@ describe("team settings UI", () => {
 
     expect(html).toContain("{{ teamName }} workspace");
     expect(html).toContain("Get link");
+    expect(html).toContain("Invite by OIDC subject");
+    expect(html).toContain('aria-label="OIDC subject"');
     expect(html).toContain("Create webhook");
     expect(html).toContain("Webhook URL slug.");
     expect(html).toContain('for="member of members"');
@@ -89,6 +91,8 @@ describe("team settings UI", () => {
     expect(setup).not.toContain('location.pathname.split("/")[2]');
     expect(setup).toContain('workspaceUrl("/permissions")');
     expect(setup).toContain('workspaceUrl("/invitations")');
+    expect(setup).toContain("JSON.stringify({ subject })");
+    expect(setup).toContain("createSubjectInvitation");
     expect(setup).toContain('workspaceUrl("/webhooks")');
     expect(setup).toContain('"X-Team-ID": teamId');
     expect(setup).toContain("You are not a member of this workspace.");

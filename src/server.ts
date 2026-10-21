@@ -16,7 +16,6 @@ import { SecretStore } from "./secrets.js";
 import { PushRepository } from "./push.js";
 import { renderHelpHtml } from "../ui/help.js";
 import openApiSpec from "../openapi.json" with { type: "json" };
-import { ApiKeyRepository } from "./api-key-repository.js";
 import { generateSettingsHtml } from "../ui/settings-ui.js";
 import { generateOperationsHtml } from "../ui/operations-ui.js";
 import { generateTeamSettingsHtml } from "../ui/team-settings-ui.js";
@@ -151,7 +150,6 @@ export class WebhookServer {
   private queue: QueueManager;
   private secrets: SecretStore;
   private push: PushRepository;
-  private apiKeys = new ApiKeyRepository();
   private principals = new PrincipalRepository();
   private authorizer: RequestAuthorizer;
   private adminToken: string;
@@ -184,7 +182,6 @@ export class WebhookServer {
     this.workflowsLoaded = this.workflows.init().then(async () => {
       await Promise.all([
         this.secretRepository.init(),
-        this.apiKeys.init(),
         this.oidcUsers.init(),
         this.principals.init(),
         this.userPreferences.init(),
@@ -1253,20 +1250,6 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return res.end(JSON.stringify({ workspaces: await this.principals.allWorkspaces() }));
     }
 
-    if (url.pathname === "/api/system-users" || /^\/api\/system-users\//.test(url.pathname)) {
-      res.writeHead(410, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-      return res.end(JSON.stringify({ error: "Flow-managed system users are retired." }));
-    }
-
-    if (url.pathname === "/api/api-keys" || /^\/api\/api-keys\/[^/]+$/.test(url.pathname)) {
-      res.writeHead(410, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-      return res.end(
-        JSON.stringify({
-          error: "Legacy API keys are retired.",
-        }),
-      );
-    }
-
     const workflowEditorMatch = url.pathname.match(/^\/workflows\/(new|[a-z0-9-]+)$/);
     if (req.method === "GET" && workflowEditorMatch) {
       if (!(await this.requireAuthenticatedUser(req, res))) {
@@ -2300,16 +2283,6 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return;
     }
 
-    if (url.pathname.match(new RegExp(`^/api/${prefix}/[^/]+/api-keys(?:/[^/]+)?$`))) {
-      res.writeHead(410, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-      res.end(
-        JSON.stringify({
-          error: "Legacy API keys are retired.",
-        }),
-      );
-      return;
-    }
-
     const permissionsMatch = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/permissions$`));
     if (permissionsMatch && req.method === "GET") {
       const teamId = decodeURIComponent(permissionsMatch[1]);
@@ -2330,20 +2303,6 @@ sessionStorage.removeItem('runner-pending-team-invite');
           canManage: authorized.capabilities.includes("members.manage"),
         }),
       );
-      return;
-    }
-
-    const systemUsersMatch = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/system-users(?:/.*)?$`));
-    if (systemUsersMatch) {
-      res.writeHead(410, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ error: "Flow-managed system users are retired." }));
-      return;
-    }
-
-    const tokenRoutes = new RegExp(`^/api/${prefix}/([^/]+)/tokens(?:/.*)?$`);
-    if (tokenRoutes.test(url.pathname)) {
-      res.writeHead(410, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ error: "Flow-managed principal tokens are retired." }));
       return;
     }
 
@@ -2442,11 +2401,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       const status = result === "not-found" ? 404 : 409;
       const error =
-        result === "last-admin"
-          ? "A workspace must retain at least one admin"
-          : result === "system-user-retired"
-            ? "Flow-managed system users are retired."
-            : "Workspace member not found";
+        result === "last-admin" ? "A workspace must retain at least one admin" : "Workspace member not found";
       res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify({ error }));
       return;
     }
@@ -2502,12 +2457,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return;
       }
       const status = result === "not-found" ? 404 : result === "exists" ? 409 : 409;
-      const error =
-        result === "system-user-retired"
-          ? "Flow-managed system users are retired."
-          : result === "exists"
-            ? "Principal is already a member"
-            : "Principal not found";
+      const error = result === "exists" ? "Principal is already a member" : "Principal not found";
       res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify({ error }));
       return;
     }
@@ -2518,6 +2468,20 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return;
       }
       const body = await this.readJson(req, res);
+      if (body && typeof body.subject === "string") {
+        try {
+          const record = await this.teams.createSubjectInvitation(teamId, body.subject, authorized.principal.subject);
+          res
+            .writeHead(201, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+            .end(JSON.stringify({ expiresAt: record.expiresAt }));
+        } catch (error: any) {
+          res.writeHead(error.message === "Workspace member already exists" ? 409 : 422, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          res.end(JSON.stringify({ error: error.message }));
+        }
+        return;
+      }
       if (!body || typeof body.email !== "string") {
         return;
       }
@@ -2660,6 +2624,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
       const user = this.oidc.userFromCookie(result.cookie);
       if (user) {
         await this.oidcUsers.upsert(user);
+        await this.teams.acceptSubjectInvitations(user.id);
         this.oidc.setRole(result.cookie, await this.oidcUsers.role(user.id));
       }
       // Validate return target again before redirecting

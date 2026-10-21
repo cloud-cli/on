@@ -6,10 +6,8 @@ import {
   WORKSPACE_CAPABILITY_GROUPS,
   describeWorkspaceCapability,
   effectiveWorkspaceCapabilities,
-  effectiveCapabilitiesFor,
   sanitizeWorkspaceOverrides,
   sanitizeGlobalCapabilities,
-  sanitizeSystemUserOverrides,
   roleFromLegacyMemberRole,
   globalCapabilitiesForRole,
   elevatedOverrides,
@@ -75,23 +73,6 @@ describe("unified permission model", () => {
     ]);
     expect(sanitizeGlobalCapabilities([GLOBAL_CAPABILITIES[0], "invalid", GLOBAL_CAPABILITIES[0], null])).toEqual([
       GLOBAL_CAPABILITIES[0],
-    ]);
-  });
-
-  it("clamps system users to collaborator capabilities", () => {
-    const effective = effectiveCapabilitiesFor("system", "admin", [{ capability: "secrets.edit", effect: "allow" }]);
-    expect(effective.has("runs.logs")).toBe(true);
-    expect(effective.has("secrets.edit")).toBe(false);
-    expect([...effective].every((cap) => WORKSPACE_ROLE_CAPABILITIES.collaborator.includes(cap))).toBe(true);
-    expect(
-      sanitizeSystemUserOverrides([
-        { capability: "secrets.edit", effect: "allow" },
-        { capability: "secrets.edit", effect: "deny" },
-        { capability: "runs.logs", effect: "allow" },
-      ]),
-    ).toEqual([
-      { capability: "secrets.edit", effect: "deny" },
-      { capability: "runs.logs", effect: "allow" },
     ]);
   });
 
