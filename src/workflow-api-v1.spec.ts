@@ -83,6 +83,47 @@ function makeRequest(method: string, url: string, body?: unknown) {
 }
 
 describe("scoped workflow API v1", () => {
+  it("serves the OpenAPI document publicly at both API roots", async () => {
+    const server = makeServer();
+    const authCheck = vi.fn(async () => false);
+    server.requireAuthenticatedApiRequest = authCheck;
+
+    for (const path of ["/api", "/api/", "/api/v1"]) {
+      const req = makeRequest("GET", path);
+      delete req.headers.authorization;
+      const res = makeResponse();
+
+      await (WebhookServer.prototype as any).handleRequest.call(server, req, res);
+
+      expect(res.writeHead).toHaveBeenCalledWith(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
+      expect(JSON.parse(res.end.mock.calls[0][0])).toMatchObject({ openapi: "3.0.3" });
+    }
+
+    expect(authCheck).not.toHaveBeenCalled();
+  });
+
+  it("treats /api subpaths as aliases for /api/v1", async () => {
+    const workflows = [{ id: "test", sourceYaml: "name: Test", status: "published", enabled: true }];
+    const server = makeServer(["workflows:read"], { listActiveForTeam: vi.fn(async () => workflows) });
+    const res = makeResponse();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      makeRequest("GET", "/api/workflows?activeOnly=true"),
+      res,
+    );
+
+    expect(server.workflows.listActiveForTeam).toHaveBeenCalledWith("workspace-a");
+    expect(res.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({ workflows });
+  });
+
   it("does not expose Flow-managed system-user, token, or legacy API-key endpoints", async () => {
     const server = makeServer();
     for (const [method, url] of [

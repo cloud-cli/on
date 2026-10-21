@@ -5,11 +5,7 @@ describe("OpenAPI specification", () => {
   it("documents discovery and core API paths", () => {
     expect(spec.openapi).toBe("3.0.3");
     expect(spec.paths["/api/v1"]).toHaveProperty("get");
-    expect(spec.paths["/api/v1"].get.security).toEqual([
-      { oidcSessionCookie: [] },
-      { bearerAuth: [] },
-      { oidcAdminBearer: [] },
-    ]);
+    expect(spec.paths["/api/v1"].get.security).toEqual([]);
     expect(spec.paths["/api/v1/jobs"]).toHaveProperty("get");
     expect(spec.paths["/api/v1/jobs"].get.security).toEqual([
       { oidcSessionCookie: [] },
@@ -17,7 +13,6 @@ describe("OpenAPI specification", () => {
       { oidcAdminBearer: [] },
     ]);
     for (const [path, method] of [
-      ["/api/v1", "get"],
       ["/api/v1/jobs/{jobId}/wait", "get"],
       ["/api/v1/runs/{jobId}", "get"],
       ["/api/v1/events", "get"],

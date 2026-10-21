@@ -231,12 +231,10 @@ export class WebhookServer {
       `${req.headers["x-forwarded-proto"] || "http"}://${req.headers["x-forwarded-host"] || req.headers.host}`,
     );
 
-    if (
-      url.pathname === "/api" ||
-      (url.pathname.startsWith("/api/") && url.pathname !== "/api/v1" && !url.pathname.startsWith("/api/v1/"))
-    ) {
-      res.writeHead(404, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-      return res.end(JSON.stringify({ error: "API routes must use /api/v1" }));
+    if (url.pathname === "/api" || url.pathname === "/api/") {
+      url.pathname = "/api/v1";
+    } else if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/v1/")) {
+      url.pathname = `/api/v1${url.pathname.slice("/api".length)}`;
     }
     if (
       url.pathname.startsWith("/webhooks/") ||
@@ -445,9 +443,6 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/api/v1") {
-      if (!(await this.requireAuthenticatedApiRequest(req, res))) {
-        return;
-      }
       res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify(openApiSpec));
     }
