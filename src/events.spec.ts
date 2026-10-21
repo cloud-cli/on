@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { consumeRunnerEvents } from "./events.js";
+import { EventBroker, consumeRunnerEvents } from "./events.js";
 
 describe("consumeRunnerEvents", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -29,5 +29,60 @@ describe("consumeRunnerEvents", () => {
     expect(new Headers(fetchOptions?.headers).get("authorization")).toBe("Bearer worker-secret");
     expect(onOpen).toHaveBeenCalledOnce();
     expect(events).toEqual([{ event: "jobs.available", data: { tags: ["docker"] } }]);
+  });
+});
+
+describe("EventBroker team and worker subscriptions", () => {
+  it("broadcasts availability to workers but keeps job changes tenant-scoped", () => {
+    const broker = new EventBroker();
+    const response = () => ({ writeHead: vi.fn(), write: vi.fn(() => true), end: vi.fn(), once: vi.fn() });
+    const teamA = response();
+    const worker = response();
+    broker.subscribe({ once: vi.fn() } as any, teamA as any, "team-a");
+    broker.subscribe({ once: vi.fn() } as any, worker as any, undefined, true);
+    teamA.write.mockClear();
+    worker.write.mockClear();
+
+    broker.publish("jobs.changed", { jobId: 7, teamId: "team-b" });
+    broker.publish("jobs.available", { teamId: "team-b" });
+
+    expect(teamA.write).not.toHaveBeenCalled();
+    expect(worker.write).toHaveBeenCalledOnce();
+    expect(worker.write.mock.calls[0][0]).toContain("event: jobs.available");
+    broker.close();
+  });
+
+  it("limits runner events to authorized teams and closes streams after grant changes", () => {
+    const broker = new EventBroker();
+    const response = () => ({ writeHead: vi.fn(), write: vi.fn(() => true), end: vi.fn(), once: vi.fn() });
+    const runner = response();
+    broker.subscribe({ once: vi.fn() } as any, runner as any, undefined, true, ["team-a"], "runner-1");
+    runner.write.mockClear();
+
+    broker.publish("lease.cancelled", { jobId: 1, teamId: "team-b" });
+    broker.publish("lease.cancelled", { jobId: 2, teamId: "team-a" });
+    expect(runner.write).toHaveBeenCalledOnce();
+    expect(runner.write.mock.calls[0][0]).toContain('"jobId":2');
+
+    broker.closeRunnerStreams("runner-1");
+    expect(runner.end).toHaveBeenCalledOnce();
+    broker.close();
+  });
+
+  it("delivers update instructions only to the selected runner stream", () => {
+    const broker = new EventBroker();
+    const response = () => ({ writeHead: vi.fn(), write: vi.fn(() => true), end: vi.fn(), once: vi.fn() });
+    const target = response();
+    const other = response();
+    broker.subscribe({ once: vi.fn() } as any, target as any, undefined, true, [], "runner-1");
+    broker.subscribe({ once: vi.fn() } as any, other as any, undefined, true, [], "runner-2");
+    target.write.mockClear();
+    other.write.mockClear();
+
+    broker.publishRunner("runner-1", "runner.update", { updateId: "u1", version: "1.2.3" });
+
+    expect(target.write).toHaveBeenCalledOnce();
+    expect(other.write).not.toHaveBeenCalled();
+    broker.close();
   });
 });

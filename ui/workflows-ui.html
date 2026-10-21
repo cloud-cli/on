@@ -3,29 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#030712" />
+    <meta name="theme-color" content="#eef2ec" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/assets/manifest.webmanifest" />
+    <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml" />
     <title>Runner Workflow Management</title>
     <script type="importmap">
       {
         "imports": {
-          "@app/": "/",
+          "@app/": "/assets/",
           "@li3/": "https://at-li3.static.apphor.de/",
+          "yaml": "https://esm.sh/yaml@2.9.0",
           "diff": "https://unpkg.com/diff@9.0.0/libesm/index.js"
         }
       }
     </script>
   </head>
   <body data-page="__WORKFLOW_PAGE__" class="min-h-screen bg-flow-background p-4 text-flow-foreground font-sans md:p-6">
-    <link rel="stylesheet" href="/on.css" />
+    <link rel="stylesheet" href="/assets/on.css" />
     <link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />
     <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
 
     <template app>
-      <main class="w-full space-y-5 py-6">
+      <main class="w-full space-y-5 py-2">
         <template if="notice">
           <div
             role="status"
@@ -35,7 +36,7 @@
             <lucide-icon bind-icon="noticeError ? 'circle-alert' : 'circle-check'" size="17"></lucide-icon>
             <span class="min-w-0 flex-1">{{ notice }}</span>
             <a
-              href="/runs"
+              href="/ui/runs"
               class-hidden="!noticeLink"
               class="shrink-0 font-semibold underline underline-offset-2 hover:opacity-80"
               >Go to runs</a
@@ -54,22 +55,28 @@
                 <h2 id="workflow-list-title" class="mt-1 text-lg font-semibold text-flow-foreground">Workflows</h2>
               </div>
               <a
-                href="/workflows/new"
+                href="/ui/workflows/new"
                 class="inline-flex items-center justify-center gap-2 rounded-lg bg-flow-primary px-3 py-2 text-sm font-semibold text-white outline-none transition hover:bg-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/40"
               >
                 <lucide-icon icon="plus" size="16"></lucide-icon>
                 New workflow
               </a>
             </div>
+            <a
+              href="/ui/recipes"
+              class="mb-4 inline-flex items-center gap-1 text-sm text-flow-primary underline underline-offset-2"
+              >Browse recipe library</a
+            >
             <ul class="divide-y divide-flow-border" aria-label="Workflow definitions">
               <template for="workflow of workflows">
                 <li class="flex min-h-14 items-center gap-3 px-2 py-2">
                   <a
-                    attr-href="'/workflows/' + workflow.id"
+                    attr-href="'/ui/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)"
                     class="min-w-0 flex-1 text-left text-sm text-flow-secondary outline-none hover:text-flow-primary focus-visible:rounded focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                   >
                     <span class="flex min-w-0 items-center gap-3">
-                      <span class="truncate text-base font-semibold text-flow-foreground">{{ workflow.name }}</span>
+                      <span class="truncate text-base font-semibold text-flow-foreground">{{ workflow.name }}</span
+                      ><span class="shrink-0 text-xs text-flow-muted">{{ workflow.workspaceName }}</span>
                       <span class="shrink-0 font-mono text-xs text-flow-secondary">v{{ workflow.revision }}</span>
                     </span>
                   </a>
@@ -79,7 +86,7 @@
                     >Draft</span
                   >
                   <a
-                    attr-href="'/workflows/' + workflow.id"
+                    attr-href="'/ui/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)"
                     attr-aria-label="'Edit ' + workflow.name"
                     class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-flow-secondary outline-none hover:bg-flow-sidebar hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/40"
                   >
@@ -105,7 +112,7 @@
           >
             <div class="border-b border-flow-border px-4 pb-3 pt-3 sm:px-5">
               <a
-                href="/workflows"
+                href="/ui/workflows"
                 class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-flow-secondary outline-none transition hover:bg-flow-sidebar hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary/40"
               >
                 <lucide-icon icon="arrow-left" size="14"></lucide-icon>
@@ -113,70 +120,88 @@
               </a>
             </div>
             <div class="border-b border-flow-border bg-flow-panel px-4 py-4 sm:px-5">
-              <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-end">
-                <label class="inline-flex items-center gap-2 text-sm text-flow-secondary">
-                  <input
-                    type="checkbox"
-                    bind-checked="enabled"
-                    on-change="setEnabled($event)"
-                    class="h-4 w-4 rounded border-flow-border bg-flow-panel text-flow-primary focus:ring-2 focus:ring-flow-primary/20"
-                  />
-                  Enabled
-                </label>
-                <div class="flex flex-wrap gap-2" class-hidden="readOnly">
-                  <button
-                    type="button"
-                    aria-label="Get AI workflow help"
-                    title="Get AI workflow help"
-                    on-click="openAiHelp()"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-primary/50 px-3 py-2.5 text-sm font-medium text-flow-primary outline-none hover:bg-flow-primary/10 focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div class="w-full lg:max-w-xs" class-hidden="selectedId">
+                  <label for="workflow-workspace" class="sr-only">Workspace</label>
+                  <select
+                    id="workflow-workspace"
+                    bind-value="selectedWorkspaceId"
+                    on-change="setWorkspace($event)"
+                    bind-disabled="workspacesLoading"
+                    class="w-full rounded-lg border border-flow-border bg-flow-card px-3 py-2.5 text-sm text-flow-foreground outline-none focus:border-flow-primary disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    <lucide-icon icon="sparkles" size="16"></lucide-icon><span class="hidden md:inline">AI help</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Save workflow draft"
-                    title="Save workflow draft"
-                    on-click="save()"
-                    bind-disabled="busy"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg bg-flow-primary px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-flow-primary disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <lucide-icon icon="save" size="16"></lucide-icon>
-                    <span class="hidden md:inline">Save draft</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Publish workflow"
-                    title="Publish workflow"
-                    on-click="publish()"
-                    bind-disabled="busy || !selectedId || source !== savedSource || enabled !== savedEnabled"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-success/50 px-3 py-2.5 text-sm font-medium text-flow-success transition hover:bg-flow-success/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <lucide-icon icon="rocket" size="16"></lucide-icon>
-                    <span class="hidden md:inline">Publish</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Run workflow now"
-                    title="Run saved workflow draft now"
-                    on-click="runNow()"
-                    bind-disabled="busy || !selectedId || source !== savedSource || !validation.valid"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-info/50 px-3 py-2.5 text-sm font-medium text-flow-info transition hover:bg-flow-info/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <lucide-icon icon="play" size="16"></lucide-icon>
-                    <span class="hidden md:inline">Run now</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Delete workflow"
-                    title="Delete workflow"
-                    on-click="remove()"
-                    bind-disabled="busy"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-error/50 px-3 py-2.5 text-sm font-medium text-flow-error transition hover:bg-flow-error/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <lucide-icon icon="trash" size="16"></lucide-icon>
-                    <span class="hidden md:inline">Delete</span>
-                  </button>
+                    <option value="">Select a workspace</option>
+                    <template for="workspace of availableWorkspaces"
+                      ><option attr-value="workspace.id">{{ workspace.name }}</option></template
+                    >
+                  </select>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <label class="inline-flex items-center gap-2 text-sm text-flow-secondary">
+                    <input
+                      type="checkbox"
+                      bind-checked="enabled"
+                      on-change="setEnabled($event)"
+                      bind-disabled="busy || readOnly"
+                      class="h-4 w-4 rounded border-flow-border bg-flow-panel text-flow-primary focus:ring-2 focus:ring-flow-primary/20"
+                    />
+                    Enabled
+                  </label>
+                  <div class="flex flex-wrap gap-2" class-hidden="readOnly">
+                    <button
+                      type="button"
+                      aria-label="Get AI workflow help"
+                      title="Get AI workflow help"
+                      on-click="openAiHelp()"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-primary/50 px-3 py-2.5 text-sm font-medium text-flow-primary outline-none hover:bg-flow-primary/10 focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                    >
+                      <lucide-icon icon="sparkles" size="16"></lucide-icon><span class="hidden md:inline">AI help</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Save workflow draft"
+                      title="Save workflow draft"
+                      on-click="save()"
+                      bind-disabled="busy || workspacesLoading || !selectedWorkspaceId"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg bg-flow-primary px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-flow-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <lucide-icon icon="save" size="16"></lucide-icon>
+                      <span class="hidden md:inline">Save draft</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Publish workflow"
+                      title="Publish workflow"
+                      on-click="publish()"
+                      bind-disabled="busy || !selectedId || source !== savedSource"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-success/50 px-3 py-2.5 text-sm font-medium text-flow-success transition hover:bg-flow-success/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <lucide-icon icon="rocket" size="16"></lucide-icon>
+                      <span class="hidden md:inline">Publish</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Run workflow now"
+                      title="Run saved workflow draft now"
+                      on-click="runNow()"
+                      bind-disabled="busy || !selectedId || source !== savedSource || !validation.valid"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-info/50 px-3 py-2.5 text-sm font-medium text-flow-info transition hover:bg-flow-info/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <lucide-icon icon="play" size="16"></lucide-icon>
+                      <span class="hidden md:inline">Run now</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Delete workflow"
+                      title="Delete workflow"
+                      on-click="remove()"
+                      bind-disabled="busy"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-error/50 px-3 py-2.5 text-sm font-medium text-flow-error transition hover:bg-flow-error/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <lucide-icon icon="trash" size="16"></lucide-icon>
+                      <span class="hidden md:inline">Delete</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -213,6 +238,15 @@
                   </button>
                 </template>
                 <template if="!revision"><span class="font-mono">Unsaved draft</span></template>
+              </div>
+              <div class="mb-2 flex justify-end" class-hidden="readOnly">
+                <button
+                  type="button"
+                  on-click="openRecipePicker()"
+                  class="rounded-lg border border-flow-border px-3 py-2 text-sm font-medium text-flow-primary hover:bg-flow-sidebar"
+                >
+                  Insert recipe
+                </button>
               </div>
               <template if="readOnly">
                 <code-block
@@ -258,6 +292,144 @@
             </div>
           </section>
         </section>
+
+        <template if="recipeDialogOpen">
+          <div
+            class="fixed inset-0 z-50 flex items-center justify-center bg-flow-foreground/70 p-2 sm:p-4"
+            role="presentation"
+          >
+            <section
+              data-recipe-dialog
+              class="flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-flow-border bg-flow-panel shadow-2xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="recipe-picker-title"
+              aria-describedby="recipe-picker-hint"
+            >
+              <header class="flex items-center justify-between border-b border-flow-border p-4">
+                <div>
+                  <h2 id="recipe-picker-title" class="text-lg font-semibold">Insert a recipe</h2>
+                  <p id="recipe-picker-hint" class="text-sm text-flow-secondary">
+                    Choose and review an immutable recipe version.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  on-click="closeRecipePicker()"
+                  aria-label="Close recipe picker"
+                  class="min-h-11 min-w-11 rounded p-2"
+                >
+                  Close
+                </button>
+              </header>
+              <div class="min-h-0 space-y-3 overflow-y-auto p-4">
+                <label for="recipe-search" class="block text-sm font-medium">Search recipes</label
+                ><input
+                  id="recipe-search"
+                  bind-value="recipeSearch"
+                  placeholder="Name, namespace, or slug"
+                  class="min-h-11 w-full rounded-lg border border-flow-border bg-flow-card px-3 py-2 text-sm"
+                />
+                <p role="status" aria-live="polite" class="text-sm text-flow-secondary" class-hidden="!recipeLoading">
+                  Loading recipes…
+                </p>
+                <p role="alert" class="text-sm text-flow-error" class-hidden="!recipeError">{{ recipeError }}</p>
+                <ul class="space-y-2">
+                  <template for="recipe of recipes"
+                    ><li class-hidden="!matchesRecipeSearch(recipe, recipeSearch)">
+                      <button
+                        type="button"
+                        on-click="selectRecipe(recipe)"
+                        attr-aria-pressed="selectedRecipe === recipe ? 'true' : 'false'"
+                        bind-disabled="recipe.revoked"
+                        class="min-h-11 w-full rounded-lg border border-flow-border p-3 text-left hover:border-flow-primary disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <span class="block font-semibold">{{ recipe.name }}</span
+                        ><span class="block font-mono text-xs text-flow-secondary"
+                          >{{ recipe.namespace }}/{{ recipe.slug }}@v{{ recipe.version }}<template if="recipe.revoked">
+                            · Revoked — unavailable</template
+                          ></span
+                        >
+                      </button>
+                    </li></template
+                  >
+                </ul>
+                <p
+                  role="status"
+                  class="py-3 text-center text-sm text-flow-secondary"
+                  class-hidden="recipeLoading || !recipeSearch || hasRecipeSearchResults()"
+                >
+                  No recipes match that search.
+                </p>
+                <p
+                  role="status"
+                  class="py-3 text-center text-sm text-flow-secondary"
+                  class-hidden="recipeLoading || recipes.length > 0"
+                >
+                  No recipes are available.
+                </p>
+                <template if="selectedRecipe"
+                  ><div class="space-y-2 rounded-lg border border-flow-border p-3">
+                    <p class="break-all font-mono text-sm">
+                      using: {{ selectedRecipe.namespace }}/{{ selectedRecipe.slug }}@v{{ selectedRecipe.version }}
+                    </p>
+                    <p class="text-xs text-flow-secondary">Source preview</p>
+                    <pre class="max-h-48 overflow-auto rounded bg-slate-950 p-3 text-xs text-white">
+{{ selectedRecipe.sourceYaml }}</pre
+                    >
+                    <template if="recipePreview"
+                      ><p
+                        class="text-sm text-amber-800"
+                        class-hidden="!recipePreview.safe || !recipePreview.replacesSteps"
+                      >
+                        Confirming replaces the workflow’s existing steps with this recipe reference. Other workflow
+                        text remains unchanged.
+                      </p>
+                      <p
+                        class="text-sm text-flow-secondary"
+                        class-hidden="!recipePreview.safe || recipePreview.replacesSteps"
+                      >
+                        This inserts the recipe reference into the empty workflow draft. Review it before saving.
+                      </p>
+                      <p class="text-sm text-flow-error" class-hidden="recipePreview.safe">
+                        {{ recipePreview.reason }}
+                      </p>
+                      <pre
+                        class="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-slate-950 p-3 text-xs text-white"
+                      >
+{{ recipePreview.snippet }}</pre
+                      >
+                    </template>
+                  </div></template
+                >
+              </div>
+              <footer class="flex flex-wrap justify-end gap-2 border-t border-flow-border p-3">
+                <button
+                  type="button"
+                  on-click="closeRecipePicker()"
+                  class="min-h-11 rounded-lg border border-flow-border px-4 py-2 text-sm"
+                >
+                  Cancel</button
+                ><button
+                  type="button"
+                  on-click="copyRecipeSnippet()"
+                  class-hidden="!recipePreview || recipePreview.safe || !selectedRecipe || selectedRecipe.revoked"
+                  class="min-h-11 rounded-lg border border-flow-border px-4 py-2 text-sm"
+                >
+                  Copy snippet</button
+                ><button
+                  type="button"
+                  on-click="insertSelectedRecipe()"
+                  bind-disabled="!selectedRecipe || selectedRecipe.revoked || !recipePreview || !recipePreview.safe"
+                  class="min-h-11 rounded-lg bg-flow-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {{ recipePreview && recipePreview.confirmed ? 'Confirm replacement' : (recipePreview &&
+                  recipePreview.replacesSteps ? 'Review replacement' : 'Insert recipe') }}
+                </button>
+              </footer>
+            </section>
+          </div>
+        </template>
 
         <template if="aiDialogOpen">
           <div
@@ -523,7 +695,7 @@
         </section>
       </main>
 
-      <script setup src="/workflows-ui.mjs"></script>
+      <script setup src="/assets/workflows-ui.mjs"></script>
     </template>
 
     <script type="module">

@@ -1,38 +1,57 @@
-name: Test Integration Pipeline
+id: github-workflow-migration-fixture
+name: GitHub workflow-owned payload migration fixture
 
 on:
-  github:
-    if: inputs.event == 'push' && inputs.branch == 'main'
+  github-test:
+    if: inputs.request.headers['x-github-event'] == 'push' && inputs.body.repository.full_name == 'cloud-cli/on-github-workflow-migration-test' && inputs.body.ref == 'refs/heads/main'
 
-matrix:
-  environment:
-    - 'staging'
-    - 'production'
+env:
+  GITHUB_TOKEN: "${secrets.GITHUB_TOKEN}"
+  TEST_OWNER: "${inputs.body.repository.owner.login}"
+  TEST_REPO: "${inputs.body.repository.name}"
+  TEST_SHA: "${inputs.body.after}"
 
 steps:
-  # Step 1: In-Process JS Step (eval:)
-  - id: init-timestamp
-    name: Generate Timestamp via JS
+  - id: report-pending
+    name: Report pending commit status
+    run: |
+      payload=$(jq -n --arg state "pending" --arg target_url "$CI_JOB_URL" --arg description "Workflow migration test started." --arg context "flow2-github-migration-test" '{state: $state, target_url: $target_url, description: $description, context: $context}')
+      curl --fail --silent --show-error --max-time 10 \
+        -X POST "https://api.github.com/repos/$TEST_OWNER/$TEST_REPO/statuses/$TEST_SHA" \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer $GITHUB_TOKEN" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        -H "Content-Type: application/json" \
+        -d "$payload" >/dev/null
+
+  - id: report-payload
+    name: Normalize GitHub payload without side effects
     eval: |
-      json_stringify({
-        started_at: new Date().toISOString(),
-        target_env: env.MATRIX_ENVIRONMENT
+      ({
+        event: inputs.request?.headers?.['x-github-event'] || '',
+        repository: inputs.body?.repository?.full_name || '',
+        owner: (inputs.body?.repository?.full_name || '').split('/')[0] || '',
+        repo: (inputs.body?.repository?.full_name || '').split('/')[1] || '',
+        ref: inputs.body?.ref || '',
+        branch: (inputs.body?.ref || '').startsWith('refs/heads/') ? (inputs.body?.ref || '').slice(11) : '',
+        commit_sha: inputs.body?.after || '',
+        commit_message: inputs.body?.head_commit?.message || ''
       })
 
-  # Step 2: Host Shell Script (run:) using exported values
-  - id: execute-build
-    name: Run Shell Task & Set Env
+post:
+  - id: report-final-status
+    name: Report final commit status
     run: |
-      echo "Starting build for matrix env: $MATRIX_ENVIRONMENT"
-      echo "Timestamp output from step 1: ${{ steps.init-timestamp.outputs }}"
-
-      # Export environment variable for next step
-      echo "BUILD_STATUS=completed_successfully" >> $WORKFLOW_ENV
-      echo "artifact_name=app-${MATRIX_ENVIRONMENT}.tar.gz" >> $WORKFLOW_OUTPUT
-
-  # Step 3: Verification Step using exported environment
-  - id: verify
-    name: Verify Exported State
-    run: |
-      echo "Verified status: $BUILD_STATUS"
-      echo "Artifact generated: ${{ steps.execute-build.outputs.artifact_name }}"
+      case "$CI_JOB_STATUS" in
+        success) state=success; description="Workflow migration test passed." ;;
+        failed) state=failure; description="Workflow migration test failed." ;;
+        *) state=error; description="Workflow migration test cancelled." ;;
+      esac
+      payload=$(jq -n --arg state "$state" --arg target_url "$CI_JOB_URL" --arg description "$description" --arg context "flow2-github-migration-test" '{state: $state, target_url: $target_url, description: $description, context: $context}')
+      curl --fail --silent --show-error --max-time 10 \
+        -X POST "https://api.github.com/repos/$TEST_OWNER/$TEST_REPO/statuses/$TEST_SHA" \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer $GITHUB_TOKEN" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        -H "Content-Type: application/json" \
+        -d "$payload" >/dev/null

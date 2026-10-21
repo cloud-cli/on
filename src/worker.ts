@@ -1,4 +1,5 @@
 import FS from "node:fs";
+import { createHash } from "node:crypto";
 import Path from "node:path";
 import { resolveDriver } from "./drivers/index.js";
 import { QueueManager } from "./queue.js";
@@ -19,35 +20,22 @@ import {
   JobExecutionContext,
   JobRecord,
   FinalJobStatus,
+  WorkerExecutionQueue,
 } from "./types.js";
 import { setupSignalHandlers } from "./signals.js";
 import { consumeRunnerEvents } from "./events.js";
 import { PluginManager } from "./plugins/manager.js";
-import { DEFAULT_STEP_TIMEOUT_MS, WorkflowRepository } from "./workflows.js";
+import { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
 import { debug } from "./debug.js";
 import { expandMatrix } from "./parser/matrix-expander.js";
+import { validateRecipeInputs } from "./recipe-schema.js";
 import { createWorkflowPlugin } from "./plugins/workflow-registry.js";
 import { RUNNER_VERSION } from "./version.js";
+import { activeStepHandles, shutdownState } from "./worker-state.js";
+export { abortActiveJob, abortActiveWorkerTask, shutdownState } from "./worker-state.js";
 
-export const shutdownState = {
-  isStopping: false,
-};
-
-const activeStepHandles = new Set<{ cancel: () => Promise<void> }>();
 let eventStreamController: AbortController | null = null;
 let wakeScheduler: (() => void) | null = null;
-
-/**
- * Called by signal handlers in index.ts during graceful shutdown
- */
-export async function abortActiveWorkerTask() {
-  if (!activeStepHandles.size) {
-    return;
-  }
-  console.log("⚡ Cancelling active step execution handles due to worker shutdown...");
-  await Promise.allSettled(Array.from(activeStepHandles, (handle) => handle.cancel()));
-  activeStepHandles.clear();
-}
 
 export function requestWorkerShutdown() {
   shutdownState.isStopping = true;
@@ -75,6 +63,7 @@ export async function startWorkerScheduler(
   config: RunnerConfig,
 ) {
   const driver = await resolveDriver();
+  const { WorkflowRepository } = await import("./workflows.js");
   const workflows = new WorkflowRepository();
   const activeJobs = new Set<Promise<void>>();
   let wakeVersion = 0;
@@ -233,7 +222,7 @@ async function notifyJobChange(config: RunnerConfig, jobId: string | number): Pr
   }
 
   try {
-    const response = await fetch(new URL("/api/events", config.serverUrl), {
+    const response = await fetch(new URL("/api/v1/events", config.serverUrl), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.workerToken}`,
@@ -260,7 +249,7 @@ async function notifyWorkerHeartbeat(
     return;
   }
   try {
-    await fetch(new URL("/api/workers/heartbeat", config.serverUrl), {
+    await fetch(new URL("/api/v1/workers/heartbeat", config.serverUrl), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.workerToken}`,
@@ -284,7 +273,7 @@ async function fetchJobSecrets(
     return {};
   }
   try {
-    const response = await fetch(new URL(`/api/jobs/${jobId}/secrets`, config.serverUrl), {
+    const response = await fetch(new URL(`/api/v1/jobs/${jobId}/secrets`, config.serverUrl), {
       headers: { Authorization: `Bearer ${config.workerToken}`, "X-Runner-Worker-Id": workerId },
       signal: AbortSignal.timeout(5000),
     });
@@ -302,7 +291,37 @@ async function fetchJobSecrets(
  * Processes a single job sequentially
  */
 export async function processJob(p: Processable) {
-  const { workerId, job, config, secrets, queue } = p;
+  const { workerId, job, config, secrets } = p;
+  const redactValue = (value: any): any => {
+    if (typeof value === "string") {
+      return secrets.redactText(value);
+    }
+    if (Array.isArray(value)) {
+      return value.map(redactValue);
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactValue(item)]));
+    }
+    return value;
+  };
+  const queue = new Proxy(p.queue, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (property === "saveStepLog") {
+        return (jobId: string | number, stepId: string, content: string) =>
+          value.call(target, jobId, stepId, secrets.redactText(content));
+      }
+      if (property === "saveReport") {
+        return (jobId: string | number, report: WorkflowExecutionReport) =>
+          value.call(target, jobId, redactValue(report));
+      }
+      if (property === "completeJob") {
+        return (jobId: string | number, status: string, report: WorkflowExecutionReport) =>
+          value.call(target, jobId, status, redactValue(report));
+      }
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
   console.log(`\n[${workerId}] 📦 Claimed Job #${job.id} (Workflow: ${job.workflow_id})`);
 
   const payload = (typeof job.payload === "string" ? JSON.parse(job.payload) : job.payload) as JobPayload;
@@ -318,13 +337,19 @@ export async function processJob(p: Processable) {
     throw new Error(`Matrix variant for job ${job.id} was not found`);
   }
   const resolvedWorkflow = candidateWorkflow as typeof p.workflow;
-  const processable = { ...p, workflow: resolvedWorkflow };
+  const processable = { ...p, queue, workflow: resolvedWorkflow };
   const steps = resolvedWorkflow.steps;
-  const inputs = payload.inputs || {};
+  const postSteps = resolvedWorkflow.post || [];
+  const inputs = { ...(payload.inputs || {}) };
+  const reportInputs = { ...inputs, ...(resolvedWorkflow._recipeInputs || {}) };
   const jobStartTime = Date.now();
-  const storagePath = Path.join(config.storagePath, `job-${job.id}`);
+  const jobStoragePath = Path.join(config.storagePath, `job-${job.id}`);
+  const storagePath = p.executionId
+    ? Path.join(jobStoragePath, `execution-${createHash("sha256").update(p.executionId).digest("hex")}`)
+    : jobStoragePath;
   const logsDir = Path.join(storagePath, "logs");
   const workingDir = Path.join(storagePath, "wd");
+  const runUrl = new URL(`/ui/runs/${job.id}`, config.serverUrl).toString();
 
   // Step Execution Context available in expressions: ${steps.step1.outputs.id}
   const executionContext: JobExecutionContext = {
@@ -334,6 +359,7 @@ export async function processJob(p: Processable) {
       CI: "true",
       CI_JOB_ID: String(job.id),
       CI_JOB_NAME: resolvedWorkflow.name,
+      CI_JOB_URL: runUrl,
     },
     secrets: secrets.getAll(),
     steps: {},
@@ -343,7 +369,7 @@ export async function processJob(p: Processable) {
   };
   let cacheKey = "";
 
-  const stepReports = steps.map((step, index): StepReport => {
+  const stepReports = [...steps, ...postSteps].map((step, index): StepReport => {
     step.id ||= `step-${index}`;
     step.name ||= step.id;
 
@@ -360,7 +386,7 @@ export async function processJob(p: Processable) {
     job,
     "running",
     jobStartTime,
-    inputs,
+    reportInputs,
     executionContext.env,
     stepReports,
     payload,
@@ -375,7 +401,37 @@ export async function processJob(p: Processable) {
       CI: "true",
       CI_JOB_ID: String(job.id),
       CI_JOB_NAME: resolvedWorkflow.name,
+      CI_JOB_URL: runUrl,
     });
+    if (resolvedWorkflow._recipeInputs) {
+      const evaluateRecipeValue = async (value: unknown): Promise<unknown> => {
+        if (typeof value === "string") {
+          const directExpression = value.match(/^\$\{([\s\S]+)\}$/);
+          if (directExpression) {
+            return SafeExpressionEvaluator.evaluateExpression(directExpression[1], executionContext);
+          }
+          return SafeExpressionEvaluator.evaluateValue(value, executionContext);
+        }
+        if (Array.isArray(value)) {
+          return Promise.all(value.map(evaluateRecipeValue));
+        }
+        if (value && typeof value === "object") {
+          const entries = await Promise.all(
+            Object.entries(value).map(async ([key, item]) => [key, await evaluateRecipeValue(item)] as const),
+          );
+          return Object.fromEntries(entries);
+        }
+        return value;
+      };
+      const resolvedInputs: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(resolvedWorkflow._recipeInputs)) {
+        resolvedInputs[key] = await evaluateRecipeValue(value);
+      }
+      if (resolvedWorkflow._recipeInputSchema) {
+        validateRecipeInputs(resolvedWorkflow._recipeInputSchema, resolvedInputs, "with");
+      }
+      Object.assign(executionContext.inputs, resolvedInputs);
+    }
     writeSecretFiles(resolvedWorkflow.secretFiles, secrets, workingDir);
     cacheKey = resolvedWorkflow.cache
       ? String(await SafeExpressionEvaluator.evaluateValue(resolvedWorkflow.cache.key, executionContext))
@@ -416,7 +472,7 @@ export async function processJob(p: Processable) {
     jobId: String(job.id),
     workflowName: resolvedWorkflow.name,
     inputs,
-    runUrl: new URL(`/runs/${job.id}`, config.serverUrl).toString(),
+    runUrl,
   };
   await pluginManager.triggerWorkflowStart(workflowContext);
 
@@ -441,6 +497,18 @@ export async function processJob(p: Processable) {
     } catch (error: any) {
       console.error(`[${workerId}] ⚠️ Failed to store workflow files:`, error);
       finalStatus = "failed";
+    }
+  }
+
+  // Lifecycle hooks begin only after setup succeeds, and post-step failures are non-fatal.
+  executionContext.env.CI_JOB_STATUS = finalStatus;
+  executionContext.job = { status: finalStatus, runUrl };
+  if (postSteps.length) {
+    const postContext = { ...context, steps: postSteps };
+    try {
+      await processSteps(postContext, executionReport, steps.length, true);
+    } catch (error) {
+      console.error(`[${workerId}] Post steps failed:`, error);
     }
   }
 
@@ -469,6 +537,8 @@ interface ProcessStepsOutput {
 async function processSteps(
   p: ContextualizedProcessable,
   executionReport: WorkflowExecutionReport,
+  reportOffset = 0,
+  nonFatal = false,
 ): Promise<ProcessStepsOutput> {
   const { driver, workerId, queue, config, job, payload, steps, executionContext } = p;
   const stepReports = executionReport.steps;
@@ -480,8 +550,9 @@ async function processSteps(
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
       const stepStartedAt = new Date().toISOString();
-      stepReports[i] = {
-        ...stepReports[i],
+      const reportIndex = reportOffset + i;
+      stepReports[reportIndex] = {
+        ...stepReports[reportIndex],
         status: "running",
         durationMs: 0,
         exitCode: undefined,
@@ -510,6 +581,7 @@ async function processSteps(
           stepIndex: i,
           attempt,
           executionContext,
+          recipeSecrets: p.workflow?._recipeSecrets,
           driver,
           queue,
           config,
@@ -521,22 +593,22 @@ async function processSteps(
       }
 
       if (stepResult.report) {
-        stepReports[i] = {
+        stepReports[reportIndex] = {
           ...stepResult.report,
           startedAt: stepStartedAt,
           finishedAt: new Date().toISOString(),
         };
       } else if (stepResult.skipped) {
-        stepReports[i] = {
-          ...stepReports[i],
+        stepReports[reportIndex] = {
+          ...stepReports[reportIndex],
           status: "skipped",
           durationMs: 0,
           exitCode: 0,
           finishedAt: new Date().toISOString(),
         };
       } else {
-        stepReports[i] = {
-          ...stepReports[i],
+        stepReports[reportIndex] = {
+          ...stepReports[reportIndex],
           status: "failed",
           durationMs: 0,
           exitCode: 1,
@@ -553,25 +625,25 @@ async function processSteps(
         break;
       }
 
-      if (stepResult.cancelled) {
+      if (stepResult.cancelled && !nonFatal) {
         cancelled = true;
         failed = true;
         break;
       }
 
-      if (stepResult.failed) {
+      if (stepResult.failed && !nonFatal) {
         failed = true;
         break;
       }
     }
   } catch (e) {
     console.log("🛑 Step failed", e);
-    failed = true;
+    failed = !nonFatal;
   }
 
   // Mark unexecuted steps as skipped
   if (processedSteps < steps.length) {
-    fillSkippedSteps(steps, processedSteps, stepReports);
+    fillSkippedSteps(steps, processedSteps, stepReports, reportOffset);
     executionReport.durationMs = Date.now() - Date.parse(executionReport.startedAt);
     await queue.saveReport(job.id, executionReport);
     void notifyJobChange(config, job.id);
@@ -590,16 +662,28 @@ async function executeSingleStep(params: {
   stepIndex: number;
   attempt: number;
   executionContext: JobExecutionContext;
+  recipeSecrets?: Record<string, string>;
   driver: ExecutionDriver;
-  queue: QueueManager;
+  queue: WorkerExecutionQueue;
   config: RunnerConfig;
 }): Promise<ExecOutput> {
   const { step, stepIndex, executionContext } = params;
+  const stepExecutionContext =
+    step.__recipeTemplate && params.recipeSecrets
+      ? {
+          ...executionContext,
+          secrets: Object.fromEntries(
+            Object.entries(params.recipeSecrets).flatMap(([alias, source]) =>
+              Object.hasOwn(executionContext.secrets, source) ? [[alias, executionContext.secrets[source]]] : [],
+            ),
+          ),
+        }
+      : executionContext;
   step.id ||= `step-${stepIndex}`;
   step.name ||= step.id;
 
   if (step.if) {
-    const shouldRun = await SafeExpressionEvaluator.evaluateConditions(step.if, executionContext);
+    const shouldRun = await SafeExpressionEvaluator.evaluateConditions(step.if, stepExecutionContext);
 
     if (!shouldRun) {
       debug(`⏩ Skipped step ${step.id} based on condition: ${step.if}`, executionContext);
@@ -613,8 +697,62 @@ async function executeSingleStep(params: {
     }
   }
 
+  if (step.dispatch) {
+    const started = Date.now();
+    try {
+      if (!params.queue.dispatch) {
+        throw new Error("Workflow dispatch requires an authenticated API runner lease");
+      }
+      const targetInputs =
+        typeof step.with === "string"
+          ? await SafeExpressionEvaluator.evaluateExpression(step.with, stepExecutionContext)
+          : step.with;
+      if (!targetInputs || typeof targetInputs !== "object" || Array.isArray(targetInputs)) {
+        throw new Error("Dispatch inputs must evaluate to a JSON object");
+      }
+      const result = await params.queue.dispatch(
+        params.jobId,
+        step.id || `step-${stepIndex}`,
+        step.dispatch,
+        targetInputs,
+      );
+      const outputs = result && typeof result === "object" ? result : { jobId: result };
+      executionContext.steps[step.id!] = { status: "success", exitCode: 0, outputs };
+      return {
+        failed: false,
+        cancelled: false,
+        skipped: false,
+        report: {
+          id: step.id!,
+          name: step.name!,
+          status: "success",
+          durationMs: Date.now() - started,
+          exitCode: 0,
+          outputs,
+          logContent: "",
+        },
+      };
+    } catch (error: any) {
+      return {
+        failed: true,
+        cancelled: false,
+        skipped: false,
+        report: {
+          id: step.id!,
+          name: step.name!,
+          status: "failed",
+          durationMs: Date.now() - started,
+          exitCode: 1,
+          error: error?.message || String(error),
+          outputs: {},
+          logContent: "",
+        },
+      };
+    }
+  }
+
   try {
-    const evaluatedStepEnv = await evaluateEnv(step.env, executionContext);
+    const evaluatedStepEnv = await evaluateEnv(step.env, stepExecutionContext);
     const stepContext: StepContext = {
       jobId: String(params.jobId),
       step,
@@ -637,9 +775,9 @@ async function executeSingleStep(params: {
     };
 
     if (step.eval) {
-      return executeEvalStep({ ...params, stepContext });
+      return executeEvalStep({ ...params, executionContext: stepExecutionContext, stepContext });
     } else {
-      return executeRunStep({ ...params, stepContext });
+      return executeRunStep({ ...params, executionContext: stepExecutionContext, stepContext });
     }
   } catch (e: any) {
     const errorMessage = e?.message || String(e);
@@ -668,7 +806,7 @@ async function executeSingleStep(params: {
  * In-Process JS `eval:` Step Execution
  */
 async function executeEvalStep(params: {
-  queue: QueueManager;
+  queue: WorkerExecutionQueue;
   stepContext: StepContext;
   executionContext: JobExecutionContext;
 }): Promise<ExecOutput> {
@@ -840,7 +978,7 @@ async function collectStoredFiles(
 }
 
 async function restoreStoredFiles(
-  queue: QueueManager,
+  queue: Pick<WorkerExecutionQueue, "getStoredFiles">,
   kind: "cache",
   ownerKey: string,
   paths: string[],
@@ -891,7 +1029,7 @@ async function executeRunStep(params: {
   stepContext: StepContext;
   executionContext: JobExecutionContext;
   driver: ExecutionDriver;
-  queue: QueueManager;
+  queue: WorkerExecutionQueue;
   config: RunnerConfig;
 }): Promise<ExecOutput> {
   const { workerId, jobId, stepContext, executionContext, driver, queue } = params;
@@ -915,21 +1053,32 @@ async function executeRunStep(params: {
     };
   }
 
-  activeStepHandles.add(handle);
   let cancelled = false;
+  const managedHandle = {
+    cancel: async () => {
+      cancelled = true;
+      await handle.cancel();
+    },
+  };
+  const handles = activeStepHandles.get(String(jobId)) || new Set();
+  handles.add(managedHandle);
+  activeStepHandles.set(String(jobId), handles);
 
   const cancelCheckInterval = setInterval(async () => {
     if (await queue.isCancelled(jobId)) {
       console.log(`[${workerId}] 🛑 Job #${jobId} was cancelled! Halting execution.`);
       cancelled = true;
       clearInterval(cancelCheckInterval);
-      await handle.cancel();
+      await managedHandle.cancel();
     }
   }, 3000);
 
   const result: StepResult = await handle.done;
   clearInterval(cancelCheckInterval);
-  activeStepHandles.delete(handle);
+  handles.delete(managedHandle);
+  if (!handles.size) {
+    activeStepHandles.delete(String(jobId));
+  }
 
   if (handle.logFilePath && FS.existsSync(handle.logFilePath)) {
     try {
@@ -974,11 +1123,11 @@ async function executeRunStep(params: {
 /**
  * Fills skipped step records when execution stops early
  */
-function fillSkippedSteps(steps: any[], startIndex: number, stepReports: StepReport[]) {
+function fillSkippedSteps(steps: any[], startIndex: number, stepReports: StepReport[], reportOffset = 0) {
   for (let j = startIndex; j < steps.length; j++) {
     const skippedStep = steps[j];
     const stepId = skippedStep.id || `step-${j}`;
-    stepReports[j] = {
+    stepReports[reportOffset + j] = {
       id: stepId,
       name: skippedStep.name || stepId,
       status: "skipped",

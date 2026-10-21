@@ -19,28 +19,28 @@ export function safeReturnUrl(requestedReturnTo: string): string {
   // ---- Pre-URL-parse validation (the URL parser can sanitize/alter input) ----
   // Reject protocol-relative URLs (starting with //).
   if (withoutFragment.startsWith("//")) {
-    return "/runs";
+    return "/ui/runs";
   }
 
   // Reject backslash-based authority.
   if (withoutFragment.includes("\\")) {
-    return "/runs";
+    return "/ui/runs";
   }
 
   // Reject full URLs with schemes (containing ://).
   if (withoutFragment.includes("://")) {
-    return "/runs";
+    return "/ui/runs";
   }
 
   // Reject CR/LF injection.
   if (withoutFragment.includes("\r") || withoutFragment.includes("\n")) {
-    return "/runs";
+    return "/ui/runs";
   }
 
   // Reject paths that do not start with '/' (must be same-origin relative paths).
   // The URL parser will auto-prefix '/' so we check the raw input.
   if (!withoutFragment.startsWith("/")) {
-    return "/runs";
+    return "/ui/runs";
   }
 
   let path: string;
@@ -64,7 +64,7 @@ export function safeReturnUrl(requestedReturnTo: string): string {
 
   // Reject empty path.
   if (!path) {
-    return "/runs";
+    return "/ui/runs";
   }
 
   // Reconstruct path + query, preserving the raw query string.
@@ -88,6 +88,10 @@ export function safeReturnUrl(requestedReturnTo: string): string {
 export function isExemptFromGlobalOidcAuth(pathname: string, method: string): boolean {
   // Normalize method to uppercase
   const httpMethod = method.toUpperCase();
+  const internalPath = pathname.startsWith("/assets/") ? pathname.slice(7) : pathname;
+  const normalizedPath =
+    internalPath === "/ui" ? "/" : internalPath.startsWith("/ui/") ? internalPath.slice(3) : internalPath;
+  pathname = normalizedPath;
 
   // Exempt OIDC auth routes themselves (sign-in, callback, logout)
   if (pathname === "/auth/login" || pathname === "/auth/callback" || pathname === "/auth/logout") {
@@ -105,16 +109,21 @@ export function isExemptFromGlobalOidcAuth(pathname: string, method: string): bo
     "/app-icon.svg",
     "/service-worker.js",
     "/api-client.mjs",
+    "/preferences.mjs",
+    "/workspace-path.mjs",
     "/app-header.mjs",
     "/app-router.mjs",
     "/dashboard.mjs",
     "/run.mjs",
     "/settings-ui.mjs",
+    "/team-settings-ui.mjs",
+    "/teams-landing.mjs",
     "/workflows-ui.mjs",
     "/pages/dashboard.mjs",
     "/pages/run.mjs",
     "/pages/settings-ui.mjs",
     "/pages/workflows-ui.mjs",
+    "/pages/recipes-ui.mjs",
     "/app-header.html",
     "/app-router.html",
     "/timezone-format.mjs",
@@ -139,6 +148,8 @@ export function isExemptFromGlobalOidcAuth(pathname: string, method: string): bo
 
 /** True only for known browser-document routes that should require an OIDC session. */
 export function isProtectedUiRoute(pathname: string, method: string): boolean {
+  pathname = pathname.startsWith("/assets/") ? pathname.slice(7) : pathname;
+  pathname = pathname === "/ui" ? "/" : pathname.startsWith("/ui/") ? pathname.slice(3) : pathname;
   const httpMethod = method.toUpperCase();
   if ((httpMethod !== "GET" && httpMethod !== "HEAD") || isExemptFromGlobalOidcAuth(pathname, httpMethod)) {
     return false;
@@ -150,9 +161,16 @@ export function isProtectedUiRoute(pathname: string, method: string): boolean {
     /^\/runs\/\d+$/.test(pathname) ||
     pathname === "/help" ||
     pathname === "/settings" ||
+    pathname === "/teams" ||
+    pathname === "/workspaces" ||
+    /^\/workspaces\/[^/]+\/runs$/.test(pathname) ||
+    /^\/teams\/[^/]+\/settings$/.test(pathname) ||
+    /^\/workspaces\/[^/]+\/settings$/.test(pathname) ||
     /^\/settings\/(secrets|tokens|notifications|workers|timezone)$/.test(pathname) ||
     pathname === "/workflows" ||
+    pathname === "/recipes" ||
+    pathname === "/recipes/new" ||
     /^\/workflows\/(new|[a-z0-9-]+)$/.test(pathname) ||
-    /^\/pages\/(dashboard|run|help|workflows|settings)\.html$/.test(pathname)
+    /^\/pages\/(dashboard|run|help|workflows|recipes|settings|team-settings)\.html$/.test(pathname)
   );
 }

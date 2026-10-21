@@ -184,9 +184,9 @@ describe("run view", () => {
     expect(runSetup).toContain("now.value - parseTimestamp(report.value.startedAt)");
     expect(runSetup).toContain("return Date.parse(hasTimezone ? normalized : `${normalized}Z`)");
     expect(source).toContain('aria-label="Run metadata"');
-    expect(source).toContain('<link rel="stylesheet" href="/on.css" />');
+    expect(source).toContain('<link rel="stylesheet" href="/assets/on.css" />');
     expect(source).not.toContain('bind-title="report.workflowName"');
-    expect(source).toContain('href="/runs"');
+    expect(source).toContain('href="/ui/runs"');
     expect(source).toContain('class="run-heading');
     expect(source).toContain('class="detail-meta');
     expect(source).toContain('class="execution');
@@ -198,10 +198,10 @@ describe("run view", () => {
     expect(source).toContain('class="flex flex-wrap items-center gap-x-2');
     expect(source).toContain('on-click="selectStep(step.index)"');
     expect(source).toContain('class="block min-w-0 flex-1 truncate"');
-    expect(source).toContain('class-hidden="!isAdmin"');
-    expect(source).toContain("attr-href=\"'/workflows/' + report.workflowId\"");
-    expect(source).toContain("loadAdminRole");
-    expect(source).toContain('session.user?.role === "admin"');
+    expect(source).toContain('class-hidden="!report.canViewLogs"');
+    expect(source).toContain("attr-href=\"'/ui/workflows/' + report.workflowId\"");
+    expect(source).toContain("canEditWorkflow");
+    expect(source).toContain('class-hidden="!report.canEditWorkflow"');
     expect(source).toContain("attr-aria-pressed=\"step.isSelected ? 'true' : 'false'\"");
     expect(source).toContain("attr-aria-label=\"(step.name || step.id || 'Step') + ', ' + upper(step.status)\"");
     expect(source).toContain('bind-innerhtml="stepLog(selectedStepReport)"');
@@ -241,7 +241,7 @@ describe("run view", () => {
     expect(source).toContain("failedStepMessage");
     expect(source).toContain("Awaiting worker");
     expect(source).toContain("#{{ report.jobId }}");
-    expect(source).toContain("apiFetch(`/api/runs/${jobId}`");
+    expect(source).toContain("apiFetch(`/api/v1/runs/${jobId}`");
     expect(source).toContain("lucide-icon");
     expect(source).toContain("detailTab !== 'source'");
     expect(source).toContain('theme="googlecode"');
@@ -255,7 +255,7 @@ describe("run view", () => {
     expect(source).toContain("Original inputs");
     expect(source).toContain("setManualKey(entry, $event)");
     expect(source).toContain("report.value.parentId");
-    expect(source).toContain("/api/runs/${parentId}");
+    expect(source).toContain("/api/v1/runs/${parentId}");
     expect(source).toContain("Artifacts");
     expect(source).toContain("Thinking through the failed step");
     expect(source).toContain("marked.parse(content)");
@@ -263,17 +263,18 @@ describe("run view", () => {
     expect(source).toContain("https://sodium.static.apphor.de/code-block.html");
     expect(source).toContain('bind-source="inputsJson"');
     expect(source).toContain("'circle-check'");
-    expect(source).toContain("{{ report.workerId || 'Awaiting worker' }}");
+    expect(source).toContain("{{ report.workerName || report.workerId || 'Awaiting worker' }}");
     expect(source).toContain("formatTimestampedLogLine");
     expect(source).toContain("formatDate(report.startedAt)");
-    expect(source).toContain("/api/preferences");
+    expect(source).toContain("loadTimezonePreference()");
     expect(source).not.toContain("https://cdn.tailwindcss.com");
-    expect(source).toContain('new EventSource("/api/events")');
+    expect(source).toContain("new EventSource(");
+    expect(source).toContain("/api/v1/events?teamId=");
     expect(source).toContain('addEventListener("jobs.changed", handleJobChange)');
-    expect(source).toContain("apiFetch(`/api/runs/${jobId}`");
+    expect(source).toContain("apiFetch(`/api/v1/runs/${jobId}`");
     expect(source).toContain("now.value = Date.now()");
-    expect(source).toContain('href="/manifest.webmanifest"');
-    expect(source).toContain('navigator.serviceWorker.register("/service-worker.js")');
+    expect(source).toContain('href="/assets/manifest.webmanifest"');
+    expect(source).toContain('navigator.serviceWorker.register("/assets/service-worker.js", { scope: "/ui/" })');
     expect(source).toContain("registration.showNotification(");
     expect(source).not.toContain("location.reload()");
     expect(source).not.toContain("</script><script>alert(1)</script>");
@@ -282,8 +283,25 @@ describe("run view", () => {
 
   it("gives the selected tab and step a clear active treatment", () => {
     const html = readFileSync(resolve(process.cwd(), "ui/run.html"), "utf8");
+    const css = readFileSync(resolve(process.cwd(), "ui/index.css"), "utf8");
 
     expect(html).toContain("attr-aria-selected=\"tab.isActive ? 'true' : 'false'\"");
     expect(html).toContain("aria-[pressed=true]:font-bold");
+    expect(html).toContain("bg-white px-3 py-1.5");
+    expect(html).toContain('aria-label="Copy URL"');
+    expect(html).toContain('aria-label="Restart run"');
+    expect(html).toContain('class="hidden sm:inline"');
+    expect(html).toContain("grid-cols-5");
+    expect(html).toContain('class="sr-only">{{ tab.label }}</span>');
+    expect(html).toContain('attr-aria-label="tab.label"');
+    expect(html).toContain("sm:absolute sm:right-0 sm:top-full sm:z-20");
+    expect(html).toContain('class="run-actions flex w-full flex-wrap items-center gap-2 shrink-0 sm:w-auto"');
+    expect(css).toContain(".run-actions details[open]");
+    expect(css).toContain("flex: 0 0 100%");
+    expect(css).toContain(".run-actions details[open] > summary");
+    expect(css).toContain("margin-left: auto");
+    expect(runSetup).toContain('restartError = ref("")');
+    expect(runSetup).toContain("result.error || `Restart failed (${response.status})`");
+    expect(html).toContain('role="alert"');
   });
 });

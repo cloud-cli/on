@@ -57,7 +57,7 @@ describe("browser API client sign-in recovery", () => {
 
     await expect(loadToken()).resolves.toBe("");
 
-    expect(fetch).toHaveBeenCalledWith("/api/auth/token", { headers: { accept: "application/json" } });
+    expect(fetch).toHaveBeenCalledWith("/api/v1/auth/token", { headers: { accept: "application/json" } });
     expect(location.assign).not.toHaveBeenCalled();
   });
 
@@ -83,11 +83,25 @@ describe("browser API client sign-in recovery", () => {
     ]);
     const { apiFetch } = await importClient();
 
-    const response = await apiFetch("/api/jobs");
+    const response = await apiFetch("/api/v1/jobs");
 
     expect(response.status).toBe(200);
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(new Headers(fetch.mock.calls[1][1]?.headers).get("authorization")).toBe("Bearer oidc-access-token");
+  });
+
+  it("preserves an explicitly selected team header on API requests", async () => {
+    const { fetch } = installBrowser([
+      new Response(JSON.stringify({ access_token: "oidc-access-token", expires_at: Date.now() + 60_000 }), {
+        status: 200,
+      }),
+      new Response(JSON.stringify({ members: [] }), { status: 200 }),
+    ]);
+    const { apiFetch } = await importClient();
+
+    await apiFetch("/api/v1/teams/team-b/members", { headers: { "X-Team-ID": "team-b" } });
+
+    expect(new Headers(fetch.mock.calls[1][1]?.headers).get("X-Team-ID")).toBe("team-b");
   });
 
   it("keeps manually supplied API keys without requesting an OIDC token", async () => {
@@ -142,7 +156,7 @@ describe("browser API client sign-in recovery", () => {
     });
     const { apiFetch } = await importClient();
 
-    const request = apiFetch("/api/jobs");
+    const request = apiFetch("/api/v1/jobs");
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(dialog.showModal).toHaveBeenCalledOnce();
     expect(window.open).not.toHaveBeenCalled();
@@ -181,7 +195,7 @@ describe("browser API client sign-in recovery", () => {
     ]);
     const { apiFetch } = await importClient();
 
-    const response = await apiFetch("/api/runs/1");
+    const response = await apiFetch("/api/v1/runs/1");
 
     expect(response.status).toBe(401);
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -194,7 +208,7 @@ describe("browser API client sign-in recovery", () => {
     ]);
     const { apiFetch } = await importClient();
 
-    const response = await apiFetch("/api/runs/1");
+    const response = await apiFetch("/api/v1/runs/1");
 
     expect(response.status).toBe(503);
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -217,7 +231,7 @@ describe("browser API client sign-in recovery", () => {
     await importClient();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(fetch).toHaveBeenCalledWith("/api/auth/session", {
+    expect(fetch).toHaveBeenCalledWith("/api/v1/auth/session", {
       credentials: "same-origin",
       headers: { accept: "application/json" },
     });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolveConfig } from "./config.js";
+import { loadConfig, resolveConfig } from "./config.js";
 
 describe("OIDC configuration", () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -51,5 +51,31 @@ describe("OIDC configuration", () => {
     vi.stubEnv("OIDC_CLIENT_SECRET", "secret");
 
     expect(resolveConfig({}, {}).oidc?.providerUrl).toBe("https://issuer.test");
+  });
+});
+
+describe("beta deployment configuration", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(["true", "TRUE", "1", "yes"])("enables beta mode for %s", (value) => {
+    vi.stubEnv("BETA", value);
+
+    expect(resolveConfig({}, {}).beta).toBe(true);
+  });
+
+  it.each([undefined, "", "false", "0", "no"])("keeps production mode for %s", (value) => {
+    vi.stubEnv("BETA", value ?? "");
+
+    expect(resolveConfig({}, {}).beta).toBe(false);
+  });
+});
+
+describe("API-only worker configuration", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("loads start-workers configuration without DATABASE_URL", async () => {
+    vi.stubEnv("DATABASE_URL", "");
+    const config = await loadConfig({ command: "start-workers", config: "/tmp/runner-config-does-not-exist.mjs" });
+    expect(config?.database).toBe("");
   });
 });

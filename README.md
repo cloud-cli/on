@@ -2,6 +2,50 @@
 
 General-purpose workflows
 
+## Teams and tenant isolation
+
+Workflows, runs, logs, artifacts, secrets, dashboard results, push subscriptions, and job events
+are scoped to a team. The first migration creates a `Default` team, assigns existing workflows,
+secrets, runs, push subscriptions, and known OIDC users to it, and preserves existing data. New
+OIDC users do not gain access to that team automatically.
+
+Sign in and open **Settings → Teams** to create a team or invite a teammate. A team admin creates
+an invitation by email and shares the generated link manually. Links expire after seven days,
+are single-use, and can only be accepted by a signed-in OIDC account with the same verified email.
+Team members can use the team's regular workflow features; team admins can invite members, change
+member roles, and remove regular members. A team must retain at least one administrator.
+
+Select the active team from the header. When using browser APIs, the client sends `X-Team-ID`; the
+server checks the signed-in user's membership on every team-scoped request. Scoped machine tokens
+alone do not bypass team membership checks.
+
+Each team has a unique, unguessable webhook path. Create or rotate it from **Settings → Workspaces**;
+the path is displayed once, so store it securely. Configure provider webhooks using
+`/api/v1/webhooks/team/<secret>/<provider>` (for example, `.../github`). Provider signature validation
+continues to apply.
+Rotating a team's webhook token immediately invalidates its previous URL.
+
+### Adopting legacy data
+
+After creating the destination workspace and upgrading the isolated clone's schema, set `DATABASE_URL`
+to that clone's database module and review the migration first:
+
+```sh
+pnpm workspace:adopt --workspace-id <workspace-id> --dry-run
+pnpm workspace:adopt --workspace-id <workspace-id> --apply
+```
+
+The one-off adoption preserves workflow/job identifiers and history, revisions, logs, stored-file
+references, encrypted secret ciphertext, API-key hashes, memberships, and existing workspace webhook
+registrations. It aborts for active jobs, conflicting secret values, or invalid references; all
+ownership changes and the completion marker are committed in one SQLite transaction. The marker
+makes a repeat invocation a no-op. User preferences remain personal. Test this against an isolated
+clone before any separately approved rollout; never point the command at a live database as a test.
+
+The GitHub provider endpoint is `/api/v1/webhooks/github`. Create a workspace-scoped webhook, configure
+the generated versioned URL and signing secret, and verify delivery. Workspace webhook signing secrets
+are stored encrypted and are not exposed to workflow jobs.
+
 A self-hosted, lightweight, high-performance CI/CD runner engine built for Node.js.
 
 Designed with a strict **security-first boundary**, native **JavaScript AST evaluation**, zero-DSL template literals, and a **built-in terminal log web dashboard**.
@@ -13,13 +57,46 @@ Designed with a strict **security-first boundary**, native **JavaScript AST eval
 - **Strict Code/Data Separation:** `run:` steps are executed verbatim as raw process scripts. Expressions and dynamic data bindings are isolated strictly to `env:`, eliminating shell-injection vectors entirely.
 - **Standard ES Template Syntax (`${...}`):** No custom DSL wrappers like `${{ }}` or `{{ }}`. If a field contains `${...}`, it evaluates standard JavaScript template string logic via AST.
 - **Deterministic Field Evaluation:** No silent fallbacks or ambiguous type conversions. Plain strings remain literal strings; conditions in `if:` fields run as strict JS boolean expressions.
-- **Built-in Dark Mode Web UI (`/runs`):** Monitor job statuses live, inspect workspace inputs, and view ANSI-colored terminal log streams rendered in real-time.
+- **Built-in Dark Mode Web UI (`/ui/runs`):** Monitor job statuses live, inspect workspace inputs, and view ANSI-colored terminal log streams rendered in real-time.
 - **System & Container Execution Drivers:** Run steps directly as detached host process groups or inside isolated Docker/Systemd transient units.
 - **DB-authored workflows:** Draft, validate, and publish portable YAML workflows through the authenticated API.
+- **Global recipe marketplace:** Authenticated human publishers can publish immutable, versioned recipes at `namespace/slug@vN`. Recipe YAML contains only `inputs:` and `steps:`; namespace is normalized from the OIDC preferred username. Platform administrators may revoke a version, preventing new jobs while queued jobs retain their pinned snapshot.
+
+Recipe parameters are data, not shell interpolation. Reference them from a step's `env:` and use quoted shell variables in `run:`:
+
+```yaml
+inputs:
+  type: object
+  required: [image]
+  properties:
+    image: { type: string }
+steps:
+  - id: build
+    run: docker build --tag "$IMAGE" .
+    env:
+      IMAGE: ${inputs.image}
+```
+
+Workflows pin an exact recipe version and supply normal and secret values separately:
+
+```yaml
+id: deploy-production
+name: Deploy production
+on: { generic: {} }
+using: platform/deploy@v2
+with: { environment: production }
+secrets: { token: "${secrets.DEPLOY_TOKEN}" }
+```
+
 - **Scheduled execution:** Published workflows can run from cron expressions or local sunrise/sunset events.
 - **Encrypted secret storage:** Secret ciphertext is stored in the database; the master key remains on the HTTP server.
 
 ---
+
+## Feature requests
+
+Proposed, not-yet-implemented capabilities and their acceptance criteria are tracked in
+[docs/feature-requests.md](docs/feature-requests.md).
 
 ## 📦 Project Structure
 
@@ -101,11 +178,11 @@ steps:
 Store the YAML as a draft and publish it through the authenticated API. Only published revisions can receive webhooks or scheduled runs. For an immediate test from the editor, save the draft and use **Run now**; this queues the latest saved draft revision without changing the schedule or publishing it:
 
 ```bash
-curl -u admin:"$RUNNER_ADMIN_SECRET" -X POST http://localhost:11235/api/workflows/validate \
+curl -u admin:"$RUNNER_ADMIN_SECRET" -X POST http://localhost:11235/api/v1/workflows/validate \
   -H 'Content-Type: application/json' --data '{"sourceYaml":"..."}'
-curl -u admin:"$RUNNER_ADMIN_SECRET" -X PUT http://localhost:11235/api/workflows/build-and-publish-release \
+curl -u admin:"$RUNNER_ADMIN_SECRET" -X PUT http://localhost:11235/api/v1/workflows/build-and-publish-release \
   -H 'Content-Type: application/json' --data '{"sourceYaml":"..."}'
-curl -u admin:"$RUNNER_ADMIN_SECRET" -X POST http://localhost:11235/api/workflows/build-and-publish-release/publish
+curl -u admin:"$RUNNER_ADMIN_SECRET" -X POST http://localhost:11235/api/v1/workflows/build-and-publish-release/publish
 ```
 
 Time triggers are defined beside a webhook trigger:
@@ -170,30 +247,31 @@ npx @cloud-cli/on [command] [options]
 
 ### CLI and Environment Options
 
-| Flag | Option       | Default               | Env                                                                              | Description                                               |
-| ---- | ------------ | --------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `-h` | `--help`     | —                     | -                                                                                | Prints CLI help message and exits.                        |
-| `-c` | `--config`   | `./runner.config.mjs` | `RUNNER_CONFIG_FILE`                                                             | Path to JavaScript configuration file.                    |
-| `-d` | `--database` | -                     | `DATABASE_URL`                                                                   | Node.js ES module URL exporting the database API.         |
-| `-p` | `--port`     | `11235`               | `PORT`                                                                           | Port for the Ingress HTTP server.                         |
-| `-k` | `--workers`  | `5`                   | `RUNNER_WORKERS`                                                                 | Maximum concurrent jobs on this node.                     |
-|      |              |                       | `RUNNER_ADMIN_SECRET`                                                            | Admin token to refresh secrets via API                    |
-|      |              |                       | `RUNNER_WORKER_SECRET`                                                           | Worker token for job events and secret retrieval          |
-|      |              |                       | `OIDC_ISSUER`                                                                    | OIDC issuer URL, for example `https://auth.api.apphor.de` |
-|      |              |                       | `OIDC_CLIENT_ID`                                                                 | Registered OIDC client identifier                         |
-|      |              |                       | `OIDC_CLIENT_SECRET`                                                             | Registered OIDC client secret                             |
-|      |              |                       | `RUNNER_OIDC_PROVIDER_URL`, `RUNNER_OIDC_CLIENT_ID`, `RUNNER_OIDC_CLIENT_SECRET` | Legacy aliases for the OIDC settings above.               |
-|      |              |                       | `RUNNER_SERVER_URL`                                                              | Webhook server URL used by workers.                       |
-|      |              |                       | `RUNNER_TAGS`                                                                    | Comma-separated worker capability tags.                   |
-|      |              |                       | `RUNNER_VAPID_PUBLIC_KEY`                                                        | Public key for background Web Push notifications.         |
-|      |              |                       | `RUNNER_VAPID_PRIVATE_KEY`                                                       | Private key for background Web Push notifications.        |
-|      |              |                       | `RUNNER_VAPID_SUBJECT`                                                           | VAPID contact, such as `mailto:admin@example.com`.        |
+| Flag | Option       | Default               | Env                                                                              | Description                                                   |
+| ---- | ------------ | --------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `-h` | `--help`     | —                     | -                                                                                | Prints CLI help message and exits.                            |
+| `-c` | `--config`   | `./runner.config.mjs` | `RUNNER_CONFIG_FILE`                                                             | Path to JavaScript configuration file.                        |
+| `-d` | `--database` | -                     | `DATABASE_URL`                                                                   | Node.js ES module URL exporting the database API.             |
+| `-p` | `--port`     | `11235`               | `PORT`                                                                           | Port for the Ingress HTTP server.                             |
+| `-k` | `--workers`  | `5`                   | `RUNNER_WORKERS`                                                                 | Maximum concurrent jobs on this node.                         |
+|      |              |                       | `RUNNER_ADMIN_SECRET`                                                            | Admin token to refresh secrets via API                        |
+|      |              |                       | `RUNNER_WORKER_SECRET`                                                           | Worker token for job events and secret retrieval              |
+|      |              |                       | `OIDC_ISSUER`                                                                    | OIDC issuer URL, for example `https://auth.api.apphor.de`     |
+|      |              |                       | `OIDC_CLIENT_ID`                                                                 | Registered OIDC client identifier                             |
+|      |              |                       | `OIDC_CLIENT_SECRET`                                                             | Registered OIDC client secret                                 |
+|      |              |                       | `RUNNER_OIDC_PROVIDER_URL`, `RUNNER_OIDC_CLIENT_ID`, `RUNNER_OIDC_CLIENT_SECRET` | Legacy aliases for the OIDC settings above.                   |
+|      |              |                       | `RUNNER_SERVER_URL`                                                              | Webhook server URL used by workers.                           |
+|      |              |                       | `RUNNER_TAGS`                                                                    | Comma-separated worker capability tags.                       |
+|      |              |                       | `RUNNER_VAPID_PUBLIC_KEY`                                                        | Public key for background Web Push notifications.             |
+|      |              |                       | `RUNNER_VAPID_PRIVATE_KEY`                                                       | Private key for background Web Push notifications.            |
+|      |              |                       | `RUNNER_VAPID_SUBJECT`                                                           | VAPID contact, such as `mailto:admin@example.com`.            |
+|      |              |                       | `BETA`                                                                           | Set to `true` to mark a beta deployment with a navy PWA icon. |
 
 Set `RUNNER_ADMIN_SECRET` only on the HTTP server for dashboard and management APIs. Set the same non-empty `RUNNER_WORKER_SECRET` on the server and every worker to publish job-status refresh events and retrieve job-scoped secrets. When the three `RUNNER_OIDC_*` values are configured, `/auth/login` enables browser sign-in, the browser uses the same bearer-token API path as external consumers, authenticated users can read logs, and the API token settings page issues and revokes scoped tokens through the OIDC provider. Register `https://your-runner-host/auth/callback` as the OIDC redirect URI. The dashboard workflow APIs accept either Bearer authentication or HTTP Basic authentication with username `admin` and the admin secret.
 
 ### Secrets
 
-Secrets are written through `PUT /api/secrets/:NAME` and are AES-256-GCM encrypted in the database. Set `RUNNER_MASTER_KEY` only on the HTTP server, or provide an `on-master-key` systemd credential. Workers receive decrypted values only after claiming a running job; values are not written to job payloads or reports.
+Secrets are written through `PUT /api/v1/secrets/:NAME` and are AES-256-GCM encrypted in the database. Set `RUNNER_MASTER_KEY` only on the HTTP server, or provide an `on-master-key` systemd credential. Workers receive decrypted values only after claiming a running job; values are not written to job payloads or reports.
 
 ---
 
@@ -233,9 +311,9 @@ The GitHub status plugin publishes commit states when a workflow starts and fini
 
 The dashboard can receive job notifications while it is closed through Web Push. Generate a VAPID key pair with `npx web-push generate-vapid-keys`, configure the three `RUNNER_VAPID_*` values on the server, and enable notifications from the dashboard over HTTPS. Without VAPID configuration, notifications work only while the dashboard is open.
 
-Run details are available as HTML at `/runs/:id` and as sanitized JSON at `/api/runs/:id`. The HTML view refreshes reactively through job-specific SSE events while a run is active. Both representations omit raw webhook bodies, sensitive input fields, execution environment values, and internal rerun state.
+Run details are available as HTML at `/ui/runs/:id` and as sanitized JSON at `/api/v1/runs/:id`. The HTML view refreshes reactively through job-specific SSE events while a run is active. Both representations omit raw webhook bodies, sensitive input fields, execution environment values, and internal rerun state.
 
-Open `/workflows` to list workflows and manage secret values. Open `/workflows/new` to create a definition or `/workflows/:id` to edit one. These pages are protected by the administrator HTTP Basic credential; secret values are write-only.
+Open `/ui/workflows` to list workflows and manage secret values. Open `/ui/workflows/new` to create a definition or `/ui/workflows/:id` to edit one. These pages require an authenticated OIDC session; secret values are write-only.
 
 ---
 
@@ -278,6 +356,8 @@ Within `${...}`, `if:`, and `eval:` contexts, the following object scopes are ex
 - **`files`**: Workspace-bound file helpers for `if:` and `eval:` expressions: `files.exists('Dockerfile')`, `files.readFile('package.json')`, and `files.join('dist', 'artifact')`. Paths outside the job `workingDir` are rejected.
 - **`BUILTIN_HELPERS`**: JS utilities including `String`, `Number`, `Boolean`, and `JSON.parse` / `JSON.stringify`.
 
+In a recipe workflow, validated `with:` values are added to `inputs` for the pinned recipe steps. Secret inputs are mapped separately and exposed to recipe steps only under their declared aliases. Use step `env:` bindings for shell commands rather than interpolating input values directly into `run:`.
+
 ---
 
 ## 🌐 Webhook Ingress Gateway & Dashboard
@@ -286,26 +366,31 @@ The Ingress Gateway listens for incoming HTTP requests and serves the live web U
 
 ### Endpoint Matrix
 
-| Method                     | Endpoint                                         | Description                                                                                      |
-| -------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| **`POST`**                 | `/webhooks/github`                               | Webhook endpoint for GitHub events. Applies GitHub filters and evaluates `on.github.if`.         |
-| **`GET`**                  | `/runs`                                          | **Dashboard:** Public live dark-mode monitoring page listing recent jobs.                        |
-| **`GET`**                  | `/api/jobs?afterId=<id>&beforeId=<id>&limit=<n>` | Dashboard jobs with exclusive lower and upper ID cursors and a limit from 1 to 500 (default 50). |
-| **`GET`**                  | `/runs/:jobId`                                   | **Job Report:** Authenticated interactive trace with step timings and terminal log output.       |
-| **`GET`**                  | `/workflows`                                     | Authenticated workflow list and encrypted secret management UI.                                  |
-| **`GET`**                  | `/workflows/new`, `/workflows/:id`               | Authenticated YAML workflow editor.                                                              |
-| **`POST`**                 | `/api/workflows/validate`                        | Authenticated YAML validation without persistence.                                               |
-| **`GET`, `PUT`, `DELETE`** | `/api/workflows/:id`                             | Authenticated revisioned workflow read, draft save, and deletion.                                |
-| **`POST`**                 | `/api/workflows/:id/publish`                     | Authenticated publication of the latest draft revision.                                          |
-| **`POST`**                 | `/api/workflows/:id/run`                         | Authenticated immediate run of the latest saved draft revision.                                  |
-| **`GET`, `PUT`, `DELETE`** | `/api/secrets`, `/api/secrets/:name`             | Authenticated encrypted secret-name and write-only value management.                             |
+| Method                     | Endpoint                                                    | Description                                                                                      |
+| -------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| **`POST`**                 | `/api/v1/webhooks/github`                                   | Webhook endpoint for GitHub events. Applies GitHub filters and evaluates `on.github.if`.         |
+| **`GET`**                  | `/ui/runs`                                                  | **Dashboard:** OIDC-protected live page listing recent jobs.                                     |
+| **`GET`**                  | `/api/v1/jobs?afterId=<id>&beforeId=<id>&limit=<n>`         | Dashboard jobs with exclusive lower and upper ID cursors and a limit from 1 to 500 (default 50). |
+| **`GET`**                  | `/ui/runs/:jobId`                                           | **Job Report:** Authenticated interactive trace with step timings and terminal log output.       |
+| **`GET`**                  | `/ui/workflows`                                             | Authenticated workflow list and encrypted secret management UI.                                  |
+| **`GET`**                  | `/ui/workflows/new`, `/ui/workflows/:id`                    | Authenticated YAML workflow editor.                                                              |
+| **`POST`**                 | `/api/v1/workflows/validate`                                | Authenticated YAML validation without persistence.                                               |
+| **`GET`, `PUT`, `DELETE`** | `/api/v1/workflows/:id`                                     | Authenticated revisioned workflow read, draft save, and deletion.                                |
+| **`POST`**                 | `/api/v1/workflows/:id/publish`                             | Authenticated publication of the latest draft revision.                                          |
+| **`POST`**                 | `/api/v1/workflows/:id/run`                                 | Authenticated immediate run of the latest saved draft revision.                                  |
+| **`GET`**                  | `/ui/recipes`                                               | Authenticated global recipe marketplace and immutable-version editor.                            |
+| **`GET`, `POST`**          | `/api/v1/recipes`                                           | List published recipes or publish an immutable version (human OIDC users only).                  |
+| **`POST`**                 | `/api/v1/recipes/validate`                                  | Validate recipe YAML and its Draft-07 input JSON Schema without publishing.                      |
+| **`GET`**                  | `/api/v1/recipes/:namespace/:slug/versions/:version`        | Read one exact immutable recipe version.                                                         |
+| **`POST`**                 | `/api/v1/recipes/:namespace/:slug/versions/:version/revoke` | Revoke one version (platform administrator only; no deletion).                                   |
+| **`GET`, `PUT`, `DELETE`** | `/api/v1/secrets`, `/api/v1/secrets/:name`                  | Authenticated encrypted secret-name and write-only value management.                             |
 
 ### Dashboard Features
 
-- **Real-time Auto-Refresh:** `/runs` automatically refreshes job queue statuses (`PENDING`, `RUNNING`, `SUCCESS`, `FAILED`, `CANCELLED`).
+- **Real-time Auto-Refresh:** `/ui/runs` automatically refreshes job queue statuses (`PENDING`, `RUNNING`, `SUCCESS`, `FAILED`, `CANCELLED`).
 - **ANSI Terminal Rendering:** Uses `ansi_up` to render bash colors, bold highlights, and console outputs accurately in step log boxes.
 - **Payload Inspection:** View JSON inputs received from webhooks for easy debugging.
-- **Workflow Management:** Use the authenticated `/workflows` pages to create, validate, publish, edit, and delete DB-authored workflow revisions.
+- **Workflow Management:** Use the authenticated `/ui/workflows` pages to create, validate, publish, edit, and delete DB-authored workflow revisions.
 
 ---
 

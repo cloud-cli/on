@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Workspace settings</title>
+    <script type="importmap">
+      { "imports": { "@app/": "/assets/", "@li3/": "https://at-li3.static.apphor.de/" } }
+    </script>
+    <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
+    <link rel="stylesheet" href="/assets/on.css" />
+  </head>
+  <body class="min-h-screen bg-flow-background p-4 font-sans text-flow-foreground md:p-6">
+    <template app
+      ><main class="w-full space-y-5 py-2">
+        <header
+          class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-flow-border bg-flow-background py-2"
+        >
+          <h1 class="text-2xl font-semibold">{{ teamName }} workspace</h1>
+          <nav aria-label="Workspace settings sections" class="flex flex-wrap justify-end gap-1.5">
+            <a
+              href="#team-members"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
+              >Members</a
+            >
+            <a
+              href="#team-webhooks"
+              class-hidden="!isAdmin"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
+              >Webhooks</a
+            >
+            <a
+              href="#team-runners"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
+              >Task Runners</a
+            >
+            <a
+              href="#workspace-secrets"
+              class-hidden="!isAdmin"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
+              >Task Runner Secrets</a
+            >
+            <a
+              href="#workspace-permissions"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
+              >Permissions</a
+            >
+            <a
+              href="#workspace-danger"
+              class-hidden="!isAdmin"
+              class="rounded-md border border-flow-border bg-white px-2.5 py-1.5 text-xs font-medium"
+              >Danger zone</a
+            >
+          </nav>
+        </header>
+        <div id="team-settings" class="space-y-5">
+          <section
+            id="team-members"
+            class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
+            aria-labelledby="team-members-title"
+          >
+            <h2 id="team-members-title" class="text-lg font-semibold">Workspace members</h2>
+            <p class="mt-1 text-sm text-flow-muted">
+              Viewers audit CI results. Collaborators can read logs, inputs, and artifacts, dispatch runs, and edit
+              workflows. Admins add destructive actions, membership, secrets, and runners.
+            </p>
+            <p class="mt-3 text-sm text-flow-muted" role="status">{{ message }}</p>
+            <h3 class="mt-6 text-xs font-semibold uppercase tracking-wider text-flow-muted">Current members</h3>
+            <ul class="mt-2 space-y-2">
+              <template for="member of members"
+                ><li
+                  class="flex items-center justify-between gap-3 rounded-lg border border-flow-border px-3 py-2 text-sm"
+                >
+                  <span class="min-w-0">
+                    {{ member.name || 'Unnamed member' }}
+                    <span class="ml-2 text-xs text-flow-muted">{{ member.kind === 'agent' ? 'Agent' : 'Person' }}</span>
+                  </span>
+                  <span
+                    class="rounded border border-flow-warning/30 bg-flow-warning/10 px-1.5 py-0.5 text-xs font-medium text-flow-warning"
+                    class-hidden="member.role !== 'admin'"
+                    >{{ roleLabels[member.role] || member.role }}</span
+                  >
+                  <span class="text-xs text-flow-muted" class-hidden="member.role === 'admin'"
+                    >{{ roleLabels[member.role] || member.role }}</span
+                  >
+                  <button
+                    type="button"
+                    class="text-xs underline"
+                    class-hidden="!canManage"
+                    on-click="editMember(member.subject)"
+                  >
+                    Edit permissions
+                  </button>
+                  <button
+                    type="button"
+                    class="text-xs text-rose-700 underline"
+                    class-hidden="!canManage || member.role === 'admin'"
+                    on-click="removeMember(member)"
+                  >
+                    Remove
+                  </button>
+                </li></template
+              >
+            </ul>
+            <div class="mt-6 border-t border-flow-border pt-5" class-hidden="!canManage">
+              <h3 class="font-medium">Invite a workspace member</h3>
+              <p class="mt-1 text-xs text-flow-muted">
+                Invitation links expire after seven days and can be used once by the matching email account.
+              </p>
+              <form class="mt-3 flex gap-2" on-submit.prevent="createInvitation()">
+                <label class="sr-only" for="invite-email">Teammate email</label>
+                <input
+                  id="invite-email"
+                  bind-value="inviteEmail"
+                  on-input="setInviteEmail($event)"
+                  type="email"
+                  aria-label="Teammate email"
+                  placeholder="name@example.com"
+                  class="min-w-0 flex-1 rounded-lg border border-flow-border px-3 py-2 text-sm"
+                />
+                <button type="submit" class="whitespace-nowrap rounded-lg border border-flow-border px-4 py-2 text-sm">
+                  Get link
+                </button>
+              </form>
+              <template if="inviteLink"
+                ><div class="mt-3 break-all rounded-lg bg-flow-panel p-3 text-xs">
+                  <a attr-href="inviteLink">{{ inviteLink }}</a
+                  ><button
+                    type="button"
+                    on-click="copyValue(inviteLink)"
+                    aria-label="Copy invitation link"
+                    class="ml-3 underline"
+                  >
+                    Copy
+                  </button>
+                </div></template
+              >
+            </div>
+            <div class="mt-5 border-t border-flow-border pt-5" class-hidden="!canManage">
+              <h3 class="font-medium">Invite by OIDC subject</h3>
+              <p class="mt-1 text-xs text-flow-muted">
+                Enter the exact OIDC subject. The invitation expires after seven days and grants Collaborator access
+                only when that identity signs in to Flow.
+              </p>
+              <form class="mt-3 flex gap-2" on-submit.prevent="createSubjectInvitation()">
+                <label class="sr-only" for="invite-subject">OIDC subject</label>
+                <input
+                  id="invite-subject"
+                  bind-value="inviteSubject"
+                  on-input="setInviteSubject($event)"
+                  aria-label="OIDC subject"
+                  autocomplete="off"
+                  maxlength="255"
+                  placeholder="OIDC subject"
+                  class="min-w-0 flex-1 rounded-lg border border-flow-border px-3 py-2 text-sm"
+                />
+                <button type="submit" class="whitespace-nowrap rounded-lg border border-flow-border px-4 py-2 text-sm">
+                  Invite by subject
+                </button>
+              </form>
+            </div>
+          </section>
+          <section
+            id="team-webhooks"
+            class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
+            class-hidden="!isAdmin"
+            aria-labelledby="team-webhooks-title"
+          >
+            <h2 id="team-webhooks-title" class="text-lg font-semibold">Webhooks</h2>
+            <p class="mt-1 text-sm text-flow-muted">
+              Each registration has its own URL and signing secret. Copy both when created; the signing secret is only
+              shown once.
+            </p>
+            <div class="mt-4 flex gap-2">
+              <input
+                bind-value="webhookProvider"
+                on-input="setWebhookProvider($event)"
+                aria-label="Webhook URL slug"
+                placeholder="Webhook URL slug."
+                maxlength="64"
+                pattern="[a-z0-9-]+"
+                class="min-w-0 flex-1 rounded-lg border border-flow-border px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                on-click="createWebhook()"
+                class="rounded-lg border border-flow-border px-4 py-2 text-sm"
+              >
+                Create webhook
+              </button>
+            </div>
+            <ul class="mt-3 space-y-2">
+              <template for="registration of webhooks"
+                ><li class="flex items-center justify-between rounded-lg border border-flow-border px-3 py-2 text-sm">
+                  <span>{{ registration.provider }} · created {{ registration.createdAt }}</span>
+                  <button type="button" on-click="revokeWebhook(registration)" class="text-xs text-rose-700 underline">
+                    Revoke
+                  </button>
+                </li></template
+              >
+            </ul>
+            <template if="webhookUrl"
+              ><div class="mt-3 space-y-2 break-all rounded-lg bg-flow-panel p-3 text-xs">
+                <p>
+                  URL: <code>{{ webhookUrl }}</code
+                  ><button
+                    type="button"
+                    on-click="copyValue(webhookUrl)"
+                    aria-label="Copy webhook URL"
+                    class="ml-3 underline"
+                  >
+                    Copy
+                  </button>
+                </p>
+                <p>
+                  Signing secret: <code>{{ webhookSecret }}</code
+                  ><button
+                    type="button"
+                    on-click="copyValue(webhookSecret)"
+                    aria-label="Copy webhook signing secret"
+                    class="ml-3 underline"
+                  >
+                    Copy
+                  </button>
+                </p>
+              </div></template
+            >
+          </section>
+          <section
+            id="team-runners"
+            class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
+            aria-labelledby="team-runners-title"
+          >
+            <h2 id="team-runners-title" class="text-lg font-semibold">Task Runners</h2>
+            <p class="mt-1 text-sm text-flow-muted">
+              Workspace-scoped runners and shared runners available to this workspace.
+            </p>
+            <button
+              type="button"
+              on-click="createRunnerEnrollment()"
+              class-hidden="!isAdmin"
+              class="mt-3 rounded-lg border border-flow-border px-4 py-2 text-sm"
+            >
+              Activate runner
+            </button>
+            <template if="enrollmentCode"
+              ><p class="mt-2 break-all rounded-lg bg-flow-panel p-3 text-sm">
+                One-time enrollment code: <code>{{ enrollmentCode }}</code>
+                <span class="mt-1 block text-xs text-flow-muted"
+                  >Expires {{ enrollmentExpiresAt }}. Copy it now; it cannot be viewed again.</span
+                >
+              </p></template
+            >
+            <h3 class="mt-5 text-xs font-semibold uppercase tracking-wider text-flow-muted">
+              Workspace-scoped runners
+            </h3>
+            <ul class="mt-2 space-y-2">
+              <template for="runner of teamRunners"
+                ><li class="rounded-lg border border-flow-border px-3 py-2 text-sm">
+                  {{ runner.name }}
+                  <span class="text-xs text-flow-muted"
+                    >· {{ runner.status }} · {{ runner.activeJobs }} / {{ runner.concurrency }} ·
+                    <span>{{ runner.version }}</span></span
+                  >
+                </li></template
+              >
+            </ul>
+            <h3 class="mt-5 text-xs font-semibold uppercase tracking-wider text-flow-muted">Active shared runners</h3>
+            <ul class="mt-2 space-y-2">
+              <template for="runner of sharedRunners"
+                ><li class="flex items-center justify-between rounded-lg border border-flow-border px-3 py-2 text-sm">
+                  <span
+                    >{{ runner.name }}
+                    <span class="text-xs text-flow-muted"
+                      >· {{ runner.status }} · {{ runner.activeJobs }} / {{ runner.concurrency }}</span
+                    ></span
+                  >
+                  <button
+                    type="button"
+                    on-click="setSharedRunner(runner, false)"
+                    class-hidden="!isAdmin"
+                    class="text-xs underline"
+                  >
+                    Deactivate
+                  </button>
+                </li></template
+              >
+            </ul>
+            <h3 class="mt-5 text-xs font-semibold uppercase tracking-wider text-flow-muted">
+              Available shared runners
+            </h3>
+            <ul class="mt-2 space-y-2">
+              <template for="runner of availableRunners"
+                ><li class="flex items-center justify-between rounded-lg border border-flow-border px-3 py-2 text-sm">
+                  {{ runner.name }}
+                  <button
+                    type="button"
+                    on-click="setSharedRunner(runner, true)"
+                    class-hidden="!isAdmin"
+                    class="text-xs underline"
+                  >
+                    Activate
+                  </button>
+                </li></template
+              >
+            </ul>
+          </section>
+          <section
+            id="workspace-secrets"
+            class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
+            class-hidden="!isAdmin"
+            aria-labelledby="workspace-secrets-title"
+          >
+            <h2 id="workspace-secrets-title" class="text-lg font-semibold">Task Runner Secrets</h2>
+            <p class="mt-1 text-sm text-flow-muted">
+              Encrypted, write-only values available to workflows in this workspace.
+            </p>
+            <div class="mt-4 grid gap-3">
+              <label class="sr-only" for="workspace-secret-name">Secret name</label>
+              <input
+                id="workspace-secret-name"
+                bind-value="secretName"
+                on-input="setSecretName($event)"
+                placeholder="NPM_TOKEN"
+                class="rounded-lg border border-flow-border px-3 py-2 font-mono text-sm uppercase"
+              />
+              <label class="flex items-center gap-2 text-sm"
+                ><input type="checkbox" bind-checked="fileMode" on-change="setFileMode($event)" /> Binary file
+                secret</label
+              >
+              <template if="!fileMode"
+                ><label class="sr-only" for="workspace-secret-value">Secret value</label
+                ><input
+                  id="workspace-secret-value"
+                  bind-value="secretValue"
+                  on-input="setSecretValue($event)"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="Secret value"
+                  class="rounded-lg border border-flow-border px-3 py-2 font-mono text-sm"
+              /></template>
+              <template if="fileMode"
+                ><label class="sr-only" for="workspace-secret-file">Secret file</label
+                ><input
+                  id="workspace-secret-file"
+                  on-change="setSecretFile($event)"
+                  type="file"
+                  class="rounded-lg border border-flow-border px-3 py-2 text-sm"
+                /><span class="text-xs text-flow-muted">{{ secretFileName }}</span></template
+              >
+              <div>
+                <button
+                  type="button"
+                  on-click="saveSecret()"
+                  class="rounded-lg border border-flow-primary/60 px-3 py-2 text-sm font-medium text-flow-primary"
+                >
+                  Save secret
+                </button>
+              </div>
+            </div>
+            <ul class="mt-4 space-y-2" aria-label="Workspace secrets">
+              <template for="secret of secrets"
+                ><li
+                  class="flex items-center justify-between gap-3 rounded-lg border border-flow-border px-3 py-2 text-sm"
+                >
+                  <code>{{ secret }}</code
+                  ><button type="button" on-click="deleteSecret(secret)" class="text-rose-700 underline">Delete</button>
+                </li></template
+              >
+            </ul>
+          </section>
+          <section
+            id="workspace-permissions"
+            class="scroll-mt-6 rounded-xl border border-flow-border bg-flow-card p-5"
+            class-hidden="!canManage"
+            aria-labelledby="workspace-permissions-title"
+          >
+            <h2 id="workspace-permissions-title" class="text-lg font-semibold">Permissions</h2>
+            <p class="mt-1 text-sm text-flow-muted">
+              Roles are presets. Tick or untick a capability to add an explicit grant or restriction for one member. An
+              explicit restriction always wins.
+            </p>
+            <label class="mt-4 block text-sm font-medium" for="permission-member">Member</label>
+            <select
+              id="permission-member"
+              bind-value="selectedMember"
+              on-change="editMember($event.target.value)"
+              class="mt-1 w-full rounded-lg border border-flow-border px-3 py-2 text-sm"
+            >
+              <option value="">Choose a member…</option>
+              <template for="member of members"
+                ><option attr-value="member.subject">
+                  {{ member.name || member.email || member.subject }} ({{ roleLabels[member.role] || member.role }})
+                </option></template
+              >
+            </select>
+            <template if="selectedMember"
+              ><div class="mt-4">
+                <label class="block text-sm font-medium" for="permission-role">Base role</label>
+                <select
+                  id="permission-role"
+                  bind-value="draftRole"
+                  on-change="setDraftRole($event)"
+                  class="mt-1 w-full rounded-lg border border-flow-border px-3 py-2 text-sm"
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="collaborator">Collaborator</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div class="mt-5 overflow-x-auto">
+                <table class="w-full min-w-[44rem] border-collapse text-sm">
+                  <caption class="sr-only">
+                    Workspace permission matrix for the selected member
+                  </caption>
+                  <thead>
+                    <tr class="border-b border-flow-border text-left text-xs uppercase tracking-wider text-flow-muted">
+                      <th scope="col" class="py-2 pr-3 font-semibold">Capability</th>
+                      <th scope="col" class="px-2 py-2 font-semibold">Viewer</th>
+                      <th scope="col" class="px-2 py-2 font-semibold">Collaborator</th>
+                      <th scope="col" class="px-2 py-2 font-semibold">Admin</th>
+                      <th scope="col" class="px-2 py-2 font-semibold">This member</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template for="row of permissionRows">
+                      <template if="row.kind === 'group'">
+                        <tr>
+                          <th
+                            scope="colgroup"
+                            colspan="5"
+                            class="pt-5 pb-1 text-left text-xs font-semibold uppercase tracking-wider text-flow-primary"
+                          >
+                            {{ row.label }} · {{ row.description }}
+                          </th>
+                        </tr>
+                      </template>
+                      <template if="row.kind === 'capability'">
+                        <tr class="border-b border-flow-border/60">
+                          <th scope="row" class="py-2 pr-3 text-left font-normal">
+                            <span class="block font-medium">{{ row.label }}</span>
+                            <span class="block text-xs text-flow-muted">{{ row.description }}</span>
+                          </th>
+                          <td class="px-2 py-2 text-center">{{ row.viewer ? '✓' : '·' }}</td>
+                          <td class="px-2 py-2 text-center">{{ row.collaborator ? '✓' : '·' }}</td>
+                          <td class="px-2 py-2 text-center">{{ row.admin ? '✓' : '·' }}</td>
+                          <td class="px-2 py-2 text-center">
+                            <input
+                              type="checkbox"
+                              bind-checked="row.checked"
+                              on-change="toggleCapability(row)"
+                              attr-aria-label="'Allow ' + row.label"
+                            />
+                            <span class="ml-1 text-xs text-flow-warning" class-hidden="!row.overridden"
+                              >{{ row.overrideLabel }}</span
+                            >
+                          </td>
+                        </tr>
+                      </template>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+              <p class="mt-3 text-xs text-flow-muted">
+                “granted” and “denied” mark explicit overrides. Leaving the box at the role preset removes the override.
+              </p>
+              <button
+                type="button"
+                on-click="savePermissions()"
+                bind-disabled="savingPermissions || !canManage"
+                class="mt-4 rounded-lg bg-flow-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {{ savingPermissions ? 'Saving…' : 'Save permissions' }}
+              </button></template
+            >
+          </section>
+          <section
+            id="workspace-danger"
+            class="scroll-mt-6 rounded-xl border border-rose-300 bg-flow-card p-5"
+            class-hidden="!isAdmin"
+            aria-labelledby="workspace-danger-title"
+          >
+            <h2 id="workspace-danger-title" class="text-lg font-semibold">Danger zone</h2>
+            <div class="mt-4 grid gap-6 md:grid-cols-2">
+              <div>
+                <h3 class="font-medium">Rename workspace</h3>
+                <div class="mt-2 flex gap-2">
+                  <label class="sr-only" for="workspace-name">New workspace name</label>
+                  <input
+                    id="workspace-name"
+                    bind-value="newTeamName"
+                    on-input="setNewTeamName($event)"
+                    placeholder="New workspace name"
+                    class="min-w-0 flex-1 rounded-lg border border-flow-border px-3 py-2 text-sm"
+                  />
+                  <button type="button" on-click="renameWorkspace()" class="rounded-lg border px-3 py-2 text-sm">
+                    Rename
+                  </button>
+                </div>
+              </div>
+              <div>
+                <h3 class="font-medium text-rose-700">Delete workspace</h3>
+                <p class="mt-1 text-xs text-flow-muted">
+                  Permanently removes every workflow, run, log, artifact, secret, webhook, and runner in this workspace.
+                </p>
+                <button
+                  type="button"
+                  on-click="deleteWorkspace()"
+                  class="mt-2 rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white"
+                >
+                  Delete workspace
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+        <p class="text-sm text-rose-700" role="alert" class-hidden="!error">{{ error }}</p>
+      </main>
+      <script setup src="/assets/team-settings-ui.mjs"></script
+    ></template>
+    <script type="module">
+      import "@li3/web";
+    </script>
+  </body>
+</html>

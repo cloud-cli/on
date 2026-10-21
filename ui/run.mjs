@@ -2,6 +2,7 @@ import { computed, onDestroy, onInit, ref } from "@li3/web";
 import { AnsiUp } from "ansi_up";
 import { marked } from "marked";
 import { apiFetch } from "@app/api-client.mjs";
+import { loadTimezonePreference } from "@app/preferences.mjs";
 import { navigateTo } from "@app/app-router.mjs";
 import { formatTimestampedLogLine } from "@app/timezone-format.mjs";
 
@@ -16,20 +17,26 @@ export default function setup() {
   const aiLoading = ref(false);
   const manualRestartOpen = ref(false);
   const manualRestartLoading = ref(false);
+  const restartLoading = ref(false);
+  const restartError = ref("");
   const manualInputs = ref([]);
   let previousRunsLoaded = false;
   const selectedStep = ref(0);
   const detailTab = ref("logs");
   const logSearch = ref("");
   const wrapLogs = ref(true);
-  const isAdmin = ref(false);
   const detailTabs = computed(() =>
     [
-      { id: "logs", label: "Logs & steps", icon: "terminal" },
-      { id: "inputs", label: "Inputs", icon: "code" },
-      { id: "artifacts", label: "Artifacts", icon: "box" },
-      { id: "history", label: "History", icon: "list-clock" },
-      { id: "source", label: "Workflow source", icon: "file-code" },
+      { id: "logs", label: "Logs & steps", icon: "terminal", visible: Boolean(report.value.canViewLogs) },
+      { id: "inputs", label: "Inputs", icon: "code", visible: Boolean(report.value.canViewInputs) },
+      { id: "artifacts", label: "Artifacts", icon: "box", visible: Boolean(report.value.canViewArtifacts) },
+      { id: "history", label: "History", icon: "list-clock", visible: true },
+      {
+        id: "source",
+        label: "Workflow source",
+        icon: "file-code",
+        visible: Boolean(report.value.canViewLogs && report.value.workflowSourceYaml),
+      },
     ].map((tab) => ({ ...tab, isActive: detailTab.value === tab.id })),
   );
   const now = ref(Date.now());
@@ -150,24 +157,15 @@ export default function setup() {
     return current?.status === "failed" ? "exit code 1" : upper(current?.status);
   });
   const loadTimezone = async () => {
-    const response = await apiFetch("/api/preferences", { headers: { accept: "application/json" } });
-    if (!response.ok) {
-      throw new Error(`Loading timezone preference failed: ${response.status}`);
+    const preference = await loadTimezonePreference();
+    if (preference.timezone) {
+      timezone.value = preference.timezone;
     }
-    const preferences = await response.json();
-    if (preferences.timezone) {
-      timezone.value = preferences.timezone;
+    if (preference.legacyError) {
+      console.warn("Timezone preference unavailable; using system timezone", preference.legacyError);
     }
   };
-  const loadAdminRole = async () => {
-    const response = await apiFetch("/api/session", { headers: { accept: "application/json" } });
-    if (!response.ok) {
-      return;
-    }
-    const session = await response.json();
-    isAdmin.value = session.user?.role === "admin";
-  };
-  const artifactUrl = (path) => `/api/runs/${report.value.jobId}/artifacts/${encodeURIComponent(path)}`;
+  const artifactUrl = (path) => `/api/v1/runs/${report.value.jobId}/artifacts/${encodeURIComponent(path)}`;
   const downloadArtifact = async (event, path) => {
     event.preventDefault();
     const response = await apiFetch(artifactUrl(path));
@@ -189,10 +187,11 @@ export default function setup() {
     let parentId = report.value.parentId;
     while (parentId && !visited.has(String(parentId)) && lineage.length < 50) {
       visited.add(String(parentId));
-      const response = await apiFetch(`/api/runs/${parentId}`, { headers: { accept: "application/json" } });
+      const response = await apiFetch(`/api/v1/runs/${parentId}`, { headers: { accept: "application/json" } });
       if (!response.ok) {
         throw new Error(`Previous run request failed: ${response.status}`);
       }
+
       const parent = await response.json();
       lineage.push({ id: parent.jobId, status: parent.status, startedAt: parent.startedAt });
       parentId = parent.parentId;
@@ -249,7 +248,7 @@ export default function setup() {
     aiLoading.value = true;
     aiError.value = "";
     try {
-      const response = await apiFetch(`/api/runs/${report.value.jobId}/ai-help`, {
+      const response = await apiFetch(`/api/v1/runs/${report.value.jobId}/ai-help`, {
         method: "POST",
         headers: { accept: "application/json", "content-type": "application/json" },
         body: JSON.stringify({ stepId, question, conversation: aiMessages.value }),
@@ -310,14 +309,29 @@ export default function setup() {
     await requestAiHelp(aiStepId.value, question);
   };
   const restartJob = async () => {
-    const response = await apiFetch(`/restart/${report.value.jobId}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ inputs: report.value.inputs || {} }),
-    });
-    if (response.ok) {
-      const { id } = await response.json();
-      navigateTo(`/runs/${id}`);
+    if (restartLoading.value) {
+      return;
+    }
+    restartLoading.value = true;
+    restartError.value = "";
+    try {
+      const response = await apiFetch(`/api/v1/jobs/${report.value.jobId}/restart`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ inputs: report.value.inputs || {} }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || `Restart failed (${response.status})`);
+      }
+      if (result.id === undefined || result.id === null) {
+        throw new Error("Restart failed: the server did not return a new run ID");
+      }
+      navigateTo(`/ui/runs/${result.id}`);
+    } catch (error) {
+      restartError.value = error instanceof Error ? error.message : "Restart failed. Please try again.";
+    } finally {
+      restartLoading.value = false;
     }
   };
   const openManualRestart = (event) => {
@@ -349,16 +363,20 @@ export default function setup() {
     );
     manualRestartLoading.value = true;
     try {
-      const response = await apiFetch(`/restart/${report.value.jobId}`, {
+      const response = await apiFetch(`/api/v1/jobs/${report.value.jobId}/restart`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ inputs }),
       });
+      const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(`Restart failed: ${response.status}`);
+        throw new Error(result.error || `Restart failed (${response.status})`);
       }
-      const { id } = await response.json();
-      navigateTo(`/runs/${id}`);
+      const { id } = result;
+      if (id === undefined || id === null) {
+        throw new Error("Restart failed: the server did not return a new run ID");
+      }
+      navigateTo(`/ui/runs/${id}`);
     } catch (error) {
       aiError.value = error.message;
     } finally {
@@ -371,10 +389,11 @@ export default function setup() {
     }
     cancelling.value = true;
     try {
-      const response = await apiFetch(`/api/jobs/${report.value.jobId}/cancel`, { method: "POST" });
+      const response = await apiFetch(`/api/v1/jobs/${report.value.jobId}/cancel`, { method: "POST" });
       if (!response.ok) {
         throw new Error(`Cancel failed: ${response.status}`);
       }
+
       await refreshRun();
     } catch (error) {
       console.error(error);
@@ -390,7 +409,7 @@ export default function setup() {
     refreshing = true;
 
     try {
-      const response = await apiFetch(`/api/runs/${jobId}`, {
+      const response = await apiFetch(`/api/v1/runs/${jobId}`, {
         headers: { accept: "application/json" },
       });
       if (!response.ok) {
@@ -399,6 +418,9 @@ export default function setup() {
       const previousStatus = report.value.status;
       const nextReport = await response.json();
       report.value = nextReport;
+      if (!detailTabs.value.find((tab) => tab.id === detailTab.value && tab.visible)) {
+        detailTab.value = detailTabs.value.find((tab) => tab.visible)?.id || "history";
+      }
       if (previousStatus !== "failed" && nextReport.status === "failed") {
         const failedIndex = (nextReport.steps || []).findIndex((step) => step.status === "failed");
         if (failedIndex >= 0) {
@@ -420,11 +442,11 @@ export default function setup() {
           nextReport.status === "success" ? `Job #${nextReport.jobId} succeeded` : `Job #${nextReport.jobId} failed`,
           {
             body: `${nextReport.workflowName} finished with status ${nextReport.status}.`,
-            icon: "/app-icon.svg",
-            badge: "/app-icon.svg",
+            icon: "/assets/app-icon.svg",
+            badge: "/assets/app-icon.svg",
             tag: `runner-job-${nextReport.jobId}`,
             renotify: true,
-            data: { url: `/runs/${nextReport.jobId}` },
+            data: { url: `/ui/runs/${nextReport.jobId}` },
           },
         );
       }
@@ -455,13 +477,14 @@ export default function setup() {
   onInit(() => {
     document.addEventListener("pointerdown", handleOutsideRestartMenu);
     void refreshRun();
-    void loadAdminRole().catch((error) => console.error("Unable to load run editor access", error));
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/service-worker.js").catch((error) => {
+      navigator.serviceWorker.register("/assets/service-worker.js", { scope: "/ui/" }).catch((error) => {
         console.error("Service worker registration failed", error);
       });
     }
-    eventSource = new EventSource("/api/events");
+    eventSource = new EventSource(
+      `/api/v1/events?teamId=${encodeURIComponent(localStorage.getItem("runner-team-id") || "")}`,
+    );
     eventSource.addEventListener("jobs.changed", handleJobChange);
     refreshTimer = setInterval(() => {
       if (active.value) {
@@ -481,10 +504,11 @@ export default function setup() {
 
   return {
     report,
-    isAdmin,
     previousRuns,
     manualRestartOpen,
     manualRestartLoading,
+    restartLoading,
+    restartError,
     manualInputs,
     aiMessages,
     aiStepId,

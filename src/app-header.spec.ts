@@ -1,21 +1,28 @@
 import { describe, expect, it } from "vitest";
 import headerTemplate from "../ui/app-header.html?raw";
+import headerSetup from "../ui/app-header.mjs?raw";
 
 describe("app header", () => {
   it("unauthenticated header shows user-round icon linking to /settings", () => {
     expect(headerTemplate).toMatch(
-      /<template if="!authenticated">[\s\S]*?href="\/settings"[\s\S]*?aria-label="Settings"[\s\S]*?title="Settings"[\s\S]*?icon="user-round"[\s\S]*?<\/template>/,
+      /<template if="!authenticated">[\s\S]*?href="\/ui\/settings"[\s\S]*?aria-label="Settings"[\s\S]*?title="Settings"[\s\S]*?icon="user-round"[\s\S]*?<\/template>/,
     );
   });
 
   it("authenticated header settings control links to /settings", () => {
     expect(headerTemplate).toMatch(
-      /<template if="authenticated">[\s\S]*?href="\/settings"[\s\S]*?aria-label="Settings"[\s\S]*?title="Settings"[\s\S]*?icon="circle-user-round"[\s\S]*?<\/template>/,
+      /<template if="authenticated">[\s\S]*?href="\/ui\/settings"[\s\S]*?aria-label="Settings"[\s\S]*?title="Settings"[\s\S]*?icon="circle-user-round"[\s\S]*?<\/template>/,
     );
   });
 
   it("does not expose the retired UI preview", () => {
     expect(headerTemplate).not.toContain('href="/preview"');
     expect(headerTemplate).not.toContain("Preview</a>");
+  });
+
+  it("shows Operations only when the session has platform operations access", () => {
+    expect(headerTemplate).toContain('href="/ui/operations"');
+    expect(headerTemplate).toContain("canViewOperations");
+    expect(headerSetup).toContain('capability.startsWith("platform.")');
   });
 });

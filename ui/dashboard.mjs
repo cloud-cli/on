@@ -1,5 +1,6 @@
 import { onDestroy, onInit, ref } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
+import { loadTimezonePreference } from "@app/preferences.mjs";
 
 export default function setup() {
   const jobs = ref([]),
@@ -13,6 +14,8 @@ export default function setup() {
     activeFilter = ref(""),
     pushConfigured = ref(false);
   const workflows = ref([]),
+    workflowsLoading = ref(true),
+    workflowsError = ref(false),
     workers = ref([]),
     workflowFilter = ref(""),
     workerFilter = ref(""),
@@ -82,31 +85,53 @@ export default function setup() {
       },
     ].map((tab) => ({ ...tab, isActive: statusFilter.value === tab.status }));
   const loadTimezone = async () => {
-    const response = await apiFetch("/api/preferences", { headers: { accept: "application/json" } });
-    if (!response.ok) {
-      throw new Error(`Loading timezone preference failed: ${response.status}`);
+    const preference = await loadTimezonePreference();
+    if (preference.timezone) {
+      timezone.value = preference.timezone;
     }
-    const preferences = await response.json();
-    if (preferences.timezone) {
-      timezone.value = preferences.timezone;
+    if (preference.legacyError) {
+      console.warn("Timezone preference unavailable; using system timezone", preference.legacyError);
     }
   };
+  let workflowGeneration = 0;
   const loadOptions = async () => {
+    const generation = ++workflowGeneration;
+    workflowsLoading.value = true;
+    workflowsError.value = false;
     const load = async (url, key, target, getLabel) => {
       try {
         const response = await apiFetch(url, { headers: { accept: "application/json" } });
         if (!response.ok) {
+          if (key === "workflows") {
+            throw new Error(`Loading workflows failed: ${response.status}`);
+          }
           return;
         }
-        const items = (await response.json())[key] || [];
-        target.value = items.map((item) => ({ id: item.id || item.workerId, name: getLabel(item) }));
+        const payload = await response.json();
+        const items = payload?.[key];
+        if (!Array.isArray(items)) {
+          if (key === "workflows") {
+            throw new Error("Loading workflows returned an invalid response");
+          }
+          return;
+        }
+        if (generation === workflowGeneration) {
+          target.value = items.map((item) => ({ id: item.id || item.workerId, name: getLabel(item) }));
+        }
       } catch {
+        if (key === "workflows" && generation === workflowGeneration) {
+          workflowsError.value = true;
+        }
         /* Filters remain optional when scope is unavailable. */
       }
     };
     await Promise.all([
-      load("/api/workflows", "workflows", workflows, (item) => item.name || "Workflow"),
-      load("/api/workers", "workers", workers, (item) => item.workerId || "Worker"),
+      load("/api/v1/workflows", "workflows", workflows, (item) => item.name || "Workflow").finally(() => {
+        if (generation === workflowGeneration) {
+          workflowsLoading.value = false;
+        }
+      }),
+      load("/api/v1/workers", "workers", workers, (item) => item.name || item.workerId || "Worker"),
     ]);
   };
   const terminalStatuses = new Set(["success", "failed", "cancelled"]);
@@ -135,11 +160,11 @@ export default function setup() {
         job.status === "success" ? `Job #${job.id} succeeded` : `Job #${job.id} failed`,
         {
           body: `${workflowName(job.workflowId)} finished with status ${job.status}.`,
-          icon: "/app-icon.svg",
-          badge: "/app-icon.svg",
+          icon: "/assets/app-icon.svg",
+          badge: "/assets/app-icon.svg",
           tag: `runner-job-${job.id}`,
           renotify: true,
-          data: { url: `/runs/${job.id}` },
+          data: { url: `/ui/runs/${job.id}` },
         },
       );
     } catch (error) {
@@ -156,10 +181,11 @@ export default function setup() {
       if (!notificationsSupported.value) {
         return;
       }
-      const response = await apiFetch("/api/push/public-key", { headers: { accept: "application/json" } });
+      const response = await apiFetch("/api/v1/push/public-key", { headers: { accept: "application/json" } });
       if (!response.ok) {
         return;
       }
+
       const { publicKey } = await response.json();
       pushConfigured.value = true;
       const registration = await navigator.serviceWorker.ready;
@@ -169,7 +195,7 @@ export default function setup() {
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(publicKey),
         }));
-      const saved = await apiFetch("/api/push/subscriptions", {
+      const saved = await apiFetch("/api/v1/push/subscriptions", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(subscription),
@@ -187,7 +213,7 @@ export default function setup() {
       if (!subscription) {
         return;
       }
-      await apiFetch("/api/push/subscriptions", {
+      await apiFetch("/api/v1/push/subscriptions", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ endpoint: subscription.endpoint }),
@@ -241,8 +267,8 @@ export default function setup() {
       const workflowQuery = workflowFilter.value ? `&workflowId=${encodeURIComponent(workflowFilter.value)}` : "";
       const url =
         afterId === null
-          ? `/api/jobs?limit=100${filterQuery}${workflowQuery}`
-          : `/api/jobs?afterId=${afterId}&limit=100${filterQuery}${workflowQuery}`;
+          ? `/api/v1/jobs?limit=100${filterQuery}${workflowQuery}`
+          : `/api/v1/jobs?afterId=${afterId}&limit=100${filterQuery}${workflowQuery}`;
       const response = await apiFetch(url, { headers: { accept: "application/json" } });
       if (!response.ok) {
         throw new Error(`Dashboard refresh failed: ${response.status}`);
@@ -283,7 +309,7 @@ export default function setup() {
       const beforeId = Math.min(...jobs.value.map((job) => Number(job.id)));
       const filterQuery = activeFilter.value ? `&filter=${encodeURIComponent(activeFilter.value)}` : "";
       const workflowQuery = workflowFilter.value ? `&workflowId=${encodeURIComponent(workflowFilter.value)}` : "";
-      const response = await apiFetch(`/api/jobs?beforeId=${beforeId}${filterQuery}${workflowQuery}`, {
+      const response = await apiFetch(`/api/v1/jobs?beforeId=${beforeId}${filterQuery}${workflowQuery}`, {
         headers: { accept: "application/json" },
       });
       if (!response.ok) {
@@ -394,6 +420,38 @@ export default function setup() {
     }
   };
   const hasNextPage = () => page.value < Math.ceil(filteredJobs().length / pageSize) || hasMore.value;
+  const switchWorkspace = () => {
+    workflowGeneration++;
+    refreshGeneration++;
+    refreshPending = false;
+    searchInProgress = false;
+    jobs.value = [];
+    workflows.value = [];
+    workflowsLoading.value = true;
+    workflowsError.value = false;
+    workers.value = [];
+    hasMore.value = false;
+    page.value = 1;
+    filter.value = "";
+    activeFilter.value = "";
+    workflowFilter.value = "";
+    workerFilter.value = "";
+    statusFilter.value = "all";
+    history.replaceState(null, "", window.location.pathname);
+    refreshError.value = false;
+    eventSource?.close();
+    eventSource = new EventSource(
+      `/api/v1/events?teamId=${encodeURIComponent(localStorage.getItem("runner-team-id") || "")}`,
+    );
+    eventSource.addEventListener("jobs.available", refreshJobs);
+    eventSource.addEventListener("jobs.changed", refreshJobs);
+    eventSource.onerror = () => {
+      refreshError.value = true;
+    };
+    void loadOptions();
+    void refreshJobs(true);
+  };
+  const retryWorkflows = () => void loadOptions();
   onInit(() => {
     const params = new URLSearchParams(window.location.search);
     const initialSearch = params.get("search")?.trim() || "";
@@ -404,7 +462,7 @@ export default function setup() {
     void loadTimezone().catch((error) => console.error("Unable to load timezone preference", error));
     if (notificationsSupported.value) {
       navigator.serviceWorker
-        .register("/service-worker.js")
+        .register("/assets/service-worker.js", { scope: "/ui/" })
         .then(() => {
           if (notificationsEnabled.value) {
             void enablePushNotifications();
@@ -412,17 +470,21 @@ export default function setup() {
         })
         .catch((error) => console.error("Service worker registration failed", error));
     }
-    eventSource = new EventSource("/api/events");
+    eventSource = new EventSource(
+      `/api/v1/events?teamId=${encodeURIComponent(localStorage.getItem("runner-team-id") || "")}`,
+    );
     eventSource.addEventListener("jobs.available", refreshJobs);
     eventSource.addEventListener("jobs.changed", refreshJobs);
     eventSource.onerror = () => {
       refreshError.value = true;
     };
+    window.addEventListener("runner-team-changed", switchWorkspace);
     void refreshJobs(true);
     refreshTimer = setInterval(refreshJobs, 60000);
   });
   onDestroy(() => {
     eventSource?.close();
+    window.removeEventListener("runner-team-changed", switchWorkspace);
     clearInterval(refreshTimer);
   });
   return {
@@ -430,6 +492,9 @@ export default function setup() {
     visibleJobs,
     statusTabs,
     workflows,
+    workflowsLoading,
+    workflowsError,
+    retryWorkflows,
     workers,
     workflowFilter,
     workerFilter,

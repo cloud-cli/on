@@ -9,6 +9,7 @@ import {
   tokenIntrospection,
   discovery,
   ClientSecretPost,
+  skipSubjectCheck,
 } from "openid-client";
 
 export interface OidcConfig {
@@ -21,6 +22,7 @@ export interface OidcUser {
   id: string;
   name?: string;
   email?: string;
+  email_verified?: boolean;
   photo?: string;
   preferred_username?: string;
   picture?: string;
@@ -178,6 +180,36 @@ export class OidcClient {
     return session?.user;
   }
 
+  async userFromAccessToken(accessToken: string): Promise<OidcUser | undefined> {
+    if (!accessToken || accessToken.length > 16_384) {
+      return undefined;
+    }
+    try {
+      const userInfo = await fetchUserInfo(await this.getConfiguration(), accessToken, skipSubjectCheck);
+      if (!userInfo || typeof userInfo !== "object") {
+        return undefined;
+      }
+      const id = typeof userInfo.sub === "string" ? userInfo.sub : typeof userInfo.id === "string" ? userInfo.id : "";
+      if (!id) {
+        return undefined;
+      }
+      return {
+        ...userInfo,
+        id,
+        name:
+          (typeof userInfo.name === "string" && userInfo.name) ||
+          (typeof userInfo.preferred_username === "string" && userInfo.preferred_username) ||
+          undefined,
+        photo:
+          (typeof userInfo.photo === "string" && userInfo.photo) ||
+          (typeof userInfo.picture === "string" && userInfo.picture) ||
+          undefined,
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
   setRole(cookieHeader: string, role: "user" | "admin") {
     const token = this.cookieToken(cookieHeader);
     const session = token ? this.sessions.get(token) : undefined;
@@ -258,6 +290,24 @@ export class OidcClient {
           ? result.scope
           : result.scope.split(/\s+/).filter(Boolean)
         : [];
+    } catch {
+      return null;
+    }
+  }
+
+  async identityForToken(token: string): Promise<{ subject: string; scopes: string[] } | null> {
+    if (!token || token.length > 16_384) {
+      return null;
+    }
+    try {
+      const result = await tokenIntrospection(await this.getIntrospectionConfiguration(), token);
+      if (!result.active || typeof result.sub !== "string" || !result.sub.trim()) {
+        return null;
+      }
+      const rawScope = result.scope;
+      const scopes =
+        typeof rawScope === "string" ? rawScope.split(/\s+/).filter(Boolean) : Array.isArray(rawScope) ? rawScope : [];
+      return { subject: result.sub, scopes };
     } catch {
       return null;
     }

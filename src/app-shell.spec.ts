@@ -1,20 +1,35 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { WebhookServer } from "./server.js";
 import shellSetup from "../ui/app-shell.mjs?raw";
+import preferencesSetup from "../ui/preferences.mjs?raw";
 
 const html = readFileSync(new URL("../ui/app-shell.html", import.meta.url), "utf8");
 
 describe("Flow application shell", () => {
+  it("uses compact vertical spacing on every page main", () => {
+    for (const directory of ["ui", "src"]) {
+      const files = readdirSync(new URL(`../${directory}/`, import.meta.url)).filter((file) => file.endsWith(".html"));
+      for (const file of files) {
+        const source = readFileSync(new URL(`../${directory}/${file}`, import.meta.url), "utf8");
+        expect(source, `${directory}/${file}`).not.toMatch(/<main\b[^>]*\bpy-6\b/);
+      }
+    }
+  });
+
   it("provides responsive, accessible navigation around the mounted router", () => {
     expect(shellSetup).toContain('import "@app/api-client.mjs"');
+    expect(shellSetup).toContain('activeSection.value = "workflows"');
+    expect(html).toContain('"@app/": "/assets/"');
+    expect(html).toContain('"yaml": "https://esm.sh/yaml@2.9.0"');
     expect(html).toContain('aria-label="Primary navigation"');
     expect(html).toContain('aria-label="Mobile navigation"');
     expect(html).toContain("bottom-0 z-50");
     expect(html).toContain("pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)] pt-2");
-    expect(html.match(/href="\/runs"/g)).toHaveLength(3);
-    expect(html.match(/href="\/workflows"/g)).toHaveLength(2);
-    expect(html.match(/href="\/settings"/g)).toHaveLength(2);
+    expect(html).not.toContain('href="/ui/runs"');
+    expect(html.match(/href="\/ui\/workflows"/g)).toHaveLength(2);
+    expect(html.match(/href="\/ui\/settings"/g)).toHaveLength(2);
+    expect(html.match(/href="\/ui\/workspaces"/g)).toHaveLength(3);
     expect(html).toContain("activeSection === 'settings' ? 'page' : null");
     expect(html).toContain("focus-visible:ring-2");
     expect(html).toContain('>flow<span class="text-[#729b5b]">.</span>');
@@ -23,28 +38,42 @@ describe("Flow application shell", () => {
     expect(html).toContain("data-skip-to-content");
     expect(html).toContain('id="main-content"');
     expect(html).toContain('tabindex="-1"');
-    expect(html).toContain('class="h-dvh overflow-hidden bg-flow-background');
-    expect(html).toContain("h-dvh overflow-hidden md:grid md:grid-cols-[16rem_minmax(0,1fr)]");
-    expect(html).toContain("h-dvh min-h-0 min-w-0 overflow-y-auto overscroll-y-contain");
-    expect(html).toContain("hidden h-full min-h-0 w-64 overflow-y-auto px-2 py-5 md:flex md:flex-col");
-    expect(html).not.toContain("border-r border-flow-border bg-flow-sidebar");
+    expect(html).toContain('class="min-h-dvh bg-flow-background');
+    expect(html).toContain("min-h-dvh md:grid md:grid-cols-[16rem_minmax(0,1fr)]");
+    expect(html).toContain("sticky top-0 hidden h-dvh self-start overflow-y-auto");
+    expect(html).toContain("min-h-dvh min-w-0 pb-20 md:pb-0");
+    expect(html).not.toContain("overscroll-y-contain");
+    expect(html).not.toContain("overflow-hidden bg-flow-background");
     expect(html).toContain('role="group"');
     expect(html).toContain('aria-label="Signed-in user"');
+    expect(html).toContain("max-w-[calc(100vw-4rem)]");
+    expect(html).toContain("max-w-[calc(100vw-7rem)]");
+    expect(html).toContain('class="hidden min-w-0 max-w-[calc(100vw-7rem)] flex-col');
+    expect(html).toContain("sm:flex sm:max-w-none");
+    expect(html).toContain('class="truncate text-sm font-semibold leading-tight"');
+    expect(html).toContain('class="truncate text-[10px] leading-tight text-flow-secondary"');
+    expect(html).toContain('on-click="toggleTheme()"');
+    expect(html).toContain('class="flex items-center justify-end gap-2');
+    expect(html).toContain("md:flex md:flex-col");
+    expect(html).toContain("isDarkTheme ? 'sun' : 'moon'");
+    expect(html).toContain("isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'");
+    expect(shellSetup).toContain('setAuthPreference("theme", nextTheme)');
+    expect(shellSetup).toContain('themeMedia.addEventListener("change", syncSystemTheme)');
     expect(html).toContain('attr-src="user.photo || user.picture || null"');
-    expect(html).toContain("aria-[current=page]:border-flow-foreground");
-    expect(html).toContain("md:grid-rows-[minmax(0,1fr)]");
+    expect(html).toContain("aria-[current=page]:font-semibold");
     expect(html).not.toContain('<main class="min-h-screen min-w-0');
     expect(html).toContain("<app-router></app-router>");
     expect(html).not.toContain("Workers</a>");
     expect(html).not.toContain("Engineering");
     expect(html).not.toContain("JD");
     expect(html).not.toContain("min-h-screen border-r border-flow-border");
-    expect(html.indexOf("Settings</a")).toBeLessThan(html.indexOf('if="userAuthenticated"'));
+    expect(html.indexOf("My workspaces")).toBeLessThan(html.indexOf("Workflows"));
+    expect(html.indexOf("Preferences")).toBeLessThan(html.indexOf("Your workspaces"));
     expect(html).not.toContain("mt-auto");
   });
 
   it("loads the signed-in profile from the session endpoint without inventing a user", () => {
-    expect(shellSetup).toContain('fetch("/api/auth/session"');
+    expect(shellSetup).toContain('fetch("/api/v1/auth/session"');
     expect(shellSetup).toContain("session?.authenticated || !session.user");
     expect(html).toContain("user.name || user.email");
     expect(html).toContain("{{ user.email }}");
@@ -52,6 +81,24 @@ describe("Flow application shell", () => {
     expect(html).toContain('rel="noopener"');
     expect(html).toContain("oidcProviderUrl");
     expect(html).toContain('if="userAuthenticated"');
+  });
+
+  it("lists workspaces in the sidebar and links each workspace to its settings page", () => {
+    const teamsList = html.indexOf('aria-label="Your workspaces"');
+
+    expect(teamsList).toBeGreaterThan(html.indexOf('aria-label="Primary navigation"'));
+    expect(teamsList).toBeLessThan(html.indexOf('id="main-content"'));
+    expect(html).toContain("# {{ team.name }}");
+    expect(html).toContain("'/ui/workspaces/' + encodeURIComponent(team.id) + '/runs'");
+    expect(html).toContain('on-click="selectWorkspace(team.id)"');
+    expect(html).toContain("selectedWorkspaceId === team.id");
+    expect(shellSetup).toContain('fetch("/api/v1/workspaces"');
+    expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
+    expect(shellSetup).toContain('path.startsWith("/workspaces/")');
+    expect(html).toContain(">Your workspaces</p>");
+    expect(html).toContain("px-3 py-2.5 text-sm text-flow-secondary");
+    expect(html).toContain("grid-cols-3");
+    expect(html).not.toContain("grid-cols-4");
   });
 
   it("handles Enter and Space on the skip link without triggering browser navigation", () => {
@@ -63,12 +110,13 @@ describe("Flow application shell", () => {
   });
 
   it("serves the shell setup module referenced by the app shell", async () => {
-    expect(html).toContain('<script setup src="/app-shell.mjs"></script>');
+    expect(html).toContain('<script setup src="/assets/app-shell.mjs"></script>');
+    expect(shellSetup).toContain('from "@app/preferences.mjs"');
     const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
 
     await (WebhookServer.prototype as any).handleRequest.call(
       {},
-      { method: "GET", url: "/app-shell.mjs", headers: { host: "flow.test" } },
+      { method: "GET", url: "/assets/app-shell.mjs", headers: { host: "flow.test" } },
       response,
     );
 
@@ -77,5 +125,21 @@ describe("Flow application shell", () => {
       "Content-Type": "text/javascript; charset=utf-8",
     });
     expect(response.end).toHaveBeenCalledWith(shellSetup);
+  });
+
+  it("serves the shared user-preferences module used by browser pages", async () => {
+    const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      {},
+      { method: "GET", url: "/assets/preferences.mjs", headers: { host: "flow.test" } },
+      response,
+    );
+
+    expect(response.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-cache",
+      "Content-Type": "text/javascript; charset=utf-8",
+    });
+    expect(response.end).toHaveBeenCalledWith(preferencesSetup);
   });
 });

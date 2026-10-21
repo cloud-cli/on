@@ -14,6 +14,7 @@ This is the living documentation for workflow authors. It is organized using the
 Create a draft in the authenticated workflow editor, or send the YAML to the API:
 
 ```yaml
+id: hello
 name: Hello
 
 on:
@@ -32,7 +33,7 @@ To test without changing the schedule or publishing first, save the draft and se
 The `generic` provider accepts a JSON request body as `inputs`. For example:
 
 ```bash
-curl -X POST http://localhost:11235/webhooks/generic \
+curl -X POST http://localhost:11235/api/v1/webhooks/generic \
   -H 'content-type: application/json' \
   --data '{"name":"Ada"}'
 ```
@@ -40,6 +41,7 @@ curl -X POST http://localhost:11235/webhooks/generic \
 ### Build a GitHub Workflow
 
 ```yaml
+id: build
 name: Build
 
 on:
@@ -75,6 +77,39 @@ on:
 ```
 
 The helper is only available to GitHub workflows. A missing file returns `false`; unsafe paths and failed lookups do not trigger the workflow.
+
+#### Provider aliases and workflow-owned normalization
+
+Workspace webhook registrations can use any provider slug, including a provider alias configured for a GitHub sender. For a non-built-in slug the server does not normalize the provider payload: it verifies `X-Hub-Signature-256` against the registration signing secret (or the workspace secret named `<SLUG>_WEBHOOK_SECRET`) using the original request bytes, parses JSON, and supplies `inputs.body` and `inputs.request.headers` to the workflow. Only an allowlist of event metadata headers is forwarded; credentials and arbitrary custom headers are omitted. `inputs.raw` is also the parsed JSON value; it is **not** the original byte sequence. A valid signing secret and signature are required; unsigned alias ingress is rejected. Configure a registration signing secret rather than relying on an unscoped environment variable.
+
+Alias workflows do not inherit `on.github`'s server-side filters or `github.fileExists` helper. Normalize and filter in workflow steps using `inputs.body` and `inputs.request.headers`; use `on: { alias: {} }`. The `on.github` provider path remains the legacy compatibility path: it continues to produce normalized GitHub inputs and apply existing `events`, repository/branch/path filters and `github.fileExists` conditions.
+
+The migration fixture at `tests/test.yaml` uses the isolated `github-test` alias. Its trigger expression accepts only pushes to `cloud-cli/on-github-workflow-migration-test` on `main`, then an `eval` step reports normalized repository, owner, repo, ref/branch, SHA, and commit message. It posts pending/final commit statuses from ordinary workflow steps using the workspace-managed `GITHUB_TOKEN`; no token value belongs in YAML. The fixture deliberately avoids the production `github` provider, so it can validate raw payload handling and workflow-owned status reporting without changing legacy webhook behavior. `tests/runner.config.mjs` does not register a GitHub status plugin.
+
+```yaml
+id: github-intake
+name: GitHub intake (alias)
+on:
+  scm-hook: {}
+steps:
+  - id: normalize
+    eval: "({ event: inputs.request.headers['x-github-event'], repository: inputs.body.repository?.full_name, ref: inputs.body.ref, raw: inputs.body })"
+```
+
+### Dispatch structured output to another workflow
+
+An API runner may use a dispatch-only step to pass structured step outputs as downstream workflow inputs. `dispatch` accepts a stable workflow ID or an exact, unique workflow name; `with` is an expression evaluated in the source workflow context. The downstream target must be published in the same workspace.
+
+```yaml
+steps:
+  - id: normalize
+    eval: "({ repository: inputs.body.repository.full_name, event: inputs.request.headers['x-github-event'] })"
+  - id: handoff
+    dispatch: build-and-test # workflow ID; a unique workflow name is also accepted
+    with: steps.normalize.outputs
+```
+
+The handoff is server-authenticated with the active runner lease; workflows do not need embedded API keys or shell `curl` calls. The downstream `inputs` is the structured object (not a JSON-encoded string), and the downstream run's parent is the source job. Dispatch is idempotent per source job and step, including runner/step retries. Inputs are limited to 256 KiB and dispatch ancestry to five downstream levels. A dispatch-only step requires the lease-based API runner; a local non-API worker fails it explicitly rather than bypassing server authorization.
 
 ## How-To Guides
 
@@ -137,6 +172,7 @@ Arguments are not interpreted or shell-expanded by the runner. They are passed a
 Keep the matrix in the workflow definition:
 
 ```yaml
+id: package
 name: Package
 
 matrix:
@@ -144,7 +180,7 @@ matrix:
   os: [ubuntu, alpine]
 
 tags:
-  - '${matrix.os}'
+  - "${matrix.os}"
 
 on:
   generic: {}
@@ -168,7 +204,7 @@ If a matching runner is offline before claiming its matrix job, the job remains 
 on:
   schedule:
     - id: nightly
-      cron: '0 2 * * *'
+      cron: "0 2 * * *"
       timezone: Europe/Berlin
 ```
 
@@ -234,7 +270,7 @@ cache:
 
 Configure a shared FileBin backend on the server and workers with `RUNNER_FILE_API_URL`, `RUNNER_FILE_BIN`, and optionally `RUNNER_FILE_PASSWORD`. Create a bin with `POST /bin`, then configure its ID. Without FileBin configuration, the runner uses the central database fallback. Cache keys are scoped by workflow; artifacts are scoped by job. Stored collections are limited to 50 MiB per capture.
 
-Administrators can download a captured artifact with `GET /api/runs/:jobId/artifacts/:path`.
+Administrators can download a captured artifact with `GET /api/v1/runs/:jobId/artifacts/:path`.
 
 Populate workspace files from managed secrets before steps run:
 
@@ -265,21 +301,21 @@ Plugin names are resolved through the server's workflow plugin registry. `github
 
 ### Top-Level Workflow Fields
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `name` | string | Required human-readable workflow name shown in the UI and reports. |
-| `id` | string | Optional identifier used when deriving an ID outside the management API. The management API ID is authoritative after creation. |
-| `on` | object | Required trigger configuration. |
-| `env` | object | Workflow environment values, evaluated in declaration order. |
-| `matrix` | object | Matrix dimensions. Each value is an array of strings, numbers, or booleans. |
-| `concurrency` | object | Optional concurrency group and cancellation policy. |
-| `tags` | string[] | Worker capability tags required by the job. |
-| `artifacts` | object | Workspace paths captured after successful runs. |
-| `cache` | object | Keyed workspace paths restored before and saved after successful runs. |
-| `secretFiles` | object | Workspace-relative file paths mapped to secret names. |
-| `plugins` | object[] | Optional per-workflow plugin declarations and secret mappings. |
-| `steps` | object[] | Required non-empty ordered list of steps. |
-| `retries` | integer | Additional attempts for a failed step. Must be zero or greater. |
+| Field         | Type     | Description                                                                                                                     |
+| ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | string   | Required human-readable workflow name shown in the UI and reports.                                                              |
+| `id`          | string   | Optional identifier used when deriving an ID outside the management API. The management API ID is authoritative after creation. |
+| `on`          | object   | Required trigger configuration.                                                                                                 |
+| `env`         | object   | Workflow environment values, evaluated in declaration order.                                                                    |
+| `matrix`      | object   | Matrix dimensions. Each value is an array of strings, numbers, or booleans.                                                     |
+| `concurrency` | object   | Optional concurrency group and cancellation policy.                                                                             |
+| `tags`        | string[] | Worker capability tags required by the job.                                                                                     |
+| `artifacts`   | object   | Workspace paths captured after successful runs.                                                                                 |
+| `cache`       | object   | Keyed workspace paths restored before and saved after successful runs.                                                          |
+| `secretFiles` | object   | Workspace-relative file paths mapped to secret names.                                                                           |
+| `plugins`     | object[] | Optional per-workflow plugin declarations and secret mappings.                                                                  |
+| `steps`       | object[] | Required non-empty ordered list of steps.                                                                                       |
+| `retries`     | integer  | Additional attempts for a failed step. Must be zero or greater.                                                                 |
 
 `includes` and workflow-to-workflow imports are not supported. Workflow definitions are stored as complete database revisions. Reusable behavior should be implemented through the planned step reuse mechanism rather than filesystem imports.
 
@@ -289,18 +325,18 @@ The first non-`schedule`/`solar` key in `on` is the provider trigger. Supported 
 
 #### GitHub Trigger Filters
 
-| Field | Type | Behavior |
-| --- | --- | --- |
-| `events` | string[] | Exact event names such as `push` or `pull_request`. |
-| `owner` | string or string[] | Exact repository owner. |
-| `repo` | string or string[] | Exact repository name. |
-| `name` | string or string[] | Exact `owner/repo` name. |
-| `branches` | string or string[] | Glob patterns matching normalized branches or tags. |
-| `refs` | string or string[] | Alias for branch/ref matching. |
-| `tag` | boolean | Requires a tag push when true, a non-tag event when false. |
-| `tags` | string[] | Regular expressions matched against the tag value. |
-| `paths` | string[] | Glob patterns matched against changed files. |
-| `if` | string or string[] | Safe JavaScript condition evaluated after provider filters. |
+| Field      | Type               | Behavior                                                    |
+| ---------- | ------------------ | ----------------------------------------------------------- |
+| `events`   | string[]           | Exact event names such as `push` or `pull_request`.         |
+| `owner`    | string or string[] | Exact repository owner.                                     |
+| `repo`     | string or string[] | Exact repository name.                                      |
+| `name`     | string or string[] | Exact `owner/repo` name.                                    |
+| `branches` | string or string[] | Glob patterns matching normalized branches or tags.         |
+| `refs`     | string or string[] | Alias for branch/ref matching.                              |
+| `tag`      | boolean            | Requires a tag push when true, a non-tag event when false.  |
+| `tags`     | string[]           | Regular expressions matched against the tag value.          |
+| `paths`    | string[]           | Glob patterns matched against changed files.                |
+| `if`       | string or string[] | Safe JavaScript condition evaluated after provider filters. |
 
 Configured fields are combined with AND. Multiple values within a field are combined with OR. Negated `!value` entries are supported by exact-value filters.
 
@@ -309,7 +345,7 @@ Configured fields are combined with AND. Multiple values within a field are comb
 ```yaml
 schedule:
   - id: hourly
-    cron: '0 * * * *'
+    cron: "0 * * * *"
     timezone: UTC
 ```
 
@@ -339,30 +375,30 @@ JSON.stringify(value)
 
 Available context objects are:
 
-| Object | Available data |
-| --- | --- |
-| `inputs` | Trigger payload and normalized provider inputs. |
-| `env` | Runner environment plus earlier workflow or step environment entries. |
-| `secrets` | Decrypted job-scoped secrets. |
-| `steps` | Earlier step statuses, exit codes, and outputs. |
-| `files` | Workspace-scoped `exists`, `readFile`, and `join` helpers for `eval:` steps. |
+| Object    | Available data                                                               |
+| --------- | ---------------------------------------------------------------------------- |
+| `inputs`  | Trigger payload and normalized provider inputs.                              |
+| `env`     | Runner environment plus earlier workflow or step environment entries.        |
+| `secrets` | Decrypted job-scoped secrets.                                                |
+| `steps`   | Earlier step statuses, exit codes, and outputs.                              |
+| `files`   | Workspace-scoped `exists`, `readFile`, and `join` helpers for `eval:` steps. |
 
 Expressions cannot access JavaScript constructors or prototypes. Shell commands are not expression-evaluated; only declared interpolation fields are evaluated.
 
 ### Steps
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `id` | string | Stable identifier used by `steps.<id>`. |
-| `name` | string | Display name. Defaults to `id`. |
-| `run` | string | Shell command or script. Mutually exclusive with `eval`. |
-| `eval` | string | In-process safe expression. Mutually exclusive with `run`. |
-| `env` | object | Step environment, evaluated after workflow environment. |
-| `image` | string | Docker image. Selects container execution for the step. |
-| `volumes` | string or string[] | Docker `-v` mappings. |
-| `dockerArgs` | string[] | Additional raw arguments for `docker run`. |
-| `timeoutMs` | positive integer | Maximum step runtime. Defaults to 30 seconds. |
-| `if` | string | Safe condition. False conditions produce a skipped step. |
+| Field        | Type               | Description                                                |
+| ------------ | ------------------ | ---------------------------------------------------------- |
+| `id`         | string             | Stable identifier used by `steps.<id>`.                    |
+| `name`       | string             | Display name. Defaults to `id`.                            |
+| `run`        | string             | Shell command or script. Mutually exclusive with `eval`.   |
+| `eval`       | string             | In-process safe expression. Mutually exclusive with `run`. |
+| `env`        | object             | Step environment, evaluated after workflow environment.    |
+| `image`      | string             | Docker image. Selects container execution for the step.    |
+| `volumes`    | string or string[] | Docker `-v` mappings.                                      |
+| `dockerArgs` | string[]           | Additional raw arguments for `docker run`.                 |
+| `timeoutMs`  | positive integer   | Maximum step runtime. Defaults to 30 seconds.              |
+| `if`         | string             | Safe condition. False conditions produce a skipped step.   |
 
 `run` steps execute through the selected worker driver. With `image`, the command runs as `sh -c` inside Docker. Without `image`, it runs through the worker shell. `eval` steps run inside the worker process and can produce structured outputs for later steps.
 
@@ -371,18 +407,18 @@ Expressions cannot access JavaScript constructors or prototypes. Shell commands 
 Workflow definitions are drafted, validated, published, enabled, and deleted through the authenticated management UI or these endpoints:
 
 ```text
-POST /api/workflows/validate
-GET  /api/workflows
-GET  /api/workflows/:id
-PUT  /api/workflows/:id
-POST /api/workflows/:id/publish
-POST /api/workflows/:id/run
-DELETE /api/workflows/:id
+POST /api/v1/workflows/validate
+GET  /api/v1/workflows
+GET  /api/v1/workflows/:id
+PUT  /api/v1/workflows/:id
+POST /api/v1/workflows/:id/publish
+POST /api/v1/workflows/:id/run
+DELETE /api/v1/workflows/:id
 ```
 
 Only published workflows with `enabled: true` are matched for incoming triggers. Saving a workflow creates a new immutable revision. Existing jobs continue to use the revision recorded when they were created.
 
-`POST /api/workflows/:id/run` requires `workflows:write` and queues the latest saved revision directly. Send `{}` as the JSON body, or provide manual inputs as `{ "inputs": { "name": "value" } }`. Direct runs may execute draft revisions and do not require the scheduler.
+`POST /api/v1/workflows/:id/run` requires `workflows:write` and queues the latest saved revision directly. Send `{}` as the JSON body, or provide manual inputs as `{ "inputs": { "name": "value" } }`. Direct runs may execute draft revisions and do not require the scheduler.
 
 ## Explanation
 
@@ -401,3 +437,9 @@ The stored revision remains one canonical workflow. When a trigger matches, the 
 ### Reuse and Imports
 
 Filesystem imports were removed because workers no longer load workflow files. Future step reuse should operate on database-owned definitions or explicit reusable step mechanisms, keeping revisioning and authorization visible to the control plane.
+
+# Workflow identity
+
+Every workflow definition must include an explicit `id`, separate from its human-readable `name`. IDs are canonicalized to lowercase hyphen-separated ASCII letters and numbers, and must be unique within a workspace. This YAML ID is the stable reference for dispatch; the database management key is separate. Changing the name does not change identity, while changing `id` creates a new definition identity and can require downstream dispatch references to be updated.
+
+On databases that already contain workflows, migration 009 backfills each stored revision with its existing normalized ID (or management key when none exists) and updates the editable source YAML. Standalone backups are not changed automatically: add a stable `id` before importing or restoring them. Reuse the prior management ID when possible. Missing IDs fail validation, and duplicate IDs within one workspace are rejected.

@@ -17,6 +17,7 @@ function normalizeTimestamp(value: string): string {
 export interface RunView {
   jobId: string;
   workerId?: string;
+  workerName?: string;
   workflowId: string;
   workflowRevision: number;
   workflowSourceYaml?: string;
@@ -30,17 +31,33 @@ export interface RunView {
   steps: StepReport[];
   artifacts: string[];
   canViewLogs: boolean;
+  canViewInputs: boolean;
+  canViewArtifacts: boolean;
+  canControl: boolean;
+  canEditWorkflow: boolean;
 }
+
+export type RunViewAccess = {
+  logs: boolean;
+  inputs: boolean;
+  artifacts: boolean;
+  control: boolean;
+  editWorkflow: boolean;
+};
 
 export function buildRunView(
   job: JobRecord & Record<string, any>,
   logs: Record<string, string>,
   redact: (value: string) => string,
   steps: WorkflowStep[] = [],
-  canViewLogs = true,
+  canViewLogsArg = true,
   workflowSourceYaml?: string,
   canonicalWorkflowName?: string,
+  access?: Partial<RunViewAccess>,
 ): RunView {
+  const canViewLogs = access?.logs ?? canViewLogsArg;
+  const canViewInputs = access?.inputs ?? canViewLogs;
+  const canViewArtifacts = access?.artifacts ?? canViewLogs;
   const payload = JSON.parse(job.payload) as JobPayload;
   const report = job.report
     ? (JSON.parse(job.report) as WorkflowExecutionReport)
@@ -62,7 +79,7 @@ export function buildRunView(
         : report.durationMs,
     startedAt: normalizeTimestamp(report.startedAt),
     finishedAt: report.finishedAt,
-    inputs: sanitizeValue(report.inputs || {}, redact) as Record<string, unknown>,
+    inputs: canViewInputs ? (sanitizeValue(report.inputs || {}, redact) as Record<string, unknown>) : {},
     steps: (report.steps || []).map((step) => {
       const savedLog = Object.hasOwn(logs, step.id) && typeof logs[step.id] === "string" ? logs[step.id] : "";
       return {
@@ -73,16 +90,20 @@ export function buildRunView(
         exitCode: step.exitCode,
         startedAt: step.startedAt,
         finishedAt: step.finishedAt,
-        error: step.error ? redact(step.error) : undefined,
-        outputs: sanitizeValue(step.outputs || {}, redact) as Record<string, any>,
+        error: canViewLogs && step.error ? redact(step.error) : undefined,
+        outputs: canViewLogs ? (sanitizeValue(step.outputs || {}, redact) as Record<string, any>) : {},
         logContent:
           !canViewLogs || step.status === "running" || step.status === "pending"
             ? ""
             : redact(savedLog || step.logContent || ""),
       };
     }),
-    artifacts: (report.artifacts || []).map(redact),
+    artifacts: canViewArtifacts ? (report.artifacts || []).map(redact) : [],
     canViewLogs,
+    canViewInputs,
+    canViewArtifacts,
+    canControl: access?.control ?? canViewLogs,
+    canEditWorkflow: access?.editWorkflow ?? canViewLogs,
   };
 }
 

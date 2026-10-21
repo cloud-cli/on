@@ -82,7 +82,7 @@ export function renderHelpHtml(embed = false): string {
     : "";
   const navigation = embed
     ? ""
-    : '<app-header title="Workflow Documentation" subtitle="" back="/runs" back-label="Back to dashboard"></app-header>';
+    : '<app-header title="Workflow Documentation" subtitle="" back="/ui/runs" back-label="Back to dashboard"></app-header>';
 
   return `<!doctype html>
 <html lang="en" class="dark">
@@ -93,7 +93,7 @@ export function renderHelpHtml(embed = false): string {
     <script type="importmap">
       { "imports": { "@app/": "/", "@li3/": "https://at-li3.static.apphor.de/" } }
     </script>
-    <link rel="component" href="/app-header.html" />
+    <link rel="component" href="/assets/app-header.html" />
   </head>
   <body>
     ${navigation}

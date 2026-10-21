@@ -2,14 +2,30 @@ import db from "./db-client.js";
 import { WorkflowExecutionReport, JobPayload, JobRecord, JobStatus } from "./types.js";
 import { timestampLogLines } from "./timestamped-log.js";
 import { FileStorage } from "./file-storage.js";
+import { ensureTeamDataSchema } from "./team-data-schema.js";
+
+const CURRENT_RUNNER_AUTHORIZATION = `EXISTS (
+  SELECT 1 FROM runners AS authorized_runner
+  WHERE authorized_runner.id = jobs.worker_id AND authorized_runner.revoked_at IS NULL
+    AND (
+      (authorized_runner.scope = 'team' AND authorized_runner.team_id = jobs.team_id)
+      OR (authorized_runner.scope = 'shared' AND EXISTS (
+        SELECT 1 FROM runner_team_grants AS authorized_grant
+        WHERE authorized_grant.runner_id = authorized_runner.id AND authorized_grant.team_id = jobs.team_id
+      ))
+    )
+)`;
 
 export class QueueManager {
+  private readonly purgingTeams = new Set<string>();
+  private readonly activeStorageWrites = new Map<string, Set<Promise<void>>>();
   private readonly fileStorage = new FileStorage();
 
   constructor(private workerId: string) {}
 
   async init() {
     await this.createTables();
+    await ensureTeamDataSchema();
     await this.clearStaleJobs();
   }
 
@@ -24,22 +40,84 @@ export class QueueManager {
     requiredTags: string[] = [],
     concurrencyKey?: string,
   ) {
-    // If a concurrency key is provided, cancel existing pending/running jobs in that group
-    if (concurrencyKey) {
-      await db.run(
-        `UPDATE jobs
-         SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
-         WHERE concurrency_key = ? AND status IN ('pending', 'running');`,
-        [concurrencyKey],
-      );
-    }
-
     const res = await db.run(
-      `INSERT INTO jobs (workflow_id, workflow_revision, required_tags, concurrency_key, payload) VALUES (?, ?, ?, ?, ?);`,
-      [workflowId, workflowRevision, JSON.stringify(requiredTags), concurrencyKey || "", JSON.stringify(payload)],
+      `INSERT INTO jobs (workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id)
+       SELECT ?, ?, ?, ?, ?, workflows.team_id FROM workflows
+       JOIN teams ON teams.id = workflows.team_id
+        WHERE workflows.id = ? AND teams.deleting_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM workflow_revisions wr
+            JOIN recipe_versions rv ON rv.namespace = json_extract(wr.normalized_json, '$._recipeRef.namespace')
+              AND rv.slug = json_extract(wr.normalized_json, '$._recipeRef.slug')
+              AND rv.version = json_extract(wr.normalized_json, '$._recipeRef.version')
+            WHERE wr.workflow_id = workflows.id AND wr.revision = ? AND rv.revoked = 1
+          )`,
+      [
+        workflowId,
+        workflowRevision,
+        JSON.stringify(requiredTags),
+        concurrencyKey || "",
+        JSON.stringify(payload),
+        workflowId,
+        workflowRevision,
+      ],
     );
 
-    return Number(res?.lastInsertRowid ?? res?.id ?? 0);
+    const jobId = Number(res?.lastInsertRowid ?? res?.id ?? 0);
+    if (!jobId) {
+      throw new Error("Workflow workspace is unavailable or being deleted");
+    }
+    if (concurrencyKey) {
+      await db.run(
+        `UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+         WHERE id <> ? AND team_id = (SELECT team_id FROM jobs WHERE id = ?)
+           AND concurrency_key = ? AND status IN ('pending', 'running')`,
+        [jobId, jobId, concurrencyKey],
+      );
+    }
+    return jobId;
+  }
+
+  /** Enqueue once for a source job/step; unique dispatch key makes retries safe. */
+  async enqueueDispatch(
+    workflowId: string,
+    workflowRevision: number,
+    payload: JobPayload,
+    requiredTags: string[],
+    teamId: string,
+    parentId: string | number,
+    dispatchKey: string,
+  ): Promise<number> {
+    await db.run(
+      `INSERT INTO jobs (parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id, dispatch_key)
+       SELECT ?, ?, ?, ?, '', ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM workflows JOIN teams ON teams.id = workflows.team_id
+          WHERE workflows.id = ? AND workflows.team_id = ? AND teams.deleting_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM workflow_revisions wr
+              JOIN recipe_versions rv ON rv.namespace = json_extract(wr.normalized_json, '$._recipeRef.namespace')
+                AND rv.slug = json_extract(wr.normalized_json, '$._recipeRef.slug')
+                AND rv.version = json_extract(wr.normalized_json, '$._recipeRef.version')
+              WHERE wr.workflow_id = workflows.id AND wr.revision = ? AND rv.revoked = 1
+            )
+       )
+       ON CONFLICT(dispatch_key) DO NOTHING`,
+      [
+        parentId,
+        workflowId,
+        workflowRevision,
+        JSON.stringify(requiredTags),
+        JSON.stringify(payload),
+        teamId,
+        dispatchKey,
+        workflowId,
+        teamId,
+        workflowRevision,
+      ],
+    );
+    const existing = await db.get("SELECT id FROM jobs WHERE dispatch_key = ? AND team_id = ?", [dispatchKey, teamId]);
+    return Number(existing?.id || 0);
   }
 
   /**
@@ -60,7 +138,8 @@ export class QueueManager {
       WHERE id = (
         SELECT id FROM jobs
         WHERE status = 'pending'
-          AND NOT EXISTS (
+         AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND teams.deleting_at IS NULL)
+         AND NOT EXISTS (
             SELECT 1
             FROM json_each(COALESCE(jobs.required_tags, '[]')) AS required_tag
             WHERE required_tag.value NOT IN (SELECT value FROM json_each(?))
@@ -76,11 +155,76 @@ export class QueueManager {
     return result ? (result as JobRecord) : null;
   }
 
+  /** Atomically claims an API job only for teams granted to the authenticated runner. */
+  async claimNextForRunner(
+    runnerId: string,
+    workerTags: string[],
+    teamIds: string[],
+    leaseId: string,
+    leaseTokenHash: string,
+    leaseSeconds: number,
+    maxActiveJobs: number,
+  ): Promise<JobRecord | null> {
+    if (!teamIds.length) {
+      return null;
+    }
+    const result = await db.get(
+      `UPDATE jobs
+       SET status = 'running', worker_id = ?, started_at = CURRENT_TIMESTAMP,
+           lease_id = ?, lease_token_hash = ?, lease_expires_at = datetime('now', ?), lease_fenced = 0, lease_completed = 0
+       WHERE id = (
+          SELECT id FROM jobs
+          WHERE status = 'pending'
+            AND team_id IN (SELECT value FROM json_each(?))
+            AND EXISTS (
+              SELECT 1 FROM runners AS claiming_runner
+              WHERE claiming_runner.id = ? AND claiming_runner.revoked_at IS NULL
+                AND claiming_runner.current_update_id IS NULL
+                AND ((claiming_runner.scope = 'team' AND claiming_runner.team_id = jobs.team_id)
+                  OR (claiming_runner.scope = 'shared' AND EXISTS (
+                    SELECT 1 FROM runner_team_grants AS claiming_grant
+                    WHERE claiming_grant.runner_id = claiming_runner.id AND claiming_grant.team_id = jobs.team_id
+                  )))
+            )
+            AND (SELECT COUNT(*) FROM jobs active WHERE active.worker_id = ? AND
+              (active.status = 'running' OR (active.status = 'cancelled' AND active.lease_completed = 0))) < ?
+           AND NOT EXISTS (
+             SELECT 1 FROM json_each(COALESCE(jobs.required_tags, '[]')) AS required_tag
+             WHERE required_tag.value NOT IN (SELECT value FROM json_each(?))
+           )
+         ORDER BY created_at ASC
+         LIMIT 1
+       )
+       RETURNING *`,
+      [
+        runnerId,
+        leaseId,
+        leaseTokenHash,
+        `+${leaseSeconds} seconds`,
+        JSON.stringify(teamIds),
+        runnerId,
+        runnerId,
+        maxActiveJobs,
+        JSON.stringify(workerTags),
+      ],
+    );
+    return result ? (result as JobRecord) : null;
+  }
+
+  async leaseIsCurrent(jobId: string | number, runnerId: string, leaseId: string, leaseTokenHash: string) {
+    const lease = await db.get(
+      `SELECT 1 AS valid FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ?
+       AND lease_token_hash = ? AND status = 'running' AND lease_fenced = 0 AND lease_completed = 0
+       AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [jobId, runnerId, leaseId, leaseTokenHash],
+    );
+    return Boolean(lease);
+  }
+
   async releaseJob(jobId: string | number): Promise<void> {
     await db.run(
-      `UPDATE jobs
-       SET status = 'pending', worker_id = NULL, started_at = NULL, updated_at = CURRENT_TIMESTAMP
-       WHERE id = ? AND status = 'running';`,
+      `UPDATE jobs SET status = 'pending', worker_id = NULL, started_at = NULL, lease_id = NULL,
+       lease_token_hash = NULL, lease_expires_at = NULL WHERE id = ? AND status = 'running';`,
       [jobId],
     );
   }
@@ -99,10 +243,45 @@ export class QueueManager {
     await db.run(
       `UPDATE jobs
        SET status = CASE WHEN status = 'cancelled' THEN 'cancelled' ELSE ? END,
-           report = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP
+           report = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP,
+           lease_id = NULL, lease_token_hash = NULL, lease_expires_at = NULL, lease_completed = 1
        WHERE id = ?;`,
       [status, JSON.stringify(report), jobId],
     );
+  }
+
+  async completeJobForRunner(
+    jobId: string | number,
+    runnerId: string,
+    leaseId: string,
+    leaseTokenHash: string,
+    status: JobStatus,
+    report: WorkflowExecutionReport,
+  ): Promise<boolean> {
+    const result = await db.run(
+      `UPDATE jobs SET status = CASE WHEN status = 'cancelled' THEN 'cancelled' ELSE ? END,
+       report = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP, lease_completed = 1
+       WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ? AND status IN ('running', 'cancelled')
+         AND lease_fenced = 0 AND lease_completed = 0 AND julianday(lease_expires_at) > julianday('now')
+         AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [status, JSON.stringify(report), jobId, runnerId, leaseId, leaseTokenHash],
+    );
+    if (Number(result?.changes || 0) === 1) {
+      return true;
+    }
+    const completed = await db.get(
+      `SELECT status, report FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
+        AND lease_fenced = 0 AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [jobId, runnerId, leaseId, leaseTokenHash],
+    );
+    if (!completed || completed.status !== status) {
+      return false;
+    }
+    try {
+      return JSON.stringify(JSON.parse(completed.report)) === JSON.stringify(report);
+    } catch {
+      return false;
+    }
   }
 
   async cancelJob(jobId: string | number): Promise<"cancelled" | "not_found" | "not_active"> {
@@ -129,14 +308,12 @@ export class QueueManager {
       return;
     }
 
-    if (job.status === "running") {
-      await db.run(
-        `UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP WHERE id = ?;`,
-        [jobId],
-      );
-    }
-
-    const activeWorkflow = await db.get("SELECT active_revision FROM workflows WHERE id = ?", [job.workflow_id]);
+    const activeWorkflow = await db.get(
+      `SELECT workflows.active_revision FROM workflows
+       JOIN teams ON teams.id = workflows.team_id
+       WHERE workflows.id = ? AND teams.deleting_at IS NULL`,
+      [job.workflow_id],
+    );
     const activeRevision = Number(activeWorkflow?.active_revision);
     if (!Number.isSafeInteger(activeRevision) || activeRevision < 1) {
       throw new Error(`Workflow ${job.workflow_id} has no active revision`);
@@ -150,18 +327,32 @@ export class QueueManager {
 
     const newJob = await db.get(
       `INSERT INTO jobs (
-         parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload,
+         parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id,
          status, worker_id, report, started_at, finished_at
        )
-       SELECT id, workflow_id, ?, required_tags, concurrency_key, ?,
-              'pending', NULL, NULL, NULL, NULL
-       FROM jobs
-       WHERE id = ?
-       RETURNING *`,
-      [activeRevision, JSON.stringify(payload), jobId],
+       SELECT id, workflow_id, ?, required_tags, concurrency_key, ?, team_id,
+               'pending', NULL, NULL, NULL, NULL
+        FROM jobs JOIN teams ON teams.id = jobs.team_id
+         WHERE jobs.id = ? AND teams.deleting_at IS NULL AND NOT EXISTS (
+           SELECT 1 FROM workflow_revisions wr JOIN recipe_versions rv
+             ON rv.namespace = json_extract(wr.normalized_json, '$._recipeRef.namespace')
+             AND rv.slug = json_extract(wr.normalized_json, '$._recipeRef.slug')
+             AND rv.version = json_extract(wr.normalized_json, '$._recipeRef.version')
+           WHERE wr.workflow_id = jobs.workflow_id AND wr.revision = ? AND rv.revoked = 1
+         )
+        RETURNING *`,
+      [activeRevision, JSON.stringify(payload), jobId, activeRevision],
     );
-
-    return newJob.id;
+    if (!newJob?.id) {
+      throw new Error("Workflow is unavailable or its pinned recipe has been revoked");
+    }
+    if (job.status === "running") {
+      await db.run(
+        "UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [jobId],
+      );
+    }
+    return newJob?.id;
   }
 
   /**
@@ -172,11 +363,84 @@ export class QueueManager {
     return job?.status === "cancelled";
   }
 
+  async leaseState(jobId: string | number, runnerId: string, leaseId: string, leaseTokenHash: string) {
+    return db.get(
+      `SELECT status, lease_expires_at AS expiresAt FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ?
+       AND lease_token_hash = ? AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [jobId, runnerId, leaseId, leaseTokenHash],
+    );
+  }
+
+  async getLeasedJob(leaseId: string, runnerId: string, leaseTokenHash: string): Promise<JobRecord | null> {
+    return db.get(
+      `SELECT * FROM jobs WHERE lease_id = ? AND worker_id = ? AND lease_token_hash = ?
+       AND status IN ('running', 'cancelled', 'success', 'failed') AND julianday(lease_expires_at) > julianday('now')
+       AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [leaseId, runnerId, leaseTokenHash],
+    );
+  }
+
+  async renewRunnerLease(
+    leaseId: string,
+    runnerId: string,
+    leaseTokenHash: string,
+    leaseSeconds: number,
+  ): Promise<boolean> {
+    const result = await db.run(
+      `UPDATE jobs SET lease_expires_at = datetime('now', ?), updated_at = CURRENT_TIMESTAMP
+       WHERE lease_id = ? AND worker_id = ? AND lease_token_hash = ?
+         AND status = 'running' AND lease_fenced = 0 AND lease_completed = 0
+         AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [`+${leaseSeconds} seconds`, leaseId, runnerId, leaseTokenHash],
+    );
+    return Number(result?.changes || 0) === 1;
+  }
+
+  async releaseRunnerLease(leaseId: string, runnerId: string, leaseTokenHash: string): Promise<boolean> {
+    const result = await db.run(
+      `UPDATE jobs SET status = 'pending', worker_id = NULL, lease_id = NULL, lease_token_hash = NULL,
+       lease_expires_at = NULL, started_at = NULL, lease_completed = 0, updated_at = CURRENT_TIMESTAMP
+       WHERE lease_id = ? AND worker_id = ? AND lease_token_hash = ? AND status = 'running'
+       AND lease_fenced = 0 AND lease_completed = 0
+        AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [leaseId, runnerId, leaseTokenHash],
+    );
+    return Number(result?.changes || 0) === 1;
+  }
+
+  async revokeRunnerLeasesForTeam(
+    runnerId: string,
+    teamId: string,
+  ): Promise<Array<{ jobId: number; teamId: string; leaseId: string }>> {
+    return db.all(
+      `UPDATE jobs SET status = 'cancelled', lease_fenced = 1, updated_at = CURRENT_TIMESTAMP
+       WHERE worker_id = ? AND team_id = ? AND status IN ('running', 'cancelled') AND lease_completed = 0 AND lease_id IS NOT NULL
+       RETURNING id AS jobId, team_id AS teamId, lease_id AS leaseId`,
+      [runnerId, teamId],
+    );
+  }
+
+  async revokeRunnerLeases(runnerId: string): Promise<Array<{ jobId: number; teamId: string; leaseId: string }>> {
+    return db.all(
+      `UPDATE jobs SET status = 'cancelled', lease_fenced = 1, updated_at = CURRENT_TIMESTAMP
+       WHERE worker_id = ? AND status IN ('running', 'cancelled') AND lease_completed = 0 AND lease_id IS NOT NULL
+       RETURNING id AS jobId, team_id AS teamId, lease_id AS leaseId`,
+      [runnerId],
+    );
+  }
+
   async clearStaleJobs() {
+    await db.run(
+      `UPDATE jobs SET lease_completed = 1, updated_at = CURRENT_TIMESTAMP
+       WHERE status = 'cancelled' AND lease_fenced = 0 AND lease_completed = 0 AND lease_id IS NOT NULL
+         AND lease_expires_at IS NOT NULL AND julianday(lease_expires_at) <= julianday('now')`,
+    );
     return await db.run(
-      `UPDATE jobs
-       SET status = 'pending', worker_id = NULL, updated_at = CURRENT_TIMESTAMP
-       WHERE status = 'running' AND started_at < datetime('now', '-1 hour');`,
+      `UPDATE jobs SET status = 'pending', worker_id = NULL, lease_id = NULL, lease_token_hash = NULL,
+       lease_expires_at = NULL, lease_fenced = 0, lease_completed = 0
+       WHERE (status = 'running' AND lease_id IS NOT NULL AND (lease_expires_at IS NULL OR julianday(lease_expires_at) <= julianday('now')))
+          OR (status = 'cancelled' AND lease_fenced = 1 AND lease_expires_at IS NOT NULL AND julianday(lease_expires_at) <= julianday('now'))
+          OR (status = 'running' AND lease_id IS NULL AND started_at < datetime('now', '-1 hour'));`,
     );
   }
 
@@ -196,7 +460,13 @@ export class QueueManager {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        finished_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        finished_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        lease_id TEXT,
+        lease_token_hash TEXT,
+        lease_expires_at DATETIME,
+        lease_fenced INTEGER NOT NULL DEFAULT 0,
+        lease_completed INTEGER NOT NULL DEFAULT 0,
+        dispatch_key TEXT UNIQUE
       );
 
       CREATE TABLE IF NOT EXISTS step_logs (
@@ -235,6 +505,13 @@ export class QueueManager {
         last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    await db.run("ALTER TABLE jobs ADD COLUMN lease_id TEXT").catch(() => {});
+    await db.run("ALTER TABLE jobs ADD COLUMN lease_token_hash TEXT").catch(() => {});
+    await db.run("ALTER TABLE jobs ADD COLUMN lease_expires_at DATETIME").catch(() => {});
+    await db.run("ALTER TABLE jobs ADD COLUMN lease_fenced INTEGER NOT NULL DEFAULT 0").catch(() => {});
+    await db.run("ALTER TABLE jobs ADD COLUMN lease_completed INTEGER NOT NULL DEFAULT 0").catch(() => {});
+    await db.run("ALTER TABLE jobs ADD COLUMN dispatch_key TEXT").catch(() => {});
+    await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dispatch_key ON jobs(dispatch_key)");
   }
 
   /**
@@ -242,6 +519,11 @@ export class QueueManager {
    */
   async getJob(jobId: string | number): Promise<any> {
     return db.get(`SELECT * FROM jobs WHERE id = ?`, [jobId]);
+  }
+
+  /** Tenant-scoped job lookup for authenticated server requests. */
+  async getJobForTeam(teamId: string, jobId: string | number): Promise<any> {
+    return db.get("SELECT * FROM jobs WHERE team_id = ? AND id = ?", [teamId, jobId]);
   }
 
   /**
@@ -289,6 +571,47 @@ export class QueueManager {
     return db.all(`SELECT * FROM jobs${where} ORDER BY id DESC LIMIT ?;`, [...values, limit]);
   }
 
+  /** Tenant-scoped job listing; teamId is mandatory. */
+  async listJobsForTeam(
+    teamId: string,
+    limit = 50,
+    afterId?: number,
+    beforeId?: number,
+    filter?: string,
+    workflowId?: string,
+  ): Promise<any[]> {
+    const conditions = ["team_id = ?"];
+    const values: Array<number | string> = [teamId];
+    if (afterId !== undefined) {
+      conditions.push("id > ?");
+      values.push(afterId);
+    }
+    if (beforeId !== undefined) {
+      conditions.push("id < ?");
+      values.push(beforeId);
+    }
+    if (filter) {
+      const separator = filter.indexOf(":");
+      if (separator > 0) {
+        const field = filter.slice(0, separator).trim();
+        const pattern = filter.slice(separator + 1).trim();
+        if (!/^[A-Za-z0-9_-]+$/.test(field) || !pattern) {
+          throw new Error("Invalid job filter");
+        }
+        conditions.push("json_extract(payload, '$.inputs.' || ?) GLOB ?");
+        values.push(field, pattern);
+      } else {
+        conditions.push("LOWER(payload) LIKE LOWER(?)");
+        values.push(`%${filter}%`);
+      }
+    }
+    if (workflowId) {
+      conditions.push("workflow_id = ?");
+      values.push(workflowId);
+    }
+    return db.all(`SELECT * FROM jobs WHERE ${conditions.join(" AND ")} ORDER BY id DESC LIMIT ?`, [...values, limit]);
+  }
+
   /**
    * Save lightweight summary report (NO heavy logs in this JSON!)
    */
@@ -299,15 +622,58 @@ export class QueueManager {
     ]);
   }
 
+  async saveReportForRunner(
+    jobId: string | number,
+    runnerId: string,
+    leaseId: string,
+    leaseTokenHash: string,
+    report: WorkflowExecutionReport,
+  ): Promise<boolean> {
+    const result = await db.run(
+      `UPDATE jobs SET report = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND worker_id = ? AND lease_id = ?
+         AND lease_token_hash = ? AND status IN ('running', 'cancelled') AND lease_fenced = 0 AND lease_completed = 0
+         AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
+      [JSON.stringify(report), jobId, runnerId, leaseId, leaseTokenHash],
+    );
+    return Number(result?.changes || 0) === 1;
+  }
+
   /** Save or replace the durable log snapshot for a step. */
   async saveStepLog(jobId: string | number, stepId: string, logContent: string): Promise<void> {
     await db.run(
-      `INSERT INTO step_logs (job_id, step_id, log_content) VALUES (?, ?, ?)
+      `INSERT INTO step_logs (job_id, step_id, log_content)
+       SELECT ?, ?, ? WHERE EXISTS (
+         SELECT 1 FROM jobs JOIN teams ON teams.id = jobs.team_id
+         WHERE jobs.id = ? AND teams.deleting_at IS NULL
+       )
        ON CONFLICT(job_id, step_id) DO UPDATE SET
          log_content = excluded.log_content,
          created_at = CURRENT_TIMESTAMP`,
-      [jobId, stepId, timestampLogLines(logContent)],
+      [jobId, stepId, timestampLogLines(logContent), jobId],
     );
+  }
+
+  async saveStepLogForRunner(
+    jobId: string | number,
+    runnerId: string,
+    leaseId: string,
+    leaseTokenHash: string,
+    stepId: string,
+    logContent: string,
+  ): Promise<boolean> {
+    const result = await db.run(
+      `INSERT INTO step_logs (job_id, step_id, log_content)
+       SELECT ?, ?, ? WHERE EXISTS (
+          SELECT 1 FROM jobs JOIN teams ON teams.id = jobs.team_id
+           WHERE jobs.id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
+           AND status IN ('running', 'cancelled') AND lease_fenced = 0 AND lease_completed = 0
+            AND teams.deleting_at IS NULL
+           AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
+       )
+       ON CONFLICT(job_id, step_id) DO UPDATE SET log_content = excluded.log_content, created_at = CURRENT_TIMESTAMP`,
+      [jobId, stepId, timestampLogLines(logContent), jobId, runnerId, leaseId, leaseTokenHash],
+    );
+    return Number(result?.changes || 0) === 1;
   }
 
   /**
@@ -328,15 +694,51 @@ export class QueueManager {
     ownerKey: string,
     files: Array<{ path: string; content: string }>,
   ): Promise<void> {
-    if (this.fileStorage.enabled) {
-      return this.fileStorage.save(`${kind}/${ownerKey}`, files);
+    const owner =
+      kind === "artifact"
+        ? await db.get(
+            `SELECT jobs.team_id AS teamId FROM jobs JOIN teams ON teams.id = jobs.team_id
+             WHERE jobs.id = ? AND teams.deleting_at IS NULL`,
+            [ownerKey],
+          )
+        : await db.get(
+            `SELECT workflows.team_id AS teamId FROM workflows JOIN teams ON teams.id = workflows.team_id
+             WHERE workflows.id = ? AND teams.deleting_at IS NULL`,
+            [ownerKey.split(":", 1)[0]],
+          );
+    if (!owner || this.purgingTeams.has(owner.teamId)) {
+      return;
     }
-    for (const file of files) {
-      await db.run(
-        `INSERT INTO stored_files (kind, owner_key, file_path, content) VALUES (?, ?, ?, ?)
-         ON CONFLICT(kind, owner_key, file_path) DO UPDATE SET content = excluded.content, created_at = CURRENT_TIMESTAMP`,
-        [kind, ownerKey, file.path, file.content],
-      );
+    await this.trackStorageWrite(owner.teamId, async () => {
+      if (this.fileStorage.enabled) {
+        await this.fileStorage.save(`${kind}/${ownerKey}`, files);
+        return;
+      }
+      for (const file of files) {
+        await db.run(
+          `INSERT INTO stored_files (kind, owner_key, file_path, content) VALUES (?, ?, ?, ?)
+           ON CONFLICT(kind, owner_key, file_path) DO UPDATE SET content = excluded.content, created_at = CURRENT_TIMESTAMP`,
+          [kind, ownerKey, file.path, file.content],
+        );
+      }
+    });
+  }
+
+  private async trackStorageWrite(teamId: string, write: () => Promise<void>): Promise<void> {
+    if (this.purgingTeams.has(teamId)) {
+      return;
+    }
+    const writes = this.activeStorageWrites.get(teamId) || new Set<Promise<void>>();
+    const pending = Promise.resolve().then(write);
+    writes.add(pending);
+    this.activeStorageWrites.set(teamId, writes);
+    try {
+      await pending;
+    } finally {
+      writes.delete(pending);
+      if (!writes.size) {
+        this.activeStorageWrites.delete(teamId);
+      }
     }
   }
 
@@ -351,6 +753,110 @@ export class QueueManager {
       kind,
       ownerKey,
     ]);
+  }
+
+  async saveStoredFilesForRunner(
+    kind: "artifact" | "cache",
+    ownerKey: string,
+    files: Array<{ path: string; content: string }>,
+    jobId: string | number,
+    runnerId: string,
+    leaseId: string,
+    leaseTokenHash: string,
+  ): Promise<boolean> {
+    for (const file of files) {
+      const result = await db.run(
+        `INSERT INTO stored_files (kind, owner_key, file_path, content)
+         SELECT ?, ?, ?, ? WHERE EXISTS (
+           SELECT 1 FROM jobs JOIN teams ON teams.id = jobs.team_id
+            WHERE jobs.id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
+            AND status = 'running' AND lease_fenced = 0 AND lease_completed = 0
+            AND teams.deleting_at IS NULL
+           AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
+         )
+         ON CONFLICT(kind, owner_key, file_path) DO UPDATE SET content = excluded.content, created_at = CURRENT_TIMESTAMP`,
+        [kind, ownerKey, file.path, file.content, jobId, runnerId, leaseId, leaseTokenHash],
+      );
+      if (Number(result?.changes || 0) !== 1) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async getStoredFilesForRunner(
+    kind: "artifact" | "cache",
+    ownerKey: string,
+    jobId: string | number,
+    runnerId: string,
+    leaseId: string,
+    leaseTokenHash: string,
+  ): Promise<Array<{ path: string; content: string }>> {
+    return db.all(
+      `SELECT file_path AS path, content FROM stored_files WHERE kind = ? AND owner_key = ? AND EXISTS (
+         SELECT 1 FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
+         AND status = 'running' AND lease_fenced = 0 AND lease_completed = 0
+         AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
+       )`,
+      [kind, ownerKey, jobId, runnerId, leaseId, leaseTokenHash],
+    );
+  }
+
+  async getStoredFilesForTeam(
+    teamId: string,
+    kind: "artifact" | "cache",
+    jobId: string | number,
+  ): Promise<Array<{ path: string; content: string }>> {
+    if (!(await this.getJobForTeam(teamId, jobId))) {
+      return [];
+    }
+    const runnerFiles = await db.all(
+      "SELECT file_path AS path, content FROM stored_files WHERE kind = ? AND owner_key = ?",
+      [kind, String(jobId)],
+    );
+    return runnerFiles.length ? runnerFiles : this.getStoredFiles(kind, String(jobId));
+  }
+
+  /**
+   * Permanently purge one workspace-owned run and everything derived from it:
+   * step logs, stored artifacts and caches, and saved AI requests.
+   */
+  async deleteJobForTeam(teamId: string, jobId: string | number): Promise<boolean> {
+    const job = await this.getJobForTeam(teamId, jobId);
+    if (!job) {
+      return false;
+    }
+    if (this.fileStorage.enabled) {
+      await this.fileStorage.delete(`artifact/${jobId}`);
+    }
+    const statements = [
+      { s: "DELETE FROM step_logs WHERE job_id = ?", d: [jobId], m: "run" },
+      { s: "DELETE FROM stored_files WHERE owner_key = ?", d: [String(jobId)], m: "run" },
+      { s: "DELETE FROM ai_requests WHERE job_id = ?", d: [jobId], m: "run" },
+      { s: "UPDATE jobs SET parentId = NULL WHERE parentId = ? AND team_id = ?", d: [jobId, teamId], m: "run" },
+      { s: "DELETE FROM jobs WHERE id = ? AND team_id = ?", d: [jobId, teamId], m: "run" },
+    ];
+    if (typeof db.transaction !== "function") {
+      throw new Error("Atomic transactions are required to delete run data");
+    }
+    await db.transaction(statements);
+    return true;
+  }
+
+  /** Purge external workspace files before the owning SQL records are removed. */
+  async deleteJobsForTeam(teamId: string): Promise<void> {
+    this.purgingTeams.add(teamId);
+    await Promise.all(this.activeStorageWrites.get(teamId) || []);
+    const workflowRows = await db.all("SELECT id FROM workflows WHERE team_id = ?", [teamId]);
+    const jobs = await db.all("SELECT id FROM jobs WHERE team_id = ?", [teamId]);
+    if (this.fileStorage.enabled) {
+      for (const workflow of workflowRows) {
+        await this.fileStorage.delete(`cache/${workflow.id}:`);
+      }
+      for (const job of jobs) {
+        await this.fileStorage.delete(`artifact/${job.id}`);
+      }
+    }
   }
 
   async updateWorkerPresence(worker: {

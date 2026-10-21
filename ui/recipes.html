@@ -1,0 +1,85 @@
+<template app>
+  <main class="mx-auto max-w-5xl space-y-6" data-recipes-root>
+    <section data-marketplace>
+      <header class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p class="text-sm font-semibold uppercase tracking-wide text-flow-primary">Global registry</p>
+          <h1 class="mt-1 text-3xl font-semibold">Recipe marketplace</h1>
+          <p class="mt-2 text-flow-secondary">
+            Browse reusable workflow steps or publish a new immutable recipe version.
+          </p>
+          <p class="mt-2 text-sm font-medium text-amber-800">
+            Recipes contain executable code. Review a recipe before pinning it in a workflow.
+          </p>
+        </div>
+        <button type="button" data-create class="rounded-lg bg-flow-primary px-4 py-2 font-semibold text-white">
+          Publish recipe
+        </button>
+      </header>
+      <section data-list class="mt-6 grid gap-4 sm:grid-cols-2"></section>
+      <p data-list-error role="alert" class="hidden mt-3 text-sm text-rose-700"></p>
+    </section>
+
+    <section data-editor-page class="hidden">
+      <h1 class="text-2xl font-semibold" data-editor-title>New recipe version</h1>
+      <p class="mt-1 text-sm text-flow-secondary" data-editor-reference></p>
+      <form data-form class="mt-4 space-y-4">
+        <label class="block text-sm font-medium"
+          >Recipe YAML<textarea
+            data-source
+            required
+            spellcheck="false"
+            rows="24"
+            class="mt-1 block min-h-[60vh] w-full rounded-lg border border-flow-border bg-slate-950 p-4 font-mono text-sm text-white"
+            placeholder="inputs:\n  type: object\n  properties: {}\nsteps:\n  - name: Build\n    run: npm run build"
+          ></textarea>
+        </label>
+        <p data-validation role="status" aria-live="polite" class="text-sm text-flow-secondary"></p>
+        <p data-error role="alert" class="hidden text-sm text-rose-700"></p>
+        <div class="flex gap-3">
+          <button
+            data-save
+            type="submit"
+            class="rounded-lg bg-flow-primary px-4 py-2 font-semibold text-white"
+            disabled
+          >
+            Save version
+          </button>
+          <button type="button" data-cancel class="rounded-lg border border-flow-border px-4 py-2">Cancel</button>
+        </div>
+      </form>
+    </section>
+
+    <dialog data-create-dialog class="w-[min(32rem,calc(100%-2rem))] rounded-xl p-6 shadow-xl backdrop:bg-black/40">
+      <form method="dialog" data-create-form class="space-y-4">
+        <h2 class="text-xl font-semibold">Create recipe</h2>
+        <label class="block text-sm font-medium"
+          >Slug<input
+            data-slug
+            required
+            pattern="[a-z0-9][a-z0-9-]{0,62}"
+            class="mt-1 block w-full rounded-lg border border-flow-border px-3 py-2"
+            placeholder="docker-build"
+          />
+        </label>
+        <label class="block text-sm font-medium"
+          >Display name<input
+            data-name
+            required
+            maxlength="100"
+            class="mt-1 block w-full rounded-lg border border-flow-border px-3 py-2"
+            placeholder="Docker build"
+          />
+        </label>
+        <p data-create-error role="alert" class="hidden text-sm text-rose-700"></p>
+        <div class="flex gap-3">
+          <button type="submit" value="create" class="rounded-lg bg-flow-primary px-4 py-2 font-semibold text-white">
+            Continue
+          </button>
+          <button type="submit" value="cancel" class="rounded-lg border border-flow-border px-4 py-2">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+    <script setup src="/assets/pages/recipes-ui.mjs"></script>
+  </main>
+</template>

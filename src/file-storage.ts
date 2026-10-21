@@ -45,6 +45,16 @@ export class FileStorage {
     }
   }
 
+  async delete(ownerKey: string): Promise<void> {
+    const index = await this.index();
+    for (const [name, fileId] of index) {
+      if (!name.startsWith(`${ownerKey}/`)) {
+        continue;
+      }
+      await this.request(`/f/${this.binId}/${fileId}`, { method: "DELETE" });
+    }
+  }
+
   async load(ownerKey: string): Promise<StoredFile[]> {
     const index = await this.index();
     const files: StoredFile[] = [];

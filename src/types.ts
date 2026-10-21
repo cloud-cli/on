@@ -1,5 +1,5 @@
-import { QueueManager } from './queue.js';
-import { SecretStore } from './secrets.js';
+import type { QueueManager } from "./queue.js";
+import { SecretStore } from "./secrets.js";
 
 // types can be grouped in 4 different layers
 // 1. configuration and initialization: the settings to initialize the webserver and the runners, and bridge the host with the runnables
@@ -14,6 +14,12 @@ export interface RunnerConfig {
   adminToken: string;
   /** Shared worker credential for job lifecycle and secret retrieval APIs */
   workerToken: string;
+  /** Enrolled API runner identity and credential. */
+  runnerId?: string;
+  runnerCredential?: string;
+  runnerCredentialPath?: string;
+  runnerEnrollCode?: string;
+  runnerUpdateAdapter?: string;
   /** SQLite Database connection URL / path */
   database: string;
   /** Maximum number of jobs executed concurrently on this node */
@@ -24,6 +30,8 @@ export interface RunnerConfig {
   tags: string[];
   /** Storage path for job workspaces and step logs */
   storagePath: string;
+  /** Marks the deployment as beta (used to identify its PWA icon). */
+  beta?: boolean;
   /** Global environment variables injected into all step runs */
   env: Record<string, string>;
   /** External integrations notified about workflow lifecycle changes */
@@ -117,7 +125,7 @@ export interface WorkflowTrigger {
 export interface ScheduleTrigger {
   id?: string;
   cron?: string;
-  event?: 'sunrise' | 'sunset';
+  event?: "sunrise" | "sunset";
   latitude?: number;
   longitude?: number;
   timezone?: string;
@@ -131,11 +139,14 @@ export interface WorkflowStep {
   run?: string;
   eval?: string;
   dispatch?: string;
+  with?: unknown;
   image?: string;
   volumes?: string[];
   dockerArgs?: string[];
   timeoutMs?: number;
   env?: Record<string, string>;
+  /** Internal marker: evaluate recipe template expressions against the pinned job context. */
+  __recipeTemplate?: boolean;
 }
 
 export interface WorkflowDefinition {
@@ -150,6 +161,7 @@ export interface WorkflowDefinition {
   /** Number of additional attempts for a failed step. */
   retries?: number;
   steps: WorkflowStep[];
+  post?: WorkflowStep[];
   env?: Record<string, string>;
   artifacts?: {
     paths: string[];
@@ -162,6 +174,12 @@ export interface WorkflowDefinition {
   plugins?: WorkflowPluginDefinition[];
   /** Worker capabilities required to execute this workflow */
   tags?: string[];
+  /** Internal immutable recipe inputs carried in a normalized revision snapshot. */
+  _recipeInputs?: Record<string, unknown>;
+  /** Input schema for runtime validation of evaluated recipe bindings. */
+  _recipeInputSchema?: Record<string, unknown>;
+  /** Recipe secret aliases mapped to workspace secret names; never contains values. */
+  _recipeSecrets?: Record<string, string>;
   /** Time triggers stored alongside webhook triggers in DB-authored workflows. */
   schedule?: ScheduleTrigger[];
   solar?: ScheduleTrigger[];
@@ -187,7 +205,7 @@ export interface WebhookServerOptions {
   adminToken: string;
 }
 
-export type JobStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+export type JobStatus = "pending" | "running" | "success" | "failed" | "cancelled";
 
 export interface JobRecord {
   id: number;
@@ -198,6 +216,11 @@ export interface JobRecord {
   concurrency_key: string | null;
   status: JobStatus;
   worker_id: string | null;
+  team_id?: string;
+  lease_id?: string | null;
+  lease_token_hash?: string | null;
+  lease_expires_at?: string | null;
+  lease_completed?: number;
   payload: string; // JSON string of dynamic trigger inputs only
   created_at: string;
 }
@@ -233,12 +256,12 @@ export interface WorkflowPlugin {
   onWorkflowFinish?: (wf: WorkflowContext, status: FinalJobStatus) => Promise<void>;
 }
 
-export type FinalJobStatus = Exclude<JobStatus, 'pending' | 'running'>;
+export type FinalJobStatus = Exclude<JobStatus, "pending" | "running">;
 
 export interface StepReport {
   id: string;
   name: string;
-  status: 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'cancelled';
+  status: "pending" | "running" | "success" | "failed" | "skipped" | "cancelled";
   durationMs: number;
   exitCode?: number;
   startedAt?: string;
@@ -252,7 +275,7 @@ export interface WorkflowExecutionReport {
   jobId: string;
   parentId: string;
   workflowName: string;
-  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+  status: "pending" | "running" | "success" | "failed" | "cancelled";
   durationMs: number;
   startedAt: string;
   finishedAt?: string;
@@ -265,12 +288,27 @@ export interface WorkflowExecutionReport {
 
 export interface Processable {
   workerId: string;
+  executionId?: string;
   job: JobRecord;
-  queue: QueueManager;
+  queue: WorkerExecutionQueue;
   secrets: SecretStore;
   config: RunnerConfig;
   driver: ExecutionDriver;
   workflow?: WorkflowDefinition;
+}
+
+export interface WorkerExecutionQueue {
+  saveReport(jobId: string | number, report: WorkflowExecutionReport): Promise<void>;
+  completeJob(jobId: string | number, status: JobStatus, report: WorkflowExecutionReport): Promise<void>;
+  saveStepLog(jobId: string | number, stepId: string, content: string): Promise<void>;
+  saveStoredFiles(
+    kind: "artifact" | "cache",
+    ownerKey: string,
+    files: Array<{ path: string; content: string }>,
+  ): Promise<void>;
+  getStoredFiles(kind: "artifact" | "cache", ownerKey: string): Promise<Array<{ path: string; content: string }>>;
+  isCancelled(jobId: string | number): Promise<boolean>;
+  dispatch?(jobId: string | number, stepId: string, target: string, inputs: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface ContextualizedProcessable extends Processable {
@@ -284,6 +322,7 @@ export interface JobExecutionContext {
   env: Record<string, string>;
   secrets: Record<string, string>;
   steps: Record<string, { status: string; exitCode: number; outputs: any }>;
+  job?: { status: FinalJobStatus; runUrl: string };
   workingDir: string;
   logsDir: string;
   files: {

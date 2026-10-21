@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://runner.example.com/recipe.schema.json",
+  "title": "RecipeDefinition",
+  "type": "object",
+  "required": ["inputs", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "inputs": {
+      "type": "object",
+      "required": ["type"],
+      "description": "Draft-07 JSON Schema for ordinary recipe inputs. Top-level properties marked writeOnly are secret inputs.",
+      "properties": {
+        "type": { "const": "object" }
+      },
+      "additionalProperties": true
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "not": { "anyOf": [{ "required": ["using"] }, { "required": ["secrets"] }] }
+      }
+    }
+  }
+}

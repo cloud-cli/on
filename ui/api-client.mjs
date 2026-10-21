@@ -96,7 +96,7 @@ async function checkRecoverySession() {
   }
   checkingSession = (async () => {
     try {
-      const response = await rawFetch("/api/auth/session", {
+      const response = await rawFetch("/api/v1/auth/session", {
         credentials: "same-origin",
         headers: { accept: "application/json" },
         cache: "no-store",
@@ -146,7 +146,7 @@ if (
 ) {
   callbackUrl.searchParams.delete("__runner_auth_nonce");
   history.replaceState(null, "", `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
-  rawFetch("/api/auth/session", { credentials: "same-origin", headers: { accept: "application/json" } })
+  rawFetch("/api/v1/auth/session", { credentials: "same-origin", headers: { accept: "application/json" } })
     .then((response) => (response.ok ? response.json() : null))
     .then((session) => {
       if (session?.authenticated && localStorage.getItem(recoveryFlag(callbackNonce)) === "pending") {
@@ -163,7 +163,7 @@ async function acquireToken() {
   if (token && expiresAt > Date.now() + 30_000) {
     return { token, authRequired: false };
   }
-  const response = await rawFetch("/api/auth/token", { headers: { accept: "application/json" } });
+  const response = await rawFetch("/api/v1/auth/token", { headers: { accept: "application/json" } });
   if (!response.ok) {
     const authRequired = await isAuthRequired(response);
     if (authRequired) {
@@ -198,7 +198,7 @@ export async function apiFetch(input, init = {}) {
   const target = new URL(input, window.location.href);
   if (
     target.origin !== window.location.origin ||
-    (!target.pathname.startsWith("/api/") && !target.pathname.startsWith("/restart/"))
+    (!target.pathname.startsWith("/api/v1/") && !target.pathname.startsWith("/auth/"))
   ) {
     return rawFetch(input, init);
   }
@@ -219,6 +219,10 @@ export async function apiFetch(input, init = {}) {
     }
   }
   const headers = new Headers(init.headers);
+  const teamId = typeof localStorage === "undefined" ? "" : localStorage.getItem("runner-team-id") || "";
+  if (teamId && !headers.has("X-Team-ID")) {
+    headers.set("X-Team-ID", teamId);
+  }
   if (acquired.token) {
     headers.set("authorization", `Bearer ${acquired.token}`);
   }
@@ -233,6 +237,9 @@ export async function apiFetch(input, init = {}) {
   expiresAt = 0;
   sessionStorage.removeItem("runner-api-token");
   const retryHeaders = new Headers(init.headers);
+  if (teamId && !retryHeaders.has("X-Team-ID")) {
+    retryHeaders.set("X-Team-ID", teamId);
+  }
   const retryToken = await acquireToken();
   if (retryToken.response?.status >= 500) {
     return retryToken.response;

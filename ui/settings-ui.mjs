@@ -1,18 +1,18 @@
-import { onInit, ref, templateRef } from "@li3/web";
-import { apiFetch } from "@app/api-client.mjs";
+import { onInit, ref } from "@li3/web";
+import {
+  applyThemePreference,
+  getAuthPreference,
+  isValidTimezone,
+  loadTimezonePreference,
+  setAuthPreference,
+} from "@app/preferences.mjs";
 
 export default function () {
-  const page = "settings";
-  const apiKeyForm = templateRef("apiKeyForm");
-  const keys = ref([]);
-  const workers = ref([]);
-  const workersForbidden = ref(false);
-  const users = ref([]);
-  const usersForbidden = ref(false);
-  const keyName = ref("");
-  const error = ref("");
   const timezone = ref(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  const theme = ref("system");
+  const themeMessage = ref("");
   const preferenceMessage = ref("");
+  const error = ref("");
   const timezones = ref(
     typeof Intl.supportedValuesOf === "function"
       ? ["UTC", ...Intl.supportedValuesOf("timeZone")]
@@ -25,174 +25,63 @@ export default function () {
       localStorage.getItem("runner-notifications") === "enabled",
   );
   const notificationMessage = ref("");
-  const scopeOptions = ref([
-    { name: "workflows:read", label: "Read workflows", selected: true },
-    { name: "workflows:write", label: "Modify workflows", selected: false },
-    { name: "logs:read", label: "Read logs", selected: false },
-    { name: "artifacts:read", label: "Read artifacts", selected: false },
-    { name: "runs:control", label: "Control runs", selected: false },
-    { name: "runs:dispatch", label: "Dispatch runs", selected: false },
-    { name: "workers:read", label: "Read workers", selected: false },
-    { name: "secrets:read", label: "Read secret names", selected: false },
-    { name: "secrets:write", label: "Manage secrets", selected: false },
-  ]);
-  const secrets = ref([]);
-  const secretName = ref("");
-  const secretValue = ref("");
-  const fileMode = ref(false);
-  const secretFileName = ref("");
-  const secretFileData = ref("");
-  const busy = ref(false);
-  const secretForm = templateRef("secretForm");
-  const secretValueInput = templateRef("secretValueInput");
-  const api = async (url, options = {}) => {
-    const response = await apiFetch(url, {
-      headers: { accept: "application/json", ...(options.body ? { "content-type": "application/json" } : {}) },
-      ...options,
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const reason = new Error(body.error || `Request failed: ${response.status}`);
-      reason.status = response.status;
-      throw reason;
-    }
-    return body;
-  };
-  const load = async () => {
-    const revealedKeys = new Map(keys.value.filter((key) => key.token).map((key) => [key.id, key]));
-    const storedKeys = (await api("/api/api-keys")).keys;
-    keys.value = storedKeys.map((key) => {
-      const revealed = revealedKeys.get(key.id);
-      return revealed ? { ...key, token: revealed.token, isNew: true } : key;
-    });
-  };
-  const loadSecrets = async () => {
-    secrets.value = (await api("/api/secrets")).secrets;
-  };
-  const runSecretAction = async (action) => {
-    if (busy.value) {
-      return;
-    }
-    busy.value = true;
-    error.value = "";
-    try {
-      await action();
-    } catch (reason) {
-      error.value = reason.message;
-    } finally {
-      busy.value = false;
-    }
-  };
-  const saveSecret = () =>
-    runSecretAction(async () => {
-      const name = secretName.value.trim().toUpperCase();
-      if (!/^[A-Z][A-Z0-9_]*$/.test(name)) {
-        throw new Error("Secret names must start with a letter and contain only letters, numbers, and underscores.");
-      }
-      if (fileMode.value ? !secretFileData.value : !secretValue.value) {
-        throw new Error(fileMode.value ? "Choose a file first." : "Set a secret value first.");
-      }
-      await api(`/api/secrets/${encodeURIComponent(name)}`, {
-        method: "PUT",
-        body: JSON.stringify(
-          fileMode.value
-            ? { value: secretFileData.value, encoding: "base64", originalName: secretFileName.value }
-            : { value: secretValue.value, encoding: "utf8" },
-        ),
-      });
-      secretName.value = "";
-      secretValue.value = "";
-      secretFileName.value = "";
-      secretFileData.value = "";
-      fileMode.value = false;
-      await loadSecrets();
-    });
-  const removeSecret = (name) => {
-    if (!confirm(`Delete ${name}?`)) {
-      return;
-    }
-    return runSecretAction(async () => {
-      await api(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
-      await loadSecrets();
-    });
-  };
-  const setSecretFile = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let binary = "";
-    for (let index = 0; index < bytes.length; index += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-    }
-    secretFileName.value = file.name;
-    secretFileData.value = btoa(binary);
-  };
-  const setSecretName = (event) => {
-    secretName.value = event.target.value;
-  };
-  const setSecretValue = (event) => {
-    secretValue.value = event.target.value;
-  };
-  const setFileMode = (event) => {
-    fileMode.value = event.target.checked;
-  };
-  const selectSecret = (name) => {
-    secretName.value = name;
-    fileMode.value = false;
-    secretValue.value = "";
-    if (secretForm.value) {
-      secretForm.value.open = true;
-    }
-    secretForm.value?.scrollIntoView({ behavior: "smooth", block: "center" });
-    secretValueInput.value?.focus({ preventScroll: true });
-  };
-  const loadWorkers = async () => {
-    try {
-      workers.value = (await api("/api/workers")).workers;
-    } catch (reason) {
-      if (reason.status === 403) {
-        workersForbidden.value = true;
-        return;
-      }
-      throw reason;
-    }
-  };
-  const loadUsers = async () => {
-    try {
-      users.value = (await api("/api/users")).users;
-    } catch (reason) {
-      if (reason.status === 403) {
-        usersForbidden.value = true;
-        return;
-      }
-      throw reason;
-    }
-  };
   const loadPreferences = async () => {
-    const preferences = await api("/api/preferences");
-    if (preferences.timezone) {
-      timezone.value = preferences.timezone;
-      if (!timezones.value.includes(preferences.timezone)) {
-        timezones.value = [...timezones.value, preferences.timezone];
+    let authFailure;
+    let savedTheme = null;
+    let savedTimezone = null;
+    try {
+      savedTheme = await getAuthPreference("theme");
+    } catch (reason) {
+      authFailure = reason;
+    }
+    try {
+      savedTimezone = await getAuthPreference("timezone");
+    } catch (reason) {
+      authFailure = reason;
+    }
+    if (["system", "light", "dark"].includes(savedTheme)) {
+      theme.value = savedTheme;
+    }
+    applyThemePreference(theme.value);
+    if (savedTimezone && isValidTimezone(savedTimezone)) {
+      timezone.value = savedTimezone;
+      if (!timezones.value.includes(savedTimezone)) {
+        timezones.value = [...timezones.value, savedTimezone];
+      }
+    } else {
+      try {
+        const legacy = await loadTimezonePreference();
+        if (legacy.timezone) {
+          timezone.value = legacy.timezone;
+          if (!timezones.value.includes(legacy.timezone)) {
+            timezones.value = [...timezones.value, legacy.timezone];
+          }
+          authFailure = legacy.authError || authFailure;
+        }
+        if (savedTimezone && !isValidTimezone(savedTimezone)) {
+          authFailure = legacy.authError || new Error("Saved Auth timezone is not a valid IANA timezone");
+        }
+      } catch (reason) {
+        if (!authFailure) {
+          authFailure = reason;
+        }
       }
     }
+    if (authFailure) {
+      error.value = `Auth preferences are unavailable; using available defaults or legacy settings. ${authFailure.message}`;
+    }
   };
-  const formatTimestamp = (value) => {
-    if (!value) {
-      return "—";
+  const saveTheme = async (event) => {
+    const value = event.target.value;
+    try {
+      await setAuthPreference("theme", value);
+      theme.value = value;
+      applyThemePreference(value);
+      themeMessage.value = "Appearance saved.";
+    } catch (reason) {
+      event.target.value = theme.value;
+      error.value = reason.message;
     }
-    const text = String(value);
-    const date = new Date(text.includes("T") ? text : `${text.replace(" ", "T")}Z`);
-    if (Number.isNaN(date.getTime())) {
-      return value;
-    }
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: timezone.value,
-    }).format(date);
   };
   const saveTimezone = async (event) => {
     const previousTimezone = timezone.value;
@@ -207,72 +96,14 @@ export default function () {
     timezone.value = selectedTimezone;
     preferenceMessage.value = "";
     try {
-      const saved = await api("/api/preferences", {
-        method: "PUT",
-        body: JSON.stringify({ timezone: selectedTimezone }),
-      });
-      timezone.value = saved.timezone;
-      preferenceMessage.value = `Timezone saved: ${saved.timezone}.`;
+      await setAuthPreference("timezone", selectedTimezone);
+      timezone.value = selectedTimezone;
+      preferenceMessage.value = `Timezone saved: ${selectedTimezone}.`;
     } catch (reason) {
       timezone.value = previousTimezone;
       event.target.value = previousTimezone;
       error.value = reason.message;
     }
-  };
-  const issueKey = async () => {
-    try {
-      error.value = "";
-      const result = await api("/api/api-keys", {
-        method: "POST",
-        body: JSON.stringify({
-          name: keyName.value,
-          scopes: scopeOptions.value.filter((scope) => scope.selected).map((scope) => scope.name),
-        }),
-      });
-      const issuedKey = {
-        ...result,
-        id: result.id || result.label || result.name,
-        created_at: result.created_at || result.createdAt || "",
-        token: result.token,
-        isNew: true,
-      };
-      keys.value = [issuedKey, ...keys.value.filter((key) => key.id !== issuedKey.id)];
-      keyName.value = "";
-      apiKeyForm.value.open = false;
-      await load();
-    } catch (reason) {
-      error.value = reason.message;
-    }
-  };
-  const revokeKey = async (key) => {
-    if (!confirm(`Revoke ${key.name}?`)) {
-      return;
-    }
-    try {
-      await api(`/api/api-keys/${key.id}`, { method: "DELETE" });
-      await load();
-    } catch (reason) {
-      error.value = reason.message;
-    }
-  };
-  const toggleRole = async (user) => {
-    const role = user.role === "admin" ? "user" : "admin";
-    if (!confirm(`Change ${user.name || user.email || user.id} to ${role}?`)) {
-      return;
-    }
-    error.value = "";
-    try {
-      await api(`/api/users/${encodeURIComponent(user.id)}/role`, { method: "PUT", body: JSON.stringify({ role }) });
-      await loadUsers();
-    } catch (reason) {
-      error.value = reason.status === 403 ? "Only administrators can change user roles." : reason.message;
-    }
-  };
-  const setKeyName = (event) => {
-    keyName.value = event.target.value;
-  };
-  const toggleScope = (scope) => {
-    scope.selected = !scope.selected;
   };
   const toggleNotifications = async () => {
     if (notificationsEnabled.value) {
@@ -298,54 +129,16 @@ export default function () {
     loadPreferences().catch((reason) => {
       error.value = reason.message;
     });
-    load().catch((reason) => {
-      error.value = reason.message;
-    });
-    loadSecrets().catch((reason) => {
-      error.value = reason.message;
-    });
-    loadWorkers().catch((reason) => {
-      error.value = reason.message;
-    });
-    loadUsers().catch((reason) => {
-      error.value = reason.message;
-    });
   });
   return {
-    page,
-    secrets,
-    secretForm,
-    secretValueInput,
-    secretName,
-    secretValue,
-    fileMode,
-    busy,
-    saveSecret,
-    removeSecret,
-    setSecretFile,
-    setSecretName,
-    setSecretValue,
-    setFileMode,
-    selectSecret,
-    keys,
-    apiKeyForm,
-    workers,
-    workersForbidden,
-    users,
-    usersForbidden,
-    keyName,
-    error,
     timezone,
+    theme,
+    themeMessage,
+    saveTheme,
     timezones,
     preferenceMessage,
-    formatTimestamp,
+    error,
     saveTimezone,
-    scopeOptions,
-    issueKey,
-    revokeKey,
-    setKeyName,
-    toggleScope,
-    toggleRole,
     notificationsEnabled,
     notificationMessage,
     toggleNotifications,

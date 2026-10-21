@@ -3,18 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#030712" />
+    <meta name="theme-color" content="#eef2ec" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="/app-icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/on.css" />
+    <link rel="manifest" href="/assets/manifest.webmanifest" />
+    <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/on.css" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
     <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
     <title>Workflow Run</title>
     <script type="importmap">
       {
         "imports": {
-          "@app/": "/",
+          "@app/": "/assets/",
           "@li3/": "https://at-li3.static.apphor.de/",
           "ansi_up": "https://esm.sh/ansi_up@6.0.6",
           "marked": "https://cdn.jsdelivr.net/npm/marked@18.0.12/lib/marked.esm.js"
@@ -24,11 +24,11 @@
   </head>
   <body class="min-h-screen bg-flow-background p-4 font-sans text-flow-foreground md:p-6">
     <template app>
-      <main class="w-full space-y-4 py-6 run-detail">
+      <main class="w-full space-y-4 py-2 run-detail">
         <header class="run-heading flex flex-wrap items-center justify-between gap-3">
           <div>
             <a
-              href="/runs"
+              href="/ui/runs"
               class="mb-3 inline-flex items-center gap-2 text-sm text-flow-secondary hover:text-flow-primary"
             >
               <lucide-icon icon="arrow-left" size="15"></lucide-icon>All runs
@@ -42,63 +42,78 @@
               >
             </h1>
           </div>
-          <div class="flex items-center gap-2 shrink-0">
+          <div class="run-actions flex w-full flex-wrap items-center gap-2 shrink-0 sm:w-auto">
             <button
               type="button"
               on-click="copyRunUrl()"
-              class="inline-flex items-center gap-2 rounded-full border border-flow-border px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+              class="inline-flex items-center gap-2 rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
               title="Copy URL"
+              aria-label="Copy URL"
             >
-              <lucide-icon icon="link" size="15"></lucide-icon>Copy URL
+              <lucide-icon icon="link" size="15"></lucide-icon><span class="hidden sm:inline">Copy URL</span>
             </button>
             <button
               type="button"
               on-click="downloadLogs()"
-              class="inline-flex items-center gap-2 rounded-full border border-flow-border px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+              class="inline-flex items-center gap-2 rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
               class-hidden="!report.canViewLogs"
               title="Download logs"
+              aria-label="Download logs"
             >
-              <lucide-icon icon="download" size="15"></lucide-icon>Download Logs
+              <lucide-icon icon="download" size="15"></lucide-icon><span class="hidden sm:inline">Download Logs</span>
             </button>
-            <template if="report.status === 'running'">
+            <template if="report.status === 'running' && report.canControl">
               <button
-                class="rounded-full border border-rose-300 px-4 py-1.5 text-sm text-rose-700 hover:border-rose-400 disabled:opacity-50"
+                class="inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-3 py-1.5 text-sm text-rose-700 hover:border-rose-400 disabled:opacity-50"
                 on-click="cancelJob()"
                 bind-disabled.bool="cancelling"
+                attr-aria-label="cancelling ? 'Cancelling run' : 'Cancel run'"
+                title="Cancel run"
               >
-                {{ cancelling ? 'Cancelling...' : 'Cancel' }}
+                <lucide-icon bind-icon="cancelling ? 'loader-circle' : 'circle-stop'" size="15"></lucide-icon>
+                <span class="hidden sm:inline">{{ cancelling ? 'Cancelling...' : 'Cancel' }}</span>
               </button>
             </template>
-            <template if="report.status !== 'running'">
-              <div class="relative flex items-center gap-1">
-                <button
-                  class="rounded-full border border-flow-border px-4 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
-                  on-click="restartJob()"
+            <template if="report.status !== 'running' && report.canControl">
+              <button
+                class="inline-flex items-center gap-2 rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+                on-click="restartJob()"
+                bind-disabled.bool="restartLoading"
+                aria-label="Restart run"
+                title="Restart run"
+              >
+                <lucide-icon bind-icon="restartLoading ? 'loader-circle' : 'rotate-cw'" size="15"></lucide-icon>
+                <span class="hidden sm:inline">{{ restartLoading ? 'Restarting...' : 'Restart' }}</span>
+              </button>
+              <details class="relative" data-restart-menu>
+                <summary
+                  class="flex w-fit cursor-pointer list-none rounded-full border border-flow-border bg-white p-2 text-flow-secondary outline-none hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                  aria-label="More restart options"
                 >
-                  Restart
-                </button>
-                <details class="relative" data-restart-menu>
-                  <summary
-                    class="cursor-pointer list-none rounded-full border border-flow-border p-2 text-flow-secondary outline-none hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
-                    aria-label="More restart options"
+                  <lucide-icon icon="chevron-down" size="14"></lucide-icon>
+                </summary>
+                <div
+                  class="restart-menu-panel mt-2 w-full rounded-xl border border-flow-border bg-white p-2 shadow-xl sm:absolute sm:right-0 sm:top-full sm:z-20 sm:mt-2 sm:w-56"
+                >
+                  <button
+                    type="button"
+                    on-click="openManualRestart($event)"
+                    class="w-full rounded-lg px-3 py-2 text-left text-sm text-flow-foreground hover:bg-flow-panel"
                   >
-                    <lucide-icon icon="chevron-down" size="14"></lucide-icon>
-                  </summary>
-                  <div
-                    class="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-flow-border bg-white p-2 shadow-xl"
-                  >
-                    <button
-                      type="button"
-                      on-click="openManualRestart($event)"
-                      class="w-full rounded-lg px-3 py-2 text-left text-sm text-flow-foreground hover:bg-flow-panel"
-                    >
-                      Restart with inputs
-                    </button>
-                  </div>
-                </details>
-              </div>
+                    Restart with inputs
+                  </button>
+                </div>
+              </details>
             </template>
           </div>
+          <template if="restartError">
+            <p
+              class="basis-full rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800"
+              role="alert"
+            >
+              {{ restartError }}
+            </p>
+          </template>
         </header>
         <section
           class="detail-meta grid divide-y divide-flow-border rounded-xl border border-flow-border bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0"
@@ -129,7 +144,7 @@
                 >Worker</span
               >
               <span class="mt-1 block truncate text-xs text-flow-foreground sm:text-sm"
-                >{{ report.workerId || 'Awaiting worker' }}</span
+                >{{ report.workerName || report.workerId || 'Awaiting worker' }}</span
               >
             </div>
           </div>
@@ -235,7 +250,7 @@
           aria-label="Run details"
         >
           <nav
-            class="grid grid-cols-2 gap-1 border-b border-flow-border px-3 pt-3 sm:flex sm:flex-wrap sm:gap-1.5 sm:px-6"
+            class="grid grid-cols-5 gap-0.5 border-b border-flow-border px-2 pt-2 sm:flex sm:flex-wrap sm:gap-1.5 sm:px-6 sm:pt-3"
             role="tablist"
             aria-label="Run details tabs"
           >
@@ -244,11 +259,14 @@
                 type="button"
                 role="tab"
                 on-click="selectDetailTab(tab.id)"
-                class="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-t-md border-b-2 border-transparent px-2 pb-3 pt-2 text-sm text-flow-secondary transition-colors hover:bg-flow-panel hover:text-flow-primary aria-[selected=true]:border-flow-primary aria-[selected=true]:bg-flow-green-bg aria-[selected=true]:font-bold aria-[selected=true]:text-[#174522] sm:w-auto sm:justify-start sm:px-3"
+                class="inline-flex min-w-0 w-full cursor-pointer items-center justify-center gap-2 rounded-t-md border-b-2 border-transparent px-1 pb-2 pt-2 text-xs text-flow-secondary transition-colors hover:bg-flow-panel hover:text-flow-primary aria-[selected=true]:border-flow-primary aria-[selected=true]:bg-flow-green-bg aria-[selected=true]:font-bold aria-[selected=true]:text-[#174522] sm:w-auto sm:justify-start sm:px-3 sm:pb-3 sm:text-sm"
                 attr-aria-selected="tab.isActive ? 'true' : 'false'"
+                attr-aria-label="tab.label"
+                attr-title="tab.label"
+                class-hidden="!tab.visible"
               >
                 <lucide-icon bind-icon="tab.icon" size="15"></lucide-icon>
-                {{ tab.label }}
+                <span class="sr-only">{{ tab.label }}</span>
               </button>
             </template>
           </nav>
@@ -360,7 +378,7 @@
               </div>
             </div>
           </div>
-          <div class-hidden="detailTab !== 'inputs'">
+          <div class-hidden="detailTab !== 'inputs' || !report.canViewInputs">
             <code-block
               language="json"
               theme="googlecode"
@@ -369,7 +387,7 @@
             ></code-block>
           </div>
           <div class-hidden="detailTab !== 'artifacts'">
-            <div class-hidden="!report.canViewLogs || !report.artifacts.length">
+            <div class-hidden="!report.canViewArtifacts || !report.artifacts.length">
               <ul class="divide-y divide-flow-border">
                 <template for="artifact of report.artifacts">
                   <li class="px-5 py-4">
@@ -383,8 +401,12 @@
                 </template>
               </ul>
             </div>
-            <p class="p-6 text-sm text-flow-secondary" class-hidden="report.canViewLogs && report.artifacts.length">
-              No artifacts available for this run.
+            <p
+              class="p-6 text-sm text-flow-secondary"
+              class-hidden="report.canViewArtifacts && report.artifacts.length"
+            >
+              {{ report.canViewArtifacts ? 'No artifacts available for this run.' : 'You do not have access to this
+              run\'s artifacts.' }}
             </p>
           </div>
           <div class-hidden="detailTab !== 'history'">
@@ -394,7 +416,7 @@
                 <template for="run of previousRuns">
                   <li>
                     <a
-                      attr-href="'/runs/' + run.id"
+                      attr-href="'/ui/runs/' + run.id"
                       class="flex items-center justify-between gap-3 px-5 py-4 text-sm text-flow-foreground hover:bg-flow-panel"
                     >
                       <span><span class="font-mono">#{{ run.id }}</span> · {{ formatDate(run.startedAt) }}</span>
@@ -407,9 +429,9 @@
             <p class="p-6 text-sm text-flow-secondary" class-hidden="previousRuns.length">No previous runs.</p>
           </div>
           <div class-hidden="detailTab !== 'source'">
-            <div class="flex justify-end border-b border-flow-border px-4 py-2" class-hidden="!isAdmin">
+            <div class="flex justify-end border-b border-flow-border px-4 py-2" class-hidden="!report.canEditWorkflow">
               <a
-                attr-href="'/workflows/' + report.workflowId"
+                attr-href="'/ui/workflows/' + report.workflowId"
                 class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-flow-primary outline-none transition hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
               >
                 <lucide-icon icon="pencil" size="15"></lucide-icon>Edit workflow
@@ -487,7 +509,7 @@
             </form>
           </aside>
         </template>
-        <template if="report.canViewLogs && report.artifacts.length">
+        <template if="report.canViewArtifacts && report.artifacts.length">
           <details class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
             <summary
               class="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 outline-none transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-indigo-400/60"
@@ -510,7 +532,7 @@
         </template>
       </main>
 
-      <script setup src="/run.mjs"></script>
+      <script setup src="/assets/run.mjs"></script>
     </template>
 
     <script type="module">

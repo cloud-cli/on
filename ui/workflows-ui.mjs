@@ -2,16 +2,28 @@ import { onDestroy, onInit, ref, templateRef } from "@li3/web";
 import { diffLines } from "diff";
 import { navigateTo } from "@app/app-router.mjs";
 import { apiFetch } from "@app/api-client.mjs";
+import {
+  canInsertRecipe,
+  commitRecipeInsertion,
+  matchesRecipeSearch,
+  prepareRecipeInsertion,
+} from "@app/recipe-insertion.mjs";
 
 export default function () {
   const params = new URLSearchParams(window.location.search);
-  const workflowPath = window.location.pathname.match(/^\/(?:settings\/)?workflows\/(new|[a-z0-9-]+)$/);
+  const workflowPath = window.location.pathname
+    .replace(/^\/ui/, "")
+    .match(/^\/(?:settings\/)?workflows\/(new|[a-z0-9-]+)$/);
   const page = workflowPath ? "editor" : document.body.dataset.page || params.get("page") || "workflows";
   const pathWorkflowId = workflowPath && workflowPath[1] !== "new" ? workflowPath[1] : "";
   const initialId = params.get("id") || pathWorkflowId;
   const initialRevision = params.get("revision") ? Number(params.get("revision")) : null;
   const readOnly = Boolean(initialRevision);
   const workflows = ref([]);
+  const availableWorkspaces = ref([]);
+  const workspacesLoading = ref(page === "editor");
+  const initialWorkspaceId = params.get("workspaceId") || localStorage.getItem("runner-team-id") || "";
+  const selectedWorkspaceId = ref(initialWorkspaceId);
   const secrets = ref([]);
   const source = ref("");
   const validation = ref({ valid: true });
@@ -47,6 +59,47 @@ export default function () {
   const helpContent = templateRef("helpContent");
   const helpLoaded = ref(false);
   const helpLoading = ref(false);
+  const recipeDialogOpen = ref(false);
+  const recipes = ref([]);
+  const recipeSearch = ref("");
+  const recipeError = ref("");
+  const selectedRecipe = ref(null);
+  const recipeLoading = ref(false);
+  const recipeSnapshot = ref("");
+  const recipePreview = ref(null);
+  const recipeFocusReturn = ref(null);
+  const closeRecipePicker = () => {
+    recipeDialogOpen.value = false;
+    recipePreview.value = null;
+    recipeFocusReturn.value?.focus();
+  };
+  const recipeKeydown = (event) => {
+    if (!recipeDialogOpen.value) {
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeRecipePicker();
+    } else if (event.key === "Tab") {
+      const controls = [
+        ...document.querySelectorAll(
+          "[data-recipe-dialog] button:not(:disabled):not(.hidden):not([hidden]), [data-recipe-dialog] input:not(.hidden):not([hidden])",
+        ),
+      ];
+      if (!controls.length) {
+        return;
+      }
+      if (event.shiftKey && document.activeElement === controls[0]) {
+        event.preventDefault();
+        controls.at(-1).focus();
+      } else if (!event.shiftKey && document.activeElement === controls.at(-1)) {
+        event.preventDefault();
+        controls[0].focus();
+      }
+    }
+  };
+  const hasRecipeSearchResults = () => recipes.value.some((recipe) => matchesRecipeSearch(recipe, recipeSearch.value));
+  document.addEventListener("keydown", recipeKeydown);
   let validationTimer;
 
   const showNotice = (message, error = false, showRunsLink = false) => {
@@ -56,13 +109,17 @@ export default function () {
   };
 
   const api = async (url, options = {}) => {
+    const requestHeaders = {
+      "X-Team-ID": selectedWorkspaceId.value,
+      ...(options.headers || {}),
+    };
     const response = await apiFetch(url, {
       ...options,
       credentials: "same-origin",
       headers: {
         accept: "application/json",
         ...(options.body ? { "content-type": "application/json" } : {}),
-        ...(options.headers || {}),
+        ...requestHeaders,
       },
     });
     const body = response.status === 204 ? null : await response.json().catch(() => ({}));
@@ -89,15 +146,95 @@ export default function () {
   };
 
   const loadWorkflows = async () => {
-    workflows.value = (await api("/api/workflows")).workflows;
+    const { workspaces = [] } = await api("/api/v1/workspaces", { headers: { "X-Team-ID": "" } });
+    const results = await Promise.all(
+      workspaces.map(async (workspace) => {
+        try {
+          const data = await api("/api/v1/workflows", { headers: { "X-Team-ID": workspace.id } });
+          return (data.workflows || []).map((workflow) => ({
+            ...workflow,
+            workspaceId: workspace.id,
+            workspaceName: workspace.name,
+          }));
+        } catch (error) {
+          console.error(`Unable to load workflows for workspace ${workspace.id}`, error);
+          return null;
+        }
+      }),
+    );
+    workflows.value = results.filter(Boolean).flat();
+    if (results.some((result) => result === null)) {
+      showNotice("Some workspaces' workflows could not be loaded.", true);
+    }
   };
 
   const loadSecrets = async () => {
-    secrets.value = (await api("/api/secrets")).secrets;
+    secrets.value = (await api("/api/v1/secrets")).secrets;
+  };
+
+  const persistWorkspaceSelection = (workspaceId) => {
+    if (workspaceId) {
+      localStorage.setItem("runner-team-id", workspaceId);
+    } else {
+      localStorage.removeItem("runner-team-id");
+    }
+    window.dispatchEvent(new CustomEvent("runner-team-changed", { detail: { teamId: workspaceId } }));
+  };
+
+  const loadWorkspaceOptions = async () => {
+    workspacesLoading.value = true;
+    try {
+      const { workspaces: result = [] } = await api("/api/v1/workspaces", { headers: { "X-Team-ID": "" } });
+      availableWorkspaces.value = result;
+      const currentSelectionExists = result.some((workspace) => workspace.id === selectedWorkspaceId.value);
+      if (!currentSelectionExists) {
+        selectedWorkspaceId.value = result.length === 1 ? result[0].id : "";
+      }
+      persistWorkspaceSelection(selectedWorkspaceId.value);
+    } finally {
+      workspacesLoading.value = false;
+    }
+  };
+
+  const setWorkspace = async (event) => {
+    const workspaceId = event.target.value;
+    if (!availableWorkspaces.value.some((workspace) => workspace.id === workspaceId)) {
+      event.target.value = selectedWorkspaceId.value;
+      return;
+    }
+    const sourceWorkspaceId = selectedWorkspaceId.value;
+    if (selectedId.value && workspaceId !== sourceWorkspaceId) {
+      await run(async () => {
+        if (readOnly) {
+          throw new Error("Revision snapshots cannot be moved between workspaces.");
+        }
+        await api(`/api/v1/workflows/${selectedId.value}/transfer`, {
+          method: "POST",
+          headers: { "X-Team-ID": sourceWorkspaceId },
+          body: JSON.stringify({ targetWorkspaceId: workspaceId }),
+        });
+        selectedWorkspaceId.value = workspaceId;
+        persistWorkspaceSelection(workspaceId);
+        await openWorkflow(selectedId.value);
+        showNotice("Draft moved to the selected workspace.");
+      });
+      return;
+    }
+    selectedWorkspaceId.value = workspaceId;
+    persistWorkspaceSelection(workspaceId);
+    if (initialId && !selectedId.value) {
+      try {
+        await openWorkflow(initialId);
+      } catch (error) {
+        showNotice(error.message, true);
+      }
+    }
   };
 
   const openWorkflow = async (id) => {
-    const workflowUrl = initialRevision ? `/api/workflows/${id}?revision=${initialRevision}` : `/api/workflows/${id}`;
+    const workflowUrl = initialRevision
+      ? `/api/v1/workflows/${id}?revision=${initialRevision}`
+      : `/api/v1/workflows/${id}`;
     const workflow = await api(workflowUrl);
     selectedId.value = workflow.id;
     workflowId.value = workflow.id;
@@ -109,7 +246,7 @@ export default function () {
   };
 
   const validateSource = async () => {
-    return api("/api/workflows/validate", {
+    return api("/api/v1/workflows/validate", {
       method: "POST",
       body: JSON.stringify({ sourceYaml: source.value }),
     });
@@ -135,6 +272,9 @@ export default function () {
 
   const save = () =>
     run(async () => {
+      if (!availableWorkspaces.value.some((workspace) => workspace.id === selectedWorkspaceId.value)) {
+        throw new Error("Choose a workspace before saving this workflow.");
+      }
       const id = selectedId.value || workflowId.value;
       if (
         initialId &&
@@ -145,7 +285,7 @@ export default function () {
         showNotice("No changes to save.");
         return;
       }
-      const workflow = await api(`/api/workflows/${id}`, {
+      const workflow = await api(`/api/v1/workflows/${id}`, {
         method: "PUT",
         body: JSON.stringify({ sourceYaml: source.value, enabled: enabled.value }),
       });
@@ -156,7 +296,11 @@ export default function () {
       revision.value = workflow.revision;
       showNotice(`Saved draft revision ${workflow.revision}.`);
       if (!initialId) {
-        history.replaceState(null, "", `/workflows/${workflow.id}`);
+        history.replaceState(
+          null,
+          "",
+          `/ui/workflows/${workflow.id}?workspaceId=${encodeURIComponent(selectedWorkspaceId.value)}`,
+        );
       }
     });
   const publish = () =>
@@ -165,7 +309,8 @@ export default function () {
       if (!id) {
         throw new Error("Save a workflow before publishing it.");
       }
-      const workflow = await api(`/api/workflows/${id}/publish`, { method: "POST" });
+      const workflow = await api(`/api/v1/workflows/${id}/publish`, { method: "POST" });
+
       selectedId.value = workflow.id;
       revision.value = workflow.revision;
       showNotice(`Published revision ${workflow.revision}.`);
@@ -179,7 +324,7 @@ export default function () {
       if (source.value !== savedSource.value) {
         throw new Error("Save the latest draft before running it.");
       }
-      const result = await api(`/api/workflows/${id}/run`, {
+      const result = await api(`/api/v1/workflows/${id}/run`, {
         method: "POST",
         body: JSON.stringify({}),
       });
@@ -195,8 +340,9 @@ export default function () {
       if (!id || !confirm(`Delete ${id} and all of its revisions?`)) {
         return;
       }
-      await api(`/api/workflows/${id}`, { method: "DELETE" });
-      navigateTo("/workflows");
+      await api(`/api/v1/workflows/${id}`, { method: "DELETE" });
+
+      navigateTo("/ui/workflows");
     });
   const saveSecret = () =>
     run(async () => {
@@ -208,7 +354,7 @@ export default function () {
       if (!name || (fileMode.value ? !secretFileData.value : !secretValue.value)) {
         throw new Error(fileMode.value ? "Choose a file first." : "Set a secret value first.");
       }
-      await api(`/api/secrets/${name}`, {
+      await api(`/api/v1/secrets/${name}`, {
         method: "PUT",
         body: JSON.stringify(
           fileMode.value
@@ -235,7 +381,8 @@ export default function () {
       if (!name || !confirm(`Delete ${name}?`)) {
         return;
       }
-      await api(`/api/secrets/${name}`, { method: "DELETE" });
+      await api(`/api/v1/secrets/${name}`, { method: "DELETE" });
+
       if (secretName.value.trim().toUpperCase() === name) {
         secretName.value = "";
         secretValue.value = "";
@@ -253,8 +400,26 @@ export default function () {
     source.value = value;
     validate();
   };
-  const setEnabled = (event) => {
-    enabled.value = event.target.checked;
+  const setEnabled = async (event) => {
+    const nextEnabled = event.target.checked;
+    if (!selectedId.value || readOnly) {
+      enabled.value = nextEnabled;
+      return;
+    }
+    const previous = enabled.value;
+    await run(async () => {
+      await api(`/api/v1/workflows/${selectedId.value}/enabled`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: nextEnabled }),
+      });
+      enabled.value = nextEnabled;
+      savedEnabled.value = nextEnabled;
+      showNotice(nextEnabled ? "Workflow enabled." : "Workflow disabled.");
+    });
+    if (noticeError.value) {
+      enabled.value = previous;
+      event.target.checked = previous;
+    }
   };
   const setSecretName = (event) => {
     secretName.value = event.target.value;
@@ -300,9 +465,6 @@ export default function () {
     secretName.value = name;
     secretValueInput.value?.focus();
   };
-  const visitWorkflow = (id) => {
-    navigateTo(`/workflows/${id}`);
-  };
   const loadHelp = async (event) => {
     if (!event.target.open || helpLoaded.value || helpLoading.value || !helpContent.value) {
       return;
@@ -310,7 +472,7 @@ export default function () {
     helpLoading.value = true;
     helpContent.value.textContent = "Loading workflow syntax help...";
     try {
-      const response = await fetch("/help?embed=1", { headers: { accept: "text/html" } });
+      const response = await fetch("/ui/help?embed=1", { headers: { accept: "text/html" } });
       if (!response.ok) {
         throw new Error(`Help request failed: ${response.status}`);
       }
@@ -370,8 +532,8 @@ export default function () {
     revisionLoading.value = true;
     revisionError.value = "";
     try {
-      const current = await api(`/api/workflows/${selectedId.value}?revision=${number}`);
-      const previous = number > 1 ? await api(`/api/workflows/${selectedId.value}?revision=${number - 1}`) : null;
+      const current = await api(`/api/v1/workflows/${selectedId.value}?revision=${number}`);
+      const previous = number > 1 ? await api(`/api/v1/workflows/${selectedId.value}?revision=${number - 1}`) : null;
       revisionDiffHtml.value = renderRevisionDiff(previous?.sourceYaml ?? null, current.sourceYaml);
     } catch (error) {
       revisionError.value = error.message;
@@ -410,7 +572,7 @@ export default function () {
     aiError.value = "";
     aiDiffHtml.value = "";
     try {
-      const response = await apiFetch("/api/ai/workflow-help", {
+      const response = await apiFetch("/api/v1/ai/workflow-help", {
         method: "POST",
         credentials: "same-origin",
         headers: { accept: "text/event-stream", "content-type": "application/json" },
@@ -473,24 +635,103 @@ export default function () {
     aiSuggestion.value = "";
     aiDiffHtml.value = "";
   };
+  const openRecipePicker = async () => {
+    recipeSearch.value = "";
+    recipeError.value = "";
+    selectedRecipe.value = null;
+    recipePreview.value = null;
+    recipeSnapshot.value = source.value;
+    recipeFocusReturn.value = document.activeElement;
+    recipeLoading.value = true;
+    recipeDialogOpen.value = true;
+    requestAnimationFrame(() => document.querySelector("#recipe-search")?.focus());
+    try {
+      const result = await apiFetch("/api/v1/recipes", { headers: { accept: "application/json" } });
+      const body = await result.json();
+      if (!result.ok) {
+        throw new Error(body.error || "Unable to load recipes");
+      }
+      recipes.value = body.recipes || [];
+    } catch (error) {
+      recipeError.value = error.message || "Unable to load recipes";
+    } finally {
+      recipeLoading.value = false;
+    }
+  };
+  const selectRecipe = (recipe) => {
+    selectedRecipe.value = recipe;
+    recipePreview.value = recipe.revoked
+      ? null
+      : prepareRecipeInsertion(source.value, `${recipe.namespace}/${recipe.slug}@v${recipe.version}`);
+  };
+  const insertSelectedRecipe = () => {
+    const recipe = selectedRecipe.value;
+    if (!canInsertRecipe(recipe)) {
+      return;
+    }
+    const result = commitRecipeInsertion(
+      source.value,
+      recipeSnapshot.value,
+      recipePreview.value,
+      recipePreview.value?.confirmed,
+    );
+    if (!result.inserted && !result.needsConfirmation) {
+      recipeError.value = result.reason;
+      return;
+    }
+    if (result.needsConfirmation) {
+      recipePreview.value = { ...recipePreview.value, confirmed: true };
+      return;
+    }
+    source.value = result.source;
+    validate();
+    closeRecipePicker();
+  };
+  const copyRecipeSnippet = async () => {
+    if (!recipePreview.value?.snippet) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(recipePreview.value.snippet);
+      recipeError.value = "Snippet copied. Workflow YAML was not changed.";
+    } catch {
+      recipeError.value = "Clipboard unavailable. Select and copy the snippet below; workflow YAML was not changed.";
+    }
+  };
 
-  onDestroy(() => clearTimeout(validationTimer));
+  onDestroy(() => {
+    clearTimeout(validationTimer);
+    document.removeEventListener("keydown", recipeKeydown);
+  });
 
   onInit(() => {
-    const loadPage =
-      page === "editor"
-        ? initialId
-          ? openWorkflow(initialId)
-          : Promise.resolve()
-        : page === "secrets"
-          ? loadSecrets()
-          : loadWorkflows();
+    const loadEditor = async () => {
+      await loadWorkspaceOptions();
+      if (initialId && selectedWorkspaceId.value) {
+        await openWorkflow(initialId);
+      }
+    };
+    const loadPage = page === "editor" ? loadEditor() : page === "secrets" ? loadSecrets() : loadWorkflows();
     loadPage.catch((error) => showNotice(error.message, true));
   });
 
   return {
     page,
+    recipeDialogOpen,
+    recipes,
+    recipeSearch,
+    recipeError,
+    selectedRecipe,
+    recipeLoading,
+    recipePreview,
+    matchesRecipeSearch,
+    canInsertRecipe,
+    commitRecipeInsertion,
+    hasRecipeSearchResults,
     workflows,
+    availableWorkspaces,
+    workspacesLoading,
+    selectedWorkspaceId,
     secrets,
     source,
     validation,
@@ -526,13 +767,13 @@ export default function () {
     saveSecret,
     removeSecret,
     setSource,
+    setWorkspace,
     setEnabled,
     setSecretName,
     setSecretValue,
     setFileMode,
     setSecretFile,
     selectSecret,
-    visitWorkflow,
     loadHelp,
     openRevisionDialog,
     closeRevisionDialog,
@@ -542,5 +783,10 @@ export default function () {
     requestAiHelp,
     acceptAiSuggestion,
     rejectAiSuggestion,
+    openRecipePicker,
+    selectRecipe,
+    insertSelectedRecipe,
+    copyRecipeSnippet,
+    closeRecipePicker,
   };
 }
