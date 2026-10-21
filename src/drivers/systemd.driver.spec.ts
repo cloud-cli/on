@@ -40,6 +40,7 @@ describe("systemd driver container environment", () => {
     const systemdEnv = args.filter((arg) => arg.startsWith("--setenv=WORKING_DIR="));
     expect(systemdEnv).toEqual(["--setenv=WORKING_DIR=/workspace"]);
     expect(args.some((arg) => arg.startsWith("--setenv=HOME="))).toBe(true);
+    expect(args).toContain("--quiet");
     expect(args).toContain("-w");
     expect(args).toContain("/workspace");
     expect(args).toContain("-e");
@@ -49,6 +50,24 @@ describe("systemd driver container environment", () => {
 
     child.emit("close", 0, null);
     await handle.done;
+  });
+
+  it("suppresses systemd-run footers without dropping step diagnostics", async () => {
+    const handle = new SystemdDriver().execute({
+      jobId: "43",
+      step: { id: "diagnostic" },
+      command: "echo diagnostic >&2",
+      workingDir: join(tempDirectory, "worker", "wd"),
+      logsDir: join(tempDirectory, "logs"),
+      env: {},
+    } as any);
+
+    expect(spawnMock.mock.calls[0][1]).toContain("--quiet");
+    child.stderr.emit("data", Buffer.from("step diagnostic\n"));
+    child.emit("close", 0, null);
+    await handle.done;
+
+    expect(await new SystemdDriver().readLog(handle.logFilePath)).toMatch(/\] step diagnostic\n$/);
   });
 });
 

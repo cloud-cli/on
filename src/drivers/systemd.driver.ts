@@ -56,6 +56,9 @@ export class SystemdDriver implements ExecutionDriver {
       `--unit=${unitName}`,
       "--wait",
       "--pipe",
+      // --wait emits systemd unit status/resource footers on the same streams as step output.
+      // --quiet suppresses only systemd-run's informational messages, not child stdout/stderr.
+      "--quiet",
       "--collect",
       "-p",
       "RemainAfterExit=no",
