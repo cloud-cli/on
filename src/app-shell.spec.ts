@@ -97,7 +97,8 @@ describe("Flow application shell", () => {
     expect(shellSetup).toContain('path.startsWith("/workspaces/")');
     expect(html).toContain(">Your workspaces</p>");
     expect(html).toContain("px-3 py-2.5 text-sm text-flow-secondary");
-    expect(html).toContain("grid-cols-4");
+    expect(html).toContain("grid-cols-3");
+    expect(html).not.toContain("grid-cols-4");
   });
 
   it("handles Enter and Space on the skip link without triggering browser navigation", () => {
