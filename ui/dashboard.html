@@ -55,7 +55,7 @@
           >
           <template if="!workflowsLoading && !workflowsError && workflows.length > 0">
             <form
-              class="grid gap-3 md:grid-cols-[minmax(12rem,1fr)_12rem_12rem_auto]"
+              class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_12rem_12rem_auto]"
               on-submit.prevent="applyFilter()"
             >
               <label class="sr-only" for="job-filter">Search runs</label>
@@ -63,7 +63,7 @@
                 id="job-filter"
                 bind-value="filter"
                 on-input="setFilter($event)"
-                class="min-w-0 rounded-lg border border-flow-border bg-white px-3 py-2 text-sm outline-none focus:border-flow-primary"
+                class="w-full min-w-0 max-w-full rounded-lg border border-flow-border bg-white px-3 py-2 text-sm outline-none focus:border-flow-primary"
                 placeholder="Search runs, workflows, or workers"
               />
               <label class="sr-only" for="workflow-filter">Workflow</label>
@@ -71,7 +71,7 @@
                 id="workflow-filter"
                 bind-value="workflowFilter"
                 on-change="setWorkflowFilter($event)"
-                class="rounded-lg border border-flow-border bg-white px-3 py-2 text-sm"
+                class="w-full min-w-0 max-w-full rounded-lg border border-flow-border bg-white px-3 py-2 text-sm"
               >
                 <option value="">All workflows</option>
                 <template for="workflow of workflows"
@@ -83,7 +83,7 @@
                 id="worker-filter"
                 bind-value="workerFilter"
                 on-change="setWorkerFilter($event)"
-                class="rounded-lg border border-flow-border bg-white px-3 py-2 text-sm"
+                class="w-full min-w-0 max-w-full rounded-lg border border-flow-border bg-white px-3 py-2 text-sm"
               >
                 <option value="">All workers</option>
                 <template for="worker of workers"><option attr-value="worker.id">{{ worker.name }}</option></template>
@@ -109,7 +109,12 @@
                 </button></template
               >
             </nav>
-            <div class="overflow-x-auto">
+            <div
+              class="min-w-0 max-w-full overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flow-primary"
+              role="region"
+              aria-label="Runs table"
+              tabindex="0"
+            >
               <table class="w-full min-w-[680px] text-left text-sm">
                 <thead class="border-b border-flow-border text-xs text-flow-secondary">
                   <tr>
@@ -124,7 +129,9 @@
                   <template for="job of visibleJobs()"
                     ><tr class="border-b border-flow-border last:border-0 hover:bg-flow-panel">
                       <td class="px-3 py-3">
-                        <a attr-href="'/ui/runs/' + job.id" class="font-medium text-flow-foreground hover:underline"
+                        <a
+                          attr-href="'/ui/runs/' + job.id"
+                          class="font-medium text-flow-foreground hover:underline [overflow-wrap:anywhere]"
                           >{{ workflowName(job.workflowId) }}</a
                         >
                       </td>

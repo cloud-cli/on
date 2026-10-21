@@ -129,4 +129,18 @@ describe("dashboard", () => {
     expect(countClass).toBeDefined();
     expect(countClass).not.toContain("font-semibold");
   });
+
+  it("constrains long filter labels and keeps runs-table overflow local on mobile", () => {
+    const html = readFileSync(resolve(process.cwd(), "ui/dashboard.html"), "utf8");
+
+    expect(html).toContain("grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2");
+    expect(html).toContain("xl:grid-cols-[minmax(0,1fr)_12rem_12rem_auto]");
+    expect(html.match(/<select[\s\S]*?class="([^"]+)"/g)).toHaveLength(2);
+    expect(
+      html.match(/<select[\s\S]*?class="([^"]+)"/g)?.every((select) => select.includes("w-full min-w-0 max-w-full")),
+    ).toBe(true);
+    expect(html).toContain('role="region"\n              aria-label="Runs table"\n              tabindex="0"');
+    expect(html).toContain("min-w-0 max-w-full overflow-x-auto");
+    expect(html).toContain("[overflow-wrap:anywhere]");
+  });
 });
