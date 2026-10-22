@@ -57,6 +57,7 @@ import {
   type WorkspaceCapability,
 } from "./permissions.js";
 import db from "./db-client.js";
+import { logUnhandledHttpError, startHttpRequestLog } from "./http-request-logger.js";
 
 function isSafeRunnerFilePath(value: string): boolean {
   return (
@@ -197,7 +198,9 @@ export class WebhookServer {
 
     this.registerPreprocessor(new GitHubPreprocessor());
     this.server = http.createServer((req, res) => {
+      const requestId = startHttpRequestLog(req, res);
       void this.handleRequest(req, res).catch((error: unknown) => {
+        logUnhandledHttpError(req, requestId, error);
         if (res.headersSent) {
           res.destroy(error instanceof Error ? error : undefined);
           return;
