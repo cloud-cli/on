@@ -37,9 +37,9 @@ export default function () {
     activeTransientPage = null;
     routeMessage?.remove();
     const main = document.createElement("main");
-    main.className = "mx-auto mt-16 w-full max-w-lg rounded-2xl border border-flow-border bg-white p-8 shadow-sm";
+    main.className = "mx-auto mt-16 w-full max-w-lg rounded-2xl border border-app-border bg-white p-8 shadow-sm";
     main.innerHTML =
-      '<p class="text-sm font-semibold uppercase tracking-wide text-flow-primary">Welcome to Flow</p><h1 class="mt-3 text-2xl font-semibold">Create your first workspace</h1><p class="mt-2 text-sm text-flow-secondary">Workspaces keep related workflows, runs, and secrets together.</p><form class="mt-6 space-y-4"><label class="block text-sm font-medium" for="first-team-name">Workspace name</label><input id="first-team-name" name="name" required maxlength="100" autocomplete="organization" class="w-full rounded-lg border border-flow-border px-3 py-2" placeholder="Home automation"><p class="hidden text-sm text-rose-700" role="alert"></p><button class="rounded-lg bg-flow-primary px-4 py-2 font-semibold text-white">Create workspace</button></form>';
+      '<p class="text-sm font-semibold uppercase tracking-wide text-app-primary">Welcome</p><h1 class="mt-3 text-2xl font-semibold">Create your first workspace</h1><p class="mt-2 text-sm text-app-secondary">Workspaces keep related workflows, runs, and secrets together.</p><form class="mt-6 space-y-4"><label class="block text-sm font-medium" for="first-team-name">Workspace name</label><input id="first-team-name" name="name" required maxlength="100" autocomplete="organization" class="w-full rounded-lg border border-app-border px-3 py-2" placeholder="Home automation"><p class="hidden text-sm text-rose-700" role="alert"></p><button class="rounded-lg bg-app-primary px-4 py-2 font-semibold text-white">Create workspace</button></form>';
     const form = main.querySelector("form");
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -80,13 +80,13 @@ export default function () {
         success.append(confirmation);
         if (result.webhookPath) {
           const webhook = document.createElement("p");
-          webhook.className = "break-all rounded-lg bg-flow-sidebar p-3";
+          webhook.className = "break-all rounded-lg bg-app-sidebar p-3";
           webhook.textContent = `Webhook endpoint: ${result.webhookPath}`;
           success.append(webhook);
         }
         const continueButton = document.createElement("button");
-        continueButton.className = "rounded-lg bg-flow-primary px-4 py-2 font-semibold text-white";
-        continueButton.textContent = "Continue to Flow";
+        continueButton.className = "rounded-lg bg-app-primary px-4 py-2 font-semibold text-white";
+        continueButton.textContent = "Continue";
         continueButton.addEventListener("click", () => void navigate(true));
         success.append(continueButton);
         main.append(success);

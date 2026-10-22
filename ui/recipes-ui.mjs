@@ -1,7 +1,7 @@
 import { apiFetch } from "@app/api-client.mjs";
 import { onDestroy } from "@li3/web";
 
-const DRAFT_KEY = "flow-recipe-draft";
+const DRAFT_KEY = "on-recipe-draft";
 
 export default function () {
   const root = document.querySelector("[data-recipes-root]");
@@ -35,17 +35,17 @@ export default function () {
     }
     for (const recipe of result.recipes || []) {
       const card = document.createElement("article");
-      card.className = "rounded-2xl border border-flow-border bg-white p-5 shadow-sm";
+      card.className = "rounded-2xl border border-app-border bg-white p-5 shadow-sm";
       const title = document.createElement("h2");
       title.className = "text-lg font-semibold";
       title.textContent = recipe.name;
       const ref = document.createElement("p");
-      ref.className = "mt-1 font-mono text-sm text-flow-secondary";
+      ref.className = "mt-1 font-mono text-sm text-app-secondary";
       ref.textContent = `${recipe.namespace}/${recipe.slug}@v${recipe.version}${recipe.revoked ? " · revoked" : ""}`;
       const details = document.createElement("details");
       details.className = "mt-3";
       const summary = document.createElement("summary");
-      summary.className = "cursor-pointer text-sm text-flow-primary";
+      summary.className = "cursor-pointer text-sm text-app-primary";
       summary.textContent = "View source";
       const code = document.createElement("pre");
       code.className = "mt-2 max-h-80 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-white";
@@ -53,7 +53,7 @@ export default function () {
       details.append(summary, code);
       const newVersion = document.createElement("button");
       newVersion.type = "button";
-      newVersion.className = "mt-4 text-sm font-semibold text-flow-primary";
+      newVersion.className = "mt-4 text-sm font-semibold text-app-primary";
       newVersion.textContent = "Create a new version or fork";
       newVersion.addEventListener("click", () => {
         sessionStorage.setItem(
@@ -115,7 +115,7 @@ export default function () {
     const generation = ++validationGeneration;
     saveButton.disabled = true;
     validation.textContent = "Validating recipe and input JSON Schema…";
-    validation.className = "text-sm text-flow-secondary";
+    validation.className = "text-sm text-app-secondary";
     try {
       const response = await apiFetch("/api/v1/recipes/validate", {
         method: "POST",

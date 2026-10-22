@@ -30,14 +30,14 @@ describe("workflow management UI", () => {
     expect(workflowsSetup).toContain("showNotice(`Saved draft revision ${workflow.revision}.`)");
   });
 
-  it("defines every Flow color utility and keeps app pages free of inline styles", () => {
+  it("defines every app color utility and keeps app pages free of inline styles", () => {
     const sourceDir = new URL(".", import.meta.url).pathname;
     const pageFiles = readdirSync(sourceDir).filter((file) => file.endsWith(".html"));
     const pageSource = pageFiles.map((file) => readFileSync(join(sourceDir, file), "utf8")).join("\n");
     const theme = readFileSync(join(process.cwd(), "ui/index.css"), "utf8");
-    const tokens = new Set([...theme.matchAll(/--color-flow-([a-z-]+)\s*:/g)].map((match) => match[1]));
+    const tokens = new Set([...theme.matchAll(/--color-app-([a-z-]+)\s*:/g)].map((match) => match[1]));
     const usedTokens = new Set(
-      [...pageSource.matchAll(/(?:bg|text|border|divide|ring|shadow)-flow-([a-z-]+)/g)].map((match) => match[1]),
+      [...pageSource.matchAll(/(?:bg|text|border|divide|ring|shadow)-app-([a-z-]+)/g)].map((match) => match[1]),
     );
     const missingTokens = [...usedTokens].filter((token) => !tokens.has(token));
 
@@ -85,7 +85,7 @@ describe("workflow management UI", () => {
     expect(source).not.toContain("Workflows stay top-level and remain visible across workspaces.");
     expect(source.indexOf('id="workflow-workspace"')).toBeLessThan(source.indexOf('aria-label="Save workflow draft"'));
     expect(source).not.toContain('aria-label="Workflow count"');
-    expect(source).toContain("text-base font-semibold text-flow-foreground");
+    expect(source).toContain("text-base font-semibold text-app-foreground");
     expect(source).toContain('type="checkbox"');
     expect(source).toContain('bind-checked="enabled"');
     expect(source).not.toContain("Internal workflow ID");
@@ -131,9 +131,9 @@ describe("workflow management UI", () => {
     expect(workflowsSetup).toContain("await openWorkflow(initialId)");
     expect(source).toContain('href="/ui/workflows"');
     expect(source).toContain("Back to workflows");
-    expect(source).toContain('class="border-b border-flow-border px-4 pb-3 pt-3 sm:px-5"');
+    expect(source).toContain('class="border-b border-app-border px-4 pb-3 pt-3 sm:px-5"');
     expect(source).toContain('theme="googlecode"');
-    expect(source).not.toContain("border-b border-flow-border pb-4");
+    expect(source).not.toContain("border-b border-app-border pb-4");
     expect(source).not.toContain("<app-header");
     expect(source).not.toContain("Workflow control room");
     expect(source).not.toContain("Definitions</p>");

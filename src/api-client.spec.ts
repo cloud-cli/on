@@ -23,8 +23,8 @@ function installBrowser(responses: Response[]) {
     removeItem: (key: string) => localValues.delete(key),
   };
   const location: BrowserLocation = {
-    origin: "https://flow.example.test",
-    href: "https://flow.example.test/settings/tokens?tab=active#keys",
+    origin: "https://app.example.test",
+    href: "https://app.example.test/settings/tokens?tab=active#keys",
     pathname: "/settings/tokens",
     search: "?tab=active",
     hash: "#keys",
@@ -168,8 +168,8 @@ describe("browser API client sign-in recovery", () => {
       "runner-auth",
       expect.any(String),
     );
-    const popupUrl = new URL(window.open.mock.calls[0][0], "https://flow.example.test");
-    const returnUrl = new URL(popupUrl.searchParams.get("url") || "", "https://flow.example.test");
+    const popupUrl = new URL(window.open.mock.calls[0][0], "https://app.example.test");
+    const returnUrl = new URL(popupUrl.searchParams.get("url") || "", "https://app.example.test");
     const nonce = returnUrl.searchParams.get("__runner_auth_nonce");
     expect(nonce).toBeTruthy();
     expect(localStorage.getItem(`runner-auth-recovery:${nonce}`)).toBe("pending");
@@ -221,7 +221,7 @@ describe("browser API client sign-in recovery", () => {
         headers: { "content-type": "application/json" },
       }),
     ]);
-    location.href = "https://flow.example.test/settings/tokens?tab=active&__runner_auth_nonce=attempt-123#keys";
+    location.href = "https://app.example.test/settings/tokens?tab=active&__runner_auth_nonce=attempt-123#keys";
     localStorage.setItem("runner-auth-recovery:attempt-123", "pending");
     const popupWindow = globalThis.window as unknown as { opener: object; close: ReturnType<typeof vi.fn> };
     popupWindow.opener = {};

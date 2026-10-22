@@ -12,7 +12,7 @@ const principal = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 const request = (url: string, method = "GET", headers: Record<string, string> = {}) =>
-  ({ url, method, headers: { host: "flow.test", ...headers } }) as any;
+  ({ url, method, headers: { host: "app.test", ...headers } }) as any;
 
 describe("current IAM route authorization", () => {
   it("accepts pending subject invitations for the verified OIDC subject after login", async () => {
@@ -20,13 +20,13 @@ describe("current IAM route authorization", () => {
     const server = {
       oidc: {
         enabled: true,
-        completeLogin: vi.fn(async () => ({ cookie: "flow-session=opaque", returnTo: "/ui/runs" })),
+        completeLogin: vi.fn(async () => ({ cookie: "app-session=opaque", returnTo: "/ui/runs" })),
         userFromCookie: vi.fn(() => user),
         setRole: vi.fn(),
       },
       oidcUsers: { upsert: vi.fn(async () => {}), role: vi.fn(async () => "user") },
       teams: { acceptSubjectInvitations: vi.fn(async () => {}) },
-      oidcRedirectUri: vi.fn(() => "https://flow.test/auth/callback"),
+      oidcRedirectUri: vi.fn(() => "https://app.test/auth/callback"),
       isHttps: vi.fn(() => true),
     } as any;
     const res = response();
@@ -35,14 +35,14 @@ describe("current IAM route authorization", () => {
       server,
       request("/auth/callback"),
       res,
-      new URL("https://flow.test/auth/callback?code=auth-code&state=oidc-state"),
+      new URL("https://app.test/auth/callback?code=auth-code&state=oidc-state"),
     );
 
     expect(server.oidcUsers.upsert).toHaveBeenCalledWith(user);
     expect(server.teams.acceptSubjectInvitations).toHaveBeenCalledWith("auth-agent-sub");
     expect(res.writeHead).toHaveBeenCalledWith(
       302,
-      expect.objectContaining({ Location: "/ui/runs", "Set-Cookie": "flow-session=opaque; Secure" }),
+      expect.objectContaining({ Location: "/ui/runs", "Set-Cookie": "app-session=opaque; Secure" }),
     );
   });
 
@@ -148,7 +148,7 @@ describe("current IAM route authorization", () => {
       server,
       request("/api/workspaces", "GET", { authorization: "Bearer admin" }),
       res,
-      new URL("http://flow.test/api/workspaces"),
+      new URL("http://app.test/api/workspaces"),
     );
 
     expect(server.teams.listAll).toHaveBeenCalledOnce();
@@ -182,7 +182,7 @@ describe("current IAM route authorization", () => {
       server,
       request("/api/workspaces/unrelated/webhooks", "POST", { authorization: "Bearer admin" }),
       res,
-      new URL("http://flow.test/api/workspaces/unrelated/webhooks"),
+      new URL("http://app.test/api/workspaces/unrelated/webhooks"),
     );
 
     expect(server.authorizer.workspace).toHaveBeenCalledWith(expect.anything(), res, "webhooks.manage", "unrelated");

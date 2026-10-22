@@ -15,7 +15,7 @@ steps:
   - id: report-pending
     name: Report pending commit status
     run: |
-      payload=$(jq -n --arg state "pending" --arg target_url "$CI_JOB_URL" --arg description "Workflow migration test started." --arg context "flow2-github-migration-test" '{state: $state, target_url: $target_url, description: $description, context: $context}')
+      payload=$(jq -n --arg state "pending" --arg target_url "$CI_JOB_URL" --arg description "Workflow migration test started." --arg context "on-github-migration-test" '{state: $state, target_url: $target_url, description: $description, context: $context}')
       curl --fail --silent --show-error --max-time 10 \
         -X POST "https://api.github.com/repos/$TEST_OWNER/$TEST_REPO/statuses/$TEST_SHA" \
         -H "Accept: application/vnd.github+json" \
@@ -47,7 +47,7 @@ post:
         failed) state=failure; description="Workflow migration test failed." ;;
         *) state=error; description="Workflow migration test cancelled." ;;
       esac
-      payload=$(jq -n --arg state "$state" --arg target_url "$CI_JOB_URL" --arg description "$description" --arg context "flow2-github-migration-test" '{state: $state, target_url: $target_url, description: $description, context: $context}')
+      payload=$(jq -n --arg state "$state" --arg target_url "$CI_JOB_URL" --arg description "$description" --arg context "on-github-migration-test" '{state: $state, target_url: $target_url, description: $description, context: $context}')
       curl --fail --silent --show-error --max-time 10 \
         -X POST "https://api.github.com/repos/$TEST_OWNER/$TEST_REPO/statuses/$TEST_SHA" \
         -H "Accept: application/vnd.github+json" \

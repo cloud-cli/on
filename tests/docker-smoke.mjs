@@ -148,7 +148,7 @@ try {
 
   const appCss = await fetch(`${appBaseUrl}/on.css`);
   const appCssText = await appCss.text();
-  if (!appCss.ok || !appCssText.includes(".bg-flow-background")) {
+  if (!appCss.ok || !appCssText.includes(".bg-app-background")) {
     throw new Error("Tailwind application stylesheet failed");
   }
 

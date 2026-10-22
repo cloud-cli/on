@@ -1,10 +1,10 @@
 <template component="app-header">
   <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
-  <header class="mx-auto flex w-full max-w-[78rem] items-center justify-between gap-4 border-b border-flow-border pb-5">
+  <header class="mx-auto flex w-full max-w-[78rem] items-center justify-between gap-4 border-b border-app-border pb-5">
     <div class="flex min-w-0 items-start gap-3">
       <template if="back">
         <a
-          class="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-flow-border text-flow-muted no-underline outline-none hover:border-flow-primary hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/60"
+          class="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-app-border text-app-muted no-underline outline-none hover:border-app-primary hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary/60"
           attr-href="back"
           attr-aria-label="backLabel || 'Back'"
           attr-title="backLabel || 'Back'"
@@ -25,15 +25,15 @@
         </a>
       </template>
       <div>
-        <div class="text-[.7rem] font-bold uppercase tracking-[.16em] text-flow-primary">Runner engine</div>
-        <h1 class="mt-1 text-2xl font-bold tracking-tight text-flow-foreground">{{ title }}</h1>
-        <template if="subtitle"><p class="mt-1 text-xs text-flow-muted">{{ subtitle }}</p></template>
+        <div class="text-[.7rem] font-bold uppercase tracking-[.16em] text-app-primary">Runner engine</div>
+        <h1 class="mt-1 text-2xl font-bold tracking-tight text-app-foreground">{{ title }}</h1>
+        <template if="subtitle"><p class="mt-1 text-xs text-app-muted">{{ subtitle }}</p></template>
       </div>
     </div>
     <div class="flex items-center gap-2">
       <template if="!authenticated">
         <a
-          class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-flow-border text-flow-secondary no-underline outline-none hover:border-flow-primary hover:bg-flow-background hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/60"
+          class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-app-border text-app-secondary no-underline outline-none hover:border-app-primary hover:bg-app-background hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary/60"
           href="/ui/settings"
           aria-label="Settings"
           title="Settings"
@@ -43,13 +43,13 @@
       </template>
       <template if="authenticated">
         <a
-          class="text-xs text-flow-primary hover:text-flow-foreground"
+          class="text-xs text-app-primary hover:text-app-foreground"
           href="/ui/operations"
           class-hidden="!canViewOperations"
           >Operations</a
         >
         <select
-          class="max-w-40 rounded-lg border border-flow-border bg-flow-card px-2 py-2 text-xs text-flow-foreground outline-none focus:border-flow-primary"
+          class="max-w-40 rounded-lg border border-app-border bg-app-card px-2 py-2 text-xs text-app-foreground outline-none focus:border-app-primary"
           bind-value="activeTeamId"
           on-change="switchTeam($event)"
           attr-aria-label="Current team"
@@ -57,11 +57,11 @@
         >
           <template for="team of teams"><option attr-value="team.id">{{ team.name }}</option></template>
         </select>
-        <span class="hidden text-xs text-flow-muted sm:inline">{{ userName }}</span>
-        <a class="text-xs text-flow-primary hover:text-flow-foreground" href="/auth/logout">Sign out</a>
+        <span class="hidden text-xs text-app-muted sm:inline">{{ userName }}</span>
+        <a class="text-xs text-app-primary hover:text-app-foreground" href="/auth/logout">Sign out</a>
       </template>
       <a
-        class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-flow-border text-flow-secondary no-underline outline-none hover:border-flow-primary hover:bg-flow-background hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/60"
+        class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-app-border text-app-secondary no-underline outline-none hover:border-app-primary hover:bg-app-background hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary/60"
         href="/ui/help"
         aria-label="Help"
         title="Help"
@@ -84,7 +84,7 @@
       </a>
       <template if="authenticated">
         <a
-          class="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-flow-border text-flow-secondary no-underline outline-none hover:border-flow-primary hover:bg-flow-background hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/60"
+          class="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-app-border text-app-secondary no-underline outline-none hover:border-app-primary hover:bg-app-background hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary/60"
           href="/ui/settings"
           aria-label="Settings"
           title="Settings"

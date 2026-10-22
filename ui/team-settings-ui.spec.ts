@@ -20,13 +20,13 @@ describe("team settings UI", () => {
     expect(html).toContain('class-hidden="!isAdmin"');
     expect(html).toContain('script setup src="/assets/team-settings-ui.mjs"');
     expect(html).not.toContain("Personal settings</a>");
-    expect(html.match(/rounded-xl border border-flow-border bg-flow-card p-5/g)).toHaveLength(5);
+    expect(html.match(/rounded-xl border border-app-border bg-app-card p-5/g)).toHaveLength(5);
     expect(html).toContain('aria-label="Workspace settings sections"');
     expect(html).toContain(
-      'class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-flow-border bg-flow-background py-2"',
+      'class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-app-border bg-app-background py-2"',
     );
     expect(
-      html.match(/rounded-md border border-flow-border bg-white px-2\.5 py-1\.5 text-xs font-medium/g),
+      html.match(/rounded-md border border-app-border bg-white px-2\.5 py-1\.5 text-xs font-medium/g),
     ).toHaveLength(6);
     expect(html).toContain('href="#team-members"');
     expect(html).toContain('href="#team-webhooks"');
@@ -35,8 +35,8 @@ describe("team settings UI", () => {
     expect(html).toContain('href="#workspace-secrets"');
     expect(html).toContain('<h2 id="team-runners-title" class="text-lg font-semibold">Task Runners</h2>');
     expect(html).toContain('<h2 id="workspace-secrets-title" class="text-lg font-semibold">Task Runner Secrets</h2>');
-    expect(html).toContain("bg-flow-warning/10");
-    expect(html).toContain("text-flow-warning");
+    expect(html).toContain("bg-app-warning/10");
+    expect(html).toContain("text-app-warning");
     expect(html).not.toContain('value="github"');
     expect(html).toContain('on-change="setFileMode($event)"');
     expect(html).toContain('on-input="setWebhookProvider($event)"');
@@ -58,7 +58,7 @@ describe("team settings UI", () => {
     const html = generateTeamSettingsHtml();
     const members = html.indexOf('id="team-members"');
     const invitationForm = html.indexOf('on-submit.prevent="createInvitation()"');
-    const invitationSection = html.lastIndexOf('class="mt-6 border-t border-flow-border pt-5"', invitationForm);
+    const invitationSection = html.lastIndexOf('class="mt-6 border-t border-app-border pt-5"', invitationForm);
     const webhooks = html.indexOf('id="team-webhooks"');
     const secrets = html.indexOf('id="workspace-secrets"');
     const tokens = html.indexOf('id="workspace-tokens"');
@@ -146,17 +146,15 @@ describe("team settings UI", () => {
     const html = readFileSync(new URL("../src/teams-landing.html", import.meta.url), "utf8");
     const landing = readFileSync(new URL("../src/teams-landing.mjs", import.meta.url), "utf8");
     expect(html).toContain('<h1 class="text-2xl font-semibold">Your workspaces</h1>');
-    expect(html).not.toContain(
-      'class="text-xs font-semibold uppercase tracking-wider text-flow-muted">Your workspaces',
-    );
+    expect(html).not.toContain('class="text-xs font-semibold uppercase tracking-wider text-app-muted">Your workspaces');
     expect(html).not.toContain("Choose a workspace");
     expect(html).toContain('<main class="w-full space-y-5 py-2">');
     expect(html).toContain(
-      'class="flex flex-wrap items-center gap-3 rounded-xl border border-flow-border bg-white p-5"',
+      'class="flex flex-wrap items-center gap-3 rounded-xl border border-app-border bg-white p-5"',
     );
     expect(html).toContain('class="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto"');
-    expect(html).toContain('class="rounded-xl border border-flow-border bg-white p-5" aria-label="Workspace list"');
-    expect(html).toContain('class="rounded-xl border border-flow-border bg-white p-5"');
+    expect(html).toContain('class="rounded-xl border border-app-border bg-white p-5" aria-label="Workspace list"');
+    expect(html).toContain('class="rounded-xl border border-app-border bg-white p-5"');
 
     expect(html).toContain("encodeURIComponent(team.id) + '/settings'");
     expect(landing).toContain('apiFetch("/api/v1/workspaces"');

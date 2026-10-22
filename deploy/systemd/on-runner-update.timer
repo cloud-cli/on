@@ -1,5 +1,5 @@
 [Unit]
-Description=Hourly source update for the Flow2 runner
+Description=Hourly source update for the On runner
 
 [Timer]
 OnCalendar=hourly

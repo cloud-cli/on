@@ -1,3 +1,3 @@
-module flow-runner
+module on-runner
 
 go 1.23

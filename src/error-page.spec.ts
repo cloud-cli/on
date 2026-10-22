@@ -8,12 +8,12 @@ describe("renderErrorPage", () => {
       title: "Couldn't complete sign-in",
       message: "Please try again.",
       action: { label: "Try again", href: "/auth/login?url=%2Fui%2Fruns" },
-      secondaryAction: { label: "Back to Flow", href: "/ui/runs" },
+      secondaryAction: { label: "Back", href: "/ui/runs" },
     });
 
-    expect(html).toContain("<title>502 — Couldn&#39;t complete sign-in · Flow</title>");
+    expect(html).toContain("<title>502 — Couldn&#39;t complete sign-in · on:</title>");
     expect(html).toContain('aria-labelledby="error-title"');
-    expect(html).toContain('<span class="brand-name">flow<span class="brand-dot">.</span></span>');
+    expect(html).toContain('<span class="brand-name">on<span class="brand-dot">:</span></span>');
     expect(html).toContain("background: #547d42");
     expect(html).not.toContain("<svg");
     expect(html).toContain('href="/auth/login?url=%2Fui%2Fruns"');

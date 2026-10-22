@@ -4,14 +4,14 @@ set -Eeuo pipefail
 readonly REPOSITORY="git@github.com:cloud-cli/on.git"
 readonly BRANCH="dev"
 readonly ROOT="/opt/on/runner-releases"
-readonly UNIT="runner-worker-flow2.service"
+readonly UNIT="runner-worker-on.service"
 readonly DROPIN_DIR="/etc/systemd/system/${UNIT}.d"
 readonly DROPIN="${DROPIN_DIR}/20-source-build.conf"
-readonly LOCK="/run/lock/update-flow2-runner.lock"
+readonly LOCK="/run/lock/update-on-runner.lock"
 
 exec 9>"${LOCK}"
 if ! flock -n 9; then
-  echo "Another Flow2 runner update is already running; skipping."
+  echo "Another On runner update is already running; skipping."
   exit 0
 fi
 
@@ -72,4 +72,4 @@ systemctl show "${UNIT}" -p MainPID -p NRestarts -p ActiveState
 journalctl -u "${UNIT}" -n 20 --no-pager
 
 trap - EXIT
-echo "Flow2 runner updated from ${BRANCH} to $(git rev-parse --short HEAD) at ${release}"
+echo "On runner updated from ${BRANCH} to $(git rev-parse --short HEAD) at ${release}"

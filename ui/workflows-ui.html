@@ -19,7 +19,7 @@
       }
     </script>
   </head>
-  <body data-page="__WORKFLOW_PAGE__" class="min-h-screen bg-flow-background p-4 text-flow-foreground font-sans md:p-6">
+  <body data-page="__WORKFLOW_PAGE__" class="min-h-screen bg-app-background p-4 text-app-foreground font-sans md:p-6">
     <link rel="stylesheet" href="/assets/on.css" />
     <link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />
     <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
@@ -31,7 +31,7 @@
           <div
             role="status"
             class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-3 py-2.5 text-sm"
-            bind-class="noticeError ? 'border-flow-error/40 bg-flow-error/10 text-flow-error' : 'border-flow-success/40 bg-flow-success/10 text-flow-success'"
+            bind-class="noticeError ? 'border-app-error/40 bg-app-error/10 text-app-error' : 'border-app-success/40 bg-app-success/10 text-app-success'"
           >
             <lucide-icon bind-icon="noticeError ? 'circle-alert' : 'circle-check'" size="17"></lucide-icon>
             <span class="min-w-0 flex-1">{{ notice }}</span>
@@ -46,17 +46,17 @@
 
         <section id="workflow-layout" class="space-y-5">
           <nav
-            class="workflow-list rounded-2xl border border-flow-border bg-flow-card p-4 shadow-sm shadow-flow-foreground/5"
+            class="workflow-list rounded-2xl border border-app-border bg-app-card p-4 shadow-sm shadow-app-foreground/5"
             class-hidden="page === 'secrets' || page === 'editor'"
             aria-labelledby="workflow-list-title"
           >
             <div class="mb-4 flex items-end justify-between gap-3">
               <div>
-                <h2 id="workflow-list-title" class="mt-1 text-lg font-semibold text-flow-foreground">Workflows</h2>
+                <h2 id="workflow-list-title" class="mt-1 text-lg font-semibold text-app-foreground">Workflows</h2>
               </div>
               <a
                 href="/ui/workflows/new"
-                class="inline-flex items-center justify-center gap-2 rounded-lg bg-flow-primary px-3 py-2 text-sm font-semibold text-white outline-none transition hover:bg-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                class="inline-flex items-center justify-center gap-2 rounded-lg bg-app-primary px-3 py-2 text-sm font-semibold text-white outline-none transition hover:bg-app-primary focus-visible:ring-2 focus-visible:ring-app-primary/40"
               >
                 <lucide-icon icon="plus" size="16"></lucide-icon>
                 New workflow
@@ -64,31 +64,31 @@
             </div>
             <a
               href="/ui/recipes"
-              class="mb-4 inline-flex items-center gap-1 text-sm text-flow-primary underline underline-offset-2"
+              class="mb-4 inline-flex items-center gap-1 text-sm text-app-primary underline underline-offset-2"
               >Browse recipe library</a
             >
-            <ul class="divide-y divide-flow-border" aria-label="Workflow definitions">
+            <ul class="divide-y divide-app-border" aria-label="Workflow definitions">
               <template for="workflow of workflows">
                 <li class="flex min-h-14 items-center gap-3 px-2 py-2">
                   <a
                     attr-href="'/ui/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)"
-                    class="min-w-0 flex-1 text-left text-sm text-flow-secondary outline-none hover:text-flow-primary focus-visible:rounded focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                    class="min-w-0 flex-1 text-left text-sm text-app-secondary outline-none hover:text-app-primary focus-visible:rounded focus-visible:ring-2 focus-visible:ring-app-primary/40"
                   >
                     <span class="flex min-w-0 items-center gap-3">
-                      <span class="truncate text-base font-semibold text-flow-foreground">{{ workflow.name }}</span
-                      ><span class="shrink-0 text-xs text-flow-muted">{{ workflow.workspaceName }}</span>
-                      <span class="shrink-0 font-mono text-xs text-flow-secondary">v{{ workflow.revision }}</span>
+                      <span class="truncate text-base font-semibold text-app-foreground">{{ workflow.name }}</span
+                      ><span class="shrink-0 text-xs text-app-muted">{{ workflow.workspaceName }}</span>
+                      <span class="shrink-0 font-mono text-xs text-app-secondary">v{{ workflow.revision }}</span>
                     </span>
                   </a>
                   <span
                     class-hidden="workflow.status !== 'draft'"
-                    class="rounded-full border border-flow-warning/40 bg-flow-warning/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-flow-warning"
+                    class="rounded-full border border-app-warning/40 bg-app-warning/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-app-warning"
                     >Draft</span
                   >
                   <a
                     attr-href="'/ui/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)"
                     attr-aria-label="'Edit ' + workflow.name"
-                    class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-flow-secondary outline-none hover:bg-flow-sidebar hover:text-flow-primary focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                    class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-app-secondary outline-none hover:bg-app-sidebar hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary/40"
                   >
                     <span class="sr-only">Edit {{ workflow.name }}</span>
                     <lucide-icon icon="pencil" size="16" aria-hidden="true"></lucide-icon>
@@ -97,29 +97,29 @@
               </template>
             </ul>
             <div
-              class="rounded-xl border border-dashed border-flow-border px-4 py-8 text-center"
+              class="rounded-xl border border-dashed border-app-border px-4 py-8 text-center"
               class-hidden="workflows.length > 0"
             >
-              <lucide-icon icon="workflow" size="22" class="mx-auto text-flow-secondary"></lucide-icon>
-              <p class="mt-2 text-sm font-medium text-flow-secondary">No workflows yet</p>
-              <p class="mt-1 text-xs text-flow-secondary">Create a definition to start automating jobs.</p>
+              <lucide-icon icon="workflow" size="22" class="mx-auto text-app-secondary"></lucide-icon>
+              <p class="mt-2 text-sm font-medium text-app-secondary">No workflows yet</p>
+              <p class="mt-1 text-xs text-app-secondary">Create a definition to start automating jobs.</p>
             </div>
           </nav>
 
           <section
-            class="editor-panel overflow-hidden rounded-2xl border border-flow-border bg-flow-card shadow-sm shadow-flow-foreground/5"
+            class="editor-panel overflow-hidden rounded-2xl border border-app-border bg-app-card shadow-sm shadow-app-foreground/5"
             class-hidden="page === 'list' || page === 'workflows' || page === 'secrets'"
           >
-            <div class="border-b border-flow-border px-4 pb-3 pt-3 sm:px-5">
+            <div class="border-b border-app-border px-4 pb-3 pt-3 sm:px-5">
               <a
                 href="/ui/workflows"
-                class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-flow-secondary outline-none transition hover:bg-flow-sidebar hover:text-flow-foreground focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-app-secondary outline-none transition hover:bg-app-sidebar hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary/40"
               >
                 <lucide-icon icon="arrow-left" size="14"></lucide-icon>
                 Back to workflows
               </a>
             </div>
-            <div class="border-b border-flow-border bg-flow-panel px-4 py-4 sm:px-5">
+            <div class="border-b border-app-border bg-app-panel px-4 py-4 sm:px-5">
               <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div class="w-full lg:max-w-xs" class-hidden="selectedId">
                   <label for="workflow-workspace" class="sr-only">Workspace</label>
@@ -128,7 +128,7 @@
                     bind-value="selectedWorkspaceId"
                     on-change="setWorkspace($event)"
                     bind-disabled="workspacesLoading"
-                    class="w-full rounded-lg border border-flow-border bg-flow-card px-3 py-2.5 text-sm text-flow-foreground outline-none focus:border-flow-primary disabled:cursor-not-allowed disabled:opacity-70"
+                    class="w-full rounded-lg border border-app-border bg-app-card px-3 py-2.5 text-sm text-app-foreground outline-none focus:border-app-primary disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     <option value="">Select a workspace</option>
                     <template for="workspace of availableWorkspaces"
@@ -137,13 +137,13 @@
                   </select>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
-                  <label class="inline-flex items-center gap-2 text-sm text-flow-secondary">
+                  <label class="inline-flex items-center gap-2 text-sm text-app-secondary">
                     <input
                       type="checkbox"
                       bind-checked="enabled"
                       on-change="setEnabled($event)"
                       bind-disabled="busy || readOnly"
-                      class="h-4 w-4 rounded border-flow-border bg-flow-panel text-flow-primary focus:ring-2 focus:ring-flow-primary/20"
+                      class="h-4 w-4 rounded border-app-border bg-app-panel text-app-primary focus:ring-2 focus:ring-app-primary/20"
                     />
                     Enabled
                   </label>
@@ -153,7 +153,7 @@
                       aria-label="Get AI workflow help"
                       title="Get AI workflow help"
                       on-click="openAiHelp()"
-                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-primary/50 px-3 py-2.5 text-sm font-medium text-flow-primary outline-none hover:bg-flow-primary/10 focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-primary/50 px-3 py-2.5 text-sm font-medium text-app-primary outline-none hover:bg-app-primary/10 focus-visible:ring-2 focus-visible:ring-app-primary/40"
                     >
                       <lucide-icon icon="sparkles" size="16"></lucide-icon><span class="hidden md:inline">AI help</span>
                     </button>
@@ -163,7 +163,7 @@
                       title="Save workflow draft"
                       on-click="save()"
                       bind-disabled="busy || workspacesLoading || !selectedWorkspaceId"
-                      class="inline-flex items-center justify-center gap-2 rounded-lg bg-flow-primary px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-flow-primary disabled:cursor-not-allowed disabled:opacity-50"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg bg-app-primary px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-app-primary disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <lucide-icon icon="save" size="16"></lucide-icon>
                       <span class="hidden md:inline">Save draft</span>
@@ -174,7 +174,7 @@
                       title="Publish workflow"
                       on-click="publish()"
                       bind-disabled="busy || !selectedId || source !== savedSource"
-                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-success/50 px-3 py-2.5 text-sm font-medium text-flow-success transition hover:bg-flow-success/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-success/50 px-3 py-2.5 text-sm font-medium text-app-success transition hover:bg-app-success/10 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <lucide-icon icon="rocket" size="16"></lucide-icon>
                       <span class="hidden md:inline">Publish</span>
@@ -185,7 +185,7 @@
                       title="Run saved workflow draft now"
                       on-click="runNow()"
                       bind-disabled="busy || !selectedId || source !== savedSource || !validation.valid"
-                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-info/50 px-3 py-2.5 text-sm font-medium text-flow-info transition hover:bg-flow-info/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-info/50 px-3 py-2.5 text-sm font-medium text-app-info transition hover:bg-app-info/10 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <lucide-icon icon="play" size="16"></lucide-icon>
                       <span class="hidden md:inline">Run now</span>
@@ -196,7 +196,7 @@
                       title="Delete workflow"
                       on-click="remove()"
                       bind-disabled="busy"
-                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-error/50 px-3 py-2.5 text-sm font-medium text-flow-error transition hover:bg-flow-error/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-error/50 px-3 py-2.5 text-sm font-medium text-app-error transition hover:bg-app-error/10 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <lucide-icon icon="trash" size="16"></lucide-icon>
                       <span class="hidden md:inline">Delete</span>
@@ -206,7 +206,7 @@
               </div>
             </div>
             <div class="p-3 sm:p-5">
-              <div class="mb-2 flex items-center justify-between px-1 text-xs text-flow-secondary">
+              <div class="mb-2 flex items-center justify-between px-1 text-xs text-app-secondary">
                 <div class="flex items-center gap-2">
                   <button
                     type="button"
@@ -214,7 +214,7 @@
                     title="Validate workflow"
                     on-click="validate(1)"
                     bind-disabled="validation.running"
-                    bind-class="{ 'hidden': readOnly, 'text-flow-success': validation.valid, 'text-rose-400': !validation.valid }"
+                    bind-class="{ 'hidden': readOnly, 'text-app-success': validation.valid, 'text-rose-400': !validation.valid }"
                     class="disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <lucide-icon
@@ -224,7 +224,7 @@
                       size="16"
                     ></lucide-icon>
                   </button>
-                  <span class="font-medium" bind-class="validation.error ? 'bg-flow-error/10 text-flow-error' : ''"
+                  <span class="font-medium" bind-class="validation.error ? 'bg-app-error/10 text-app-error' : ''"
                     >{{ validation.error || '' }}</span
                   >
                 </div>
@@ -232,7 +232,7 @@
                   <button
                     type="button"
                     on-click="openRevisionDialog()"
-                    class="font-mono text-flow-primary outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                    class="font-mono text-app-primary outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-app-primary/40"
                   >
                     Revision {{ revision }}
                   </button>
@@ -243,7 +243,7 @@
                 <button
                   type="button"
                   on-click="openRecipePicker()"
-                  class="rounded-lg border border-flow-border px-3 py-2 text-sm font-medium text-flow-primary hover:bg-flow-sidebar"
+                  class="rounded-lg border border-app-border px-3 py-2 text-sm font-medium text-app-primary hover:bg-app-sidebar"
                 >
                   Insert recipe
                 </button>
@@ -252,7 +252,7 @@
                 <code-block
                   language="yaml"
                   theme="googlecode"
-                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-auto rounded-lg border border-flow-border bg-flow-foreground p-4"
+                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-auto rounded-lg border border-app-border bg-app-foreground p-4"
                   bind-source="source"
                 ></code-block>
               </template>
@@ -262,31 +262,31 @@
                   language="yaml"
                   theme="googlecode"
                   nostatus="true"
-                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-hidden rounded-lg border border-flow-border bg-flow-foreground"
+                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-hidden rounded-lg border border-app-border bg-app-foreground"
                   bind-value="source"
                   on-change="setSource($event.detail)"
                 ></code-editor>
               </template>
               <details
-                class="mt-4 overflow-hidden rounded-xl border border-flow-border bg-flow-panel"
+                class="mt-4 overflow-hidden rounded-xl border border-app-border bg-app-panel"
                 on-toggle="loadHelp($event)"
               >
                 <summary
-                  class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-flow-secondary outline-none transition hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                  class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-app-secondary outline-none transition hover:bg-app-panel focus-visible:ring-2 focus-visible:ring-app-primary/40"
                 >
                   <span class="inline-flex items-center gap-2"
                     ><lucide-icon icon="circle-question-mark" size="16"></lucide-icon>Syntax</span
                   >
-                  <span class="ml-2 text-xs font-normal text-flow-secondary">Reference, tutorials, and examples</span>
+                  <span class="ml-2 text-xs font-normal text-app-secondary">Reference, tutorials, and examples</span>
                 </summary>
                 <div
                   ref="helpContent"
-                  class="max-h-[38rem] overflow-y-auto border-t border-flow-border bg-flow-foreground px-4 py-5"
+                  class="max-h-[38rem] overflow-y-auto border-t border-app-border bg-app-foreground px-4 py-5"
                   role="region"
                   aria-label="Workflow syntax help"
                   aria-live="polite"
                 >
-                  <p class="text-sm text-flow-secondary">Expand to load the workflow syntax reference.</p>
+                  <p class="text-sm text-app-secondary">Expand to load the workflow syntax reference.</p>
                 </div>
               </details>
             </div>
@@ -295,21 +295,21 @@
 
         <template if="recipeDialogOpen">
           <div
-            class="fixed inset-0 z-50 flex items-center justify-center bg-flow-foreground/70 p-2 sm:p-4"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-app-foreground/70 p-2 sm:p-4"
             role="presentation"
           >
             <section
               data-recipe-dialog
-              class="flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-flow-border bg-flow-panel shadow-2xl"
+              class="flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-app-border bg-app-panel shadow-2xl"
               role="dialog"
               aria-modal="true"
               aria-labelledby="recipe-picker-title"
               aria-describedby="recipe-picker-hint"
             >
-              <header class="flex items-center justify-between border-b border-flow-border p-4">
+              <header class="flex items-center justify-between border-b border-app-border p-4">
                 <div>
                   <h2 id="recipe-picker-title" class="text-lg font-semibold">Insert a recipe</h2>
-                  <p id="recipe-picker-hint" class="text-sm text-flow-secondary">
+                  <p id="recipe-picker-hint" class="text-sm text-app-secondary">
                     Choose and review an immutable recipe version.
                   </p>
                 </div>
@@ -328,12 +328,12 @@
                   id="recipe-search"
                   bind-value="recipeSearch"
                   placeholder="Name, namespace, or slug"
-                  class="min-h-11 w-full rounded-lg border border-flow-border bg-flow-card px-3 py-2 text-sm"
+                  class="min-h-11 w-full rounded-lg border border-app-border bg-app-card px-3 py-2 text-sm"
                 />
-                <p role="status" aria-live="polite" class="text-sm text-flow-secondary" class-hidden="!recipeLoading">
+                <p role="status" aria-live="polite" class="text-sm text-app-secondary" class-hidden="!recipeLoading">
                   Loading recipes…
                 </p>
-                <p role="alert" class="text-sm text-flow-error" class-hidden="!recipeError">{{ recipeError }}</p>
+                <p role="alert" class="text-sm text-app-error" class-hidden="!recipeError">{{ recipeError }}</p>
                 <ul class="space-y-2">
                   <template for="recipe of recipes"
                     ><li class-hidden="!matchesRecipeSearch(recipe, recipeSearch)">
@@ -342,10 +342,10 @@
                         on-click="selectRecipe(recipe)"
                         attr-aria-pressed="selectedRecipe === recipe ? 'true' : 'false'"
                         bind-disabled="recipe.revoked"
-                        class="min-h-11 w-full rounded-lg border border-flow-border p-3 text-left hover:border-flow-primary disabled:cursor-not-allowed disabled:opacity-60"
+                        class="min-h-11 w-full rounded-lg border border-app-border p-3 text-left hover:border-app-primary disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <span class="block font-semibold">{{ recipe.name }}</span
-                        ><span class="block font-mono text-xs text-flow-secondary"
+                        ><span class="block font-mono text-xs text-app-secondary"
                           >{{ recipe.namespace }}/{{ recipe.slug }}@v{{ recipe.version }}<template if="recipe.revoked">
                             · Revoked — unavailable</template
                           ></span
@@ -356,24 +356,24 @@
                 </ul>
                 <p
                   role="status"
-                  class="py-3 text-center text-sm text-flow-secondary"
+                  class="py-3 text-center text-sm text-app-secondary"
                   class-hidden="recipeLoading || !recipeSearch || hasRecipeSearchResults()"
                 >
                   No recipes match that search.
                 </p>
                 <p
                   role="status"
-                  class="py-3 text-center text-sm text-flow-secondary"
+                  class="py-3 text-center text-sm text-app-secondary"
                   class-hidden="recipeLoading || recipes.length > 0"
                 >
                   No recipes are available.
                 </p>
                 <template if="selectedRecipe"
-                  ><div class="space-y-2 rounded-lg border border-flow-border p-3">
+                  ><div class="space-y-2 rounded-lg border border-app-border p-3">
                     <p class="break-all font-mono text-sm">
                       using: {{ selectedRecipe.namespace }}/{{ selectedRecipe.slug }}@v{{ selectedRecipe.version }}
                     </p>
-                    <p class="text-xs text-flow-secondary">Source preview</p>
+                    <p class="text-xs text-app-secondary">Source preview</p>
                     <pre class="max-h-48 overflow-auto rounded bg-slate-950 p-3 text-xs text-white">
 {{ selectedRecipe.sourceYaml }}</pre
                     >
@@ -386,14 +386,12 @@
                         text remains unchanged.
                       </p>
                       <p
-                        class="text-sm text-flow-secondary"
+                        class="text-sm text-app-secondary"
                         class-hidden="!recipePreview.safe || recipePreview.replacesSteps"
                       >
                         This inserts the recipe reference into the empty workflow draft. Review it before saving.
                       </p>
-                      <p class="text-sm text-flow-error" class-hidden="recipePreview.safe">
-                        {{ recipePreview.reason }}
-                      </p>
+                      <p class="text-sm text-app-error" class-hidden="recipePreview.safe">{{ recipePreview.reason }}</p>
                       <pre
                         class="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-slate-950 p-3 text-xs text-white"
                       >
@@ -403,25 +401,25 @@
                   </div></template
                 >
               </div>
-              <footer class="flex flex-wrap justify-end gap-2 border-t border-flow-border p-3">
+              <footer class="flex flex-wrap justify-end gap-2 border-t border-app-border p-3">
                 <button
                   type="button"
                   on-click="closeRecipePicker()"
-                  class="min-h-11 rounded-lg border border-flow-border px-4 py-2 text-sm"
+                  class="min-h-11 rounded-lg border border-app-border px-4 py-2 text-sm"
                 >
                   Cancel</button
                 ><button
                   type="button"
                   on-click="copyRecipeSnippet()"
                   class-hidden="!recipePreview || recipePreview.safe || !selectedRecipe || selectedRecipe.revoked"
-                  class="min-h-11 rounded-lg border border-flow-border px-4 py-2 text-sm"
+                  class="min-h-11 rounded-lg border border-app-border px-4 py-2 text-sm"
                 >
                   Copy snippet</button
                 ><button
                   type="button"
                   on-click="insertSelectedRecipe()"
                   bind-disabled="!selectedRecipe || selectedRecipe.revoked || !recipePreview || !recipePreview.safe"
-                  class="min-h-11 rounded-lg bg-flow-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  class="min-h-11 rounded-lg bg-app-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   {{ recipePreview && recipePreview.confirmed ? 'Confirm replacement' : (recipePreview &&
                   recipePreview.replacesSteps ? 'Review replacement' : 'Insert recipe') }}
@@ -432,20 +430,17 @@
         </template>
 
         <template if="aiDialogOpen">
-          <div
-            class="fixed inset-0 z-50 flex items-center justify-center bg-flow-foreground/70 p-4"
-            role="presentation"
-          >
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-app-foreground/70 p-4" role="presentation">
             <div
-              class="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-flow-border bg-flow-panel shadow-2xl"
+              class="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-app-border bg-app-panel shadow-2xl"
               role="dialog"
               aria-modal="true"
               aria-labelledby="workflow-ai-title"
             >
-              <div class="flex items-start justify-between gap-3 border-b border-flow-border px-5 py-4">
+              <div class="flex items-start justify-between gap-3 border-b border-app-border px-5 py-4">
                 <div>
-                  <h2 id="workflow-ai-title" class="text-lg font-semibold text-flow-foreground">AI workflow help</h2>
-                  <p class="mt-1 text-sm text-flow-secondary">
+                  <h2 id="workflow-ai-title" class="text-lg font-semibold text-app-foreground">AI workflow help</h2>
+                  <p class="mt-1 text-sm text-app-secondary">
                     Describe the change you want. The suggestion will not modify the editor until you accept it.
                   </p>
                 </div>
@@ -453,7 +448,7 @@
                   type="button"
                   on-click="closeAiHelp()"
                   aria-label="Close AI help"
-                  class="rounded-lg p-2 text-flow-secondary hover:bg-flow-sidebar"
+                  class="rounded-lg p-2 text-app-secondary hover:bg-app-sidebar"
                 >
                   <lucide-icon icon="x" size="17"></lucide-icon>
                 </button>
@@ -464,39 +459,39 @@
                   id="workflow-ai-request"
                   bind-value="aiRequest"
                   placeholder="Example: Add a Docker cache volume to the build step."
-                  class="min-h-24 w-full rounded-xl border border-flow-border bg-flow-panel p-3 text-sm text-flow-foreground outline-none focus:border-flow-primary focus:ring-2 focus:ring-flow-primary/20"
+                  class="min-h-24 w-full rounded-xl border border-app-border bg-app-panel p-3 text-sm text-app-foreground outline-none focus:border-app-primary focus:ring-2 focus:ring-app-primary/20"
                 ></textarea>
-                <p class="mt-2 text-xs text-flow-error" class-hidden="!aiError">{{ aiError }}</p>
+                <p class="mt-2 text-xs text-app-error" class-hidden="!aiError">{{ aiError }}</p>
                 <template if="aiDiffHtml">
                   <div class="mt-4">
-                    <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-flow-secondary">
+                    <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-app-secondary">
                       Suggested changes
                     </p>
                     <pre
-                      class="max-h-[36rem] overflow-auto rounded-xl border border-flow-border bg-flow-foreground p-4 font-mono text-xs leading-6"
+                      class="max-h-[36rem] overflow-auto rounded-xl border border-app-border bg-app-foreground p-4 font-mono text-xs leading-6"
                       bind-innerhtml="aiDiffHtml"
                     ></pre>
                   </div>
                 </template>
               </div>
-              <div class="flex items-center justify-end gap-2 border-t border-flow-border px-5 py-3">
+              <div class="flex items-center justify-end gap-2 border-t border-app-border px-5 py-3">
                 <button
                   type="button"
                   on-click="closeAiHelp()"
-                  class="rounded-lg border border-flow-border px-3 py-2 text-sm text-flow-secondary hover:bg-flow-sidebar"
+                  class="rounded-lg border border-app-border px-3 py-2 text-sm text-app-secondary hover:bg-app-sidebar"
                 >
                   Cancel</button
                 ><template if="aiDiffHtml"
                   ><button
                     type="button"
                     on-click="rejectAiSuggestion()"
-                    class="rounded-lg border border-flow-error/50 px-3 py-2 text-sm text-flow-error hover:bg-flow-error/10"
+                    class="rounded-lg border border-app-error/50 px-3 py-2 text-sm text-app-error hover:bg-app-error/10"
                   >
                     Reject</button
                   ><button
                     type="button"
                     on-click="acceptAiSuggestion()"
-                    class="rounded-lg bg-flow-primary px-3 py-2 text-sm font-semibold text-white hover:bg-flow-primary"
+                    class="rounded-lg bg-app-primary px-3 py-2 text-sm font-semibold text-white hover:bg-app-primary"
                   >
                     Accept suggestion
                   </button></template
@@ -504,7 +499,7 @@
                   type="button"
                   on-click="requestAiHelp()"
                   bind-disabled="aiLoading || !aiRequest.trim()"
-                  class="rounded-lg bg-flow-primary px-3 py-2 text-sm font-semibold text-white hover:bg-flow-primary disabled:opacity-50"
+                  class="rounded-lg bg-app-primary px-3 py-2 text-sm font-semibold text-white hover:bg-app-primary disabled:opacity-50"
                 >
                   {{ aiLoading ? 'Thinking...' : 'Suggest' }}
                 </button>
@@ -514,45 +509,42 @@
         </template>
 
         <template if="revisionDialogOpen">
-          <div
-            class="fixed inset-0 z-50 flex items-center justify-center bg-flow-foreground/70 p-4"
-            role="presentation"
-          >
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-app-foreground/70 p-4" role="presentation">
             <div
-              class="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-flow-border bg-flow-panel shadow-2xl"
+              class="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-app-border bg-app-panel shadow-2xl"
               role="dialog"
               aria-modal="true"
               aria-labelledby="revision-dialog-title"
             >
-              <div class="flex items-center justify-between border-b border-flow-border px-4 py-3">
+              <div class="flex items-center justify-between border-b border-app-border px-4 py-3">
                 <div>
-                  <h2 id="revision-dialog-title" class="font-semibold text-flow-foreground">
+                  <h2 id="revision-dialog-title" class="font-semibold text-app-foreground">
                     Workflow revision {{ revisionNumber }}
                   </h2>
-                  <p class="text-xs text-flow-secondary">Read-only source snapshot</p>
+                  <p class="text-xs text-app-secondary">Read-only source snapshot</p>
                 </div>
                 <button
                   type="button"
                   on-click="closeRevisionDialog()"
                   aria-label="Close revision dialog"
-                  class="rounded-lg p-2 text-flow-secondary outline-none hover:bg-flow-sidebar hover:text-white focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                  class="rounded-lg p-2 text-app-secondary outline-none hover:bg-app-sidebar hover:text-white focus-visible:ring-2 focus-visible:ring-app-primary/40"
                 >
                   <lucide-icon icon="x" size="17"></lucide-icon>
                 </button>
               </div>
               <div class="min-h-0 flex-1 overflow-auto p-4">
-                <p class="mb-3 text-sm text-flow-error" class-hidden="!revisionError">{{ revisionError }}</p>
+                <p class="mb-3 text-sm text-app-error" class-hidden="!revisionError">{{ revisionError }}</p>
                 <pre
-                  class="min-h-[20rem] overflow-auto rounded-lg border border-flow-border bg-flow-foreground p-4 font-mono text-xs leading-6"
+                  class="min-h-[20rem] overflow-auto rounded-lg border border-app-border bg-app-foreground p-4 font-mono text-xs leading-6"
                   bind-innerhtml="revisionDiffHtml"
                 ></pre>
               </div>
-              <div class="flex items-center justify-between border-t border-flow-border px-4 py-3">
+              <div class="flex items-center justify-between border-t border-app-border px-4 py-3">
                 <button
                   type="button"
                   on-click="navigateRevision(-1)"
                   bind-disabled="revisionLoading || revisionNumber <= 1"
-                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-border px-3 py-2 text-sm text-flow-foreground outline-none hover:bg-flow-sidebar focus-visible:ring-2 focus-visible:ring-flow-primary/40 disabled:opacity-40"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-border px-3 py-2 text-sm text-app-foreground outline-none hover:bg-app-sidebar focus-visible:ring-2 focus-visible:ring-app-primary/40 disabled:opacity-40"
                 >
                   <lucide-icon icon="chevron-left" size="16"></lucide-icon>Previous
                 </button>
@@ -560,7 +552,7 @@
                   type="button"
                   on-click="navigateRevision(1)"
                   bind-disabled="revisionLoading || revisionNumber >= revision"
-                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-border px-3 py-2 text-sm text-flow-foreground outline-none hover:bg-flow-sidebar focus-visible:ring-2 focus-visible:ring-flow-primary/40 disabled:opacity-40"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-border px-3 py-2 text-sm text-app-foreground outline-none hover:bg-app-sidebar focus-visible:ring-2 focus-visible:ring-app-primary/40 disabled:opacity-40"
                 >
                   Next<lucide-icon icon="chevron-right" size="16"></lucide-icon>
                 </button>
@@ -570,44 +562,44 @@
         </template>
 
         <section
-          class="secrets-panel rounded-2xl border border-flow-border bg-flow-card p-4 shadow-sm shadow-flow-foreground/5 sm:p-5"
+          class="secrets-panel rounded-2xl border border-app-border bg-app-card p-4 shadow-sm shadow-app-foreground/5 sm:p-5"
           class-hidden="page === 'list' || page === 'workflows' || page === 'editor'"
           aria-labelledby="secrets-title"
         >
           <div class="mb-5 flex items-start justify-between gap-3">
             <div class="flex items-start gap-3">
-              <span class="rounded-lg bg-flow-primary/10 p-2 text-flow-primary"
+              <span class="rounded-lg bg-app-primary/10 p-2 text-app-primary"
                 ><lucide-icon icon="key-round" size="18"></lucide-icon
               ></span>
               <div>
-                <h2 id="secrets-title" class="text-lg font-semibold text-flow-foreground">Secrets</h2>
-                <p class="mt-0.5 text-sm text-flow-secondary">Write-only credentials available to workflows.</p>
+                <h2 id="secrets-title" class="text-lg font-semibold text-app-foreground">Secrets</h2>
+                <p class="mt-0.5 text-sm text-app-secondary">Write-only credentials available to workflows.</p>
               </div>
             </div>
           </div>
-          <details ref="secretForm" class="mb-5 overflow-hidden rounded-xl border border-flow-border bg-flow-panel">
+          <details ref="secretForm" class="mb-5 overflow-hidden rounded-xl border border-app-border bg-app-panel">
             <summary
-              class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-flow-secondary outline-none hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+              class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-app-secondary outline-none hover:bg-app-panel focus-visible:ring-2 focus-visible:ring-app-primary/40"
             >
               <span>Add a secret</span>
               <lucide-icon icon="plus" size="17"></lucide-icon>
             </summary>
-            <div class="space-y-3 border-t border-flow-border p-4">
-              <p class="text-xs text-flow-secondary">Saving an existing name replaces its encrypted value.</p>
+            <div class="space-y-3 border-t border-app-border p-4">
+              <p class="text-xs text-app-secondary">Saving an existing name replaces its encrypted value.</p>
               <label class="sr-only" for="secret-name">Secret name</label>
               <input
                 id="secret-name"
                 bind-value="secretName"
                 on-input="setSecretName($event)"
-                class="rounded-lg border border-flow-border bg-flow-panel px-3 py-2.5 font-mono text-sm uppercase outline-none transition placeholder:text-flow-secondary focus:border-flow-primary focus:ring-2 focus:ring-flow-primary/20"
+                class="rounded-lg border border-app-border bg-app-panel px-3 py-2.5 font-mono text-sm uppercase outline-none transition placeholder:text-app-secondary focus:border-app-primary focus:ring-2 focus:ring-app-primary/20"
                 placeholder="NPM_TOKEN"
               />
-              <label class="inline-flex items-center gap-2 text-sm text-flow-secondary">
+              <label class="inline-flex items-center gap-2 text-sm text-app-secondary">
                 <input
                   type="checkbox"
                   bind-checked="fileMode"
                   on-change="setFileMode($event)"
-                  class="h-4 w-4 rounded border-flow-border bg-flow-panel text-indigo-500 focus:ring-2 focus:ring-flow-primary/20"
+                  class="h-4 w-4 rounded border-app-border bg-app-panel text-indigo-500 focus:ring-2 focus:ring-app-primary/20"
                 />
                 Binary file secret
               </label>
@@ -619,7 +611,7 @@
                   bind-value="secretValue"
                   on-input="setSecretValue($event)"
                   type="password"
-                  class="rounded-lg border border-flow-border bg-flow-panel px-3 py-2.5 font-mono text-sm outline-none transition placeholder:text-flow-secondary focus:border-flow-primary focus:ring-2 focus:ring-flow-primary/20"
+                  class="rounded-lg border border-app-border bg-app-panel px-3 py-2.5 font-mono text-sm outline-none transition placeholder:text-app-secondary focus:border-app-primary focus:ring-2 focus:ring-app-primary/20"
                   placeholder="New secret value"
                 />
               </template>
@@ -630,7 +622,7 @@
                   ref="secretFileInput"
                   on-change="setSecretFile($event)"
                   type="file"
-                  class="rounded-lg border border-flow-border bg-flow-panel px-3 py-2 text-xs text-flow-secondary file:mr-3 file:rounded file:border-0 file:bg-flow-secondary file:px-2 file:py-1 file:text-xs file:text-flow-foreground focus:border-flow-primary focus:outline-none focus:ring-2 focus:ring-flow-primary/20"
+                  class="rounded-lg border border-app-border bg-app-panel px-3 py-2 text-xs text-app-secondary file:mr-3 file:rounded file:border-0 file:bg-app-secondary file:px-2 file:py-1 file:text-xs file:text-app-foreground focus:border-app-primary focus:outline-none focus:ring-2 focus:ring-app-primary/20"
                 />
               </template>
               <div>
@@ -640,7 +632,7 @@
                   title="Save secret value"
                   on-click="saveSecret()"
                   bind-disabled="busy"
-                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-flow-primary/60 px-3 py-2.5 text-sm font-medium text-flow-primary outline-none transition hover:bg-flow-primary/10 focus-visible:ring-2 focus-visible:ring-flow-primary/40 disabled:opacity-50"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-primary/60 px-3 py-2.5 text-sm font-medium text-app-primary outline-none transition hover:bg-app-primary/10 focus-visible:ring-2 focus-visible:ring-app-primary/40 disabled:opacity-50"
                 >
                   <lucide-icon icon="lock-keyhole" size="16"></lucide-icon>Save secret
                 </button>
@@ -651,24 +643,24 @@
             <template for="name of secrets">
               <li>
                 <div
-                  class="grid min-h-14 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl border border-flow-border bg-flow-panel px-3.5 py-3"
+                  class="grid min-h-14 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl border border-app-border bg-app-panel px-3.5 py-3"
                 >
                   <button
                     type="button"
                     on-click="selectSecret(name)"
-                    class="group grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto_1rem] items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                    class="group grid min-w-0 grid-cols-[2rem_minmax(0,1fr)_auto_1rem] items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-app-primary/40"
                     attr-aria-label="'Edit secret ' + name"
                   >
                     <span
-                      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-flow-sidebar text-flow-secondary group-hover:text-flow-primary"
+                      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-app-sidebar text-app-secondary group-hover:text-app-primary"
                       ><lucide-icon icon="key-round" size="15"></lucide-icon
                     ></span>
-                    <span class="min-w-0 flex-1 truncate font-mono text-sm text-flow-foreground">{{ name }}</span>
-                    <span class="text-xs text-flow-secondary">Select</span>
+                    <span class="min-w-0 flex-1 truncate font-mono text-sm text-app-foreground">{{ name }}</span>
+                    <span class="text-xs text-app-secondary">Select</span>
                     <lucide-icon
                       icon="chevron-right"
                       size="16"
-                      class="text-flow-secondary transition group-hover:text-flow-primary"
+                      class="text-app-secondary transition group-hover:text-app-primary"
                     ></lucide-icon>
                   </button>
                   <button
@@ -676,7 +668,7 @@
                     on-click="removeSecret(name)"
                     attr-aria-label="'Delete secret ' + name"
                     title="Delete secret"
-                    class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-flow-error outline-none transition hover:bg-flow-error/10 focus-visible:ring-2 focus-visible:ring-flow-error/40"
+                    class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-app-error outline-none transition hover:bg-app-error/10 focus-visible:ring-2 focus-visible:ring-app-error/40"
                   >
                     <lucide-icon icon="trash" size="15"></lucide-icon>
                   </button>
@@ -685,12 +677,12 @@
             </template>
           </ul>
           <div
-            class="rounded-xl border border-dashed border-flow-border px-4 py-8 text-center"
+            class="rounded-xl border border-dashed border-app-border px-4 py-8 text-center"
             class-hidden="secrets.length > 0"
           >
-            <lucide-icon icon="key-round" size="22" class="mx-auto text-flow-secondary"></lucide-icon>
-            <p class="mt-2 text-sm font-medium text-flow-secondary">No secrets configured</p>
-            <p class="mt-1 text-xs text-flow-secondary">Add one above to make it available to a workflow.</p>
+            <lucide-icon icon="key-round" size="22" class="mx-auto text-app-secondary"></lucide-icon>
+            <p class="mt-2 text-sm font-medium text-app-secondary">No secrets configured</p>
+            <p class="mt-1 text-xs text-app-secondary">Add one above to make it available to a workflow.</p>
           </div>
         </section>
       </main>

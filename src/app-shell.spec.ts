@@ -6,7 +6,7 @@ import preferencesSetup from "../ui/preferences.mjs?raw";
 
 const html = readFileSync(new URL("../ui/app-shell.html", import.meta.url), "utf8");
 
-describe("Flow application shell", () => {
+describe("On application shell", () => {
   it("uses compact vertical spacing on every page main", () => {
     for (const directory of ["ui", "src"]) {
       const files = readdirSync(new URL(`../${directory}/`, import.meta.url)).filter((file) => file.endsWith(".html"));
@@ -32,18 +32,18 @@ describe("Flow application shell", () => {
     expect(html.match(/href="\/ui\/workspaces"/g)).toHaveLength(3);
     expect(html).toContain("activeSection === 'settings' ? 'page' : null");
     expect(html).toContain("focus-visible:ring-2");
-    expect(html).toContain('>flow<span class="text-[#729b5b]">.</span>');
+    expect(html).toContain('>on<span class="text-[#729b5b]">:</span>');
     expect(html).toContain("w-[27px] rounded-[2px] bg-[#547d42]");
     expect(html).toContain('href="#main-content"');
     expect(html).toContain("data-skip-to-content");
     expect(html).toContain('id="main-content"');
     expect(html).toContain('tabindex="-1"');
-    expect(html).toContain('class="min-h-dvh bg-flow-background');
+    expect(html).toContain('class="min-h-dvh bg-app-background');
     expect(html).toContain("min-h-dvh md:grid md:grid-cols-[16rem_minmax(0,1fr)]");
     expect(html).toContain("sticky top-0 hidden h-dvh self-start overflow-y-auto");
     expect(html).toContain("min-h-dvh min-w-0 pb-20 md:pb-0");
     expect(html).not.toContain("overscroll-y-contain");
-    expect(html).not.toContain("overflow-hidden bg-flow-background");
+    expect(html).not.toContain("overflow-hidden bg-app-background");
     expect(html).toContain('role="group"');
     expect(html).toContain('aria-label="Signed-in user"');
     expect(html).toContain("max-w-[calc(100vw-4rem)]");
@@ -51,7 +51,7 @@ describe("Flow application shell", () => {
     expect(html).toContain('class="hidden min-w-0 max-w-[calc(100vw-7rem)] flex-col');
     expect(html).toContain("sm:flex sm:max-w-none");
     expect(html).toContain('class="truncate text-sm font-semibold leading-tight"');
-    expect(html).toContain('class="truncate text-[10px] leading-tight text-flow-secondary"');
+    expect(html).toContain('class="truncate text-[10px] leading-tight text-app-secondary"');
     expect(html).toContain('on-click="toggleTheme()"');
     expect(html).toContain('class="flex items-center justify-end gap-2');
     expect(html).toContain("md:flex md:flex-col");
@@ -66,7 +66,7 @@ describe("Flow application shell", () => {
     expect(html).not.toContain("Workers</a>");
     expect(html).not.toContain("Engineering");
     expect(html).not.toContain("JD");
-    expect(html).not.toContain("min-h-screen border-r border-flow-border");
+    expect(html).not.toContain("min-h-screen border-r border-app-border");
     expect(html.indexOf("My workspaces")).toBeLessThan(html.indexOf("Workflows"));
     expect(html.indexOf("Preferences")).toBeLessThan(html.indexOf("Your workspaces"));
     expect(html).not.toContain("mt-auto");
@@ -96,7 +96,7 @@ describe("Flow application shell", () => {
     expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
     expect(shellSetup).toContain('path.startsWith("/workspaces/")');
     expect(html).toContain(">Your workspaces</p>");
-    expect(html).toContain("px-3 py-2.5 text-sm text-flow-secondary");
+    expect(html).toContain("px-3 py-2.5 text-sm text-app-secondary");
     expect(html).toContain("grid-cols-3");
     expect(html).not.toContain("grid-cols-4");
   });
@@ -116,7 +116,7 @@ describe("Flow application shell", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(
       {},
-      { method: "GET", url: "/assets/app-shell.mjs", headers: { host: "flow.test" } },
+      { method: "GET", url: "/assets/app-shell.mjs", headers: { host: "app.test" } },
       response,
     );
 
@@ -132,7 +132,7 @@ describe("Flow application shell", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(
       {},
-      { method: "GET", url: "/assets/preferences.mjs", headers: { host: "flow.test" } },
+      { method: "GET", url: "/assets/preferences.mjs", headers: { host: "app.test" } },
       response,
     );
 

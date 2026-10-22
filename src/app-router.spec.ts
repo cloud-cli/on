@@ -122,7 +122,7 @@ describe("SPA router", () => {
     expect(routerSetup).toContain("let teamCreated = false");
     expect(routerSetup).toContain("Your workspace was created, but this browser could not save the selection");
     expect(routerSetup).toContain('document.body.dataset.teamless = "true"');
-    expect(routerSetup).toContain("Continue to Flow");
+    expect(routerSetup).toContain("Continue");
     expect(routerTemplate).toContain('ref="outlet"');
   });
 
