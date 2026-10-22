@@ -2120,7 +2120,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     teamId: string,
   ) {
     const jobIds: number[] = [];
-    for (const { definition: workflow, revision } of workflows) {
+    for (const { workflowId, definition: workflow, revision } of workflows) {
       if (workflow.on.provider !== provider) {
         continue;
       }
@@ -2161,7 +2161,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
           matrix: variant.matrixContext,
         };
 
-        const jobId = await this.queue.enqueue(workflow.id, revision, jobPayload, requiredTags, concurrencyKey);
+        const jobId = await this.queue.enqueue(workflowId, revision, jobPayload, requiredTags, concurrencyKey);
         if (jobId) {
           jobIds.push(jobId);
         }

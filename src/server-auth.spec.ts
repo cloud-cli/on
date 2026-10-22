@@ -193,3 +193,44 @@ describe("current IAM route authorization", () => {
     expect(res.end.mock.calls[0][0]).toContain("one-time-signing-secret");
   });
 });
+
+describe("incoming workflow webhook dispatch", () => {
+  it("queues the persisted workflow ID rather than the YAML definition ID", async () => {
+    const queue = { enqueue: vi.fn(async () => 42) };
+    const server = {
+      preprocessors: new Map(),
+      queue,
+      events: { publish: vi.fn() },
+    } as any;
+
+    const jobs = await (WebhookServer.prototype as any).matchWorkflows.call(
+      server,
+      "github",
+      { event: "push" },
+      [
+        {
+          workflowId: "wf-docker-publish",
+          revision: 3,
+          definition: {
+            id: "docker-publish",
+            name: "Docker publish",
+            on: { provider: "github" },
+            tags: ["alpha"],
+            steps: [{ id: "build", run: "echo build" }],
+          },
+        },
+      ],
+      {},
+      "workspace-1",
+    );
+
+    expect(queue.enqueue).toHaveBeenCalledWith(
+      "wf-docker-publish",
+      3,
+      { inputs: { event: "push" }, matrix: undefined },
+      ["alpha"],
+      "",
+    );
+    expect(jobs).toEqual([42]);
+  });
+});
