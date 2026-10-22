@@ -10,7 +10,7 @@ export default function setup() {
   const userAuthenticated = ref(false);
   const userInitial = ref("U");
   const teams = ref([]);
-  const selectedWorkspaceId = ref(localStorage.getItem("runner-team-id") || "");
+  const selectedWorkspaceId = ref("");
   const themePreference = ref("system");
   const themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
   const isDarkTheme = ref(
@@ -21,6 +21,11 @@ export default function setup() {
     try {
       const response = await fetch("/api/v1/workspaces", { headers: { accept: "application/json" } });
       teams.value = response.ok ? (await response.json()).workspaces || [] : [];
+      if (!selectedWorkspaceId.value) {
+        const storedWorkspaceId = localStorage.getItem("runner-team-id") || "";
+        selectedWorkspaceId.value = teams.value.some((team) => team.id === storedWorkspaceId) ? storedWorkspaceId : "";
+      }
+      requestAnimationFrame(syncWorkspaceNavigation);
     } catch (error) {
       console.error("Unable to load teams", error);
     }
@@ -36,6 +41,30 @@ export default function setup() {
     mainContent?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const syncWorkspaceNavigation = () => {
+    const selectedId = selectedWorkspaceId.value;
+    for (const item of document.querySelectorAll("[data-workspace-nav-item]")) {
+      const selected = item.getAttribute("data-workspace-nav-item") === selectedId;
+      const submenu = item.querySelector("[data-workspace-submenu]");
+      submenu?.classList.toggle("hidden", !selected);
+      const [workspaceLink, workflowsLink, runsLink] = item.querySelectorAll("a");
+      if (workspaceLink) {
+        workspaceLink.setAttribute(
+          "aria-current",
+          selected && activeSection.value === "workspace-runs" ? "page" : "null",
+        );
+      }
+      if (workflowsLink) {
+        workflowsLink.setAttribute(
+          "aria-current",
+          selected && activeSection.value === "workspace-workflows" ? "page" : "null",
+        );
+      }
+      if (runsLink) {
+        runsLink.setAttribute("aria-current", selected && activeSection.value === "workspace-runs" ? "page" : "null");
+      }
+    }
+  };
   const syncSection = () => {
     const path = window.location.pathname.replace(/^\/ui/, "");
     const workspaceRoute = path.match(/^\/workspaces\/([^/]+)\/(workflows|runs)(?:\/events)?$/);
@@ -54,6 +83,7 @@ export default function setup() {
     } else {
       activeSection.value = "workspaces";
     }
+    syncWorkspaceNavigation();
   };
 
   const setActive = (section) => {
@@ -62,6 +92,7 @@ export default function setup() {
   const selectWorkspace = (teamId, page = "runs") => {
     selectedWorkspaceId.value = teamId;
     activeSection.value = page === "workflows" ? "workspace-workflows" : "workspace-runs";
+    syncWorkspaceNavigation();
   };
   const workspacePath = (teamId, page) =>
     `/ui/workspaces/${encodeURIComponent(teamId || selectedWorkspaceId.value)}/${page}`;
@@ -137,7 +168,8 @@ export default function setup() {
     }
   };
   const syncWorkspace = (event) => {
-    selectedWorkspaceId.value = event.detail?.teamId || localStorage.getItem("runner-team-id") || "";
+    selectedWorkspaceId.value = event.detail?.teamId || "";
+    syncWorkspaceNavigation();
   };
 
   onInit(() => {

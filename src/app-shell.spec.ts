@@ -55,7 +55,8 @@ describe("On application shell", () => {
     expect(html).toContain('class="truncate text-sm font-semibold leading-tight"');
     expect(html).toContain('class="truncate text-[10px] leading-tight text-app-secondary"');
     expect(html).toContain('on-click="toggleTheme()"');
-    expect(html).toContain('class="flex items-center justify-between gap-2');
+    expect(html).toContain('class="flex items-center gap-2 px-4 pt-4 sm:gap-4 sm:px-6 lg:px-8"');
+    expect(html).toContain('class="ml-auto flex shrink-0 items-center gap-2 sm:gap-4"');
     expect(html).toContain("flex h-dvh w-72");
     expect(html).toContain("isDarkTheme ? 'sun' : 'moon'");
     expect(html).toContain("isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'");
@@ -93,7 +94,15 @@ describe("On application shell", () => {
     expect(html).toContain("# {{ team.name }}");
     expect(html).toContain("workspacePath(team.id, 'runs')");
     expect(html).toContain('on-click="selectWorkspace(team.id)"');
-    expect(html).toContain("selectedWorkspaceId === team.id");
+    expect(html).toContain('attr-data-workspace-nav-item="team.id"');
+    expect(html).toContain("data-workspace-submenu");
+    expect(html).toContain('class-hidden="selectedWorkspaceId !== team.id"');
+    expect(shellSetup).toContain('submenu?.classList.toggle("hidden", !selected)');
+    expect(shellSetup).toContain("const syncWorkspaceNavigation = () =>");
+    expect(shellSetup).toContain('const selectedWorkspaceId = ref("")');
+    expect(shellSetup).toContain("selectedWorkspaceId.value = decodeURIComponent(workspaceRoute[1])");
+    expect(shellSetup).toContain("teams.value.some((team) => team.id === storedWorkspaceId)");
+    expect(shellSetup).toContain('selectedWorkspaceId.value = event.detail?.teamId || ""');
     expect(shellSetup).toContain('fetch("/api/v1/workspaces"');
     expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
     expect(shellSetup).toContain('path.startsWith("/workspaces/")');
