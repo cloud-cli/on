@@ -5,7 +5,7 @@ vi.mock("./db-client.js", () => ({ default: database }));
 
 import { runMigrations } from "./migrations.js";
 
-describe("Flow system principal retirement migration", () => {
+describe("legacy system principal retirement migration", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     database.transaction.mockResolvedValue([]);

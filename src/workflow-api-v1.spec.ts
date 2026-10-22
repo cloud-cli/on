@@ -73,7 +73,7 @@ function makeRequest(method: string, url: string, body?: unknown) {
   return {
     method,
     url,
-    headers: { host: "flow.test", authorization: "Bearer test-key" },
+    headers: { host: "app.test", authorization: "Bearer test-key" },
     async *[Symbol.asyncIterator]() {
       if (body !== undefined) {
         yield Buffer.from(JSON.stringify(body));
@@ -124,7 +124,7 @@ describe("scoped workflow API v1", () => {
     expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({ workflows });
   });
 
-  it("does not expose Flow-managed system-user, token, or legacy API-key endpoints", async () => {
+  it("does not expose app-managed system-user, token, or legacy API-key endpoints", async () => {
     const server = makeServer();
     for (const [method, url] of [
       ["GET", "/api/v1/system-users"],

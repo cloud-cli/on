@@ -190,7 +190,7 @@ describe("run view", () => {
     expect(source).toContain('class="run-heading');
     expect(source).toContain('class="detail-meta');
     expect(source).toContain('class="execution');
-    expect(source).toContain("bg-flow-background");
+    expect(source).toContain("bg-app-background");
     expect(source).toContain("bg-[#1c211e]");
     expect(source).toContain("{{ failedStepMessage }}");
     expect(source).not.toContain("{{ runOrigin }}");
@@ -219,9 +219,9 @@ describe("run view", () => {
     expect(source).toContain("detailTab !== 'inputs'");
     expect(source).toContain("detailTab !== 'artifacts'");
     expect(source).toContain("detailTab !== 'history'");
-    expect(source).toContain("aria-[selected=true]:bg-flow-green-bg");
+    expect(source).toContain("aria-[selected=true]:bg-app-green-bg");
     expect(source).toContain("aria-[pressed=true]:shadow-[0_0_0_1px_#387045,0_1px_3px_#23351214]");
-    expect(source).toContain("hover:bg-flow-panel hover:text-flow-primary");
+    expect(source).toContain("hover:bg-app-panel hover:text-app-primary");
     expect(source).toContain("data-restart-menu");
     expect(source).toContain('addEventListener("pointerdown", handleOutsideRestartMenu)');
     expect(source).toContain('removeEventListener("pointerdown", handleOutsideRestartMenu)');
@@ -246,7 +246,7 @@ describe("run view", () => {
     expect(source).toContain("detailTab !== 'source'");
     expect(source).toContain('theme="googlecode"');
     expect(source).not.toContain("border-t border-gray-800 bg-gray-950");
-    expect(source).not.toContain("border-b border-flow-border pb-4");
+    expect(source).not.toContain("border-b border-app-border pb-4");
     expect(source).toContain('bind-source="report.workflowSourceYaml"');
     expect(source).toContain("Get AI help for failed step");
     expect(source).toContain("/ai-help");

@@ -74,7 +74,7 @@ describe("dashboard", () => {
     expect(dashboardSetup).toContain("if (searchInProgress && !isSearch) {");
     expect(dashboardSetup).toContain("generation !== refreshGeneration");
     expect(html).toContain("Filter runs by status");
-    expect(html).toContain("aria-[pressed=true]:bg-flow-primary");
+    expect(html).toContain("aria-[pressed=true]:bg-app-primary");
     expect(html).toContain("[[aria-pressed=true]_&]:bg-white/20");
     expect(html).toContain("attr-aria-pressed=\"tab.isActive ? 'true' : 'false'\"");
     expect(dashboardSetup).toContain("isActive: statusFilter.value === tab.status");

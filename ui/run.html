@@ -22,19 +22,19 @@
       }
     </script>
   </head>
-  <body class="min-h-screen bg-flow-background p-4 font-sans text-flow-foreground md:p-6">
+  <body class="min-h-screen bg-app-background p-4 font-sans text-app-foreground md:p-6">
     <template app>
       <main class="w-full space-y-4 py-2 run-detail">
         <header class="run-heading flex flex-wrap items-center justify-between gap-3">
           <div>
             <a
               href="/ui/runs"
-              class="mb-3 inline-flex items-center gap-2 text-sm text-flow-secondary hover:text-flow-primary"
+              class="mb-3 inline-flex items-center gap-2 text-sm text-app-secondary hover:text-app-primary"
             >
               <lucide-icon icon="arrow-left" size="15"></lucide-icon>All runs
             </a>
-            <h1 class="flex flex-wrap items-center gap-x-2 text-2xl font-semibold text-flow-foreground">
-              <span>{{ report.workflowName }}</span><span class="text-flow-secondary">#{{ report.jobId }}</span>
+            <h1 class="flex flex-wrap items-center gap-x-2 text-2xl font-semibold text-app-foreground">
+              <span>{{ report.workflowName }}</span><span class="text-app-secondary">#{{ report.jobId }}</span>
               <span
                 class="px-3 py-1 rounded-full text-xs font-semibold border"
                 bind-class="{'bg-emerald-100.text-emerald-800.border-emerald-300': report.status === 'success', 'bg-rose-100.text-rose-800.border-rose-300': report.status === 'failed', 'bg-blue-100.text-blue-800.border-blue-300': report.status === 'running', 'bg-amber-100.text-amber-900.border-amber-300': !['success', 'failed', 'running'].includes(report.status)}"
@@ -46,7 +46,7 @@
             <button
               type="button"
               on-click="copyRunUrl()"
-              class="inline-flex items-center gap-2 rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+              class="inline-flex items-center gap-2 rounded-full border border-app-border bg-white px-3 py-1.5 text-sm text-app-foreground hover:bg-app-panel"
               title="Copy URL"
               aria-label="Copy URL"
             >
@@ -55,7 +55,7 @@
             <button
               type="button"
               on-click="downloadLogs()"
-              class="inline-flex items-center gap-2 rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+              class="inline-flex items-center gap-2 rounded-full border border-app-border bg-white px-3 py-1.5 text-sm text-app-foreground hover:bg-app-panel"
               class-hidden="!report.canViewLogs"
               title="Download logs"
               aria-label="Download logs"
@@ -76,7 +76,7 @@
             </template>
             <template if="report.status !== 'running' && report.canControl">
               <button
-                class="inline-flex items-center gap-2 rounded-full border border-flow-border bg-white px-3 py-1.5 text-sm text-flow-foreground hover:bg-flow-panel"
+                class="inline-flex items-center gap-2 rounded-full border border-app-border bg-white px-3 py-1.5 text-sm text-app-foreground hover:bg-app-panel"
                 on-click="restartJob()"
                 bind-disabled.bool="restartLoading"
                 aria-label="Restart run"
@@ -87,18 +87,18 @@
               </button>
               <details class="relative" data-restart-menu>
                 <summary
-                  class="flex w-fit cursor-pointer list-none rounded-full border border-flow-border bg-white p-2 text-flow-secondary outline-none hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                  class="flex w-fit cursor-pointer list-none rounded-full border border-app-border bg-white p-2 text-app-secondary outline-none hover:bg-app-panel focus-visible:ring-2 focus-visible:ring-app-primary/40"
                   aria-label="More restart options"
                 >
                   <lucide-icon icon="chevron-down" size="14"></lucide-icon>
                 </summary>
                 <div
-                  class="restart-menu-panel mt-2 w-full rounded-xl border border-flow-border bg-white p-2 shadow-xl sm:absolute sm:right-0 sm:top-full sm:z-20 sm:mt-2 sm:w-56"
+                  class="restart-menu-panel mt-2 w-full rounded-xl border border-app-border bg-white p-2 shadow-xl sm:absolute sm:right-0 sm:top-full sm:z-20 sm:mt-2 sm:w-56"
                 >
                   <button
                     type="button"
                     on-click="openManualRestart($event)"
-                    class="w-full rounded-lg px-3 py-2 text-left text-sm text-flow-foreground hover:bg-flow-panel"
+                    class="w-full rounded-lg px-3 py-2 text-left text-sm text-app-foreground hover:bg-app-panel"
                   >
                     Restart with inputs
                   </button>
@@ -116,34 +116,34 @@
           </template>
         </header>
         <section
-          class="detail-meta grid divide-y divide-flow-border rounded-xl border border-flow-border bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0"
+          class="detail-meta grid divide-y divide-app-border rounded-xl border border-app-border bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0"
           aria-label="Run metadata"
         >
           <div class="flex min-w-0 items-center gap-3 p-3 sm:p-4">
             <lucide-icon icon="calendar-days" size="20" class="h-5 w-5 shrink-0 text-emerald-700"></lucide-icon>
             <div class="min-w-0">
-              <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary sm:text-xs"
+              <span class="block text-[10px] font-semibold uppercase tracking-wider text-app-secondary sm:text-xs"
                 >Started</span
               >
-              <span class="mt-1 block text-xs text-flow-foreground sm:text-sm">{{ formatDate(report.startedAt) }}</span>
+              <span class="mt-1 block text-xs text-app-foreground sm:text-sm">{{ formatDate(report.startedAt) }}</span>
             </div>
           </div>
           <div class="flex min-w-0 items-center gap-3 p-3 sm:p-4">
             <lucide-icon icon="timer" size="20" class="h-5 w-5 shrink-0 text-emerald-700"></lucide-icon>
             <div class="min-w-0">
-              <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary sm:text-xs"
+              <span class="block text-[10px] font-semibold uppercase tracking-wider text-app-secondary sm:text-xs"
                 >Duration</span
               >
-              <span class="mt-1 block text-xs text-flow-foreground sm:text-sm">{{ timing }}</span>
+              <span class="mt-1 block text-xs text-app-foreground sm:text-sm">{{ timing }}</span>
             </div>
           </div>
           <div class="flex min-w-0 items-center gap-3 p-3 sm:p-4">
             <lucide-icon icon="server" size="20" class="h-5 w-5 shrink-0 text-emerald-700"></lucide-icon>
             <div class="min-w-0">
-              <span class="block text-[10px] font-semibold uppercase tracking-wider text-flow-secondary sm:text-xs"
+              <span class="block text-[10px] font-semibold uppercase tracking-wider text-app-secondary sm:text-xs"
                 >Worker</span
               >
-              <span class="mt-1 block truncate text-xs text-flow-foreground sm:text-sm"
+              <span class="mt-1 block truncate text-xs text-app-foreground sm:text-sm"
                 >{{ report.workerName || report.workerId || 'Awaiting worker' }}</span
               >
             </div>
@@ -246,11 +246,11 @@
           </div>
         </template>
         <section
-          class="execution overflow-hidden rounded-xl border border-flow-border bg-white"
+          class="execution overflow-hidden rounded-xl border border-app-border bg-white"
           aria-label="Run details"
         >
           <nav
-            class="grid grid-cols-5 gap-0.5 border-b border-flow-border px-2 pt-2 sm:flex sm:flex-wrap sm:gap-1.5 sm:px-6 sm:pt-3"
+            class="grid grid-cols-5 gap-0.5 border-b border-app-border px-2 pt-2 sm:flex sm:flex-wrap sm:gap-1.5 sm:px-6 sm:pt-3"
             role="tablist"
             aria-label="Run details tabs"
           >
@@ -259,7 +259,7 @@
                 type="button"
                 role="tab"
                 on-click="selectDetailTab(tab.id)"
-                class="inline-flex min-w-0 w-full cursor-pointer items-center justify-center gap-2 rounded-t-md border-b-2 border-transparent px-1 pb-2 pt-2 text-xs text-flow-secondary transition-colors hover:bg-flow-panel hover:text-flow-primary aria-[selected=true]:border-flow-primary aria-[selected=true]:bg-flow-green-bg aria-[selected=true]:font-bold aria-[selected=true]:text-[#174522] sm:w-auto sm:justify-start sm:px-3 sm:pb-3 sm:text-sm"
+                class="inline-flex min-w-0 w-full cursor-pointer items-center justify-center gap-2 rounded-t-md border-b-2 border-transparent px-1 pb-2 pt-2 text-xs text-app-secondary transition-colors hover:bg-app-panel hover:text-app-primary aria-[selected=true]:border-app-primary aria-[selected=true]:bg-app-green-bg aria-[selected=true]:font-bold aria-[selected=true]:text-[#174522] sm:w-auto sm:justify-start sm:px-3 sm:pb-3 sm:text-sm"
                 attr-aria-selected="tab.isActive ? 'true' : 'false'"
                 attr-aria-label="tab.label"
                 attr-title="tab.label"
@@ -272,16 +272,16 @@
           </nav>
           <div class-hidden="detailTab !== 'logs'">
             <div class="grid gap-0 lg:grid-cols-[226px_minmax(0,1fr)]">
-              <aside class="steps-panel border-flow-border bg-flow-panel p-4 lg:border-r" aria-label="Execution steps">
+              <aside class="steps-panel border-app-border bg-app-panel p-4 lg:border-r" aria-label="Execution steps">
                 <div
-                  class="steps-heading mb-3 flex items-center justify-between px-2 text-sm font-semibold text-flow-foreground"
+                  class="steps-heading mb-3 flex items-center justify-between px-2 text-sm font-semibold text-app-foreground"
                 >
                   <span>Execution steps</span>
                   <span>{{ successfulSteps }} / {{ totalSteps }}</span>
                 </div>
                 <template for="step of steps">
                   <button
-                    class="mb-1 flex w-full cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 py-2.5 text-left text-sm font-medium text-flow-secondary transition-colors hover:bg-flow-background aria-[pressed=true]:border-flow-primary aria-[pressed=true]:bg-white aria-[pressed=true]:font-bold aria-[pressed=true]:text-[#174522] aria-[pressed=true]:shadow-[0_0_0_1px_#387045,0_1px_3px_#23351214]"
+                    class="mb-1 flex w-full cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 py-2.5 text-left text-sm font-medium text-app-secondary transition-colors hover:bg-app-background aria-[pressed=true]:border-app-primary aria-[pressed=true]:bg-white aria-[pressed=true]:font-bold aria-[pressed=true]:text-[#174522] aria-[pressed=true]:shadow-[0_0_0_1px_#387045,0_1px_3px_#23351214]"
                     on-click="selectStep(step.index)"
                     attr-aria-pressed="step.isSelected ? 'true' : 'false'"
                     attr-aria-label="(step.name || step.id || 'Step') + ', ' + upper(step.status)"
@@ -294,7 +294,7 @@
                     <span class="block min-w-0 flex-1 truncate" attr-title="step.name || step.id || 'Step'"
                       >{{ step.name || step.id || 'Step' }}</span
                     >
-                    <span class="shrink-0 font-mono text-xs text-flow-secondary"
+                    <span class="shrink-0 font-mono text-xs text-app-secondary"
                       >{{ formatDuration(step.durationMs) }}</span
                     >
                   </button>
@@ -388,23 +388,20 @@
           </div>
           <div class-hidden="detailTab !== 'artifacts'">
             <div class-hidden="!report.canViewArtifacts || !report.artifacts.length">
-              <ul class="divide-y divide-flow-border">
+              <ul class="divide-y divide-app-border">
                 <template for="artifact of report.artifacts">
                   <li class="px-5 py-4">
                     <a
                       href="#"
                       on-click="downloadArtifact($event, artifact)"
-                      class="font-mono text-sm text-flow-primary hover:underline"
+                      class="font-mono text-sm text-app-primary hover:underline"
                       >{{ artifact }}</a
                     >
                   </li>
                 </template>
               </ul>
             </div>
-            <p
-              class="p-6 text-sm text-flow-secondary"
-              class-hidden="report.canViewArtifacts && report.artifacts.length"
-            >
+            <p class="p-6 text-sm text-app-secondary" class-hidden="report.canViewArtifacts && report.artifacts.length">
               {{ report.canViewArtifacts ? 'No artifacts available for this run.' : 'You do not have access to this
               run\'s artifacts.' }}
             </p>
@@ -412,27 +409,27 @@
           <div class-hidden="detailTab !== 'history'">
             <div class-hidden="!previousRuns.length">
               <h3 class="sr-only">Previous runs</h3>
-              <ul class="divide-y divide-flow-border">
+              <ul class="divide-y divide-app-border">
                 <template for="run of previousRuns">
                   <li>
                     <a
                       attr-href="'/ui/runs/' + run.id"
-                      class="flex items-center justify-between gap-3 px-5 py-4 text-sm text-flow-foreground hover:bg-flow-panel"
+                      class="flex items-center justify-between gap-3 px-5 py-4 text-sm text-app-foreground hover:bg-app-panel"
                     >
                       <span><span class="font-mono">#{{ run.id }}</span> · {{ formatDate(run.startedAt) }}</span>
-                      <span class="text-xs font-semibold uppercase text-flow-secondary">{{ upper(run.status) }}</span>
+                      <span class="text-xs font-semibold uppercase text-app-secondary">{{ upper(run.status) }}</span>
                     </a>
                   </li>
                 </template>
               </ul>
             </div>
-            <p class="p-6 text-sm text-flow-secondary" class-hidden="previousRuns.length">No previous runs.</p>
+            <p class="p-6 text-sm text-app-secondary" class-hidden="previousRuns.length">No previous runs.</p>
           </div>
           <div class-hidden="detailTab !== 'source'">
-            <div class="flex justify-end border-b border-flow-border px-4 py-2" class-hidden="!report.canEditWorkflow">
+            <div class="flex justify-end border-b border-app-border px-4 py-2" class-hidden="!report.canEditWorkflow">
               <a
                 attr-href="'/ui/workflows/' + report.workflowId"
-                class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-flow-primary outline-none transition hover:bg-flow-panel focus-visible:ring-2 focus-visible:ring-flow-primary/40"
+                class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-app-primary outline-none transition hover:bg-app-panel focus-visible:ring-2 focus-visible:ring-app-primary/40"
               >
                 <lucide-icon icon="pencil" size="15"></lucide-icon>Edit workflow
               </a>
@@ -444,7 +441,7 @@
               class="block max-h-[38rem] overflow-auto p-4"
               class-hidden="!report.workflowSourceYaml"
             ></code-block>
-            <p class="p-6 text-sm text-flow-secondary" class-hidden="report.workflowSourceYaml">
+            <p class="p-6 text-sm text-app-secondary" class-hidden="report.workflowSourceYaml">
               Workflow source is unavailable.
             </p>
           </div>

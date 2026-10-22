@@ -25,7 +25,7 @@ async function request(path: string) {
   const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
   await (WebhookServer.prototype as any).handleRequest.call(
     {},
-    { method: "GET", url: path, headers: { host: "flow.test" } },
+    { method: "GET", url: path, headers: { host: "app.test" } },
     response,
   );
   return response;

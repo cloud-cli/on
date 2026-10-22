@@ -208,7 +208,7 @@ export class WebhookServer {
             {
               status: 500,
               title: "Something went wrong",
-              message: "Flow hit an unexpected problem while handling this page. Please try again.",
+              message: "The app hit an unexpected problem while handling this page. Please try again.",
               action: { label: "Try again", href: "/ui/runs" },
             },
             req.method === "HEAD",
@@ -1124,11 +1124,11 @@ export class WebhookServer {
       });
       return res.end(`<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Join team · Flow</title>
+<title>Join team</title>
 <body style="font:16px system-ui;max-width:36rem;margin:15vh auto;padding:1rem;color:#17202a">
-<h1>Join a Flow team</h1><p id="status">Checking invitation…</p>
+<h1>Join a team</h1><p id="status">Checking invitation…</p>
 <button id="accept" style="padding:.7rem 1rem" hidden>Accept invitation</button>
-<p><a href="/ui/runs">Back to Flow</a></p>
+<p><a href="/ui/runs">Back</a></p>
 <script>
 const status=document.querySelector('#status');
 const token=new URLSearchParams(location.hash.slice(1)).get('token')||sessionStorage.getItem('runner-pending-team-invite')||'';
@@ -1672,7 +1672,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
           status: 404,
           title: "We couldn't find that page",
           message: "The link may be out of date, or the page may have moved.",
-          action: { label: "Back to Flow", href: "/ui/runs" },
+          action: { label: "Back", href: "/ui/runs" },
         },
         req.method === "HEAD",
       );
@@ -2568,7 +2568,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         status: 503,
         title: "Sign-in is unavailable",
         message: "Authentication is not configured on this server. Please contact your administrator.",
-        action: { label: "Back to Flow", href: "/ui/runs" },
+        action: { label: "Back", href: "/ui/runs" },
       });
     }
     try {
@@ -2580,7 +2580,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         title: "Couldn't start sign-in",
         message: "The authentication service couldn't be reached. Please try again shortly.",
         action: { label: "Try again", href: `/auth/login?url=${encodeURIComponent(sanitizedReturnTo)}` },
-        secondaryAction: { label: "Back to Flow", href: "/ui/runs" },
+        secondaryAction: { label: "Back", href: "/ui/runs" },
       });
     }
   }
@@ -2591,7 +2591,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         status: 503,
         title: "Sign-in is unavailable",
         message: "Authentication is not configured on this server. Please contact your administrator.",
-        action: { label: "Back to Flow", href: "/ui/runs" },
+        action: { label: "Back", href: "/ui/runs" },
       });
     }
     if (url.searchParams.get("error")) {
@@ -2600,7 +2600,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         title: "Sign-in wasn't completed",
         message: "You cancelled sign-in or the identity provider couldn't authenticate you. You can safely try again.",
         action: { label: "Try signing in again", href: "/auth/login?url=%2Fui%2Fruns" },
-        secondaryAction: { label: "Back to Flow", href: "/ui/runs" },
+        secondaryAction: { label: "Back", href: "/ui/runs" },
       });
     }
     const code = url.searchParams.get("code");
@@ -2611,7 +2611,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         title: "Sign-in link is incomplete",
         message: "The identity provider returned an incomplete response. Please start sign-in again.",
         action: { label: "Try signing in again", href: "/auth/login?url=%2Fui%2Fruns" },
-        secondaryAction: { label: "Back to Flow", href: "/ui/runs" },
+        secondaryAction: { label: "Back", href: "/ui/runs" },
       });
     }
     try {
@@ -2636,7 +2636,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         message:
           "We couldn't verify your identity with the sign-in provider. Please try again. If the problem continues, contact your administrator.",
         action: { label: "Try signing in again", href: "/auth/login?url=%2Fui%2Fruns" },
-        secondaryAction: { label: "Back to Flow", href: "/ui/runs" },
+        secondaryAction: { label: "Back", href: "/ui/runs" },
       });
     }
   }
@@ -2647,7 +2647,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         status: 404,
         title: "Sign-out is unavailable",
         message: "This application does not have an active sign-in session to end.",
-        action: { label: "Back to Flow", href: "/ui/runs" },
+        action: { label: "Back", href: "/ui/runs" },
       });
     }
     res.writeHead(302, {
