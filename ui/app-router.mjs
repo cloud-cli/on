@@ -228,9 +228,14 @@ export default function () {
           '<h1 class="text-xl font-semibold">404 — Page not found</h1><p class="mt-2 text-sm">The page you are looking for does not exist. <a href="/ui/runs">Go home</a> or <a href="/ui/runs">view runs</a>.</p>';
         outlet.value.append(routeMessage);
       } else {
-        const persistentPage = !["run", "editor", "team-settings", "recipe-editor", "workflows", "incoming-events"].includes(
-          current.page,
-        );
+        const persistentPage = ![
+          "run",
+          "editor",
+          "team-settings",
+          "recipe-editor",
+          "workflows",
+          "incoming-events",
+        ].includes(current.page);
         const cacheKey = current.teamId ? `${current.page}:${current.teamId}` : current.page;
         let component = persistentPage ? mountedPages.get(cacheKey) : null;
         if (!component) {

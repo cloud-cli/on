@@ -24,7 +24,7 @@ describe("On application shell", () => {
     expect(html).toContain('"@app/": "/assets/"');
     expect(html).toContain('"yaml": "https://esm.sh/yaml@2.9.0"');
     expect(html).toContain('aria-label="Primary navigation"');
-    expect(html).toContain('data-mobile-menu-button');
+    expect(html).toContain("data-mobile-menu-button");
     expect(html).toContain('aria-controls="primary-sidebar"');
     expect(html).toContain('aria-label="Close navigation menu"');
     expect(html).not.toContain('href="/ui/runs"');
@@ -47,7 +47,7 @@ describe("On application shell", () => {
     expect(html).not.toContain("overscroll-y-contain");
     expect(html).not.toContain("overflow-hidden bg-app-background");
     expect(html).toContain('href="/ui/settings"');
-    expect(html).toContain('Open preferences for ');
+    expect(html).toContain("Open preferences for ");
     expect(html).toContain("max-w-[calc(100vw-4rem)]");
     expect(html).toContain("max-w-[calc(100vw-7rem)]");
     expect(html).toContain('class="hidden min-w-0 max-w-[calc(100vw-7rem)] flex-col');

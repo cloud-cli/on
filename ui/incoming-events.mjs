@@ -7,7 +7,9 @@ export default function setup() {
     return;
   }
 
-  const workspaceId = decodeURIComponent(window.location.pathname.match(/^\/workspaces\/([^/]+)\/runs\/events$/)?.[1] || "");
+  const workspaceId = decodeURIComponent(
+    window.location.pathname.match(/^\/workspaces\/([^/]+)\/runs\/events$/)?.[1] || "",
+  );
   const list = root.querySelector("[data-list]");
   const loading = root.querySelector("[data-loading]");
   const listError = root.querySelector("[data-list-error]");
@@ -60,7 +62,8 @@ export default function setup() {
       currentEvent.value = event;
       selectedEventId.value = event.id;
       root.querySelector("[data-detail-title]").textContent = `${event.provider} event`;
-      root.querySelector("[data-detail-summary]").textContent = `${event.eventType || "unknown event"} · ${event.deliveryId || event.id} · ${formatDate(event.receivedAt)}`;
+      root.querySelector("[data-detail-summary]").textContent =
+        `${event.eventType || "unknown event"} · ${event.deliveryId || event.id} · ${formatDate(event.receivedAt)}`;
       let displayPayload = event.payload;
       try {
         displayPayload = JSON.stringify(JSON.parse(event.payload), null, 2);
@@ -69,7 +72,10 @@ export default function setup() {
       }
       payload.textContent = displayPayload;
       retriggerButton.disabled = event.validationStatus !== "valid";
-      retriggerStatus.textContent = event.validationStatus === "valid" ? "Only this verified delivery will be replayed." : "Unverified payloads cannot be replayed.";
+      retriggerStatus.textContent =
+        event.validationStatus === "valid"
+          ? "Only this verified delivery will be replayed."
+          : "Unverified payloads cannot be replayed.";
       detail.classList.remove("hidden");
       detail.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
@@ -116,7 +122,8 @@ export default function setup() {
       actions.className = "px-4 py-3";
       const view = document.createElement("button");
       view.type = "button";
-      view.className = "font-semibold text-app-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-primary";
+      view.className =
+        "font-semibold text-app-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-primary";
       view.textContent = "Inspect";
       view.setAttribute("aria-label", `Inspect ${event.provider} ${event.eventType || "event"}`);
       view.addEventListener("click", () => void openDetail(event.id));
@@ -135,9 +142,7 @@ export default function setup() {
     loading.classList.remove("hidden");
     listError.classList.add("hidden");
     try {
-      const { events = [] } = await request(
-        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/events?limit=100`,
-      );
+      const { events = [] } = await request(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/events?limit=100`);
       renderEvents(events);
     } catch (error) {
       listError.textContent = error.message || "Unable to load incoming events";

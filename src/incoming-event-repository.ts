@@ -30,12 +30,7 @@ export type IncomingEventDetail = IncomingEventSummary & {
 export class IncomingEventRepository {
   constructor(private readonly secrets = new SecretRepository()) {}
 
-  async capture(
-    teamId: string,
-    provider: string,
-    headers: Record<string, string>,
-    rawBody: Buffer,
-  ): Promise<string> {
+  async capture(teamId: string, provider: string, headers: Record<string, string>, rawBody: Buffer): Promise<string> {
     const id = crypto.randomUUID();
     const normalizedHeaders = Object.fromEntries(
       Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]),
@@ -68,7 +63,16 @@ export class IncomingEventRepository {
     await db.run(
       `UPDATE incoming_events SET validation_status = ?, processing_status = ?, inputs_ciphertext = ?,
          queued_jobs = ?, job_ids = ?, error = ? WHERE id = ? AND team_id = ?`,
-      [validation, status, inputsCiphertext, jobIds.length, JSON.stringify(jobIds), error?.slice(0, 1000) || null, id, teamId],
+      [
+        validation,
+        status,
+        inputsCiphertext,
+        jobIds.length,
+        JSON.stringify(jobIds),
+        error?.slice(0, 1000) || null,
+        id,
+        teamId,
+      ],
     );
   }
 

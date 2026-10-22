@@ -106,7 +106,7 @@ describe("SPA router", () => {
   });
 
   it("mounts run details and editors as disposable route components", () => {
-    expect(routerSetup).toContain('"workflows", "incoming-events"].includes(');
+    expect(routerSetup).toMatch(/const persistentPage = !\[[\s\S]*"workflows",[\s\S]*"incoming-events"/);
     expect(routerSetup).toContain("activeTransientPage?.remove()");
   });
 

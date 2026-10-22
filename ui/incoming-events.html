@@ -5,32 +5,50 @@
         <p class="text-sm font-semibold uppercase tracking-wide text-app-primary">Workspace activity</p>
         <h1 class="mt-1 text-3xl font-semibold">Incoming events</h1>
         <p class="mt-2 max-w-3xl text-sm text-app-secondary">
-          Inspect every accepted webhook delivery, including events that did not match a workflow. Payloads are encrypted
-          at rest and visible only to workspace members with webhook access.
+          Inspect every accepted webhook delivery, including events that did not match a workflow. Payloads are
+          encrypted at rest and visible only to workspace members with webhook access.
         </p>
       </div>
       <nav class="flex gap-2 border-b border-app-border" aria-label="Workspace run views">
-        <a data-runs-link class="border-b-2 border-transparent px-3 py-2 text-sm text-app-secondary hover:text-app-primary">Runs</a>
         <a
-          aria-current="page"
-          class="border-b-2 border-app-primary px-3 py-2 text-sm font-semibold text-app-primary"
+          data-runs-link
+          class="border-b-2 border-transparent px-3 py-2 text-sm text-app-secondary hover:text-app-primary"
+          >Runs</a
+        >
+        <a aria-current="page" class="border-b-2 border-app-primary px-3 py-2 text-sm font-semibold text-app-primary"
           >Incoming events</a
         >
       </nav>
     </header>
 
-    <p data-list-error role="alert" class="hidden rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"></p>
-    <section data-list class="overflow-hidden rounded-2xl border border-app-border bg-white" aria-label="Incoming event history">
+    <p
+      data-list-error
+      role="alert"
+      class="hidden rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"
+    ></p>
+    <section
+      data-list
+      class="overflow-hidden rounded-2xl border border-app-border bg-white"
+      aria-label="Incoming event history"
+    >
       <p class="p-8 text-center text-sm text-app-secondary" data-loading role="status">Loading incoming events…</p>
     </section>
 
-    <section data-detail class="hidden space-y-4 rounded-2xl border border-app-border bg-white p-5" aria-labelledby="event-detail-title">
+    <section
+      data-detail
+      class="hidden space-y-4 rounded-2xl border border-app-border bg-white p-5"
+      aria-labelledby="event-detail-title"
+    >
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 data-detail-title id="event-detail-title" class="text-xl font-semibold">Event details</h2>
           <p data-detail-summary class="mt-1 break-all font-mono text-xs text-app-secondary"></p>
         </div>
-        <button data-retrigger type="button" class="rounded-lg bg-app-primary px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+        <button
+          data-retrigger
+          type="button"
+          class="rounded-lg bg-app-primary px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
           Retrigger matching workflows
         </button>
       </div>

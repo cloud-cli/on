@@ -63,7 +63,8 @@ export default function setup() {
     selectedWorkspaceId.value = teamId;
     activeSection.value = page === "workflows" ? "workspace-workflows" : "workspace-runs";
   };
-  const workspacePath = (teamId, page) => `/ui/workspaces/${encodeURIComponent(teamId || selectedWorkspaceId.value)}/${page}`;
+  const workspacePath = (teamId, page) =>
+    `/ui/workspaces/${encodeURIComponent(teamId || selectedWorkspaceId.value)}/${page}`;
   const openPreferences = () => {
     history.pushState(null, "", "/ui/settings");
     window.dispatchEvent(new PopStateEvent("popstate"));

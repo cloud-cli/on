@@ -40,7 +40,9 @@
           <ul class="grid grid-cols-1 gap-3">
             <template for="team of teams"
               ><li>
-                <div class="relative flex min-h-24 items-center gap-4 rounded-xl border border-app-border bg-white p-4 transition hover:border-app-primary/50 hover:shadow-sm sm:p-5">
+                <div
+                  class="relative flex min-h-24 items-center gap-4 rounded-xl border border-app-border bg-white p-4 transition hover:border-app-primary/50 hover:shadow-sm sm:p-5"
+                >
                   <a
                     attr-href="'/ui/workspaces/' + encodeURIComponent(team.id) + '/runs'"
                     attr-aria-label="'Open ' + team.name + ' recent runs'"
