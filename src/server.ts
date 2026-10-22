@@ -1724,10 +1724,16 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
 
       await this.workflowsLoaded;
-      await this.matchWorkflows(provider, inputs, await this.workflows.publishedForTeam(teamId), secretValues, teamId);
+      const jobs = await this.matchWorkflows(
+        provider,
+        inputs,
+        await this.workflows.publishedForTeam(teamId),
+        secretValues,
+        teamId,
+      );
 
       res.writeHead(202, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "OK" }));
+      res.end(JSON.stringify({ message: "OK", queuedJobs: jobs.length }));
     } catch (err: any) {
       console.error("❌ Webhook Ingress Error:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
