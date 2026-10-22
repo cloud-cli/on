@@ -1,10 +1,12 @@
-import { onInit, ref } from "@li3/web";
+import { onInit, ref, templateRef } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
 
 export default function () {
   const teams = ref([]);
   const newTeamName = ref("");
+  const newTeamFormOpen = ref(false);
   const message = ref("");
+  const newTeamInput = templateRef("newTeamInput");
   const loadTeams = async () => {
     const response = await apiFetch("/api/v1/workspaces", { headers: { accept: "application/json" } });
     if (response.ok) {
@@ -26,14 +28,27 @@ export default function () {
       }
 
       newTeamName.value = "";
+      newTeamFormOpen.value = false;
       message.value = `Created ${result.workspace.name}.`;
       await loadTeams();
     } catch (error) {
       message.value = error.message;
     }
   };
+  const toggleCreateForm = () => {
+    newTeamFormOpen.value = !newTeamFormOpen.value;
+    message.value = "";
+    if (newTeamFormOpen.value) {
+      requestAnimationFrame(() => newTeamInput.value?.focus());
+    }
+  };
+  const closeCreateForm = () => {
+    newTeamFormOpen.value = false;
+    newTeamName.value = "";
+    message.value = "";
+  };
   onInit(async () => {
     await loadTeams();
   });
-  return { teams, newTeamName, message, createTeam };
+  return { teams, newTeamName, newTeamFormOpen, message, createTeam, toggleCreateForm, closeCreateForm };
 }

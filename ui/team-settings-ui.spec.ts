@@ -145,16 +145,17 @@ describe("team settings UI", () => {
     const { readFileSync } = await import("node:fs");
     const html = readFileSync(new URL("../src/teams-landing.html", import.meta.url), "utf8");
     const landing = readFileSync(new URL("../src/teams-landing.mjs", import.meta.url), "utf8");
-    expect(html).toContain('<h1 class="text-2xl font-semibold">Your workspaces</h1>');
+    expect(html).toContain('<h1 class="text-2xl font-semibold">Workspaces</h1>');
     expect(html).not.toContain('class="text-xs font-semibold uppercase tracking-wider text-app-muted">Your workspaces');
     expect(html).not.toContain("Choose a workspace");
     expect(html).toContain('<main class="w-full space-y-5 py-2">');
     expect(html).toContain(
-      'class="flex flex-wrap items-center gap-3 rounded-xl border border-app-border bg-white p-5"',
+      'class="overflow-hidden rounded-2xl border border-app-border bg-white p-4 shadow-sm sm:p-5"',
     );
-    expect(html).toContain('class="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto"');
-    expect(html).toContain('class="rounded-xl border border-app-border bg-white p-5" aria-label="Workspace list"');
-    expect(html).toContain('class="rounded-xl border border-app-border bg-white p-5"');
+    expect(html).toContain('on-click="toggleCreateForm()"');
+    expect(html).toContain('class-hidden="!newTeamFormOpen"');
+    expect(html).toContain('id="new-team-name"');
+    expect(html).toContain('aria-label="Workspace list"');
 
     expect(html).toContain("encodeURIComponent(team.id) + '/settings'");
     expect(landing).toContain('apiFetch("/api/v1/workspaces"');

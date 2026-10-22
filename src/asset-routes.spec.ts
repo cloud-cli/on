@@ -20,6 +20,7 @@ const setupUrls = [
   ),
 ];
 const workspaceTemplate = readFileSync(new URL("./teams-landing.html", import.meta.url), "utf8");
+const workspaceSetup = readFileSync(new URL("./teams-landing.mjs", import.meta.url), "utf8");
 
 async function request(path: string) {
   const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
@@ -41,11 +42,19 @@ describe("canonical setup-script asset routes", () => {
   });
 
   it("uses full-width workspace cards that open recent runs with a separate edit action", () => {
-    expect(workspaceTemplate).toContain('class="grid grid-cols-1 gap-3"');
+    expect(workspaceTemplate).toContain('class="mt-2 grid grid-cols-1"');
     expect(workspaceTemplate).toContain("'Open ' + team.name + ' recent runs'");
     expect(workspaceTemplate).toContain("'Edit ' + team.name + ' settings'");
-    expect(workspaceTemplate).toContain(">\n                    Edit\n                  </a>");
+    expect(workspaceTemplate).toContain('aria-hidden="true"');
     expect(workspaceTemplate).not.toContain("sm:grid-cols-2");
+  });
+
+  it("keeps workspace creation collapsed until requested, then opens an inline input", () => {
+    expect(workspaceTemplate).toContain('class-hidden="!newTeamFormOpen"');
+    expect(workspaceTemplate).toContain('class-hidden="newTeamFormOpen"');
+    expect(workspaceTemplate).toContain('on-click="toggleCreateForm()"');
+    expect(workspaceSetup).toContain("const newTeamFormOpen = ref(false)");
+    expect(workspaceSetup).toContain("requestAnimationFrame(() => newTeamInput.value?.focus())");
   });
 
   it.each(setupUrls)("serves the setup module referenced at %s", async (url) => {
