@@ -118,7 +118,11 @@ describe("workflow management UI", () => {
     expect(workflowsSetup).toContain('method: "PATCH"');
     expect(source).toContain('aria-labelledby="workflow-list-title"');
     expect(source).toContain("workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)");
-    expect(source).toContain("workflow.workspaceName");
+    expect(source).not.toContain("workspaceName");
+    expect(source).not.toContain("workflow.workspaceName");
+    expect(workflowsSetup).toContain("match(/^\\/workspaces\\/([^/]+)\\/workflows(?:\\/|$)/)");
+    expect(workflowsSetup).toContain('params.get("workspaceId") || pathWorkspaceId ||');
+    expect(workflowsSetup).toContain('api("/api/v1/workflows", { headers: { "X-Team-ID": routedWorkspaceId } })');
     expect(workflowsSetup).toContain('headers: { "X-Team-ID": workspace.id }');
     expect(workflowsSetup).toContain('api("/api/v1/workflows", { headers: { "X-Team-ID": workspace.id } })');
     expect(workflowsSetup).toContain('"X-Team-ID": selectedWorkspaceId.value');

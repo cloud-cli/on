@@ -14,6 +14,9 @@ export default function () {
   const workflowPath = window.location.pathname
     .replace(/^\/ui/, "")
     .match(/^\/(?:workspaces\/([^/]+)\/)?(?:settings\/)?workflows\/(new|[a-z0-9-]+)$/);
+  const workspaceRoute = window.location.pathname
+    .replace(/^\/ui/, "")
+    .match(/^\/workspaces\/([^/]+)\/workflows(?:\/|$)/);
   const page = workflowPath ? "editor" : document.body.dataset.page || params.get("page") || "workflows";
   const pathWorkspaceId = workflowPath?.[1] ? decodeURIComponent(workflowPath[1]) : "";
   const pathWorkflowId = workflowPath && workflowPath[2] !== "new" ? workflowPath[2] : "";
@@ -23,7 +26,8 @@ export default function () {
   const workflows = ref([]);
   const availableWorkspaces = ref([]);
   const workspacesLoading = ref(page === "editor");
-  const routedWorkspaceId = params.get("workspaceId") || pathWorkspaceId;
+  const routedWorkspaceId =
+    params.get("workspaceId") || pathWorkspaceId || (workspaceRoute?.[1] ? decodeURIComponent(workspaceRoute[1]) : "");
   const initialWorkspaceId = routedWorkspaceId || localStorage.getItem("runner-team-id") || "";
   const selectedWorkspaceId = ref(initialWorkspaceId);
   const secrets = ref([]);
@@ -161,7 +165,6 @@ export default function () {
       workflows.value = workspaceWorkflows.map((workflow) => ({
         ...workflow,
         workspaceId: workspace.id,
-        workspaceName: workspace.name,
       }));
       return;
     }
@@ -173,7 +176,6 @@ export default function () {
           return (data.workflows || []).map((workflow) => ({
             ...workflow,
             workspaceId: workspace.id,
-            workspaceName: workspace.name,
           }));
         } catch (error) {
           console.error(`Unable to load workflows for workspace ${workspace.id}`, error);
