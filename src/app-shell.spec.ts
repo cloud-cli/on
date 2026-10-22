@@ -19,18 +19,20 @@ describe("On application shell", () => {
 
   it("provides responsive, accessible navigation around the mounted router", () => {
     expect(shellSetup).toContain('import "@app/api-client.mjs"');
-    expect(shellSetup).toContain('activeSection.value = "workflows"');
+    expect(shellSetup).toContain('"workspace-workflows" : "workspace-runs"');
+    expect(shellSetup).toContain('addEventListener("runner-route-changed", syncSection)');
     expect(html).toContain('"@app/": "/assets/"');
     expect(html).toContain('"yaml": "https://esm.sh/yaml@2.9.0"');
     expect(html).toContain('aria-label="Primary navigation"');
-    expect(html).toContain('aria-label="Mobile navigation"');
-    expect(html).toContain("bottom-0 z-50");
-    expect(html).toContain("pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)] pt-2");
+    expect(html).toContain('data-mobile-menu-button');
+    expect(html).toContain('aria-controls="primary-sidebar"');
+    expect(html).toContain('aria-label="Close navigation menu"');
     expect(html).not.toContain('href="/ui/runs"');
-    expect(html.match(/href="\/ui\/workflows"/g)).toHaveLength(2);
-    expect(html.match(/href="\/ui\/settings"/g)).toHaveLength(2);
-    expect(html.match(/href="\/ui\/workspaces"/g)).toHaveLength(3);
-    expect(html).toContain("activeSection === 'settings' ? 'page' : null");
+    expect(html).toContain('href="/ui/recipes"');
+    expect(html).not.toContain('href="/ui/workflows"');
+    expect(html).toContain('href="/ui/settings"');
+    expect(html.match(/href="\/ui\/workspaces"/g)).toHaveLength(2);
+    expect(html).toContain('href="/ui/settings"');
     expect(html).toContain("focus-visible:ring-2");
     expect(html).toContain('>on<span class="text-[#729b5b]">:</span>');
     expect(html).toContain("w-[27px] rounded-[2px] bg-[#547d42]");
@@ -40,12 +42,12 @@ describe("On application shell", () => {
     expect(html).toContain('tabindex="-1"');
     expect(html).toContain('class="min-h-dvh bg-app-background');
     expect(html).toContain("min-h-dvh md:grid md:grid-cols-[16rem_minmax(0,1fr)]");
-    expect(html).toContain("sticky top-0 hidden h-dvh self-start overflow-y-auto");
-    expect(html).toContain("min-h-dvh min-w-0 pb-20 md:pb-0");
+    expect(html).toContain("fixed inset-y-0 left-0 z-50");
+    expect(html).toContain("md:sticky md:z-auto");
     expect(html).not.toContain("overscroll-y-contain");
     expect(html).not.toContain("overflow-hidden bg-app-background");
-    expect(html).toContain('role="group"');
-    expect(html).toContain('aria-label="Signed-in user"');
+    expect(html).toContain('href="/ui/settings"');
+    expect(html).toContain('Open preferences for ');
     expect(html).toContain("max-w-[calc(100vw-4rem)]");
     expect(html).toContain("max-w-[calc(100vw-7rem)]");
     expect(html).toContain('class="hidden min-w-0 max-w-[calc(100vw-7rem)] flex-col');
@@ -53,8 +55,8 @@ describe("On application shell", () => {
     expect(html).toContain('class="truncate text-sm font-semibold leading-tight"');
     expect(html).toContain('class="truncate text-[10px] leading-tight text-app-secondary"');
     expect(html).toContain('on-click="toggleTheme()"');
-    expect(html).toContain('class="flex items-center justify-end gap-2');
-    expect(html).toContain("md:flex md:flex-col");
+    expect(html).toContain('class="flex items-center justify-between gap-2');
+    expect(html).toContain("flex h-dvh w-72");
     expect(html).toContain("isDarkTheme ? 'sun' : 'moon'");
     expect(html).toContain("isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'");
     expect(shellSetup).toContain('setAuthPreference("theme", nextTheme)');
@@ -67,8 +69,9 @@ describe("On application shell", () => {
     expect(html).not.toContain("Engineering");
     expect(html).not.toContain("JD");
     expect(html).not.toContain("min-h-screen border-r border-app-border");
-    expect(html.indexOf("My workspaces")).toBeLessThan(html.indexOf("Workflows"));
-    expect(html.indexOf("Preferences")).toBeLessThan(html.indexOf("Your workspaces"));
+    expect(html.indexOf("Workspaces</a")).toBeLessThan(html.indexOf("Your workspaces"));
+    expect(html.indexOf("Recipes</a")).toBeLessThan(html.indexOf("Your workspaces"));
+    expect(html).toContain("Workspace navigation");
     expect(html).not.toContain("mt-auto");
   });
 
@@ -77,19 +80,18 @@ describe("On application shell", () => {
     expect(shellSetup).toContain("session?.authenticated || !session.user");
     expect(html).toContain("user.name || user.email");
     expect(html).toContain("{{ user.email }}");
-    expect(html).toContain('target="_blank"');
-    expect(html).toContain('rel="noopener"');
-    expect(html).toContain("oidcProviderUrl");
+    expect(html).not.toContain('target="_blank"');
+    expect(html).not.toContain("oidcProviderUrl");
     expect(html).toContain('if="userAuthenticated"');
   });
 
   it("lists workspaces in the sidebar and links each workspace to its settings page", () => {
-    const teamsList = html.indexOf('aria-label="Your workspaces"');
+    const teamsList = html.indexOf('aria-label="Workspace navigation"');
 
     expect(teamsList).toBeGreaterThan(html.indexOf('aria-label="Primary navigation"'));
     expect(teamsList).toBeLessThan(html.indexOf('id="main-content"'));
     expect(html).toContain("# {{ team.name }}");
-    expect(html).toContain("'/ui/workspaces/' + encodeURIComponent(team.id) + '/runs'");
+    expect(html).toContain("workspacePath(team.id, 'runs')");
     expect(html).toContain('on-click="selectWorkspace(team.id)"');
     expect(html).toContain("selectedWorkspaceId === team.id");
     expect(shellSetup).toContain('fetch("/api/v1/workspaces"');
@@ -97,8 +99,8 @@ describe("On application shell", () => {
     expect(shellSetup).toContain('path.startsWith("/workspaces/")');
     expect(html).toContain(">Your workspaces</p>");
     expect(html).toContain("px-3 py-2.5 text-sm text-app-secondary");
-    expect(html).toContain("grid-cols-3");
-    expect(html).not.toContain("grid-cols-4");
+    expect(html).toContain("selectedWorkspaceId === team.id");
+    expect(html).toContain("workspacePath(team.id, 'workflows')");
   });
 
   it("handles Enter and Space on the skip link without triggering browser navigation", () => {

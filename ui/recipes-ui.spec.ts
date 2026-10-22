@@ -24,8 +24,8 @@ describe("recipe marketplace UI", () => {
     expect(setup).not.toMatch(/delete.*recipe/i);
   });
 
-  it("keeps recipes out of global navigation and makes the library available from workflows", () => {
-    expect(shell).not.toContain('href="/ui/recipes"');
+  it("exposes the recipe library in global navigation and from workflows", () => {
+    expect(shell).toContain('href="/ui/recipes"');
     expect(workflowTemplate).toContain("Browse recipe library");
     expect(workflowTemplate).toContain("Insert recipe");
     expect(workflowSetup).toContain("insertSelectedRecipe");

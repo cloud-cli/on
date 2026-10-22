@@ -13,16 +13,18 @@ export default function () {
   const params = new URLSearchParams(window.location.search);
   const workflowPath = window.location.pathname
     .replace(/^\/ui/, "")
-    .match(/^\/(?:settings\/)?workflows\/(new|[a-z0-9-]+)$/);
+    .match(/^\/(?:workspaces\/([^/]+)\/)?(?:settings\/)?workflows\/(new|[a-z0-9-]+)$/);
   const page = workflowPath ? "editor" : document.body.dataset.page || params.get("page") || "workflows";
-  const pathWorkflowId = workflowPath && workflowPath[1] !== "new" ? workflowPath[1] : "";
+  const pathWorkspaceId = workflowPath?.[1] ? decodeURIComponent(workflowPath[1]) : "";
+  const pathWorkflowId = workflowPath && workflowPath[2] !== "new" ? workflowPath[2] : "";
   const initialId = params.get("id") || pathWorkflowId;
   const initialRevision = params.get("revision") ? Number(params.get("revision")) : null;
   const readOnly = Boolean(initialRevision);
   const workflows = ref([]);
   const availableWorkspaces = ref([]);
   const workspacesLoading = ref(page === "editor");
-  const initialWorkspaceId = params.get("workspaceId") || localStorage.getItem("runner-team-id") || "";
+  const routedWorkspaceId = params.get("workspaceId") || pathWorkspaceId;
+  const initialWorkspaceId = routedWorkspaceId || localStorage.getItem("runner-team-id") || "";
   const selectedWorkspaceId = ref(initialWorkspaceId);
   const secrets = ref([]);
   const source = ref("");
@@ -146,6 +148,23 @@ export default function () {
   };
 
   const loadWorkflows = async () => {
+    if (routedWorkspaceId) {
+      const [{ workspaces = [] }, { workflows: workspaceWorkflows = [] }] = await Promise.all([
+        api("/api/v1/workspaces", { headers: { "X-Team-ID": "" } }),
+        api("/api/v1/workflows", { headers: { "X-Team-ID": routedWorkspaceId } }),
+      ]);
+      const workspace = workspaces.find((item) => item.id === routedWorkspaceId);
+      if (!workspace) {
+        throw new Error("You are not a member of this workspace.");
+      }
+      selectedWorkspaceId.value = routedWorkspaceId;
+      workflows.value = workspaceWorkflows.map((workflow) => ({
+        ...workflow,
+        workspaceId: workspace.id,
+        workspaceName: workspace.name,
+      }));
+      return;
+    }
     const { workspaces = [] } = await api("/api/v1/workspaces", { headers: { "X-Team-ID": "" } });
     const results = await Promise.all(
       workspaces.map(async (workspace) => {
@@ -717,6 +736,7 @@ export default function () {
 
   return {
     page,
+    routedWorkspaceId,
     recipeDialogOpen,
     recipes,
     recipeSearch,

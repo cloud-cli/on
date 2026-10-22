@@ -123,6 +123,36 @@ export default function () {
     if (path === "/teams" || path === "/workspaces") {
       return { component: "page-teams", url: "/assets/pages/workspaces.html", page: "workspaces" };
     }
+    const teamWorkflows = path.match(/^\/workspaces\/([^/]+)\/workflows$/);
+    if (teamWorkflows) {
+      const teamId = decodeURIComponent(teamWorkflows[1]);
+      return {
+        component: "page-workflows",
+        url: `/assets/pages/workflows.html?page=workflows&workspaceId=${encodeURIComponent(teamId)}`,
+        page: "workflows",
+        teamId,
+      };
+    }
+    const teamWorkflowEditor = path.match(/^\/workspaces\/([^/]+)\/workflows\/(new|[a-z0-9-]+)$/);
+    if (teamWorkflowEditor) {
+      const teamId = decodeURIComponent(teamWorkflowEditor[1]);
+      return {
+        component: "page-workflow-editor",
+        url: `/assets/pages/workflows.html?page=editor&id=${teamWorkflowEditor[2]}&workspaceId=${encodeURIComponent(teamId)}`,
+        page: "editor",
+        teamId,
+      };
+    }
+    const teamEvents = path.match(/^\/workspaces\/([^/]+)\/runs\/events$/);
+    if (teamEvents) {
+      const teamId = decodeURIComponent(teamEvents[1]);
+      return {
+        component: "page-incoming-events",
+        url: `/assets/pages/incoming-events.html?workspaceId=${encodeURIComponent(teamId)}`,
+        page: "incoming-events",
+        teamId,
+      };
+    }
     const teamRuns = path.match(/^\/workspaces\/([^/]+)\/runs$/);
     if (teamRuns) {
       return {
@@ -198,8 +228,10 @@ export default function () {
           '<h1 class="text-xl font-semibold">404 — Page not found</h1><p class="mt-2 text-sm">The page you are looking for does not exist. <a href="/ui/runs">Go home</a> or <a href="/ui/runs">view runs</a>.</p>';
         outlet.value.append(routeMessage);
       } else {
-        const persistentPage = !["run", "editor", "team-settings", "recipe-editor"].includes(current.page);
-        const cacheKey = current.page;
+        const persistentPage = !["run", "editor", "team-settings", "recipe-editor", "workflows", "incoming-events"].includes(
+          current.page,
+        );
+        const cacheKey = current.teamId ? `${current.page}:${current.teamId}` : current.page;
         let component = persistentPage ? mountedPages.get(cacheKey) : null;
         if (!component) {
           await load(current.url);
@@ -231,6 +263,7 @@ export default function () {
       if (replace) {
         history.replaceState(null, "", window.location.href);
       }
+      window.dispatchEvent(new CustomEvent("runner-route-changed", { detail: { pathname: window.location.pathname } }));
     } catch (error) {
       if (currentNavigation !== navigationId) {
         return;

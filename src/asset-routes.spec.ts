@@ -40,6 +40,14 @@ describe("canonical setup-script asset routes", () => {
     expect(workspaceTemplate).toContain("'/ui/workspaces/' + encodeURIComponent(team.id) + '/settings'");
   });
 
+  it("uses full-width workspace cards that open recent runs with a separate edit action", () => {
+    expect(workspaceTemplate).toContain('class="grid grid-cols-1 gap-3"');
+    expect(workspaceTemplate).toContain("'Open ' + team.name + ' recent runs'");
+    expect(workspaceTemplate).toContain("'Edit ' + team.name + ' settings'");
+    expect(workspaceTemplate).toContain(">\n                    Edit\n                  </a>");
+    expect(workspaceTemplate).not.toContain("sm:grid-cols-2");
+  });
+
   it.each(setupUrls)("serves the setup module referenced at %s", async (url) => {
     expect(url).toMatch(/^\/assets\/.+\.mjs$/);
 

@@ -488,6 +488,51 @@ const migrations: Migration[] = [
         ON team_subject_invitations(subject, expires_at);`);
     },
   },
+  {
+    version: "014_incoming_event_inbox",
+    async apply() {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS incoming_events (
+          id TEXT PRIMARY KEY,
+          team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+          provider TEXT NOT NULL,
+          delivery_id TEXT,
+          event_type TEXT,
+          content_type TEXT,
+          received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          payload_ciphertext TEXT NOT NULL,
+          inputs_ciphertext TEXT,
+          payload_sha256 TEXT NOT NULL,
+          payload_bytes INTEGER NOT NULL,
+          validation_status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (validation_status IN ('pending', 'valid', 'invalid')),
+          processing_status TEXT NOT NULL DEFAULT 'received'
+            CHECK (processing_status IN ('received', 'queued', 'unmatched', 'rejected', 'failed')),
+          queued_jobs INTEGER NOT NULL DEFAULT 0,
+          job_ids TEXT NOT NULL DEFAULT '[]',
+          error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_incoming_events_team_received
+          ON incoming_events(team_id, received_at DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_incoming_events_team_delivery
+          ON incoming_events(team_id, provider, delivery_id);
+        CREATE TABLE IF NOT EXISTS incoming_event_replays (
+          id TEXT PRIMARY KEY,
+          event_id TEXT NOT NULL REFERENCES incoming_events(id) ON DELETE CASCADE,
+          team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+          actor TEXT NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'queued', 'unmatched', 'failed')),
+          queued_jobs INTEGER NOT NULL DEFAULT 0,
+          job_ids TEXT NOT NULL DEFAULT '[]',
+          error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_incoming_event_replays_event
+          ON incoming_event_replays(team_id, event_id, created_at DESC);
+      `);
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

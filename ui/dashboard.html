@@ -18,6 +18,21 @@
   <body class="bg-app-background text-app-foreground min-h-screen p-4 md:p-6 font-sans">
     <template app>
       <main class="w-full space-y-6 py-2">
+        <template if="workspaceId"
+          ><nav class="flex gap-2 border-b border-app-border" aria-label="Workspace run views">
+            <a
+              attr-href="'/ui/workspaces/' + encodeURIComponent(workspaceId) + '/runs'"
+              aria-current="page"
+              class="border-b-2 border-app-primary px-3 py-2 text-sm font-semibold text-app-primary"
+              >Runs</a
+            >
+            <a
+              attr-href="'/ui/workspaces/' + encodeURIComponent(workspaceId) + '/runs/events'"
+              class="border-b-2 border-transparent px-3 py-2 text-sm text-app-secondary hover:text-app-primary"
+              >Incoming events</a
+            >
+          </nav></template
+        >
         <section class="space-y-4 rounded-2xl border border-app-border bg-white p-4 md:p-5">
           <template if="refreshError"
             ><p role="status" class="text-sm text-rose-700">Could not refresh runs</p></template

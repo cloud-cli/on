@@ -3,6 +3,7 @@ import { apiFetch } from "@app/api-client.mjs";
 import { loadTimezonePreference } from "@app/preferences.mjs";
 
 export default function setup() {
+  const workspaceId = window.location.pathname.match(/^\/workspaces\/([^/]+)\/runs$/)?.[1] || "";
   const jobs = ref([]),
     refreshError = ref(false),
     hasMore = ref(false),
@@ -488,6 +489,7 @@ export default function setup() {
     clearInterval(refreshTimer);
   });
   return {
+    workspaceId,
     jobs,
     visibleJobs,
     statusTabs,

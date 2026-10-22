@@ -52,7 +52,7 @@ describe("SPA router", () => {
     expect(routerSetup).toContain(
       'current.page === "recipes" || current.page === "recipe-editor" ? [] : await checkTeams()',
     );
-    expect(appShell).not.toContain('href="/ui/recipes"');
+    expect(appShell).toContain('href="/ui/recipes"');
     expect(serverSetup).toContain('url.pathname === "/pages/recipes.html"');
   });
 
@@ -68,7 +68,7 @@ describe("SPA router", () => {
 
   it("serves workspace run routes directly so refreshes load the app shell", () => {
     expect(routerSetup).toContain("path.match(/^\\/workspaces\\/([^/]+)\\/runs$/)");
-    expect(serverSetup).toContain("/^\\/workspaces\\/[^/]+\\/runs$/");
+    expect(serverSetup).toContain("/^\\/workspaces\\/[^/]+\\/runs(?:\\/events)?$/");
     expect(serverSetup).toContain("return this.renderAppShell(res);");
   });
 
@@ -106,7 +106,7 @@ describe("SPA router", () => {
   });
 
   it("mounts run details and editors as disposable route components", () => {
-    expect(routerSetup).toContain('!["run", "editor", "team-settings", "recipe-editor"].includes(current.page)');
+    expect(routerSetup).toContain('"workflows", "incoming-events"].includes(');
     expect(routerSetup).toContain("activeTransientPage?.remove()");
   });
 

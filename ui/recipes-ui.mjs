@@ -4,7 +4,11 @@ import { onDestroy } from "@li3/web";
 const DRAFT_KEY = "on-recipe-draft";
 
 export default function () {
-  const root = document.querySelector("[data-recipes-root]");
+  const editorRoute =
+    new URL(window.location.href).pathname.endsWith("/recipes/new") ||
+    new URL(window.location.href).searchParams.get("editor") === "1";
+  const component = editorRoute ? "page-recipe-editor" : "page-recipes";
+  const root = document.querySelector(`${component} [data-recipes-root]`);
   if (!root) {
     return;
   }

@@ -4,6 +4,7 @@ import { applyThemePreference, getAuthPreference, setAuthPreference } from "@app
 
 export default function setup() {
   const activeSection = ref("workspaces");
+  const mobileMenuOpen = ref(false);
   const user = ref({ name: "", email: "", role: "" });
   const oidcProviderUrl = ref("");
   const userAuthenticated = ref(false);
@@ -37,20 +38,19 @@ export default function setup() {
 
   const syncSection = () => {
     const path = window.location.pathname.replace(/^\/ui/, "");
-    const workspaceRuns = path.match(/^\/workspaces\/([^/]+)\/runs$/);
-    if (workspaceRuns) {
-      activeSection.value = "workspace-runs";
-      selectedWorkspaceId.value = decodeURIComponent(workspaceRuns[1]);
+    const workspaceRoute = path.match(/^\/workspaces\/([^/]+)\/(workflows|runs)(?:\/events)?$/);
+    if (workspaceRoute) {
+      selectedWorkspaceId.value = decodeURIComponent(workspaceRoute[1]);
+      activeSection.value = workspaceRoute[2] === "workflows" ? "workspace-workflows" : "workspace-runs";
     } else if (
+      path === "/settings" ||
       path.startsWith("/settings") ||
       (path.startsWith("/teams/") && path.endsWith("/settings")) ||
       (path.startsWith("/workspaces/") && path.endsWith("/settings"))
     ) {
       activeSection.value = "settings";
     } else if (path.startsWith("/recipes")) {
-      activeSection.value = "workflows";
-    } else if (path.startsWith("/workflows")) {
-      activeSection.value = "workflows";
+      activeSection.value = "recipes";
     } else {
       activeSection.value = "workspaces";
     }
@@ -59,9 +59,65 @@ export default function setup() {
   const setActive = (section) => {
     activeSection.value = section;
   };
-  const selectWorkspace = (teamId) => {
+  const selectWorkspace = (teamId, page = "runs") => {
     selectedWorkspaceId.value = teamId;
-    activeSection.value = "workspace-runs";
+    activeSection.value = page === "workflows" ? "workspace-workflows" : "workspace-runs";
+  };
+  const workspacePath = (teamId, page) => `/ui/workspaces/${encodeURIComponent(teamId || selectedWorkspaceId.value)}/${page}`;
+  const openPreferences = () => {
+    history.pushState(null, "", "/ui/settings");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+  const syncMobileMenu = () => {
+    const sidebar = document.getElementById("primary-sidebar");
+    if (sidebar) {
+      sidebar.inert = !mobileMenuOpen.value && window.matchMedia("(max-width: 767px)").matches;
+    }
+  };
+  const toggleMobileMenu = () => {
+    mobileMenuOpen.value = !mobileMenuOpen.value;
+    syncMobileMenu();
+    if (mobileMenuOpen.value) {
+      requestAnimationFrame(() => document.querySelector("#primary-sidebar a")?.focus());
+    } else {
+      document.querySelector("[data-mobile-menu-button]")?.focus();
+    }
+  };
+  const closeMobileMenu = () => {
+    if (!mobileMenuOpen.value) {
+      return;
+    }
+    mobileMenuOpen.value = false;
+    syncMobileMenu();
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      requestAnimationFrame(() => document.querySelector("[data-mobile-menu-button]")?.focus());
+    }
+  };
+  const handleMenuKeydown = (event) => {
+    if (event.key === "Escape" && mobileMenuOpen.value) {
+      event.preventDefault();
+      closeMobileMenu();
+      document.querySelector("[data-mobile-menu-button]")?.focus();
+      return;
+    }
+    if (event.key === "Tab" && mobileMenuOpen.value) {
+      const links = [...(document.getElementById("primary-sidebar")?.querySelectorAll("a") || [])];
+      if (!links.length) {
+        return;
+      }
+      if (event.shiftKey && document.activeElement === links[0]) {
+        event.preventDefault();
+        links.at(-1).focus();
+      } else if (!event.shiftKey && document.activeElement === links.at(-1)) {
+        event.preventDefault();
+        links[0].focus();
+      }
+    }
+  };
+  const handleMenuClick = (event) => {
+    if (event.target.closest?.("#primary-sidebar a")) {
+      closeMobileMenu();
+    }
   };
   const syncSystemTheme = () => {
     if (themePreference.value === "system") {
@@ -96,9 +152,15 @@ export default function setup() {
       });
     themeMedia.addEventListener("change", syncSystemTheme);
     syncSection();
+    syncMobileMenu();
     window.addEventListener("popstate", syncSection);
+    window.addEventListener("runner-route-changed", syncSection);
+    window.addEventListener("popstate", closeMobileMenu);
+    window.addEventListener("resize", syncMobileMenu);
     window.addEventListener("runner-team-changed", syncWorkspace);
     document.addEventListener("keydown", handleSkipKeydown);
+    document.addEventListener("keydown", handleMenuKeydown);
+    document.addEventListener("click", handleMenuClick);
     void fetch("/api/v1/auth/session", { credentials: "same-origin", headers: { accept: "application/json" } })
       .then((response) => (response.ok ? response.json() : null))
       .then((session) => {
@@ -120,14 +182,20 @@ export default function setup() {
 
   onDestroy(() => {
     window.removeEventListener("popstate", syncSection);
+    window.removeEventListener("runner-route-changed", syncSection);
+    window.removeEventListener("popstate", closeMobileMenu);
+    window.removeEventListener("resize", syncMobileMenu);
     window.removeEventListener("runner-team-changed", syncWorkspace);
     window.removeEventListener("runner-teams-updated", loadTeams);
     themeMedia.removeEventListener("change", syncSystemTheme);
     document.removeEventListener("keydown", handleSkipKeydown);
+    document.removeEventListener("keydown", handleMenuKeydown);
+    document.removeEventListener("click", handleMenuClick);
   });
 
   return {
     activeSection,
+    mobileMenuOpen,
     user,
     userAuthenticated,
     userInitial,
@@ -137,6 +205,10 @@ export default function setup() {
     isDarkTheme,
     setActive,
     selectWorkspace,
+    workspacePath,
+    openPreferences,
+    toggleMobileMenu,
+    closeMobileMenu,
     toggleTheme,
   };
 }

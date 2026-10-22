@@ -6,6 +6,7 @@ import { isProtectedUiRoute, safeReturnUrl } from "./safe-return-url.js";
 import { dashboardTemplate, generateDashboardHtml, toDashboardJobs } from "../ui/dashboard.js";
 import { EventBroker } from "./events.js";
 import { GitHubPreprocessor } from "./preprocessors/github.js";
+import { IncomingEventRepository } from "./incoming-event-repository.js";
 import { getAppIcon, serviceWorker, webManifest } from "../ui/pwa.js";
 import { QueueManager } from "./queue.js";
 import { buildRunView, renderRunHtml } from "../ui/run-view.js";
@@ -124,6 +125,8 @@ import workflowsSetup from "../ui/workflows-ui.mjs?raw";
 import recipeInsertionSetup from "../ui/recipe-insertion.mjs?raw";
 import recipesTemplate from "../ui/recipes.html?raw";
 import recipesSetup from "../ui/recipes-ui.mjs?raw";
+import incomingEventsTemplate from "../ui/incoming-events.html?raw";
+import incomingEventsSetup from "../ui/incoming-events.mjs?raw";
 import timezoneFormatSource from "../ui/timezone-format.mjs?raw";
 import preferencesSource from "../ui/preferences.mjs?raw";
 import workspacePathSource from "../ui/workspace-path.mjs?raw";
@@ -160,6 +163,7 @@ export class WebhookServer {
   private userPreferences = new UserPreferencesRepository();
   private teams = new TeamRepository();
   private workspaceWebhooks = new WorkspaceWebhookRepository(this.secretRepository);
+  private incomingEvents = new IncomingEventRepository(this.secretRepository);
   private events = new EventBroker();
   private runners = new RunnerRegistry();
   private workflowsLoaded: Promise<void>;
@@ -412,6 +416,16 @@ export class WebhookServer {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(recipesSetup);
     }
+    if (req.method === "GET" && url.pathname === "/pages/incoming-events.html") {
+      if (!(await this.requireAuthenticatedUser(req, res))) {
+        return;
+      }
+      return this.renderPageComponent(res, "page-incoming-events", incomingEventsTemplate);
+    }
+    if (req.method === "GET" && url.pathname === "/pages/incoming-events-ui.mjs") {
+      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(incomingEventsSetup);
+    }
     if (req.method === "GET" && ["/pages/recipe-insertion.mjs", "/recipe-insertion.mjs"].includes(url.pathname)) {
       res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
       return res.end(recipeInsertionSetup);
@@ -429,7 +443,10 @@ export class WebhookServer {
 
     if (
       req.method === "GET" &&
-      (url.pathname === "/runs" || url.pathname === "/" || /^\/workspaces\/[^/]+\/runs$/.test(url.pathname))
+      (url.pathname === "/runs" ||
+        url.pathname === "/" ||
+        /^\/workspaces\/[^/]+\/runs(?:\/events)?$/.test(url.pathname) ||
+        /^\/workspaces\/[^/]+\/workflows(?:\/(?:new|[a-z0-9-]+))?$/.test(url.pathname))
     ) {
       return this.renderAppShell(res);
     }
@@ -1014,7 +1031,8 @@ export class WebhookServer {
       if (!(await this.requireAuthenticatedUser(req, res))) {
         return;
       }
-      return this.renderPageComponent(res, "page-recipes", recipesTemplate);
+      const component = url.searchParams.get("editor") === "1" ? "page-recipe-editor" : "page-recipes";
+      return this.renderPageComponent(res, component, recipesTemplate);
     }
     if (req.method === "GET" && url.pathname === "/pages/settings.html") {
       if (!(await this.requireAuthenticatedUser(req, res))) {
@@ -1702,6 +1720,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
     teamId: string,
     signingSecret?: string,
   ) {
+    let incomingEventId: string | undefined;
+    let validationStatus: "pending" | "valid" | "invalid" = "pending";
+    let normalizedInputs: unknown = null;
     try {
       const { rawBuffer, headers } = await this.readRequest(req, res);
 
@@ -1709,6 +1730,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return;
       }
 
+      await this.workflowsLoaded;
       const { isValid, inputs, secretValues } = await this.preprocess(
         provider,
         headers,
@@ -1718,12 +1740,15 @@ sessionStorage.removeItem('runner-pending-team-invite');
       );
 
       if (!isValid) {
+        validationStatus = "invalid";
         res.writeHead(401, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Invalid HMAC signature or authentication failed" }));
         return;
       }
 
-      await this.workflowsLoaded;
+      validationStatus = "valid";
+      normalizedInputs = inputs;
+      incomingEventId = await this.incomingEvents.capture(teamId, provider, headers, rawBuffer);
       const jobs = await this.matchWorkflows(
         provider,
         inputs,
@@ -1731,11 +1756,32 @@ sessionStorage.removeItem('runner-pending-team-invite');
         secretValues,
         teamId,
       );
+      await this.incomingEvents.finish(
+        teamId,
+        incomingEventId,
+        validationStatus,
+        jobs.length ? "queued" : "unmatched",
+        inputs,
+        jobs,
+      );
 
-      res.writeHead(202, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "OK", queuedJobs: jobs.length }));
+      res.writeHead(202, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ message: "OK", eventId: incomingEventId, queuedJobs: jobs.length }));
     } catch (err: any) {
       console.error("❌ Webhook Ingress Error:", err);
+      if (incomingEventId) {
+        await this.incomingEvents
+          .finish(
+            teamId,
+            incomingEventId,
+            validationStatus,
+            "failed",
+            normalizedInputs,
+            [],
+            err?.message || "Ingress processing failed",
+          )
+          .catch((recordError) => console.error("❌ Could not update incoming event status:", recordError));
+      }
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Internal Ingress Error", details: err.message }));
     }
@@ -2304,6 +2350,91 @@ sessionStorage.removeItem('runner-pending-team-invite');
           canManage: authorized.capabilities.includes("members.manage"),
         }),
       );
+      return;
+    }
+
+    const incomingEvents = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/events$`));
+    const incomingEvent = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/events/([0-9a-f-]+)(/retrigger)?$`));
+    if (incomingEvents && req.method === "GET") {
+      const teamId = decodeURIComponent(incomingEvents[1]);
+      if (!(await this.authorizer.workspace(req, res, "webhooks.view", teamId))) {
+        return;
+      }
+      const limit = Number(url.searchParams.get("limit") || 50);
+      const events = await this.incomingEvents.listForTeam(teamId, limit, url.searchParams.get("before") || undefined);
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ events }));
+      return;
+    }
+    if (incomingEvent && req.method === "GET" && !incomingEvent[3]) {
+      const teamId = decodeURIComponent(incomingEvent[1]);
+      const authorized = await this.authorizer.workspace(req, res, "webhooks.manage", teamId);
+      if (!authorized) {
+        return;
+      }
+      const eventId = incomingEvent[2];
+      const event = await this.incomingEvents.getForTeam(teamId, eventId);
+      if (!event) {
+        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: "Incoming event not found" }));
+        return;
+      }
+      await this.principals.recordAudit({
+        actor: authorized.principal.subject,
+        action: "webhook_event.view",
+        target: eventId,
+        teamId,
+      });
+      const { inputs: _inputs, ...detail } = event;
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ event: detail }));
+      return;
+    }
+    if (incomingEvent && req.method === "POST" && incomingEvent[3] === "/retrigger") {
+      const teamId = decodeURIComponent(incomingEvent[1]);
+      const authorized = await this.authorizer.workspace(req, res, "runs.dispatch", teamId);
+      if (!authorized) {
+        return;
+      }
+      const eventId = incomingEvent[2];
+      const event = await this.incomingEvents.getForTeam(teamId, eventId);
+      if (!event) {
+        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: "Incoming event not found" }));
+        return;
+      }
+      if (event.validationStatus !== "valid" || event.inputs === null) {
+        res.writeHead(409, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: "Only signature-validated events can be retriggered" }));
+        return;
+      }
+      const replayId = await this.incomingEvents.createReplay(teamId, eventId, authorized.principal.subject);
+      try {
+        const jobs = await this.matchWorkflows(
+          event.provider,
+          event.inputs,
+          await this.workflows.publishedForTeam(teamId),
+          await this.secretRepository.getAllForTeam(teamId),
+          teamId,
+        );
+        const status = jobs.length ? "queued" : "unmatched";
+        await this.incomingEvents.finishReplay(teamId, replayId, status, jobs);
+        await this.principals
+          .recordAudit({
+            actor: authorized.principal.subject,
+            action: "webhook_event.retrigger",
+            target: eventId,
+            teamId,
+            detail: { replayId, queuedJobs: jobs.length },
+          })
+          .catch((error) => console.error("Could not audit incoming event replay:", error));
+        res.writeHead(202, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ eventId, replayId, queuedJobs: jobs.length, jobs }));
+      } catch (error: any) {
+        await this.incomingEvents.finishReplay(teamId, replayId, "failed", [], "Could not match event to workflows");
+        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: "Could not retrigger incoming event" }));
+      }
       return;
     }
 
