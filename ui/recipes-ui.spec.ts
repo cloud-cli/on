@@ -6,6 +6,13 @@ import workflowTemplate from "./workflows-ui.html?raw";
 import workflowSetup from "./workflows-ui.mjs?raw";
 
 describe("recipe marketplace UI", () => {
+  it("initializes page controls after the recipe component mounts", () => {
+    expect(setup).toContain("onInit(() => {");
+    expect(setup).toContain("cleanup = initializeRecipesPage()");
+    expect(setup).toContain("onDestroy(() => cleanup?.())");
+    expect(setup).toContain('root.querySelector("[data-create]").addEventListener("click"');
+  });
+
   it("keeps the editor focused on YAML, validates its schema, and offers no deletion action", () => {
     expect(template).toContain("data-slug");
     expect(template).toContain("data-source");

@@ -1,15 +1,24 @@
 import { apiFetch } from "@app/api-client.mjs";
-import { onDestroy } from "@li3/web";
+import { onDestroy, onInit } from "@li3/web";
 
 const DRAFT_KEY = "on-recipe-draft";
 
 export default function () {
+  let cleanup;
+  onInit(() => {
+    cleanup = initializeRecipesPage();
+  });
+  onDestroy(() => cleanup?.());
+}
+
+function initializeRecipesPage() {
   const editorRoute =
     new URL(window.location.href).pathname.endsWith("/recipes/new") ||
     new URL(window.location.href).searchParams.get("editor") === "1";
   const component = editorRoute ? "page-recipe-editor" : "page-recipes";
   const root = document.querySelector(`${component} [data-recipes-root]`);
   if (!root) {
+    console.error(`Recipes UI root not found for ${component}`);
     return;
   }
 
@@ -190,11 +199,11 @@ export default function () {
   };
   window.addEventListener("runner-recipes-updated", refresh);
   window.addEventListener("popstate", popstate);
-  onDestroy(() => {
+  showCurrentPage();
+  refresh();
+  return () => {
     clearTimeout(validationTimer);
     window.removeEventListener("runner-recipes-updated", refresh);
     window.removeEventListener("popstate", popstate);
-  });
-  showCurrentPage();
-  refresh();
+  };
 }
