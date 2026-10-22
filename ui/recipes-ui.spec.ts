@@ -13,6 +13,12 @@ describe("recipe marketplace UI", () => {
     expect(setup).toContain('root.querySelector("[data-create]").addEventListener("click"');
   });
 
+  it("centers the create-recipe dialog in the viewport", () => {
+    expect(template).toContain("fixed left-1/2 top-1/2 m-0");
+    expect(template).toContain("-translate-x-1/2 -translate-y-1/2");
+    expect(template).toContain("max-h-[calc(100dvh-2rem)]");
+  });
+
   it("keeps the editor focused on YAML, validates its schema, and offers no deletion action", () => {
     expect(template).toContain("data-slug");
     expect(template).toContain("data-source");
