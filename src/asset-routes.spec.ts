@@ -41,11 +41,12 @@ describe("canonical setup-script asset routes", () => {
     expect(workspaceTemplate).toContain("'/ui/workspaces/' + encodeURIComponent(team.id) + '/settings'");
   });
 
-  it("uses full-width workspace cards that open recent runs with a separate edit action", () => {
+  it("uses full-width workspace rows with settings links and admin indicators", () => {
     expect(workspaceTemplate).toContain('class="mt-2 grid grid-cols-1"');
     expect(workspaceTemplate).toContain("'Open ' + team.name + ' recent runs'");
-    expect(workspaceTemplate).toContain("'Edit ' + team.name + ' settings'");
-    expect(workspaceTemplate).toContain('aria-hidden="true"');
+    expect(workspaceTemplate).toContain("if=\"team.role === 'admin'\"");
+    expect(workspaceTemplate).toContain('class="h-2 w-2 rounded-full bg-orange-500"');
+    expect(workspaceTemplate).not.toContain("'Edit ' + team.name + ' settings'");
     expect(workspaceTemplate).not.toContain("sm:grid-cols-2");
   });
 

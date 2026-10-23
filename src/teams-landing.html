@@ -74,19 +74,19 @@
                     class="absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-app-primary"
                   ></a>
                   <div class="pointer-events-none min-w-0 flex-1">
-                  <a
-                    attr-href="'/ui/workspaces/' + encodeURIComponent(team.id) + '/settings'"
-                    class="relative z-10 inline-flex max-w-full items-center gap-2 truncate text-lg font-semibold text-app-foreground hover:text-app-primary sm:text-xl"
-                  >
-                    {{ team.name }}
-                    <span
-                      if="team.role === 'admin'"
-                      class="h-2 w-2 rounded-full bg-orange-500"
-                      role="img"
-                      aria-label="Workspace admin"
-                      title="Workspace admin"
-                    ></span>
-                  </a>
+                    <a
+                      attr-href="'/ui/workspaces/' + encodeURIComponent(team.id) + '/settings'"
+                      class="relative z-10 inline-flex max-w-full items-center gap-2 truncate text-lg font-semibold text-app-foreground hover:text-app-primary sm:text-xl"
+                    >
+                      {{ team.name }}
+                      <span
+                        if="team.role === 'admin'"
+                        class="h-2 w-2 rounded-full bg-orange-500"
+                        role="img"
+                        aria-label="Workspace admin"
+                        title="Workspace admin"
+                      ></span>
+                    </a>
                   </div>
                 </div></li
             ></template>
