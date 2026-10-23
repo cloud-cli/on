@@ -41,24 +41,18 @@
             <template for="team of teams"
               ><li>
                 <div class="rounded-xl border border-app-border bg-white p-5">
-                  <a
-                    attr-href="'/ui/workspaces/' + encodeURIComponent(team.id) + '/settings'"
-                    class="inline-flex items-center gap-2 text-lg font-semibold text-app-foreground hover:text-app-primary"
-                  >
-                    {{ team.name }}
-                    <span
-                      if="team.role === 'admin'"
-                      class="h-2 w-2 rounded-full bg-orange-500"
-                      role="img"
-                      aria-label="Workspace admin"
-                      title="Workspace admin"
-                    ></span>
-                  </a>
+                  <span class="block text-lg font-semibold">{{ team.name }}</span>
+                  <span class="mt-1 block text-sm text-app-muted">{{ team.role }}</span>
                   <div class="mt-4 flex flex-wrap gap-3 text-sm font-semibold">
                     <a
                       attr-href="'/ui/workspaces/' + encodeURIComponent(team.id) + '/runs'"
                       class="text-app-primary underline"
                       >Recent runs</a
+                    >
+                    <a
+                      attr-href="'/ui/workspaces/' + encodeURIComponent(team.id) + '/settings'"
+                      class="text-app-secondary underline"
+                      >Manage workspace</a
                     >
                   </div>
                 </div>
