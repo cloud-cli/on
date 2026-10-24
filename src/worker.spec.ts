@@ -10,6 +10,7 @@ describe("incremental workflow reports", () => {
       saveStepLog: vi.fn(async () => {}),
       completeJob: vi.fn(async () => {}),
       isCancelled: vi.fn(async () => false),
+      saveStepAttempt: vi.fn(async () => {}),
     };
     const driver = {
       execute: vi.fn(() => ({
@@ -34,10 +35,18 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: {
-        getAll: () => ({ DEPLOY_TOKEN: "mapped-value", OTHER_TOKEN: "unmapped-value" }),
+        getAll: () => ({
+          DEPLOY_TOKEN: "mapped-value",
+          OTHER_TOKEN: "unmapped-value",
+        }),
         redactText: (text: string) => text,
       },
-      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver,
       workflow: {
         id: "recipe",
@@ -63,7 +72,10 @@ describe("incremental workflow reports", () => {
     } as Processable);
 
     expect(driver.execute.mock.calls[0][0].command).toBe('echo "$COUNT" "$TOKEN"');
-    expect(driver.execute.mock.calls[0][0].env).toMatchObject({ COUNT: "3", TOKEN: "mapped-value" });
+    expect(driver.execute.mock.calls[0][0].env).toMatchObject({
+      COUNT: "3",
+      TOKEN: "mapped-value",
+    });
     expect(driver.execute.mock.calls[0][0].env).not.toHaveProperty("OTHER_TOKEN");
     const report = queue.completeJob.mock.calls[0][2];
     expect(JSON.stringify(report)).not.toContain("mapped-value");
@@ -82,7 +94,11 @@ describe("incremental workflow reports", () => {
       const driver = {
         execute: vi.fn((context: any) => {
           workspaceDirs.push(context.workingDir);
-          return { done: Promise.resolve({ exitCode: 0, durationMs: 1 }), cancel: vi.fn(), logFilePath: "" };
+          return {
+            done: Promise.resolve({ exitCode: 0, durationMs: 1 }),
+            cancel: vi.fn(),
+            logFilePath: "",
+          };
         }),
         readLog: vi.fn(async () => ""),
       };
@@ -102,9 +118,19 @@ describe("incremental workflow reports", () => {
         },
         queue,
         secrets: { getAll: () => ({}), redactText: (text: string) => text },
-        config: { storagePath: "/tmp/workspace-test", serverUrl: "http://runner.test", env: {}, plugins: [] },
+        config: {
+          storagePath: "/tmp/workspace-test",
+          serverUrl: "http://runner.test",
+          env: {},
+          plugins: [],
+        },
         driver,
-        workflow: { id: "lease", name: "Lease", on: { provider: "generic" }, steps: [{ id: "main", run: "echo ok" }] },
+        workflow: {
+          id: "lease",
+          name: "Lease",
+          on: { provider: "generic" },
+          steps: [{ id: "main", run: "echo ok" }],
+        },
       } as Processable);
     };
     await makeRun("lease-one");
@@ -145,7 +171,12 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver,
       workflow: {
         id: "post-success",
@@ -154,7 +185,10 @@ describe("incremental workflow reports", () => {
         steps: [{ id: "main", eval: "({ ok: true })" }],
         post: [
           { id: "status-failure", run: "false" },
-          { id: "observe-result", eval: "({ status: job.status, envStatus: env.CI_JOB_STATUS, runUrl: job.runUrl })" },
+          {
+            id: "observe-result",
+            eval: "({ status: job.status, envStatus: env.CI_JOB_STATUS, runUrl: job.runUrl })",
+          },
         ],
       },
     } as Processable);
@@ -199,7 +233,12 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver,
       workflow: {
         id: "post-failure",
@@ -210,7 +249,10 @@ describe("incremental workflow reports", () => {
           { id: "not-run", run: "true" },
         ],
         post: [
-          { id: "observe-result", eval: "({ status: job.status, envStatus: env.CI_JOB_STATUS, runUrl: job.runUrl })" },
+          {
+            id: "observe-result",
+            eval: "({ status: job.status, envStatus: env.CI_JOB_STATUS, runUrl: job.runUrl })",
+          },
         ],
       },
     } as Processable);
@@ -226,7 +268,11 @@ describe("incremental workflow reports", () => {
   });
 
   it("hands structured step outputs to an authenticated dispatch queue", async () => {
-    const dispatch = vi.fn(async () => ({ jobId: 91, workflowId: "downstream", parentId: 9 }));
+    const dispatch = vi.fn(async () => ({
+      jobId: 91,
+      workflowId: "downstream",
+      parentId: 9,
+    }));
     const queue = {
       saveReport: vi.fn(async () => {}),
       saveStepLog: vi.fn(async () => {}),
@@ -249,19 +295,34 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver: {},
       workflow: {
         id: "intake",
         name: "Intake",
         on: { provider: "alias" },
         steps: [
-          { id: "normalize", eval: '({ repository: "org/repo", labels: ["main"] })' },
-          { id: "handoff", dispatch: "downstream", with: "steps.normalize.outputs" },
+          {
+            id: "normalize",
+            eval: '({ repository: "org/repo", labels: ["main"] })',
+          },
+          {
+            id: "handoff",
+            dispatch: "downstream",
+            with: "steps.normalize.outputs",
+          },
         ],
       },
     } as Processable);
-    expect(dispatch).toHaveBeenCalledWith(9, "handoff", "downstream", { repository: "org/repo", labels: ["main"] });
+    expect(dispatch).toHaveBeenCalledWith(9, "handoff", "downstream", {
+      repository: "org/repo",
+      labels: ["main"],
+    });
   });
 
   it("persists every step transition and output", async () => {
@@ -314,7 +375,12 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver: {},
       workflow,
     } as Processable);
@@ -329,7 +395,13 @@ describe("incremental workflow reports", () => {
       ["success", "success"],
     ]);
     expect(reports.at(-1)?.steps.map((step) => step.outputs)).toEqual([
-      { image: "example", tag: "example:latest", ci: "true", job: "1", name: "Incremental" },
+      {
+        image: "example",
+        tag: "example:latest",
+        ci: "true",
+        job: "1",
+        name: "Incremental",
+      },
       { value: 2 },
     ]);
     expect(logs).toEqual([
@@ -350,10 +422,14 @@ describe("incremental workflow reports", () => {
       saveStepLog: vi.fn(async () => {}),
       completeJob: vi.fn(async () => {}),
       isCancelled: vi.fn(async () => false),
+      saveStepAttempt: vi.fn(async () => {}),
     };
     const driver = {
       execute: vi.fn(() => ({
-        done: Promise.resolve({ exitCode: ++attempts === 2 ? 0 : 1, durationMs: 1 }),
+        done: Promise.resolve({
+          exitCode: ++attempts === 2 ? 0 : 1,
+          durationMs: 1,
+        }),
         cancel: async () => {},
         logFilePath: "",
       })),
@@ -375,7 +451,12 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver,
       workflow: {
         id: "retry-workflow",
@@ -388,6 +469,10 @@ describe("incremental workflow reports", () => {
 
     expect(driver.execute).toHaveBeenCalledTimes(2);
     expect(queue.completeJob).toHaveBeenCalledWith(2, "success", expect.any(Object));
+    expect(queue.saveStepAttempt.mock.calls.map(([record]) => [record.attempt, record.status])).toEqual([
+      [1, "failed"],
+      [2, "success"],
+    ]);
   });
 
   it("redacts secret values before persisting captured step logs", async () => {
@@ -419,7 +504,12 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets,
-      config: { storagePath: "/tmp", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver: {},
       workflow: {
         id: "redaction-workflow",

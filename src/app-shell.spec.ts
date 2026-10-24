@@ -19,7 +19,8 @@ describe("On application shell", () => {
 
   it("provides responsive, accessible navigation around the mounted router", () => {
     expect(shellSetup).toContain('import "@app/api-client.mjs"');
-    expect(shellSetup).toContain('"workspace-workflows" : "workspace-runs"');
+    expect(shellSetup).toContain('page === "channels" ? "channels"');
+    expect(shellSetup).toContain('page === "workflows" ? "workflows"');
     expect(shellSetup).toContain('addEventListener("runner-route-changed", syncSection)');
     expect(html).toContain('"@app/": "/assets/"');
     expect(html).toContain('"yaml": "https://esm.sh/yaml@2.9.0"');

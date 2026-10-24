@@ -113,7 +113,15 @@ export async function startWorkerScheduler(
           }
           const jobSecrets = new SecretStore();
           jobSecrets.replace(await fetchJobSecrets(config, workerId, job.id));
-          await processJob({ workerId, job, queue, secrets: jobSecrets, config, driver, workflow });
+          await processJob({
+            workerId,
+            job,
+            queue,
+            secrets: jobSecrets,
+            config,
+            driver,
+            workflow,
+          });
         })()
           .catch((error) => console.error(`[${workerId}] ⚠️ Worker execution error:`, error))
           .finally(() => {
@@ -256,7 +264,13 @@ async function notifyWorkerHeartbeat(
         "Content-Type": "application/json",
         "X-Runner-Worker-Id": workerId,
       },
-      body: JSON.stringify({ workerId, version: RUNNER_VERSION, tags: config.tags, concurrency, activeJobs }),
+      body: JSON.stringify({
+        workerId,
+        version: RUNNER_VERSION,
+        tags: config.tags,
+        concurrency,
+        activeJobs,
+      }),
       signal: AbortSignal.timeout(5000),
     });
   } catch (error) {
@@ -274,7 +288,10 @@ async function fetchJobSecrets(
   }
   try {
     const response = await fetch(new URL(`/api/v1/jobs/${jobId}/secrets`, config.serverUrl), {
-      headers: { Authorization: `Bearer ${config.workerToken}`, "X-Runner-Worker-Id": workerId },
+      headers: {
+        Authorization: `Bearer ${config.workerToken}`,
+        "X-Runner-Worker-Id": workerId,
+      },
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) {
@@ -308,8 +325,21 @@ export async function processJob(p: Processable) {
     get(target, property, receiver) {
       const value = Reflect.get(target, property, receiver);
       if (property === "saveStepLog") {
-        return (jobId: string | number, stepId: string, content: string) =>
-          value.call(target, jobId, stepId, secrets.redactText(content));
+        return (jobId: string | number, stepId: string, content: string) => {
+          const redacted = secrets.redactText(content);
+          return value.call(target, jobId, stepId, redacted);
+        };
+      }
+      if (property === "saveStepAttempt") {
+        if (typeof value !== "function") {
+          return undefined;
+        }
+        return (record: any) =>
+          value.call(target, {
+            ...record,
+            error: record.error ? secrets.redactText(record.error).slice(0, 4000) : undefined,
+            logContent: secrets.redactText(record.logContent).slice(0, 65536),
+          });
       }
       if (property === "saveReport") {
         return (jobId: string | number, report: WorkflowExecutionReport) =>
@@ -452,7 +482,10 @@ export async function processJob(p: Processable) {
     executionReport.durationMs = Date.now() - jobStartTime;
     const failedReport = {
       ...executionReport,
-      steps: executionReport.steps.map((step) => ({ ...step, status: "skipped" as const })),
+      steps: executionReport.steps.map((step) => ({
+        ...step,
+        status: "skipped" as const,
+      })),
     };
     await queue.completeJob(job.id, "failed", failedReport);
     console.error(`[${workerId}] ❌ Job setup failed:`, error);
@@ -542,6 +575,19 @@ async function processSteps(
 ): Promise<ProcessStepsOutput> {
   const { driver, workerId, queue, config, job, payload, steps, executionContext } = p;
   const stepReports = executionReport.steps;
+  let attemptLogContent = "";
+  const attemptQueue = new Proxy(queue, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (property === "saveStepLog") {
+        return (jobId: string | number, stepId: string, content: string) => {
+          attemptLogContent = `${attemptLogContent}${content}`.slice(-65536);
+          return value.call(target, jobId, stepId, content);
+        };
+      }
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
   let failed = false;
   let cancelled = false;
   let processedSteps = 0;
@@ -574,6 +620,9 @@ async function processSteps(
       };
       const retries = p.workflow?.retries ?? 0;
       for (let attempt = 1; attempt <= retries + 1; attempt++) {
+        const attemptStartedAt = new Date().toISOString();
+        const attemptStartedMs = Date.now();
+        attemptLogContent = "";
         stepResult = await executeSingleStep({
           workerId,
           jobId: job.id,
@@ -583,8 +632,21 @@ async function processSteps(
           executionContext,
           recipeSecrets: p.workflow?._recipeSecrets,
           driver,
-          queue,
+          queue: attemptQueue,
           config,
+        });
+        const attemptCompletedAt = new Date().toISOString();
+        await queue.saveStepAttempt?.({
+          jobId: job.id,
+          stepId: step.id!,
+          attempt,
+          status: stepResult.report?.status || (stepResult.skipped ? "skipped" : "failed"),
+          startedAt: attemptStartedAt,
+          completedAt: attemptCompletedAt,
+          durationMs: stepResult.report?.durationMs ?? Date.now() - attemptStartedMs,
+          exitCode: stepResult.report?.exitCode,
+          error: stepResult.report?.error,
+          logContent: attemptLogContent,
         });
         if (!stepResult.failed || stepResult.cancelled || attempt > retries) {
           break;
@@ -717,7 +779,11 @@ async function executeSingleStep(params: {
         targetInputs,
       );
       const outputs = result && typeof result === "object" ? result : { jobId: result };
-      executionContext.steps[step.id!] = { status: "success", exitCode: 0, outputs };
+      executionContext.steps[step.id!] = {
+        status: "success",
+        exitCode: 0,
+        outputs,
+      };
       return {
         failed: false,
         cancelled: false,
@@ -775,9 +841,17 @@ async function executeSingleStep(params: {
     };
 
     if (step.eval) {
-      return executeEvalStep({ ...params, executionContext: stepExecutionContext, stepContext });
+      return executeEvalStep({
+        ...params,
+        executionContext: stepExecutionContext,
+        stepContext,
+      });
     } else {
-      return executeRunStep({ ...params, executionContext: stepExecutionContext, stepContext });
+      return executeRunStep({
+        ...params,
+        executionContext: stepExecutionContext,
+        stepContext,
+      });
     }
   } catch (e: any) {
     const errorMessage = e?.message || String(e);
@@ -897,7 +971,10 @@ async function evaluateEnv(env, context) {
   if (env) {
     for (const [key, val] of Object.entries(env)) {
       evaluated[key] = String(
-        await SafeExpressionEvaluator.evaluateValue(val, { ...context, env: { ...context.env, ...evaluated } }),
+        await SafeExpressionEvaluator.evaluateValue(val, {
+          ...context,
+          env: { ...context.env, ...evaluated },
+        }),
       );
     }
   }

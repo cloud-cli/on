@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const database = vi.hoisted(() => ({ all: vi.fn(), get: vi.fn(), run: vi.fn(), exec: vi.fn() }));
+const database = vi.hoisted(() => ({ all: vi.fn(), get: vi.fn(), run: vi.fn(), exec: vi.fn(), transaction: vi.fn() }));
 vi.mock("./db-client.js", () => ({ default: database }));
 
 import { QueueManager } from "./queue.js";
@@ -60,14 +60,17 @@ describe("team data isolation queries", () => {
   });
 
   it("updates only a workflow's enabled flag without changing publication state", async () => {
-    database.run.mockResolvedValue({ changes: 1 });
+    database.transaction.mockResolvedValue(undefined);
+    database.get.mockResolvedValue({ present: 1 });
     const workflows = new WorkflowRepository();
 
     await expect(workflows.setEnabledForTeam("team-a", "flow", false)).resolves.toBe(true);
 
-    expect(database.run.mock.calls[0][0]).toContain("SET enabled = ?");
-    expect(database.run.mock.calls[0][0]).not.toContain("status =");
-    expect(database.run.mock.calls[0][1]).toEqual([0, "team-a", "flow"]);
+    const commands = database.transaction.mock.calls[0][0];
+    expect(commands[0].s).toContain("SET enabled = ?");
+    expect(commands[0].s).not.toContain("status =");
+    expect(commands[0].d).toEqual([0, "team-a", "flow"]);
+    expect(commands[1].s).toContain("domain_event_subscriptions SET enabled = 0");
   });
 
   it("moves only unexecuted drafts between explicitly authorized workspace ids", async () => {

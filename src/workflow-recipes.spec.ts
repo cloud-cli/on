@@ -25,6 +25,7 @@ const recipeRow = (revoked = 0) => ({
     },
   ]),
   revoked,
+  functions_json: null,
 });
 
 describe("workflow recipe pinning", () => {
@@ -61,6 +62,34 @@ describe("workflow recipe pinning", () => {
     expect(snapshot._recipeInputs).toEqual({ region: "eu-west-1" });
     expect(snapshot.steps[0].env.TOKEN).toBe("${secrets.token}");
     expect(snapshot._recipeSecrets).toEqual({ token: "DEPLOY_TOKEN" });
+    expect(snapshot._recipeFunction).toBe("main");
+    expect(snapshot._recipeOutputs).toEqual({ type: "object" });
+  });
+
+  it("selects named functions, validates their inputs, and retains the pinned version", async () => {
+    const row = recipeRow();
+    row.functions_json = JSON.stringify({
+      release: {
+        inputs: JSON.parse(row.inputs_json),
+        outputs: { type: "object", properties: { url: { type: "string" } } },
+        steps: [{ run: "release" }],
+      },
+      audit: {
+        inputs: { type: "object", properties: { count: { type: "integer" } }, required: ["count"] },
+        outputs: { type: "object" },
+        steps: [{ run: "audit" }],
+      },
+    });
+    database.get.mockResolvedValue(row);
+    const yaml = source().replace("with: { region: eu-west-1 }", "function: release\nwith: { region: eu-west-1 }");
+    const [definition] = await new WorkflowRepository().validateForSave(yaml);
+    expect(definition.steps[0].run).toBe("release");
+    expect((definition as any)._recipeFunction).toBeUndefined();
+    await expect(new WorkflowRepository().validateForSave(source())).rejects.toThrow("specify function");
+    await expect(new WorkflowRepository().validateForSave(yaml.replace("eu-west-1", "3"))).rejects.toThrow("string");
+    await expect(new WorkflowRepository().validateForSave(yaml.replace("release", "absent"))).rejects.toThrow(
+      "not found",
+    );
   });
 
   it("rejects malformed, missing, revoked, and invalid input references", async () => {

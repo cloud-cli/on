@@ -3,7 +3,6 @@
   "$id": "https://runner.example.com/recipe.schema.json",
   "title": "RecipeDefinition",
   "type": "object",
-  "required": ["inputs", "steps"],
   "additionalProperties": false,
   "properties": {
     "inputs": {
@@ -22,6 +21,25 @@
         "type": "object",
         "not": { "anyOf": [{ "required": ["using"] }, { "required": ["secrets"] }] }
       }
+    },
+    "functions": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["inputs", "outputs", "steps"],
+        "additionalProperties": false,
+        "properties": {
+          "inputs": { "$ref": "#/properties/inputs" },
+          "outputs": { "$ref": "#/properties/inputs" },
+          "steps": { "$ref": "#/properties/steps" }
+        }
+      }
     }
-  }
+  },
+  "oneOf": [
+    { "required": ["inputs", "steps"], "not": { "required": ["functions"] } },
+    { "required": ["functions"], "not": { "anyOf": [{ "required": ["inputs"] }, { "required": ["steps"] }] } }
+  ]
 }

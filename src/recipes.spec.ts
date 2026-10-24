@@ -11,9 +11,30 @@ describe("recipe documents", () => {
 
   it("rejects identity metadata and nested recipe references", () => {
     expect(() => parseRecipe("id: sample\ninputs: {type: object}\nsteps: [{run: echo hi}]\n")).toThrow(
-      "only inputs and steps",
+      "only inputs, steps, and functions",
     );
     expect(() => parseRecipe("inputs: {type: object}\nsteps: [{using: ns/recipe@v1}]\n")).toThrow("Nested recipe");
+  });
+
+  it("normalizes legacy recipes to main and parses named functions", () => {
+    const legacy = parseRecipe("inputs: {type: object}\nsteps: [{run: echo hi}]\n");
+    expect(legacy.functions.main).toMatchObject({ inputs: legacy.inputs, steps: legacy.steps });
+    const parsed = parseRecipe(
+      `functions:\n  build:\n    inputs: {type: object}\n    outputs: {type: object}\n    steps: [{run: echo build}]\n  test:\n    inputs: {type: object}\n    outputs: {type: object}\n    steps: [{run: echo test}]\n`,
+    );
+    expect(Object.keys(parsed.functions)).toEqual(["build", "test"]);
+    expect(parsed.functions.build.steps).toHaveLength(1);
+  });
+
+  it("rejects malformed function sets and invalid function names", () => {
+    expect(() => parseRecipe("functions: {}\n")).toThrow("at least one function");
+    expect(() => parseRecipe("inputs: {type: object}\nsteps: [{run: hi}]\nfunctions: {}\n")).toThrow("either");
+    expect(() =>
+      parseRecipe("functions:\n  bad-name: {inputs: {type: object}, outputs: {type: object}, steps: [{run: hi}]}\n"),
+    ).toThrow("valid identifier");
+    expect(() =>
+      parseRecipe("functions:\n  build: {inputs: {type: object}, outputs: {type: string}, steps: [{run: hi}]}\n"),
+    ).toThrow("outputs schema must declare type: object");
   });
 
   it("validates required, properties, items, enums and additional properties", () => {

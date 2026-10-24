@@ -14,48 +14,102 @@ export type Recipe = {
   sourceYaml: string;
   inputs: Record<string, unknown>;
   steps: unknown[];
+  functions: Record<string, RecipeFunction>;
   revoked: boolean;
 };
 
-export function parseRecipe(sourceYaml: string): { name: string; inputs: Record<string, unknown>; steps: unknown[] } {
+export type RecipeFunction = { inputs: Record<string, unknown>; outputs: Record<string, unknown>; steps: unknown[] };
+export type ParsedRecipe = {
+  name: string;
+  inputs: Record<string, unknown>;
+  steps: unknown[];
+  functions: Record<string, RecipeFunction>;
+};
+
+export function parseRecipe(sourceYaml: string): ParsedRecipe {
   const doc = YAML.parse(sourceYaml);
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
     throw new Error("Recipe must be a YAML object");
   }
-  if (Object.keys(doc).some((key) => !["inputs", "steps"].includes(key))) {
-    throw new Error("Recipe may contain only inputs and steps");
+  if (Object.keys(doc).some((key) => !["inputs", "steps", "functions"].includes(key))) {
+    throw new Error("Recipe may contain only inputs, steps, and functions");
   }
-  if (!doc.inputs || typeof doc.inputs !== "object" || Array.isArray(doc.inputs)) {
-    throw new Error("Recipe inputs must be a JSON Schema object");
+  const legacy = Object.hasOwn(doc, "inputs") || Object.hasOwn(doc, "steps");
+  if (legacy && Object.hasOwn(doc, "functions")) {
+    throw new Error("Recipe must use either top-level inputs/steps or functions, not both");
   }
-  validateRecipeSchema(doc.inputs);
-  if (doc.inputs.type !== "object") {
-    throw new Error("Recipe inputs schema must declare type: object");
+  const functionDefinitions: Record<string, any> = legacy
+    ? { main: { inputs: doc.inputs, outputs: { type: "object" }, steps: doc.steps } }
+    : doc.functions;
+  if (
+    !functionDefinitions ||
+    typeof functionDefinitions !== "object" ||
+    Array.isArray(functionDefinitions) ||
+    !Object.keys(functionDefinitions).length
+  ) {
+    throw new Error("Recipe requires at least one function");
   }
-  for (const [name, definition] of Object.entries((doc.inputs as any).properties || {})) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-      throw new Error(`Recipe input name "${name}" must be a valid identifier`);
+  const functions: Record<string, RecipeFunction> = {};
+  for (const [functionName, definition] of Object.entries(functionDefinitions)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(functionName)) {
+      throw new Error(`Recipe function name "${functionName}" must be a valid identifier`);
     }
-    if ((definition as any)?.writeOnly === true && (definition as any)?.type !== "string") {
-      throw new Error(`Secret recipe input "${name}" must have type: string`);
+    if (
+      !definition ||
+      typeof definition !== "object" ||
+      Array.isArray(definition) ||
+      Object.keys(definition).some((key) => !["inputs", "outputs", "steps"].includes(key))
+    ) {
+      throw new Error(`Recipe function "${functionName}" must contain inputs, outputs, and steps`);
     }
+    const docInputs = (definition as any).inputs;
+    const outputs = (definition as any).outputs;
+    const steps = (definition as any).steps;
+    if (!docInputs || typeof docInputs !== "object" || Array.isArray(docInputs)) {
+      throw new Error("Recipe inputs must be a JSON Schema object");
+    }
+    validateRecipeSchema(docInputs);
+    if (docInputs.type !== "object") {
+      throw new Error("Recipe inputs schema must declare type: object");
+    }
+    for (const [name, definition] of Object.entries((docInputs as any).properties || {})) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+        throw new Error(`Recipe input name "${name}" must be a valid identifier`);
+      }
+      if ((definition as any)?.writeOnly === true && (definition as any)?.type !== "string") {
+        throw new Error(`Secret recipe input "${name}" must have type: string`);
+      }
+    }
+    if (!outputs || typeof outputs !== "object" || Array.isArray(outputs)) {
+      throw new Error(`Recipe function "${functionName}" outputs must be a JSON Schema object`);
+    }
+    validateRecipeSchema(outputs);
+    if (outputs.type !== "object") {
+      throw new Error(`Recipe function "${functionName}" outputs schema must declare type: object`);
+    }
+    if (!Array.isArray(steps) || !steps.length) {
+      throw new Error("Recipe requires at least one step");
+    }
+    for (const [index, step] of steps.entries()) {
+      if (!step || typeof step !== "object" || Array.isArray(step)) {
+        throw new Error(`functions.${functionName}.steps[${index}] must be an object`);
+      }
+      if ("using" in step || "secrets" in step) {
+        throw new Error("Nested recipe references are not supported");
+      }
+      const timeoutMs = (step as any).timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
+      if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+        throw new Error(`functions.${functionName}.steps[${index}].timeoutMs must be a positive integer`);
+      }
+    }
+    functions[functionName] = { inputs: docInputs, outputs, steps };
   }
-  if (!Array.isArray(doc.steps) || !doc.steps.length) {
-    throw new Error("Recipe requires at least one step");
-  }
-  for (const [index, step] of doc.steps.entries()) {
-    if (!step || typeof step !== "object" || Array.isArray(step)) {
-      throw new Error(`steps[${index}] must be an object`);
-    }
-    if ("using" in step || "secrets" in step) {
-      throw new Error("Nested recipe references are not supported");
-    }
-    const timeoutMs = (step as any).timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
-    if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
-      throw new Error(`steps[${index}].timeoutMs must be a positive integer`);
-    }
-  }
-  return { name: "", inputs: doc.inputs, steps: doc.steps };
+  return {
+    name: "",
+    inputs: legacy ? doc.inputs : functions[Object.keys(functions)[0]].inputs,
+    steps: legacy ? doc.steps : functions[Object.keys(functions)[0]].steps,
+    functions,
+  };
 }
 
 export class RecipeRepository {
@@ -70,11 +124,15 @@ export class RecipeRepository {
     CREATE TABLE IF NOT EXISTS recipe_versions (
       namespace TEXT NOT NULL, slug TEXT NOT NULL, version INTEGER NOT NULL, name TEXT NOT NULL, publish_id TEXT UNIQUE,
       source_yaml TEXT NOT NULL, inputs_json TEXT NOT NULL, steps_json TEXT NOT NULL,
+      functions_json TEXT,
       revoked INTEGER NOT NULL DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY(namespace, slug, version),
       FOREIGN KEY(namespace, slug) REFERENCES recipes(namespace, slug)
     );`);
     const columns = await db.all("PRAGMA table_info(recipe_versions)");
+    if (!columns.some((column: any) => column.name === "functions_json")) {
+      await db.exec("ALTER TABLE recipe_versions ADD COLUMN functions_json TEXT");
+    }
     if (!columns.some((column: any) => column.name === "publish_id")) {
       await db.exec("ALTER TABLE recipe_versions ADD COLUMN publish_id TEXT");
       await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS recipe_versions_publish_id ON recipe_versions(publish_id)");
@@ -83,7 +141,7 @@ export class RecipeRepository {
 
   async list(): Promise<Recipe[]> {
     return (
-      await db.all(`SELECT namespace,slug,version,name,source_yaml,inputs_json,steps_json,revoked FROM recipe_versions
+      await db.all(`SELECT namespace,slug,version,name,source_yaml,inputs_json,steps_json,functions_json,revoked FROM recipe_versions
       WHERE version = (SELECT MAX(v.version) FROM recipe_versions v WHERE v.namespace=recipe_versions.namespace AND v.slug=recipe_versions.slug)
       ORDER BY namespace,slug`)
     ).map((row: any) => this.fromRow(row));
@@ -156,7 +214,7 @@ export class RecipeRepository {
         m: "run",
       },
       {
-        s: "INSERT INTO recipe_versions(namespace,slug,version,name,publish_id,source_yaml,inputs_json,steps_json) SELECT ?,?,COALESCE((SELECT MAX(version) FROM recipe_versions WHERE namespace=? AND slug=?),0)+1,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM recipes WHERE namespace=? AND slug=? AND owner_subject=?)",
+        s: "INSERT INTO recipe_versions(namespace,slug,version,name,publish_id,source_yaml,inputs_json,steps_json,functions_json) SELECT ?,?,COALESCE((SELECT MAX(version) FROM recipe_versions WHERE namespace=? AND slug=?),0)+1,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM recipes WHERE namespace=? AND slug=? AND owner_subject=?)",
         d: [
           namespace,
           slug,
@@ -167,6 +225,7 @@ export class RecipeRepository {
           sourceYaml,
           JSON.stringify(parsed.inputs),
           JSON.stringify(parsed.steps),
+          JSON.stringify(parsed.functions),
           namespace,
           slug,
           ownerSubject,
@@ -204,6 +263,15 @@ export class RecipeRepository {
       sourceYaml: row.source_yaml,
       inputs: JSON.parse(row.inputs_json),
       steps: JSON.parse(row.steps_json),
+      functions: row.functions_json
+        ? JSON.parse(row.functions_json)
+        : {
+            main: {
+              inputs: JSON.parse(row.inputs_json),
+              outputs: { type: "object" },
+              steps: JSON.parse(row.steps_json),
+            },
+          },
       revoked: Boolean(row.revoked),
     };
   }

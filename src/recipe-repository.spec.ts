@@ -52,5 +52,59 @@ describe("global recipe repository identity and versioning", () => {
     );
     expect(versionInsert.s).toContain("MAX(version)");
     expect(versionInsert.s).toContain("owner_subject=?");
+    expect(JSON.parse(versionInsert.d[9] as string)).toEqual({
+      main: {
+        inputs: { type: "object", properties: {} },
+        outputs: { type: "object" },
+        steps: [{ run: "npm run deploy" }],
+      },
+    });
+    expect(recipe.functions).toEqual(JSON.parse(versionInsert.d[9] as string));
+  });
+
+  it("adds functions_json to existing installations and normalizes legacy rows on read", async () => {
+    database.all.mockResolvedValue([]);
+    const repository = new RecipeRepository();
+    await repository.init();
+    expect(database.exec).toHaveBeenCalledWith("ALTER TABLE recipe_versions ADD COLUMN functions_json TEXT");
+
+    database.get.mockResolvedValue({
+      namespace: "ada",
+      slug: "legacy",
+      version: 1,
+      name: "Legacy",
+      source_yaml: "",
+      revoked: 0,
+      inputs_json: '{"type":"object","properties":{}}',
+      steps_json: '[{"run":"echo hi"}]',
+      functions_json: null,
+    });
+    await expect(repository.get("ada", "legacy", 1)).resolves.toMatchObject({
+      functions: {
+        main: { inputs: { type: "object", properties: {} }, outputs: { type: "object" }, steps: [{ run: "echo hi" }] },
+      },
+    });
+  });
+
+  it("returns persisted named functions from list and get", async () => {
+    const functions = {
+      deploy: { inputs: { type: "object" }, outputs: { type: "object" }, steps: [{ run: "deploy" }] },
+    };
+    const row = {
+      namespace: "ada",
+      slug: "named",
+      version: 1,
+      name: "Named",
+      source_yaml: "",
+      revoked: 0,
+      inputs_json: '{"type":"object"}',
+      steps_json: '[{"run":"deploy"}]',
+      functions_json: JSON.stringify(functions),
+    };
+    database.all.mockResolvedValue([row]);
+    database.get.mockResolvedValue(row);
+    const repository = new RecipeRepository();
+    await expect(repository.list()).resolves.toMatchObject([{ functions }]);
+    await expect(repository.get("ada", "named", 1)).resolves.toMatchObject({ functions });
   });
 });

@@ -55,8 +55,17 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
     throw new Error("Workflow requires an on block");
   }
 
-  const webhook = Object.entries(parsed.on).find(([name]) => name !== "schedule" && name !== "solar");
-  const [provider, trigger] = webhook || ["generic", {}];
+  const eventTypes = parsed.on.events === undefined ? [] : parsed.on.events;
+  if (
+    !Array.isArray(eventTypes) ||
+    eventTypes.some((type: unknown) => typeof type !== "string" || !/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(type)) ||
+    new Set(eventTypes).size !== eventTypes.length
+  ) {
+    throw new Error("on.events must contain unique event type names (for example presence.arrived)");
+  }
+
+  const webhook = Object.entries(parsed.on).find(([name]) => !["schedule", "solar", "events"].includes(name));
+  const [provider, trigger] = webhook || [eventTypes.length ? "domain-event" : "generic", {}];
   if (parsed.retries !== undefined && (!Number.isInteger(parsed.retries) || parsed.retries < 0)) {
     throw new Error("retries must be a non-negative integer");
   }
@@ -129,6 +138,7 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
       on: { ...(trigger as object), provider },
       schedule: Array.isArray(parsed.on.schedule) ? parsed.on.schedule : undefined,
       solar: Array.isArray(parsed.on.solar) ? parsed.on.solar : undefined,
+      eventTypes,
       concurrency: parsed.concurrency,
       steps,
       post,
@@ -201,6 +211,8 @@ export class WorkflowRepository {
     recipeInputs?: Record<string, unknown>;
     recipeInputSchema?: Record<string, unknown>;
     recipeSecrets?: Record<string, string>;
+    recipeFunction?: string;
+    recipeOutputs?: Record<string, unknown>;
   }> {
     const parsed = YAML.parse(sourceYaml);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -231,6 +243,28 @@ export class WorkflowRepository {
     if (recipe.revoked) {
       throw new Error("Recipe version has been revoked");
     }
+    const functions = recipe.functions || {
+      main: {
+        inputs: recipe.inputs,
+        outputs: { type: "object" },
+        steps: recipe.steps,
+      },
+    };
+    const selectedFunction =
+      parsed.function ??
+      (Object.hasOwn(functions, "main")
+        ? "main"
+        : Object.keys(functions).length === 1
+          ? Object.keys(functions)[0]
+          : undefined);
+    if (typeof selectedFunction !== "string" || !Object.hasOwn(functions, selectedFunction)) {
+      throw new Error(
+        selectedFunction === undefined
+          ? "Recipe exports multiple functions; specify function"
+          : `Recipe function not found: ${selectedFunction}`,
+      );
+    }
+    const selected = functions[selectedFunction];
     if (!Object.hasOwn(parsed, "with") || !Object.hasOwn(parsed, "secrets")) {
       throw new Error("using workflows require with and secrets objects");
     }
@@ -246,8 +280,8 @@ export class WorkflowRepository {
     ) {
       throw new Error("with and secrets must be objects");
     }
-    const properties = (recipe.inputs as any).properties || {};
-    const ordinarySchema = ordinaryRecipeInputSchema(recipe.inputs);
+    const properties = (selected.inputs as any).properties || {};
+    const ordinarySchema = ordinaryRecipeInputSchema(selected.inputs);
     for (const [key, value] of Object.entries(normal)) {
       if (!properties[key] || properties[key].writeOnly === true) {
         throw new Error(`Unknown ordinary recipe input: ${key}`);
@@ -261,7 +295,7 @@ export class WorkflowRepository {
     }
     for (const [key, definition] of Object.entries(properties)) {
       if (
-        (recipe.inputs as any).required?.includes(key) &&
+        (selected.inputs as any).required?.includes(key) &&
         (definition as any)?.writeOnly !== true &&
         !(key in normal)
       ) {
@@ -278,7 +312,7 @@ export class WorkflowRepository {
         throw new Error(`Invalid recipe secret mapping: ${key}`);
       }
     }
-    for (const key of (recipe.inputs as any).required || []) {
+    for (const key of (selected.inputs as any).required || []) {
       if (properties[key]?.writeOnly === true && !(key in secretRefs)) {
         throw new Error(`Required recipe secret is missing: ${key}`);
       }
@@ -302,7 +336,7 @@ export class WorkflowRepository {
         Object.values(value).forEach(inspect);
       }
     };
-    inspect(recipe.steps);
+    inspect(selected.steps);
     for (const key of referenced) {
       if (!(key in bindings)) {
         throw new Error(`Recipe input is not mapped: ${key}`);
@@ -324,7 +358,7 @@ export class WorkflowRepository {
     };
     const compiled = {
       ...parsed,
-      steps: recipe.steps.map(rewriteSecrets),
+      steps: selected.steps.map(rewriteSecrets),
     };
     delete compiled.using;
     delete compiled.with;
@@ -339,6 +373,8 @@ export class WorkflowRepository {
       recipeInputs: normal,
       recipeInputSchema: ordinarySchema,
       recipeSecrets,
+      recipeFunction: selectedFunction,
+      recipeOutputs: selected.outputs,
     };
   }
 
@@ -411,6 +447,8 @@ export class WorkflowRepository {
                   _recipeInputs: resolved.recipeInputs,
                   _recipeInputSchema: resolved.recipeInputSchema,
                   _recipeSecrets: resolved.recipeSecrets,
+                  _recipeFunction: resolved.recipeFunction,
+                  _recipeOutputs: resolved.recipeOutputs,
                 }
               : workflows[0],
           ),
@@ -419,12 +457,32 @@ export class WorkflowRepository {
         ],
         m: "run",
       },
+      {
+        s: `UPDATE domain_event_subscriptions SET enabled = 0 WHERE team_id = ? AND workflow_id = ?`,
+        d: [teamId, canonicalId],
+        m: "run",
+      },
+      {
+        s: `UPDATE domain_event_deliveries SET status = 'filtered', lease_until = NULL,
+            last_error = 'Workflow is not published and enabled', updated_at = CURRENT_TIMESTAMP
+            WHERE team_id = ? AND status IN ('pending', 'claimed')
+              AND subscription_id IN (SELECT id FROM domain_event_subscriptions WHERE team_id = ? AND workflow_id = ?)`,
+        d: [teamId, teamId, canonicalId],
+        m: "run",
+      },
     ]);
     const owner = await db.get("SELECT team_id FROM workflows WHERE id = ?", [canonicalId]);
     if (!owner || owner.team_id !== teamId) {
       throw new Error("Workflow not found");
     }
-    return { id: canonicalId, name: workflows[0].name, sourceYaml, revision: nextRevision, status: "draft", enabled };
+    return {
+      id: canonicalId,
+      name: workflows[0].name,
+      sourceYaml,
+      revision: nextRevision,
+      status: "draft",
+      enabled,
+    };
   }
 
   async listForTeam(teamId: string): Promise<StoredWorkflow[]> {
@@ -460,11 +518,50 @@ export class WorkflowRepository {
   }
 
   async setEnabledForTeam(teamId: string, id: string, enabled: boolean): Promise<boolean> {
-    const result = await db.run(
-      "UPDATE workflows SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE team_id = ? AND id = ?",
-      [enabled ? 1 : 0, teamId, id],
-    );
-    return Number(result?.changes || 0) === 1;
+    if (typeof db.transaction !== "function") {
+      throw new Error("Changing workflow state requires database transactions");
+    }
+    const commands: Array<{ s: string; d: unknown[]; m: "run" }> = [
+      {
+        s: "UPDATE workflows SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE team_id = ? AND id = ?",
+        d: [enabled ? 1 : 0, teamId, id],
+        m: "run",
+      },
+    ];
+    if (!enabled) {
+      commands.push(
+        {
+          s: "UPDATE domain_event_subscriptions SET enabled = 0 WHERE team_id = ? AND workflow_id = ?",
+          d: [teamId, id],
+          m: "run",
+        },
+        {
+          s: `UPDATE domain_event_deliveries SET status = 'filtered', lease_until = NULL,
+              last_error = 'Workflow is disabled', updated_at = CURRENT_TIMESTAMP
+              WHERE team_id = ? AND status IN ('pending', 'claimed')
+                AND subscription_id IN (SELECT id FROM domain_event_subscriptions WHERE team_id = ? AND workflow_id = ?)`,
+          d: [teamId, teamId, id],
+          m: "run",
+        },
+      );
+    } else {
+      commands.push({
+        s: `INSERT INTO domain_event_subscriptions
+              (id, team_id, workflow_id, workflow_revision, event_type, high_water_event_rowid, enabled)
+            SELECT lower(hex(randomblob(16))), w.team_id, w.id, w.active_revision, event_type.value,
+                   (SELECT COALESCE(MAX(rowid), 0) FROM domain_events e WHERE e.team_id = w.team_id), 1
+            FROM workflows w
+            JOIN workflow_revisions wr ON wr.workflow_id = w.id AND wr.revision = w.active_revision
+            JOIN json_each(json_extract(wr.normalized_json, '$.eventTypes')) AS event_type
+            WHERE w.team_id = ? AND w.id = ? AND w.status = 'published' AND w.enabled = 1
+            ON CONFLICT(team_id, workflow_id, workflow_revision, event_type)
+            DO UPDATE SET enabled = 1, high_water_event_rowid = excluded.high_water_event_rowid`,
+        d: [teamId, id],
+        m: "run",
+      });
+    }
+    await db.transaction(commands);
+    return Boolean(await db.get("SELECT 1 AS present FROM workflows WHERE team_id = ? AND id = ?", [teamId, id]));
   }
 
   async transferDraftForTeam(sourceTeamId: string, targetTeamId: string, id: string): Promise<boolean> {
@@ -522,20 +619,59 @@ export class WorkflowRepository {
     }
     const [definition] = (await this.resolveRecipeWorkflow(workflow.source_yaml)).workflows;
     await this.assertDefinitionIdIsUnique(teamId, id, definition.id);
-    const revision = await db.get("SELECT MAX(revision) AS revision FROM workflow_revisions WHERE workflow_id = ?", [
-      id,
-    ]);
-    await db.run(
-      "UPDATE workflows SET status = 'published', active_revision = ?, updated_at = CURRENT_TIMESTAMP WHERE team_id = ? AND id = ?",
-      [revision.revision, teamId, id],
+    const commands: Array<{ s: string; d?: unknown[]; m: "run" }> = [
+      {
+        s: `UPDATE workflows
+            SET status = 'published',
+                active_revision = (SELECT MAX(revision) FROM workflow_revisions WHERE workflow_id = workflows.id),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE team_id = ? AND id = ?
+              AND EXISTS (SELECT 1 FROM workflow_revisions WHERE workflow_id = workflows.id)`,
+        d: [teamId, id],
+        m: "run",
+      },
+      {
+        s: `UPDATE domain_event_subscriptions SET enabled = 0
+            WHERE team_id = ? AND workflow_id = ?
+              AND EXISTS (SELECT 1 FROM workflows WHERE id = ? AND team_id = ? AND status = 'published')`,
+        d: [teamId, id, id, teamId],
+        m: "run",
+      },
+      {
+        s: `INSERT INTO domain_event_subscriptions
+              (id, team_id, workflow_id, workflow_revision, event_type, high_water_event_rowid, enabled)
+            SELECT lower(hex(randomblob(16))), w.team_id, w.id, w.active_revision, event_type.value,
+                   (SELECT COALESCE(MAX(rowid), 0) FROM domain_events e WHERE e.team_id = w.team_id), 1
+            FROM workflows w
+            JOIN workflow_revisions wr ON wr.workflow_id = w.id AND wr.revision = w.active_revision
+            JOIN json_each(json_extract(wr.normalized_json, '$.eventTypes')) AS event_type
+            WHERE w.team_id = ? AND w.id = ? AND w.status = 'published' AND w.enabled = 1
+            ON CONFLICT(team_id, workflow_id, workflow_revision, event_type)
+            DO UPDATE SET enabled = 1, high_water_event_rowid = excluded.high_water_event_rowid`,
+        d: [teamId, id],
+        m: "run",
+      },
+    ];
+    if (typeof db.transaction !== "function") {
+      throw new Error("Publishing event subscriptions requires database transactions");
+    }
+    await db.transaction(commands);
+    const published = await db.get(
+      `SELECT w.id, w.name, r.source_yaml, w.active_revision AS revision, w.status, w.enabled
+       FROM workflows w JOIN workflow_revisions r ON r.workflow_id = w.id AND r.revision = w.active_revision
+       WHERE w.team_id = ? AND w.id = ?`,
+      [teamId, id],
     );
+    if (!published || published.status !== "published") {
+      throw new Error("Workflow changed while it was being published; retry publication");
+    }
     return {
-      id,
-      name: workflow.name,
-      sourceYaml: workflow.source_yaml,
-      revision: Number(revision.revision),
-      status: "published",
-      enabled: Boolean(workflow.enabled),
+      id: published.id,
+      name: published.name,
+      sourceYaml: published.source_yaml,
+      revision: Number(published.revision),
+      status: published.status,
+      enabled: Boolean(published.enabled),
     };
   }
 
@@ -656,7 +792,12 @@ export class WorkflowRepository {
        WHERE workflow_id = ? ORDER BY revision DESC LIMIT 1`,
       [workflowId],
     );
-    return row ? { revision: Number(row.revision), definition: JSON.parse(row.normalized_json) } : null;
+    return row
+      ? {
+          revision: Number(row.revision),
+          definition: JSON.parse(row.normalized_json),
+        }
+      : null;
   }
 
   async getRevisionSnapshot(workflowId: string, revision: number): Promise<StoredWorkflow | null> {

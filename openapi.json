@@ -1796,6 +1796,246 @@
         }
       }
     },
+    "/api/v1/domain-events": {
+      "post": {
+        "tags": ["events"],
+        "summary": "Publish a domain event",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["type", "source", "data"],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+                  },
+                  "source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "schemaVersion": {
+                    "type": "integer",
+                    "default": 1
+                  },
+                  "occurredAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "correlationId": {
+                    "type": "string"
+                  },
+                  "causationId": {
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "data": {
+                    "type": "object",
+                    "description": "Secret-free normalized event data; not encrypted at rest."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Event accepted; durable deliveries are processed asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["eventId", "deliveryCount"],
+                  "properties": {
+                    "eventId": {
+                      "type": "string"
+                    },
+                    "deliveryCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/domain-event-subscriptions": {
+      "post": {
+        "tags": ["events"],
+        "summary": "Create a domain event subscription",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["workflowId", "eventType"],
+                "properties": {
+                  "workflowId": {
+                    "type": "string"
+                  },
+                  "workflowRevision": {
+                    "type": "integer"
+                  },
+                  "eventType": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Subscription created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "workflowId", "workflowRevision", "eventType", "enabled"],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "workflowId": {
+                      "type": "string"
+                    },
+                    "workflowRevision": {
+                      "type": "integer"
+                    },
+                    "eventType": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/domain-events/{eventId}/deliveries": {
+      "get": {
+        "tags": ["events"],
+        "summary": "Inspect durable delivery outcomes without exposing event data",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace-scoped delivery statuses",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/domain-events/{eventId}/deliveries/{deliveryId}/retry": {
+      "post": {
+        "tags": ["events"],
+        "summary": "Retry a failed durable event delivery",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deliveryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Failed delivery requeued idempotently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/api/v1/push/public-key": {
       "get": {
         "tags": ["notifications"],
@@ -1989,7 +2229,14 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "oneOf": [{ "required": ["email"] }, { "required": ["subject"] }],
+                "oneOf": [
+                  {
+                    "required": ["email"]
+                  },
+                  {
+                    "required": ["subject"]
+                  }
+                ],
                 "properties": {
                   "email": {
                     "type": "string",
@@ -2552,7 +2799,14 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "oneOf": [{ "required": ["email"] }, { "required": ["subject"] }],
+                "oneOf": [
+                  {
+                    "required": ["email"]
+                  },
+                  {
+                    "required": ["subject"]
+                  }
+                ],
                 "properties": {
                   "email": {
                     "type": "string"
@@ -2949,7 +3203,17 @@
       "post": {
         "tags": ["recipes"],
         "summary": "Validate recipe YAML and its input JSON Schema",
-        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2957,14 +3221,22 @@
               "schema": {
                 "type": "object",
                 "required": ["sourceYaml"],
-                "properties": { "sourceYaml": { "type": "string" } }
+                "properties": {
+                  "sourceYaml": {
+                    "type": "string"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Recipe and input JSON Schema are valid" },
-          "422": { "description": "Invalid recipe or JSON Schema" }
+          "200": {
+            "description": "Recipe and input JSON Schema are valid"
+          },
+          "422": {
+            "description": "Invalid recipe or JSON Schema"
+          }
         }
       }
     },
@@ -3066,6 +3338,228 @@
           },
           "403": {
             "description": "Administrator access required"
+          }
+        }
+      }
+    },
+    "/api/v1/channels": {
+      "get": {
+        "tags": ["events"],
+        "summary": "List workspace channels",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Channels scoped to the authenticated workspace"
+          }
+        }
+      },
+      "post": {
+        "tags": ["events"],
+        "summary": "Create a channel",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created channel"
+          }
+        }
+      }
+    },
+    "/api/v1/channels/{channelId}/messages": {
+      "parameters": [
+        {
+          "name": "channelId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "$ref": "#/components/parameters/WorkspaceId"
+        }
+      ],
+      "get": {
+        "tags": ["events"],
+        "summary": "List durable channel messages",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Opaque message cursor",
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ascending message page with next cursor"
+          },
+          "404": {
+            "description": "Channel not found in workspace"
+          }
+        }
+      },
+      "post": {
+        "tags": ["events"],
+        "summary": "Append durable channel message",
+        "description": "Body is limited to 256 KiB and depth 32. Secret-like property names are rejected. Author and workspace are derived from authentication; causal references are not accepted.",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["body"],
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "description": "JSON value (max 256 KiB, depth 32; no password/token/secret/authorization/credential fields)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Appended message with server-derived author metadata"
+          },
+          "400": {
+            "description": "Invalid or unsafe body"
+          },
+          "404": {
+            "description": "Channel not found in workspace"
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/step-attempts": {
+      "get": {
+        "tags": ["jobs"],
+        "summary": "List immutable step execution attempts for a job",
+        "description": "Requires runs.view. Results are strictly scoped to the authenticated team; missing and foreign jobs return 404.",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/JobId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered step attempts including recorded logs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "jobId": {
+                      "type": "string"
+                    },
+                    "attempts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found"
           }
         }
       }

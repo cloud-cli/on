@@ -27,6 +27,33 @@ steps:
     expect(workflow.solar?.[0].event).toBe("sunrise");
   });
 
+  it("parses declarative domain event subscriptions separately from webhook providers", () => {
+    const [workflow] = parseWorkflow(`
+id: presence-arrived
+name: Presence arrived
+on:
+  events: [presence.arrived, workflow.completed]
+steps:
+  - run: 'echo done'
+`);
+    expect(workflow.eventTypes).toEqual(["presence.arrived", "workflow.completed"]);
+    expect(workflow.on.provider).toBe("domain-event");
+    expect(() =>
+      parseWorkflow(`id: duplicate
+name: Duplicate
+on: { events: [presence.arrived, presence.arrived] }
+steps: [{ run: 'true' }]
+`),
+    ).toThrow("unique event type names");
+    expect(() =>
+      parseWorkflow(`id: invalid-event
+name: Invalid event
+on: { events: [Not-An-Event] }
+steps: [{ run: 'true' }]
+`),
+    ).toThrow("unique event type names");
+  });
+
   it("rejects workflow includes", () => {
     expect(() => parseWorkflow("name: Invalid\nincludes: [base.yml]\non: {generic: {}}\nsteps: [{run: true}]")).toThrow(
       "includes",

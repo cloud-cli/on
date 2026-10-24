@@ -180,9 +180,14 @@ export interface WorkflowDefinition {
   _recipeInputSchema?: Record<string, unknown>;
   /** Recipe secret aliases mapped to workspace secret names; never contains values. */
   _recipeSecrets?: Record<string, string>;
+  /** Selected exported function and its output contract for immutable recipe revisions. */
+  _recipeFunction?: string;
+  _recipeOutputs?: Record<string, unknown>;
   /** Time triggers stored alongside webhook triggers in DB-authored workflows. */
   schedule?: ScheduleTrigger[];
   solar?: ScheduleTrigger[];
+  /** Exact domain event types subscribed to by this workflow revision. */
+  eventTypes?: string[];
 }
 
 export interface WorkflowRevision {
@@ -301,6 +306,18 @@ export interface WorkerExecutionQueue {
   saveReport(jobId: string | number, report: WorkflowExecutionReport): Promise<void>;
   completeJob(jobId: string | number, status: JobStatus, report: WorkflowExecutionReport): Promise<void>;
   saveStepLog(jobId: string | number, stepId: string, content: string): Promise<void>;
+  saveStepAttempt?(attempt: {
+    jobId: string | number;
+    stepId: string;
+    attempt: number;
+    status: string;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    exitCode?: number;
+    error?: string;
+    logContent: string;
+  }): Promise<void>;
   saveStoredFiles(
     kind: "artifact" | "cache",
     ownerKey: string,

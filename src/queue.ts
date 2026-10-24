@@ -85,7 +85,7 @@ export class QueueManager {
     payload: JobPayload,
     requiredTags: string[],
     teamId: string,
-    parentId: string | number,
+    parentId: string | number | null,
     dispatchKey: string,
   ): Promise<number> {
     await db.run(
@@ -240,14 +240,35 @@ export class QueueManager {
   }
 
   async completeJob(jobId: string | number, status: JobStatus, report: WorkflowExecutionReport): Promise<void> {
-    await db.run(
-      `UPDATE jobs
-       SET status = CASE WHEN status = 'cancelled' THEN 'cancelled' ELSE ? END,
-           report = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP,
-           lease_id = NULL, lease_token_hash = NULL, lease_expires_at = NULL, lease_completed = 1
-       WHERE id = ?;`,
-      [status, JSON.stringify(report), jobId],
-    );
+    if (typeof db.transaction !== "function") {
+      throw new Error("Atomic transactions are required to complete jobs");
+    }
+    await db.transaction([
+      {
+        s: `UPDATE jobs
+            SET status = CASE WHEN status = 'cancelled' THEN 'cancelled' ELSE ? END,
+                report = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP,
+                lease_id = NULL, lease_token_hash = NULL, lease_expires_at = NULL, lease_completed = 1
+            WHERE id = ?`,
+        d: [status, JSON.stringify(report), jobId],
+        m: "run",
+      },
+      {
+        s: `INSERT OR IGNORE INTO domain_events
+              (id, team_id, type, schema_version, source, occurred_at, recorded_at, correlation_id, causation_id,
+               idempotency_key, data_json)
+            SELECT 'workflow-job:' || jobs.id || ':terminal', jobs.team_id,
+              CASE jobs.status WHEN 'success' THEN 'workflow.completed' ELSE 'workflow.failed' END,
+              1, 'runner', jobs.finished_at, CURRENT_TIMESTAMP, NULL, NULL,
+              'workflow-job:' || jobs.id || ':terminal',
+              json_object('teamId', jobs.team_id, 'workflowId', jobs.workflow_id,
+                'revision', jobs.workflow_revision, 'jobId', jobs.id, 'status', jobs.status,
+                'finishedAt', jobs.finished_at)
+            FROM jobs WHERE jobs.id = ? AND jobs.status IN ('success', 'failed')`,
+        d: [jobId],
+        m: "run",
+      },
+    ]);
   }
 
   async completeJobForRunner(
@@ -258,17 +279,39 @@ export class QueueManager {
     status: JobStatus,
     report: WorkflowExecutionReport,
   ): Promise<boolean> {
-    const result = await db.run(
-      `UPDATE jobs SET status = CASE WHEN status = 'cancelled' THEN 'cancelled' ELSE ? END,
+    if (typeof db.transaction !== "function") {
+      throw new Error("Atomic transactions are required to complete runner jobs");
+    }
+    const update = `UPDATE jobs SET status = CASE WHEN status = 'cancelled' THEN 'cancelled' ELSE ? END,
        report = ?, updated_at = CURRENT_TIMESTAMP, finished_at = CURRENT_TIMESTAMP, lease_completed = 1
        WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ? AND status IN ('running', 'cancelled')
          AND lease_fenced = 0 AND lease_completed = 0 AND julianday(lease_expires_at) > julianday('now')
-         AND ${CURRENT_RUNNER_AUTHORIZATION}`,
-      [status, JSON.stringify(report), jobId, runnerId, leaseId, leaseTokenHash],
-    );
-    if (Number(result?.changes || 0) === 1) {
-      return true;
-    }
+         AND ${CURRENT_RUNNER_AUTHORIZATION}`;
+    const insertEvent = `INSERT OR IGNORE INTO domain_events
+       (id, team_id, type, schema_version, source, occurred_at, recorded_at, correlation_id, causation_id,
+        idempotency_key, data_json)
+       SELECT 'workflow-job:' || jobs.id || ':terminal', jobs.team_id,
+         CASE jobs.status WHEN 'success' THEN 'workflow.completed' ELSE 'workflow.failed' END,
+         1, 'runner', jobs.finished_at, CURRENT_TIMESTAMP, NULL, NULL,
+         'workflow-job:' || jobs.id || ':terminal',
+         json_object('teamId', jobs.team_id, 'workflowId', jobs.workflow_id,
+           'revision', jobs.workflow_revision, 'jobId', jobs.id, 'status', jobs.status,
+           'finishedAt', jobs.finished_at)
+       FROM jobs WHERE jobs.id = ? AND jobs.worker_id = ? AND jobs.lease_id = ? AND jobs.lease_token_hash = ?
+         AND jobs.lease_fenced = 0 AND jobs.lease_completed = 1 AND jobs.status IN ('success', 'failed')
+         AND ${CURRENT_RUNNER_AUTHORIZATION}`;
+    await db.transaction([
+      {
+        s: update,
+        d: [status, JSON.stringify(report), jobId, runnerId, leaseId, leaseTokenHash],
+        m: "run",
+      },
+      {
+        s: insertEvent,
+        d: [jobId, runnerId, leaseId, leaseTokenHash],
+        m: "run",
+      },
+    ]);
     const completed = await db.get(
       `SELECT status, report FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
         AND lease_fenced = 0 AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}`,
@@ -526,6 +569,18 @@ export class QueueManager {
     return db.get("SELECT * FROM jobs WHERE team_id = ? AND id = ?", [teamId, jobId]);
   }
 
+  /** Read immutable step execution attempts, scoped to the owning team and job. */
+  async getStepAttemptsForTeam(teamId: string, jobId: string | number): Promise<any[]> {
+    return db.all(
+      `SELECT id, job_id, step_id, attempt, status, started_at, completed_at,
+              duration_ms, exit_code, error, log_content
+         FROM step_execution_attempts
+        WHERE team_id = ? AND job_id = ?
+        ORDER BY step_id ASC, attempt ASC, id ASC`,
+      [teamId, jobId],
+    );
+  }
+
   /**
    * List recent jobs for dashboard status monitoring
    */
@@ -674,6 +729,43 @@ export class QueueManager {
       [jobId, stepId, timestampLogLines(logContent), jobId, runnerId, leaseId, leaseTokenHash],
     );
     return Number(result?.changes || 0) === 1;
+  }
+
+  /** Persist an immutable per-execution record. Legacy local workers do not carry lease identity. */
+  async saveStepAttempt(attempt: {
+    jobId: string | number;
+    stepId: string;
+    attempt: number;
+    status: string;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    exitCode?: number;
+    error?: string;
+    logContent: string;
+  }): Promise<void> {
+    const result = await db.run(
+      `INSERT INTO step_execution_attempts
+       (team_id, job_id, step_id, attempt, status, started_at, completed_at, duration_ms, exit_code, error, log_content)
+       SELECT team_id, id, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM jobs
+        WHERE id = ? AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)
+       ON CONFLICT(job_id, step_id, attempt) DO NOTHING`,
+      [
+        attempt.stepId,
+        attempt.attempt,
+        attempt.status,
+        attempt.startedAt,
+        attempt.completedAt,
+        attempt.durationMs,
+        attempt.exitCode ?? null,
+        attempt.error?.slice(0, 4000) ?? null,
+        attempt.logContent.slice(0, 65536),
+        attempt.jobId,
+      ],
+    );
+    if (Number(result?.changes || 0) > 1) {
+      throw new Error("Unexpected step attempt insert count");
+    }
   }
 
   /**
@@ -831,10 +923,22 @@ export class QueueManager {
     }
     const statements = [
       { s: "DELETE FROM step_logs WHERE job_id = ?", d: [jobId], m: "run" },
-      { s: "DELETE FROM stored_files WHERE owner_key = ?", d: [String(jobId)], m: "run" },
+      {
+        s: "DELETE FROM stored_files WHERE owner_key = ?",
+        d: [String(jobId)],
+        m: "run",
+      },
       { s: "DELETE FROM ai_requests WHERE job_id = ?", d: [jobId], m: "run" },
-      { s: "UPDATE jobs SET parentId = NULL WHERE parentId = ? AND team_id = ?", d: [jobId, teamId], m: "run" },
-      { s: "DELETE FROM jobs WHERE id = ? AND team_id = ?", d: [jobId, teamId], m: "run" },
+      {
+        s: "UPDATE jobs SET parentId = NULL WHERE parentId = ? AND team_id = ?",
+        d: [jobId, teamId],
+        m: "run",
+      },
+      {
+        s: "DELETE FROM jobs WHERE id = ? AND team_id = ?",
+        d: [jobId, teamId],
+        m: "run",
+      },
     ];
     if (typeof db.transaction !== "function") {
       throw new Error("Atomic transactions are required to delete run data");

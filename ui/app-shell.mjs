@@ -47,7 +47,7 @@ export default function setup() {
       const selected = item.getAttribute("data-workspace-nav-item") === selectedId;
       const submenu = item.querySelector("[data-workspace-submenu]");
       submenu?.classList.toggle("hidden", !selected);
-      const [workspaceLink, workflowsLink, runsLink] = item.querySelectorAll("a");
+      const [workspaceLink, workflowsLink, runsLink, channelsLink] = item.querySelectorAll("a");
       if (workspaceLink) {
         workspaceLink.setAttribute(
           "aria-current",
@@ -63,14 +63,20 @@ export default function setup() {
       if (runsLink) {
         runsLink.setAttribute("aria-current", selected && activeSection.value === "workspace-runs" ? "page" : "null");
       }
+      if (channelsLink) {
+        channelsLink.setAttribute(
+          "aria-current",
+          selected && activeSection.value === "workspace-channels" ? "page" : "null",
+        );
+      }
     }
   };
   const syncSection = () => {
     const path = window.location.pathname.replace(/^\/ui/, "");
-    const workspaceRoute = path.match(/^\/workspaces\/([^/]+)\/(workflows|runs)(?:\/events)?$/);
+    const workspaceRoute = path.match(/^\/workspaces\/([^/]+)\/(workflows|runs|channels)(?:\/events)?$/);
     if (workspaceRoute) {
       selectedWorkspaceId.value = decodeURIComponent(workspaceRoute[1]);
-      activeSection.value = workspaceRoute[2] === "workflows" ? "workspace-workflows" : "workspace-runs";
+      activeSection.value = `workspace-${workspaceRoute[2] === "channels" ? "channels" : workspaceRoute[2] === "workflows" ? "workflows" : "runs"}`;
     } else if (
       path === "/settings" ||
       path.startsWith("/settings") ||
@@ -91,7 +97,7 @@ export default function setup() {
   };
   const selectWorkspace = (teamId, page = "runs") => {
     selectedWorkspaceId.value = teamId;
-    activeSection.value = page === "workflows" ? "workspace-workflows" : "workspace-runs";
+    activeSection.value = `workspace-${page === "channels" ? "channels" : page === "workflows" ? "workflows" : "runs"}`;
     syncWorkspaceNavigation();
   };
   const workspacePath = (teamId, page) =>

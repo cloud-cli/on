@@ -1,5 +1,6 @@
 import { getElement, load, onDestroy, onInit, templateRef } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
+import { mountChannels } from "@app/channels-ui.mjs";
 
 export function navigateTo(path) {
   history.pushState(null, "", path);
@@ -120,6 +121,9 @@ export default function () {
     if (path === "/operations") {
       return { component: "page-operations", url: "/assets/pages/operations.html", page: "operations" };
     }
+    if (path === "/channels") {
+      return { component: "page-channels", page: "channels" };
+    }
     if (path === "/teams" || path === "/workspaces") {
       return { component: "page-teams", url: "/assets/pages/workspaces.html", page: "workspaces" };
     }
@@ -152,6 +156,10 @@ export default function () {
         page: "incoming-events",
         teamId,
       };
+    }
+    const teamChannels = path.match(/^\/workspaces\/([^/]+)\/channels$/);
+    if (teamChannels) {
+      return { component: "page-channels", page: "channels", teamId: decodeURIComponent(teamChannels[1]) };
     }
     const teamRuns = path.match(/^\/workspaces\/([^/]+)\/runs$/);
     if (teamRuns) {
@@ -195,7 +203,7 @@ export default function () {
     const currentNavigation = ++navigationId;
     try {
       const current = route();
-      const teams = current.page === "recipes" || current.page === "recipe-editor" ? [] : await checkTeams();
+      let teams = current.page === "recipes" || current.page === "recipe-editor" ? [] : await checkTeams();
       if (currentNavigation !== navigationId) {
         return;
       }
@@ -235,11 +243,14 @@ export default function () {
           "recipe-editor",
           "workflows",
           "incoming-events",
+          "channels",
         ].includes(current.page);
         const cacheKey = current.teamId ? `${current.page}:${current.teamId}` : current.page;
         let component = persistentPage ? mountedPages.get(cacheKey) : null;
         if (!component) {
-          await load(current.url);
+          if (current.url) {
+            await load(current.url);
+          }
           if (currentNavigation !== navigationId) {
             return;
           }
@@ -248,6 +259,10 @@ export default function () {
           }
           component = document.createElement(current.component);
           component.dataset.routePage = current.page;
+          if (current.page === "channels") {
+            component.dataset.workspaceId = current.teamId || "";
+            mountChannels(component);
+          }
           if (persistentPage) {
             mountedPages.set(cacheKey, component);
             outlet.value.append(component);

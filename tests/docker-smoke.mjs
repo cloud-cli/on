@@ -24,6 +24,19 @@ const database = http.createServer(async (request, response) => {
   }
   const query = JSON.parse(body || "{}");
   let result = query.m === "all" ? [] : query.m === "get" ? null : { changes: 1 };
+  if (query.m === "all" && /^PRAGMA table_info\(workflows\)$/i.test(query.s)) {
+    result = ["id", "definition_id", "name", "source_yaml", "status", "active_revision", "enabled", "team_id"].map(
+      (name, cid) => ({ name, cid }),
+    );
+  }
+  if (query.m === "all" && /^PRAGMA table_info\(teams\)$/i.test(query.s)) {
+    result = ["id", "deleting_at"].map((name, cid) => ({ name, cid }));
+  }
+  if (query.m === "get" && /FROM sqlite_master WHERE type = 'table' AND name = 'workflows'/i.test(query.s)) {
+    result = {
+      sql: "CREATE TABLE workflows (id TEXT PRIMARY KEY, team_id TEXT NOT NULL, FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE RESTRICT)",
+    };
+  }
   if (query.m === "get" && /COALESCE\(MAX\(revision\)/i.test(query.s)) {
     result = { revision: workflow ? 1 : 0 };
   }
@@ -125,8 +138,9 @@ try {
   await waitForServer(appBaseUrl);
 
   const apiResponse = await fetch(`${appBaseUrl}/api`);
-  if (apiResponse.status !== 401) {
-    throw new Error(`Expected OpenAPI endpoint to require authentication, got ${apiResponse.status}`);
+  const apiSpec = await apiResponse.json();
+  if (apiResponse.status !== 200 || apiSpec.openapi !== "3.0.3") {
+    throw new Error(`Expected public OpenAPI document, got ${apiResponse.status}`);
   }
   const sessionResponse = await fetch(`${appBaseUrl}/api/auth/session`);
   const session = await sessionResponse.json();
@@ -154,7 +168,7 @@ try {
 
   for (const [path, expectedText] of [
     ["/app-icon.svg", "<svg"],
-    ["/manifest.webmanifest", '"start_url":"/runs"'],
+    ["/manifest.webmanifest", '"start_url":"/ui/runs"'],
     ["/api-client.mjs", "loadToken"],
     ["/app-shell.mjs", "onInit"],
     ["/app-router.mjs", "navigateTo"],

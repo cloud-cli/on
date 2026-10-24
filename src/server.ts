@@ -5,6 +5,10 @@ import { URL } from "node:url";
 import { isProtectedUiRoute, safeReturnUrl } from "./safe-return-url.js";
 import { dashboardTemplate, generateDashboardHtml, toDashboardJobs } from "../ui/dashboard.js";
 import { EventBroker } from "./events.js";
+import { DomainEventDeliveryRepository } from "./domain-event-delivery-repository.js";
+import { DomainEventRepository } from "./domain-event-repository.js";
+import { DomainEventDispatcher } from "./domain-event-dispatcher.js";
+import { ChannelRepository } from "./channel-repository.js";
 import { GitHubPreprocessor } from "./preprocessors/github.js";
 import { IncomingEventRepository } from "./incoming-event-repository.js";
 import { getAppIcon, serviceWorker, webManifest } from "../ui/pwa.js";
@@ -69,6 +73,58 @@ function isSafeRunnerFilePath(value: string): boolean {
   );
 }
 
+function isBoundedDomainEventData(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const pending: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
+  let visited = 0;
+  while (pending.length) {
+    const current = pending.pop()!;
+    visited += 1;
+    if (visited > 10_000 || current.depth > 32) {
+      return false;
+    }
+    if (current.value && typeof current.value === "object") {
+      for (const child of Object.values(current.value)) {
+        pending.push({ value: child, depth: current.depth + 1 });
+      }
+    }
+  }
+  try {
+    return Buffer.byteLength(JSON.stringify(value)) <= 256 * 1024;
+  } catch {
+    return false;
+  }
+}
+
+function isSafeChannelBody(value: unknown): boolean {
+  const forbidden =
+    /(?:pass(?:word|phrase|code)?|token|secret|auth(?:orization)?|credential|api[-_]?key|private[-_]?key|bearer|cookie|session[-_]?id)/i;
+  const pending: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
+  let visited = 0;
+  while (pending.length) {
+    const current = pending.pop()!;
+    if (++visited > 10_000 || current.depth > 32) {
+      return false;
+    }
+    if (current.value && typeof current.value === "object") {
+      for (const [key, child] of Object.entries(current.value)) {
+        const normalizedKey = key.replace(/[^a-z0-9]/gi, "");
+        if (forbidden.test(key) || forbidden.test(normalizedKey)) {
+          return false;
+        }
+        pending.push({ value: child, depth: current.depth + 1 });
+      }
+    }
+  }
+  try {
+    return Buffer.byteLength(JSON.stringify(value)) <= 256 * 1024;
+  } catch {
+    return false;
+  }
+}
+
 function internalApiPath(pathname: string, method: string): string {
   if (pathname === "/api/v1") {
     return pathname;
@@ -94,7 +150,8 @@ function internalApiPath(pathname: string, method: string): string {
   }
   if (
     (method.toUpperCase() === "PATCH" && /^\/api\/v1\/workflows\/[a-z0-9-]+\/enabled$/.test(pathname)) ||
-    (method.toUpperCase() === "POST" && /^\/api\/v1\/workflows\/[a-z0-9-]+\/transfer$/.test(pathname))
+    (method.toUpperCase() === "POST" && /^\/api\/v1\/workflows\/[a-z0-9-]+\/transfer$/.test(pathname)) ||
+    (method.toUpperCase() === "GET" && /^\/api\/v1\/jobs\/\d+\/step-attempts$/.test(pathname))
   ) {
     return pathname;
   }
@@ -103,6 +160,9 @@ function internalApiPath(pathname: string, method: string): string {
     pathname.startsWith("/api/v1/runner/") ||
     pathname.startsWith("/api/v1/runners") ||
     pathname === "/api/v1/runner-enrollments" ||
+    pathname === "/api/v1/domain-events" ||
+    pathname.startsWith("/api/v1/domain-events/") ||
+    pathname === "/api/v1/domain-event-subscriptions" ||
     /^\/api\/v1\/teams\/[^/]+\/runners(?:\/[^/]+)?$/.test(pathname) ||
     (["GET", "PUT", "DELETE"].includes(method.toUpperCase()) &&
       /^\/api\/v1\/workflows(?:\/[a-z0-9-]+)?$/.test(pathname))
@@ -165,6 +225,12 @@ export class WebhookServer {
   private teams = new TeamRepository();
   private workspaceWebhooks = new WorkspaceWebhookRepository(this.secretRepository);
   private incomingEvents = new IncomingEventRepository(this.secretRepository);
+  private domainEventRepository = new DomainEventRepository();
+  private domainEventDeliveryRepository = new DomainEventDeliveryRepository();
+  private channels = new ChannelRepository();
+  private domainEventDispatcher: DomainEventDispatcher;
+  private domainEventDeliveryTimer?: NodeJS.Timeout;
+  private processingDomainEvents = false;
   private events = new EventBroker();
   private runners = new RunnerRegistry();
   private workflowsLoaded: Promise<void>;
@@ -176,6 +242,40 @@ export class WebhookServer {
 
   constructor(options: WebhookServerOptions) {
     this.queue = options.queue;
+    this.domainEventDispatcher = new DomainEventDispatcher({
+      events: this.domainEventRepository,
+      deliveries: this.domainEventDeliveryRepository,
+      subscriptions: this.domainEventDeliveryRepository,
+      resolveWorkflow: async (teamId, workflowId, revision) => {
+        const row = await db.get(
+          `SELECT r.normalized_json FROM workflows w
+           JOIN workflow_revisions r ON r.workflow_id = w.id
+           WHERE w.id = ? AND w.team_id = ? AND r.revision = ?
+             AND w.status = 'published' AND w.enabled = 1`,
+          [workflowId, teamId, revision],
+        );
+        return row ? JSON.parse(row.normalized_json) : null;
+      },
+      enqueue: async (input) => {
+        const jobId = await this.queue.enqueueDispatch(
+          input.workflowId,
+          input.revision,
+          input.payload,
+          input.requiredTags,
+          input.teamId,
+          null,
+          input.idempotencyKey,
+        );
+        if (jobId) {
+          this.events.publish("jobs.available", {
+            tags: input.requiredTags,
+            teamId: input.teamId,
+          });
+          return jobId;
+        }
+        return null;
+      },
+    });
     this.secrets = options.secrets;
     this.push = new PushRepository(options.config);
     this.adminToken = options.adminToken;
@@ -243,6 +343,7 @@ export class WebhookServer {
     } else if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/v1/")) {
       url.pathname = `/api/v1${url.pathname.slice("/api".length)}`;
     }
+    const externalPath = url.pathname;
     if (
       url.pathname.startsWith("/webhooks/") ||
       url.pathname.startsWith("/restart/") ||
@@ -251,7 +352,10 @@ export class WebhookServer {
       res.writeHead(404, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify({ error: "Use the versioned API route under /api/v1" }));
     }
-    const externalPath = url.pathname;
+    if (externalPath === "/teams-landing.mjs") {
+      res.writeHead(404, { "Cache-Control": "no-store" });
+      return res.end();
+    }
     if (externalPath === "/" && (req.method === "GET" || req.method === "HEAD")) {
       res.writeHead(302, { Location: `/ui/runs${url.search}`, "Cache-Control": "no-store" });
       return res.end();
@@ -271,20 +375,6 @@ export class WebhookServer {
       url.pathname = externalPath === "/ui" ? "/" : externalPath.slice(3);
     } else if (isAsset) {
       url.pathname = externalPath === "/assets" ? "/" : externalPath.slice(7);
-    } else if (
-      externalPath === "/" ||
-      ["/runs", "/help", "/settings", "/operations", "/teams", "/workspaces", "/workflows", "/recipes"].includes(
-        externalPath,
-      ) ||
-      /^\/(?:runs|workflows|recipes)\//.test(externalPath) ||
-      /^\/(?:teams|workspaces|settings)\//.test(externalPath) ||
-      externalPath.startsWith("/pages/") ||
-      ["/manifest.webmanifest", "/app-icon.svg", "/on.css", "/service-worker.js"].includes(externalPath) ||
-      /\.(?:mjs|js|css|svg|html|ico|png|webmanifest)$/.test(externalPath)
-    ) {
-      res.writeHead(404, { "Cache-Control": "no-store" });
-      res.end();
-      return;
     }
 
     // Global OIDC authentication check for browser UI routes.
@@ -1472,6 +1562,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (req.method === "GET" && statusMatch) {
       return this.handleJobStatus(req, statusMatch[1], res);
     }
+    const attemptsMatch = url.pathname.match(/^\/api\/v1\/jobs\/(\d+)\/step-attempts$/);
+    if (req.method === "GET" && attemptsMatch) {
+      return this.handleStepAttempts(req, attemptsMatch[1], res);
+    }
     const waitMatch = url.pathname.match(/^\/api\/jobs\/(\d+)\/wait$/);
     if (req.method === "GET" && waitMatch) {
       if (!(await this.requireAuthenticatedApiRequest(req, res))) {
@@ -1568,6 +1662,20 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return this.handleWorkflowList(req, res);
     }
 
+    if (url.pathname === "/api/channels" && req.method === "GET") {
+      return this.handleChannelList(req, res);
+    }
+    if (url.pathname === "/api/channels" && req.method === "POST") {
+      return this.handleChannelCreate(req, res);
+    }
+    const channelMessages = url.pathname.match(/^\/api\/channels\/([^/]+)\/messages$/);
+    if (channelMessages && req.method === "GET") {
+      return this.handleChannelMessages(req, res, decodeURIComponent(channelMessages[1]));
+    }
+    if (channelMessages && req.method === "POST") {
+      return this.handleChannelMessageAppend(req, res, decodeURIComponent(channelMessages[1]));
+    }
+
     const workflowMatch = url.pathname.match(/^\/api\/workflows\/([a-z0-9-]+)(\/publish)?$/);
     if (workflowMatch) {
       const [, workflowId, publish] = workflowMatch;
@@ -1587,6 +1695,212 @@ sessionStorage.removeItem('runner-pending-team-invite');
 
     if (req.method === "POST" && url.pathname === "/api/events") {
       return this.handleWorkerEvent(req, res);
+    }
+    if (req.method === "POST" && url.pathname === "/api/v1/domain-events") {
+      const authorized = await this.authorizer.workspace(req, res, "webhooks.manage");
+      if (!authorized) {
+        return;
+      }
+      const teamId = authorized.teamId;
+
+      const body = await this.readJson(req, res);
+      if (body === null && res.headersSent) {
+        return;
+      }
+      const allowedFields = new Set([
+        "type",
+        "schemaVersion",
+        "source",
+        "occurredAt",
+        "correlationId",
+        "causationId",
+        "idempotencyKey",
+        "data",
+      ]);
+      if (
+        !body ||
+        typeof body !== "object" ||
+        Array.isArray(body) ||
+        Object.keys(body).some((key) => !allowedFields.has(key)) ||
+        typeof body.type !== "string" ||
+        !/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(body.type) ||
+        typeof body.source !== "string" ||
+        body.source.length < 1 ||
+        body.source.length > 160 ||
+        (body.schemaVersion !== undefined && (!Number.isSafeInteger(body.schemaVersion) || body.schemaVersion < 1)) ||
+        (body.occurredAt !== undefined &&
+          (typeof body.occurredAt !== "string" || !Number.isFinite(Date.parse(body.occurredAt)))) ||
+        (body.correlationId !== undefined &&
+          (typeof body.correlationId !== "string" || body.correlationId.length > 200)) ||
+        (body.causationId !== undefined && (typeof body.causationId !== "string" || body.causationId.length > 200)) ||
+        (body.idempotencyKey !== undefined &&
+          (typeof body.idempotencyKey !== "string" ||
+            body.idempotencyKey.length < 1 ||
+            body.idempotencyKey.length > 200)) ||
+        !isBoundedDomainEventData(body.data)
+      ) {
+        res
+          .writeHead(400, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Invalid domain event" }));
+        return;
+      }
+
+      try {
+        const event = await this.domainEventRepository.publish(teamId, {
+          type: body.type,
+          schemaVersion: body.schemaVersion ?? 1,
+          source: body.source,
+          occurredAt: body.occurredAt ?? new Date().toISOString(),
+          correlationId: body.correlationId ?? null,
+          causationId: body.causationId ?? null,
+          idempotencyKey: body.idempotencyKey ?? null,
+          data: body.data,
+        });
+        const deliveryCount = await this.domainEventDeliveryRepository.fanout(teamId, event.id);
+        res
+          .writeHead(202, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" })
+          .end(JSON.stringify({ eventId: event.id, deliveryCount }));
+      } catch (error) {
+        const conflict = error instanceof Error && error.message.includes("idempotency key conflicts");
+        res.writeHead(conflict ? 409 : 500, { "Content-Type": "application/json; charset=utf-8" }).end(
+          JSON.stringify({
+            error: conflict ? "Idempotency key already used for different event data" : "Event could not be accepted",
+          }),
+        );
+      }
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/v1/domain-event-subscriptions") {
+      const authorized = await this.authorizer.workspace(req, res, "workflows.edit");
+      if (!authorized) {
+        return;
+      }
+      const teamId = authorized.teamId;
+
+      const body = await this.readJson(req, res);
+      if (body === null && res.headersSent) {
+        return;
+      }
+      if (
+        !body ||
+        typeof body !== "object" ||
+        Array.isArray(body) ||
+        Object.keys(body).some((key) => !["workflowId", "workflowRevision", "eventType"].includes(key)) ||
+        typeof body.workflowId !== "string" ||
+        !/^[a-z0-9-]{1,128}$/.test(body.workflowId) ||
+        typeof body.eventType !== "string" ||
+        !/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(body.eventType) ||
+        (body.workflowRevision !== undefined &&
+          (!Number.isSafeInteger(body.workflowRevision) || body.workflowRevision < 1))
+      ) {
+        res
+          .writeHead(400, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Invalid event subscription" }));
+        return;
+      }
+
+      // Verify workflow is owned by the team, published, enabled, and requested revision equals active
+      const workflow = await db.get(
+        "SELECT id, name, source_yaml, COALESCE(active_revision, 0) AS revision, status, enabled FROM workflows WHERE team_id = ? AND id = ?",
+        [teamId, body.workflowId],
+      );
+
+      if (!workflow) {
+        res
+          .writeHead(404, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Workflow not found for team" }));
+        return;
+      }
+
+      if (workflow.status !== "published") {
+        res
+          .writeHead(403, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Workflow is not published" }));
+        return;
+      }
+
+      if (!workflow.enabled) {
+        res
+          .writeHead(403, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Workflow is not enabled" }));
+        return;
+      }
+
+      const requestedRevision = body.workflowRevision ?? workflow.revision;
+      if (requestedRevision !== workflow.revision) {
+        res
+          .writeHead(403, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Requested revision does not match active revision" }));
+        return;
+      }
+
+      const subscription = await this.domainEventDeliveryRepository.createSubscription(teamId, {
+        workflowId: body.workflowId,
+        workflowRevision: requestedRevision,
+        eventType: body.eventType,
+      });
+
+      res.writeHead(201, { "Content-Type": "application/json" }).end(
+        JSON.stringify({
+          id: subscription.id,
+          workflowId: subscription.workflowId,
+          workflowRevision: subscription.workflowRevision,
+          eventType: subscription.eventType,
+          enabled: subscription.enabled,
+        }),
+      );
+      return;
+    }
+    const eventDeliveriesMatch = url.pathname.match(/^\/api\/v1\/domain-events\/([a-zA-Z0-9-]+)\/deliveries$/);
+    if (req.method === "GET" && eventDeliveriesMatch) {
+      const authorized = await this.authorizer.workspace(req, res, "webhooks.view");
+      if (!authorized) {
+        return;
+      }
+      const deliveries = await this.domainEventDeliveryRepository.listForEvent(
+        authorized.teamId,
+        eventDeliveriesMatch[1],
+      );
+      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" }).end(
+        JSON.stringify(
+          deliveries.map(
+            ({ id, eventId, subscriptionId, status, attemptCount, jobIds, lastError, createdAt, updatedAt }) => ({
+              id,
+              eventId,
+              subscriptionId,
+              status,
+              attemptCount,
+              jobIds,
+              lastError,
+              createdAt,
+              updatedAt,
+            }),
+          ),
+        ),
+      );
+      return;
+    }
+    const retryEventDeliveryMatch = url.pathname.match(
+      /^\/api\/v1\/domain-events\/([a-zA-Z0-9-]+)\/deliveries\/([a-zA-Z0-9-]+)\/retry$/,
+    );
+    if (req.method === "POST" && retryEventDeliveryMatch) {
+      const authorized = await this.authorizer.workspace(req, res, "webhooks.manage");
+      if (!authorized) {
+        return;
+      }
+      const delivery = await this.domainEventDeliveryRepository.retryFailed(
+        authorized.teamId,
+        retryEventDeliveryMatch[2],
+      );
+      if (!delivery || delivery.eventId !== retryEventDeliveryMatch[1]) {
+        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "Failed event delivery not found" }));
+        return;
+      }
+      res
+        .writeHead(202, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" })
+        .end(JSON.stringify({ deliveryId: delivery.id, status: delivery.status }));
+      return;
     }
 
     if (req.method === "POST" && url.pathname === "/api/ai/workflow-help") {
@@ -1994,6 +2308,22 @@ sessionStorage.removeItem('runner-pending-team-invite');
     );
   }
 
+  private async handleStepAttempts(req: http.IncomingMessage, jobId: string, res: http.ServerResponse) {
+    const teamId = (await this.requireWorkspaceCapability(req, res, "runs.logs"))?.teamId;
+    if (!teamId) {
+      return;
+    }
+    const job = await this.queue.getJobForTeam(teamId, jobId);
+    if (!job) {
+      res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ error: "Job not found" }));
+    }
+    const attempts = await this.queue.getStepAttemptsForTeam(teamId, jobId);
+    const safe = this.redactStructured(attempts, await this.currentSecrets(teamId));
+    res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+    return res.end(JSON.stringify({ jobId: String(job.id), attempts: safe }));
+  }
+
   private async handleDiagnostics(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
     const teamId = (await this.requireWorkspaceCapability(req, res, "runs.logs"))?.teamId;
     if (!teamId) {
@@ -2032,8 +2362,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
     );
   }
 
-  private async readRequest(req: http.IncomingMessage, res: http.ServerResponse) {
-    const MAX_PAYLOAD_SIZE = 5 * 1024 * 1024; // 5MB
+  private async readRequest(req: http.IncomingMessage, res: http.ServerResponse, maxPayloadSize = 5 * 1024 * 1024) {
+    const MAX_PAYLOAD_SIZE = maxPayloadSize;
     const chunks: Buffer[] = [];
     let receivedBytes = 0;
 
@@ -3017,8 +3347,12 @@ sessionStorage.removeItem('runner-pending-team-invite');
     );
   }
 
-  private async readJson(req: http.IncomingMessage, res: http.ServerResponse): Promise<any | null> {
-    const { rawBuffer } = await this.readRequest(req, res);
+  private async readJson(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    maxPayloadSize?: number,
+  ): Promise<any | null> {
+    const { rawBuffer } = await this.readRequest(req, res, maxPayloadSize);
     if (!rawBuffer || res.headersSent) {
       return null;
     }
@@ -3171,6 +3505,105 @@ sessionStorage.removeItem('runner-pending-team-invite');
     await this.workflowsLoaded;
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ workflows: await this.workflows.listForTeam(teamId) }));
+  }
+
+  private async handleChannelList(req: http.IncomingMessage, res: http.ServerResponse) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.view");
+    if (!auth) {
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(
+      JSON.stringify({
+        channels: await this.channels.listChannels(auth.teamId),
+        teamId: auth.teamId,
+        canEdit: auth.capabilities.includes("workflows.edit"),
+      }),
+    );
+  }
+
+  private async handleChannelCreate(req: http.IncomingMessage, res: http.ServerResponse) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.edit");
+    if (!auth) {
+      return;
+    }
+    const body = await this.readJson(req, res, 256 * 1024);
+    if (
+      !body ||
+      typeof body.name !== "string" ||
+      !body.name.trim() ||
+      body.name.length > 120 ||
+      Object.keys(body).some((key) => key !== "name")
+    ) {
+      if (!res.headersSent) {
+        deny(res, 400, "A channel name is required; caller-supplied fields are not accepted");
+      }
+      return;
+    }
+    const channel = await this.channels.createChannel(auth.teamId, body.name.trim());
+    res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ channel, teamId: auth.teamId }));
+  }
+
+  private async handleChannelMessages(req: http.IncomingMessage, res: http.ServerResponse, channelId: string) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.view");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getChannel(auth.teamId, channelId))) {
+      return deny(res, 404, "Channel not found");
+    }
+    const url = new URL(req.url || "/", "http://localhost");
+    const rawLimit = url.searchParams.get("limit");
+    const limit = rawLimit === null ? 50 : Number(rawLimit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return deny(res, 400, "limit must be an integer from 1 to 100");
+    }
+    const after = url.searchParams.get("after") || undefined;
+    if (after && after.length > 256) {
+      return deny(res, 400, "Invalid after cursor");
+    }
+    const messages = await this.channels.listMessages(auth.teamId, channelId, limit, after);
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(
+      JSON.stringify({
+        messages,
+        teamId: auth.teamId,
+        channelId,
+        limit,
+        next: messages.length === limit ? messages[messages.length - 1].id : null,
+      }),
+    );
+  }
+
+  private async handleChannelMessageAppend(req: http.IncomingMessage, res: http.ServerResponse, channelId: string) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.edit");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getChannel(auth.teamId, channelId))) {
+      return deny(res, 404, "Channel not found");
+    }
+    const body = await this.readJson(req, res, 256 * 1024);
+    if (
+      !body ||
+      Object.keys(body).some((key) => key !== "body") ||
+      !Object.hasOwn(body, "body") ||
+      !isSafeChannelBody(body.body)
+    ) {
+      if (!res.headersSent) {
+        deny(res, 400, "Message body is invalid, too large/deep, or contains a secret field");
+      }
+      return;
+    }
+    const message = await this.channels.appendMessage({
+      teamId: auth.teamId,
+      channelId,
+      author: auth.principal.subject,
+      body: body.body,
+    });
+    res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ message, teamId: auth.teamId, channelId }));
   }
 
   private async handleWorkflowGet(
@@ -3809,12 +4242,20 @@ sessionStorage.removeItem('runner-pending-team-invite');
     return new Promise((resolve) => {
       this.server.listen(port, process.env.RUNNER_HOST || "0.0.0.0", () => {
         console.log(`🌐 Webhook Ingress Server running on port ${port}`);
+        this.domainEventDeliveryTimer = setInterval(() => {
+          void this.processPendingDomainEvents();
+        }, 1000);
+        void this.processPendingDomainEvents();
         resolve(this);
       });
     });
   }
 
   async stop(): Promise<void> {
+    if (this.domainEventDeliveryTimer) {
+      clearInterval(this.domainEventDeliveryTimer);
+      this.domainEventDeliveryTimer = undefined;
+    }
     this.events.close();
     return new Promise((resolve) => {
       this.server.close(() => {
@@ -3822,5 +4263,26 @@ sessionStorage.removeItem('runner-pending-team-invite');
         resolve();
       });
     });
+  }
+
+  private async processPendingDomainEvents(): Promise<void> {
+    if (this.processingDomainEvents) {
+      return;
+    }
+    this.processingDomainEvents = true;
+    try {
+      await this.domainEventDeliveryRepository.reconcileFanout();
+      for (let count = 0; count < 25; count += 1) {
+        const delivery = await this.domainEventDeliveryRepository.claimNextAny();
+        if (!delivery) {
+          break;
+        }
+        await this.domainEventDispatcher.process(delivery);
+      }
+    } catch {
+      console.error("Domain event delivery poll failed");
+    } finally {
+      this.processingDomainEvents = false;
+    }
   }
 }

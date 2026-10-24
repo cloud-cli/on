@@ -205,9 +205,15 @@ const migrations: Migration[] = [
       }
       await db.transaction([
         { s: replacementTable, m: "run" },
-        { s: `INSERT INTO workflows_after_team_fk (${list}) SELECT ${list} FROM workflows`, m: "run" },
+        {
+          s: `INSERT INTO workflows_after_team_fk (${list}) SELECT ${list} FROM workflows`,
+          m: "run",
+        },
         { s: "DROP TABLE workflows", m: "run" },
-        { s: "ALTER TABLE workflows_after_team_fk RENAME TO workflows", m: "run" },
+        {
+          s: "ALTER TABLE workflows_after_team_fk RENAME TO workflows",
+          m: "run",
+        },
         ...indexes.map((index: any) => ({ s: index.sql, m: "run" })),
       ]);
     },
@@ -228,7 +234,10 @@ const migrations: Migration[] = [
       const plannedIds = new Map<string, string>();
 
       if (!hasDefinitionId) {
-        statements.push({ s: "ALTER TABLE workflows ADD COLUMN definition_id TEXT", m: "run" });
+        statements.push({
+          s: "ALTER TABLE workflows ADD COLUMN definition_id TEXT",
+          m: "run",
+        });
       }
 
       for (const revision of revisionRows) {
@@ -242,7 +251,11 @@ const migrations: Migration[] = [
           d: [sourceYaml, JSON.stringify(definition), revision.workflow_id, revision.revision],
           m: "run",
         });
-        latestRevision.set(revision.workflow_id, { id, revision: Number(revision.revision), sourceYaml });
+        latestRevision.set(revision.workflow_id, {
+          id,
+          revision: Number(revision.revision),
+          sourceYaml,
+        });
       }
 
       for (const workflow of workflowRows) {
@@ -310,13 +323,22 @@ const migrations: Migration[] = [
       if (userColumns.length) {
         const names = new Set(userColumns.map((column: any) => column.name));
         if (!names.has("kind")) {
-          statements.push({ s: "ALTER TABLE oidc_users ADD COLUMN kind TEXT NOT NULL DEFAULT 'human'", m: "run" });
+          statements.push({
+            s: "ALTER TABLE oidc_users ADD COLUMN kind TEXT NOT NULL DEFAULT 'human'",
+            m: "run",
+          });
         }
         if (!names.has("disabled_at")) {
-          statements.push({ s: "ALTER TABLE oidc_users ADD COLUMN disabled_at DATETIME", m: "run" });
+          statements.push({
+            s: "ALTER TABLE oidc_users ADD COLUMN disabled_at DATETIME",
+            m: "run",
+          });
         }
         if (!names.has("created_by")) {
-          statements.push({ s: "ALTER TABLE oidc_users ADD COLUMN created_by TEXT", m: "run" });
+          statements.push({
+            s: "ALTER TABLE oidc_users ADD COLUMN created_by TEXT",
+            m: "run",
+          });
         }
       }
 
@@ -347,7 +369,10 @@ const migrations: Migration[] = [
             },
             { s: copy, m: "run" },
             { s: "DROP TABLE team_members", m: "run" },
-            { s: "ALTER TABLE team_members_v2 RENAME TO team_members", m: "run" },
+            {
+              s: "ALTER TABLE team_members_v2 RENAME TO team_members",
+              m: "run",
+            },
           );
         }
       }
@@ -408,7 +433,10 @@ const migrations: Migration[] = [
       // parity. Disable every one instead of guessing an owner.
       const keyColumns = await db.all("PRAGMA table_info(api_keys)");
       if (keyColumns.some((column: any) => column.name === "revoked_at")) {
-        statements.push({ s: "UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE revoked_at IS NULL", m: "run" });
+        statements.push({
+          s: "UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE revoked_at IS NULL",
+          m: "run",
+        });
       }
       if (statements.length) {
         if (typeof db.transaction !== "function") {
@@ -530,6 +558,159 @@ const migrations: Migration[] = [
         );
         CREATE INDEX IF NOT EXISTS idx_incoming_event_replays_event
           ON incoming_event_replays(team_id, event_id, created_at DESC);
+      `);
+    },
+  },
+  {
+    version: "015_typed_domain_events",
+    async apply() {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS domain_events (
+          id TEXT PRIMARY KEY,
+          team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+          type TEXT NOT NULL,
+          schema_version INTEGER NOT NULL CHECK (schema_version > 0),
+          source TEXT NOT NULL,
+          occurred_at DATETIME NOT NULL,
+          recorded_at DATETIME NOT NULL,
+          correlation_id TEXT,
+          causation_id TEXT,
+          idempotency_key TEXT,
+          data_json TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_events_idempotency
+          ON domain_events(team_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_domain_events_team_recorded
+          ON domain_events(team_id, recorded_at DESC, id DESC);
+      `);
+    },
+  },
+  {
+    version: "016_domain_event_deliveries",
+    async apply() {
+      await db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_events_team_id
+          ON domain_events(team_id, id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_workflows_team_id
+          ON workflows(team_id, id);
+        CREATE TABLE IF NOT EXISTS domain_event_subscriptions (
+          id TEXT PRIMARY KEY,
+          team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+          workflow_id TEXT NOT NULL,
+          workflow_revision INTEGER NOT NULL CHECK (workflow_revision > 0),
+          event_type TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(team_id, id),
+          FOREIGN KEY (team_id, workflow_id) REFERENCES workflows(team_id, id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_domain_event_subscriptions_match
+          ON domain_event_subscriptions(team_id, event_type, enabled, created_at);
+        CREATE TABLE IF NOT EXISTS domain_event_deliveries (
+          id TEXT PRIMARY KEY,
+          team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+          event_id TEXT NOT NULL,
+          subscription_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'claimed', 'admitted', 'filtered', 'failed')),
+          attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+          lease_until DATETIME,
+          job_ids_json TEXT NOT NULL DEFAULT '[]',
+          last_error TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(event_id, subscription_id),
+          FOREIGN KEY (team_id, event_id) REFERENCES domain_events(team_id, id) ON DELETE CASCADE,
+          FOREIGN KEY (team_id, subscription_id) REFERENCES domain_event_subscriptions(team_id, id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_domain_event_deliveries_claim
+          ON domain_event_deliveries(team_id, status, lease_until, created_at);
+        CREATE INDEX IF NOT EXISTS idx_domain_event_deliveries_history
+          ON domain_event_deliveries(team_id, created_at DESC, id DESC);
+      `);
+    },
+  },
+  {
+    version: "017_domain_event_delivery_fences",
+    async apply() {
+      const columns = await db.all("PRAGMA table_info(domain_event_subscriptions)");
+      if (!columns.some((column: any) => column.name === "high_water_event_rowid")) {
+        await db.exec(
+          "ALTER TABLE domain_event_subscriptions ADD COLUMN high_water_event_rowid INTEGER NOT NULL DEFAULT 0",
+        );
+      }
+      await db.exec("CREATE INDEX IF NOT EXISTS idx_domain_events_rowid_team_type ON domain_events(team_id, type)");
+    },
+  },
+  {
+    version: "018_domain_event_subscription_identity",
+    async apply() {
+      const duplicates = await db.all(
+        `SELECT team_id, workflow_id, workflow_revision, event_type
+         FROM domain_event_subscriptions
+         GROUP BY team_id, workflow_id, workflow_revision, event_type
+         HAVING COUNT(*) > 1 LIMIT 1`,
+      );
+      if (duplicates.length) {
+        throw new Error("Cannot enforce domain event subscription identity while duplicate subscriptions exist");
+      }
+      await db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_event_subscription_identity
+          ON domain_event_subscriptions(team_id, workflow_id, workflow_revision, event_type);
+      `);
+    },
+  },
+  {
+    version: "019_durable_channel_history",
+    async apply() {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS channels (
+          id TEXT NOT NULL,
+          team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (team_id, id),
+          UNIQUE (team_id, name)
+        );
+        CREATE TABLE IF NOT EXISTS channel_messages (
+          id TEXT PRIMARY KEY,
+          team_id TEXT NOT NULL,
+          channel_id TEXT NOT NULL,
+          author TEXT NOT NULL,
+          body_json TEXT NOT NULL CHECK (json_valid(body_json)),
+          caused_by_event_id TEXT,
+          caused_by_job_id INTEGER,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (team_id, channel_id) REFERENCES channels(team_id, id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_channel_messages_history
+          ON channel_messages(team_id, channel_id);
+        CREATE TRIGGER IF NOT EXISTS channel_messages_immutable_update
+          BEFORE UPDATE ON channel_messages BEGIN SELECT RAISE(ABORT, 'channel messages are immutable'); END;
+      `);
+    },
+  },
+  {
+    version: "020_durable_step_attempts",
+    async apply() {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS step_execution_attempts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+          job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+          step_id TEXT NOT NULL,
+          attempt INTEGER NOT NULL CHECK (attempt > 0),
+          status TEXT NOT NULL CHECK (status IN ('success', 'failed', 'cancelled', 'skipped')),
+          started_at DATETIME NOT NULL,
+          completed_at DATETIME NOT NULL,
+          duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0),
+          exit_code INTEGER,
+          error TEXT,
+          log_content TEXT NOT NULL DEFAULT '',
+          UNIQUE(job_id, step_id, attempt)
+        );
+        CREATE INDEX IF NOT EXISTS idx_step_execution_attempts_job
+          ON step_execution_attempts(team_id, job_id, step_id, attempt);
       `);
     },
   },

@@ -111,6 +111,13 @@
                     attr-aria-current="activeSection === 'workspace-runs' ? 'page' : null"
                     ><lucide-icon icon="activity" size="15"></lucide-icon>Runs</a
                   >
+                  <a
+                    attr-href="workspacePath(team.id, 'channels')"
+                    on-click="selectWorkspace(team.id, 'channels')"
+                    class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:font-semibold aria-[current=page]:text-app-primary"
+                    attr-aria-current="activeSection === 'workspace-channels' ? 'page' : null"
+                    ><lucide-icon icon="messages-square" size="15"></lucide-icon>Channels</a
+                  >
                 </div>
               </div></template
             >
