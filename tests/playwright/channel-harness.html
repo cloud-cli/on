@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local channel test harness</title>
+    <link rel="stylesheet" href="/ui/index.css" />
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        color: #172033;
+        font: 16px sans-serif;
+        background: #f4f6f8;
+      }
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+      #channels {
+        max-width: 72rem;
+        margin: auto;
+      }
+      @media (max-width: 700px) {
+        body {
+          padding: 12px;
+        }
+      }
+    </style>
+    <script type="importmap">
+      { "imports": { "@app/api-client.mjs": "/ui/api-client.mjs" } }
+    </script>
+  </head>
+  <body>
+    <main id="channels"></main>
+    <script type="module">
+      import { mountChannels } from "/ui/channels-ui.mjs";
+      mountChannels(document.querySelector("#channels"));
+    </script>
+  </body>
+</html>

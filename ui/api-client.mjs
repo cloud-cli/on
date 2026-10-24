@@ -159,11 +159,14 @@ if (
 
 window.addEventListener?.("focus", checkRecoverySession);
 
-async function acquireToken() {
+async function acquireToken(signal) {
   if (token && expiresAt > Date.now() + 30_000) {
     return { token, authRequired: false };
   }
-  const response = await rawFetch("/api/v1/auth/token", { headers: { accept: "application/json" } });
+  const response = await rawFetch("/api/v1/auth/token", {
+    headers: { accept: "application/json" },
+    ...(signal ? { signal } : {}),
+  });
   if (!response.ok) {
     const authRequired = await isAuthRequired(response);
     if (authRequired) {
@@ -202,7 +205,7 @@ export async function apiFetch(input, init = {}) {
   ) {
     return rawFetch(input, init);
   }
-  let acquired = await acquireToken();
+  let acquired = await acquireToken(init.signal);
   if (acquired.response?.status >= 500) {
     return acquired.response;
   }
@@ -213,7 +216,7 @@ export async function apiFetch(input, init = {}) {
     token = "";
     expiresAt = 0;
     sessionStorage.removeItem("runner-api-token");
-    acquired = await acquireToken();
+    acquired = await acquireToken(init.signal);
     if (acquired.authRequired) {
       return acquired.response;
     }
@@ -240,7 +243,7 @@ export async function apiFetch(input, init = {}) {
   if (teamId && !retryHeaders.has("X-Team-ID")) {
     retryHeaders.set("X-Team-ID", teamId);
   }
-  const retryToken = await acquireToken();
+  const retryToken = await acquireToken(init.signal);
   if (retryToken.response?.status >= 500) {
     return retryToken.response;
   }

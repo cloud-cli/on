@@ -58,7 +58,7 @@ export function buildRunView(
   const canViewLogs = access?.logs ?? canViewLogsArg;
   const canViewInputs = access?.inputs ?? canViewLogs;
   const canViewArtifacts = access?.artifacts ?? canViewLogs;
-  const payload = JSON.parse(job.payload) as JobPayload;
+  const payload = (typeof job.payload === "string" ? JSON.parse(job.payload) : job.payload) as JobPayload;
   const report = job.report
     ? (JSON.parse(job.report) as WorkflowExecutionReport)
     : buildPendingReport(job, payload, steps);

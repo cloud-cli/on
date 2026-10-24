@@ -14,7 +14,10 @@ export default function () {
   let activeTransientPage = null;
   let routeMessage = null;
   const checkTeams = async () => {
-    const response = await apiFetch("/api/v1/workspaces", { headers: { accept: "application/json" } });
+    const response = await apiFetch("/api/v1/workspaces", {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
     if (!response.ok) {
       throw new Error(`Unable to check your workspaces (${response.status}). Please reload or sign in again.`);
     }
@@ -203,6 +206,21 @@ export default function () {
     const currentNavigation = ++navigationId;
     try {
       const current = route();
+      if (
+        current.page !== "recipes" &&
+        current.page !== "recipe-editor" &&
+        !mountedPages.size &&
+        !activeTransientPage
+      ) {
+        document.body.dataset.teamless = "false";
+        routeMessage?.remove();
+        routeMessage = document.createElement("main");
+        routeMessage.className = "mx-auto mt-8 max-w-4xl rounded-xl border border-app-border bg-app-card p-8";
+        routeMessage.setAttribute("role", "status");
+        routeMessage.setAttribute("aria-live", "polite");
+        routeMessage.textContent = "Loading your workspace…";
+        outlet.value.append(routeMessage);
+      }
       let teams = current.page === "recipes" || current.page === "recipe-editor" ? [] : await checkTeams();
       if (currentNavigation !== navigationId) {
         return;
@@ -288,6 +306,7 @@ export default function () {
       if (currentNavigation !== navigationId) {
         return;
       }
+      document.body.dataset.teamless = "false";
       for (const page of mountedPages.values()) {
         page.hidden = true;
       }
@@ -295,14 +314,24 @@ export default function () {
       activeTransientPage = null;
       routeMessage?.remove();
       routeMessage = document.createElement("main");
-      routeMessage.className = "mx-auto max-w-4xl p-8";
+      routeMessage.className = "mx-auto mt-8 max-w-4xl rounded-xl border border-app-border bg-app-card p-8";
+      routeMessage.setAttribute("role", "alert");
       const heading = document.createElement("h1");
-      heading.className = "text-xl font-semibold text-white";
-      heading.textContent = "Unable to load page";
+      heading.className = "text-xl font-semibold text-app-primary";
+      heading.textContent = "This page could not load";
       const message = document.createElement("p");
-      message.className = "mt-2 text-sm text-rose-300";
+      message.className = "mt-2 text-sm text-app-secondary";
       message.textContent = String(error.message || error);
-      routeMessage.append(heading, message);
+      const retry = document.createElement("button");
+      retry.className = "mt-5 rounded-lg bg-app-primary px-4 py-2 font-medium text-white";
+      retry.type = "button";
+      retry.textContent = "Try again";
+      retry.addEventListener("click", () => {
+        retry.disabled = true;
+        retry.textContent = "Trying again…";
+        void navigate(true);
+      });
+      routeMessage.append(heading, message, retry);
       outlet.value.append(routeMessage);
     }
   };

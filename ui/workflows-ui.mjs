@@ -349,11 +349,19 @@ export default function () {
         method: "POST",
         body: JSON.stringify({}),
       });
-      showNotice(
-        `Queued ${result.jobs.length} job${result.jobs.length === 1 ? "" : "s"} from revision ${result.revision}.`,
-        false,
-        true,
-      );
+      if (result.admissionStatus === "pending") {
+        showNotice(
+          `Run request accepted for revision ${result.revision}; job admission is pending. Request ${result.eventId}.`,
+          false,
+          true,
+        );
+      } else {
+        showNotice(
+          `Run request accepted: ${result.jobs.length} job${result.jobs.length === 1 ? "" : "s"} from revision ${result.revision}.`,
+          false,
+          true,
+        );
+      }
     });
   const remove = () =>
     run(async () => {

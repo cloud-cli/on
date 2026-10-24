@@ -139,6 +139,9 @@ importers:
       "@eslint/js":
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.8.0(jiti@2.7.0))
+      "@playwright/test":
+        specifier: 1.64.0
+        version: 1.64.0
       "@tailwindcss/vite":
         specifier: 4.3.3
         version: 4.3.3(vite@8.2.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
@@ -569,6 +572,12 @@ packages:
   "@oxc-project/types@0.149.0":
     resolution:
       { integrity: sha512-Efcc+iF0j3Bf67YjEqIqWXbX5XddXoK/Mw4K1/JuXwRCZ8N16VR7iT23nlCc9XrveFVh/E5Rqs2StT0V8v9LdA== }
+
+  "@playwright/test@1.64.0":
+    resolution:
+      { integrity: sha512-oTN9FNYuN6bqQMwiho6jJKLCG2/QOYCixGXuCjRmzOq23eODeukuY2XiAVoVpAECbuezMt1MHQjAiQxK8F+Y+g== }
+    engines: { node: ">=20" }
+    hasBin: true
 
   "@rolldown/binding-android-arm-eabi@1.2.8":
     resolution:
@@ -1739,6 +1748,18 @@ packages:
       { integrity: sha512-uB80kBFb/tfd68bVleG9T5GGsGPjJrLAUpR5PZIrhBnIaRTQRjqdJSsIKkOP6OAIFbj7GOrcudc5pNjZ+geV2g== }
     engines: { node: ">=6" }
 
+  playwright-core@1.64.0:
+    resolution:
+      { integrity: sha512-T9r+MZkTECl2+oUcZ26YgZzTrYidTsIhYYkJix+6iDOymOb1FB2RLLSOxRGnZGv5DStt+aduIVbt+E8WygXYpg== }
+    engines: { node: ">=20" }
+    hasBin: true
+
+  playwright@1.64.0:
+    resolution:
+      { integrity: sha512-kVzTnYFYEyQ9RGzBjNCd2+yEqWmVbxl3AHPynv3qQ6JTjv4a+kwRcnqQwIpuP3NnrnIrE/Q6wWAIAvMfIE2/Yg== }
+    engines: { node: ">=20" }
+    hasBin: true
+
   postcss@8.5.28:
     resolution:
       { integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A== }
@@ -2394,6 +2415,10 @@ snapshots:
       fastq: 1.20.3
 
   "@oxc-project/types@0.149.0": {}
+
+  "@playwright/test@1.64.0":
+    dependencies:
+      playwright: 1.64.0
 
   "@rolldown/binding-android-arm-eabi@1.2.8":
     optional: true
@@ -3235,6 +3260,12 @@ snapshots:
   picomatch@4.0.7: {}
 
   pify@4.0.1: {}
+
+  playwright-core@1.64.0: {}
+
+  playwright@1.64.0:
+    dependencies:
+      playwright-core: 1.64.0
 
   postcss@8.5.28:
     dependencies:

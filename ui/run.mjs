@@ -9,6 +9,12 @@ import { formatTimestampedLogLine } from "@app/timezone-format.mjs";
 export default function setup() {
   const jobId = window.location.pathname.split("/").filter(Boolean).pop() || "";
   const report = ref({ jobId, steps: [], artifacts: [], inputs: {} });
+  const stepAttempts = ref([]);
+  const attemptsState = ref("loading");
+  const attemptsError = ref("");
+  let attemptsJobId = "";
+  let loadingAttemptsId = "";
+  let attemptsController = null;
   const previousRuns = ref([]);
   const aiMessages = ref([]);
   const aiStepId = ref("");
@@ -79,6 +85,50 @@ export default function setup() {
       isSelected: Number(selectedStep.value) === Number(index),
     })),
   );
+  const attemptsForStep = (step) => stepAttempts.value.filter((attempt) => String(attempt.step_id) === String(step.id));
+  const loadStepAttempts = async (id = report.value.jobId) => {
+    if (
+      loadingAttemptsId === String(id) ||
+      !report.value.canViewLogs ||
+      !id ||
+      (attemptsJobId === String(id) && attemptsState.value === "loaded")
+    ) {
+      return;
+    }
+    loadingAttemptsId = String(id);
+    attemptsState.value = "loading";
+    attemptsError.value = "";
+    const controller = new AbortController();
+    attemptsController = controller;
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const response = await apiFetch(`/api/v1/jobs/${encodeURIComponent(id)}/step-attempts`, {
+        headers: { accept: "application/json" },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`Execution attempts unavailable (${response.status})`);
+      }
+      const data = await response.json();
+      if (String(report.value.jobId) === String(id) && report.value.canViewLogs) {
+        stepAttempts.value = Array.isArray(data.attempts) ? data.attempts : [];
+        attemptsState.value = "loaded";
+      }
+    } catch {
+      if (String(report.value.jobId) === String(id) && report.value.canViewLogs) {
+        attemptsState.value = "error";
+        attemptsError.value = "Execution attempts could not be loaded.";
+      }
+    } finally {
+      clearTimeout(timeout);
+      if (loadingAttemptsId === String(id)) {
+        loadingAttemptsId = "";
+      }
+      if (attemptsController === controller) {
+        attemptsController = null;
+      }
+    }
+  };
   const selectedStepReport = computed(() => report.value.steps?.[selectedStep.value]);
   const inputsJson = computed(() => JSON.stringify(report.value.inputs || {}, null, 2));
   const originalInputsJson = computed(() => JSON.stringify(report.value.inputs || {}, null, 2));
@@ -117,7 +167,17 @@ export default function setup() {
     }).format(date);
   };
   const copyLogs = async () => {
-    const content = selectedStepReport.value?.logContent;
+    const step = selectedStepReport.value;
+    const entries = [];
+    if (step?.logContent) {
+      entries.push(`Current step log (${step.id}):\n${step.logContent}`);
+    }
+    for (const attempt of attemptsForStep(step || {})) {
+      if (attempt.log_content) {
+        entries.push(`Attempt ${attempt.attempt} (${attempt.status}):\n${attempt.log_content}`);
+      }
+    }
+    const content = entries.join("\n\n");
     if (content && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(content);
     }
@@ -216,11 +276,31 @@ export default function setup() {
       if (query && matchingLines.length === 0) {
         return '<span class="text-gray-400">No matching log lines.</span>';
       }
-      const localized = matchingLines.map((line) => formatTimestampedLogLine(line, timezone.value)).join("\n");
+      const localized = matchingLines
+        .map((line) => formatTimestampedLogLine(escapeLogHtml(line), timezone.value))
+        .join("\n");
       return ansiUp.ansi_to_html(localized);
     }
     return '<span class="text-gray-500">(No terminal log output recorded for this step)</span>';
   };
+  const attemptLog = (attempt) => {
+    const query = logSearch.value.trim().toLocaleLowerCase();
+    const lines = String(attempt.log_content || "").split("\n");
+    const matchingLines = query ? lines.filter((line) => line.toLocaleLowerCase().includes(query)) : lines;
+    if (query && matchingLines.length === 0) {
+      return '<span class="text-gray-400">No matching log lines.</span>';
+    }
+    return ansiUp.ansi_to_html(
+      matchingLines.map((line) => formatTimestampedLogLine(escapeLogHtml(line), timezone.value)).join("\n"),
+    );
+  };
+  const escapeLogHtml = (value) =>
+    String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
   const sanitizeAiHtml = (html) => {
     const parsed = new DOMParser().parseFromString(html, "text/html");
     parsed.querySelectorAll("script,style,iframe,object,embed,form").forEach((node) => node.remove());
@@ -418,6 +498,20 @@ export default function setup() {
       const previousStatus = report.value.status;
       const nextReport = await response.json();
       report.value = nextReport;
+      if (nextReport.canViewLogs) {
+        if (attemptsJobId !== String(nextReport.jobId)) {
+          attemptsJobId = String(nextReport.jobId);
+          stepAttempts.value = [];
+          attemptsState.value = "loading";
+        }
+        void loadStepAttempts(nextReport.jobId);
+      } else {
+        attemptsController?.abort();
+        stepAttempts.value = [];
+        attemptsJobId = "";
+        attemptsState.value = "loaded";
+        attemptsError.value = "";
+      }
       if (!detailTabs.value.find((tab) => tab.id === detailTab.value && tab.visible)) {
         detailTab.value = detailTabs.value.find((tab) => tab.visible)?.id || "history";
       }
@@ -504,6 +598,11 @@ export default function setup() {
 
   return {
     report,
+    attemptsForStep,
+    attemptLog,
+    attemptsState,
+    attemptsError,
+    retryStepAttempts: () => loadStepAttempts(),
     previousRuns,
     manualRestartOpen,
     manualRestartLoading,

@@ -28,6 +28,9 @@ describe("workflow management UI", () => {
     expect(workflowsSetup).toMatch(/showNotice\([\s\S]*?false,\s*true,\s*\);/);
     expect(workflowsSetup).toContain("showNotice(`Published revision ${workflow.revision}.`)");
     expect(workflowsSetup).toContain("showNotice(`Saved draft revision ${workflow.revision}.`)");
+    expect(workflowsSetup).toContain('if (result.admissionStatus === "pending")');
+    expect(workflowsSetup).toContain("Run request accepted:");
+    expect(workflowsSetup).toContain("job admission is pending");
   });
 
   it("defines every app color utility and keeps app pages free of inline styles", () => {

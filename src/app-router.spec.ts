@@ -84,6 +84,17 @@ describe("SPA router", () => {
     expect(routerSetup).toContain('if (current.page === "not-found")');
   });
 
+  it("keeps the shell usable and offers retry when workspace or page loading fails", () => {
+    expect(routerSetup).toContain("AbortSignal.timeout(15_000)");
+    expect(routerSetup).toContain('routeMessage.textContent = "Loading your workspace…"');
+    expect(routerSetup).toContain('document.body.dataset.teamless = "false";');
+    expect(routerSetup).toContain('routeMessage.setAttribute("role", "alert")');
+    expect(routerSetup).toContain('heading.textContent = "This page could not load"');
+    expect(routerSetup).toContain('retry.textContent = "Try again"');
+    expect(routerSetup).toContain("void navigate(true)");
+    expect(routerSetup).toContain("bg-app-card");
+  });
+
   it("keeps mounted page instances alive and only loads each primary page on first visit", () => {
     expect(routerSetup).toContain("const mountedPages = new Map()");
     expect(routerSetup).toContain("mountedPages.get(cacheKey)");

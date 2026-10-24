@@ -365,6 +365,60 @@
                     bind-class="wrapLogs ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'"
                     bind-innerhtml="stepLog(selectedStepReport)"
                   ></pre>
+                  <section
+                    class="border-t border-[#3a423b] px-4 py-4 sm:px-6"
+                    aria-label="Immutable step attempts"
+                    class-hidden="!report.canViewLogs || (!attemptsForStep(selectedStepReport).length && attemptsState === 'loaded')"
+                  >
+                    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <h4 class="text-sm font-semibold text-[#e2e7df]">Execution attempts</h4>
+                      <button
+                        type="button"
+                        on-click="retryStepAttempts()"
+                        class="text-xs underline"
+                        class-hidden="attemptsState !== 'error'"
+                      >
+                        Retry loading attempts
+                      </button>
+                    </div>
+                    <p
+                      class="mb-3 text-sm text-[#b4bdae]"
+                      aria-live="polite"
+                      class-hidden="attemptsState !== 'loading'"
+                    >
+                      Loading execution attempts…
+                    </p>
+                    <p class="mb-3 text-sm text-rose-300" role="alert" class-hidden="attemptsState !== 'error'">
+                      {{ attemptsError }}
+                    </p>
+                    <ol class="space-y-3">
+                      <template for="attempt of attemptsForStep(selectedStepReport)">
+                        <li class="rounded-lg border border-[#3a423b] p-3" aria-label="Step attempt">
+                          <div class="flex flex-wrap justify-between gap-2 text-sm">
+                            <span class="font-semibold"
+                              >Attempt {{ attempt.attempt }} · {{ upper(attempt.status) }}</span
+                            >
+                            <span class="text-xs text-[#98a393]">
+                              {{ formatDate(attempt.started_at) }} – {{ formatDate(attempt.completed_at) }} · {{
+                              formatDuration(attempt.duration_ms) }}
+                            </span>
+                          </div>
+                          <p
+                            class="mt-1 text-xs text-[#b4bdae]"
+                            class-hidden="attempt.exit_code === null || attempt.exit_code === undefined"
+                          >
+                            Exit code: {{ attempt.exit_code }}
+                          </p>
+                          <p class="mt-1 text-sm text-rose-300" class-hidden="!attempt.error">{{ attempt.error }}</p>
+                          <pre
+                            class="mt-2 max-h-[50vh] min-h-24 overflow-auto font-mono text-xs text-[#c9d0c5]"
+                            bind-class="wrapLogs ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'"
+                            bind-innerhtml="attemptLog(attempt)"
+                          ></pre>
+                        </li>
+                      </template>
+                    </ol>
+                  </section>
                   <div
                     class="flex items-center justify-between border-t border-[#3a423b] px-4 py-3 text-xs text-[#98a393] sm:px-6"
                   >

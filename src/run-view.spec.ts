@@ -87,6 +87,28 @@ describe("run view", () => {
     expect(runView).not.toHaveProperty("rerunToken");
   });
 
+  it("accepts a queue-decrypted payload object when building a pending run view", () => {
+    const pending = buildRunView(
+      {
+        id: 43,
+        workflow_id: "deploy",
+        status: "pending",
+        payload: { inputs: { branch: "secure-branch" } },
+        report: null,
+        created_at: "2026-09-04T00:00:00.000Z",
+      } as any,
+      {},
+      (value) => value,
+      [],
+      true,
+      undefined,
+      undefined,
+      { inputs: true },
+    );
+
+    expect(pending.inputs).toEqual({ branch: "secure-branch" });
+  });
+
   it("does not read inherited properties as step logs", () => {
     const storedReport = report("success");
     storedReport.steps[0].id = "toString";

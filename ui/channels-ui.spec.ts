@@ -9,10 +9,22 @@ describe("channels UI", () => {
     expect(source).toContain('query.set("after", after)');
     expect(source).toContain("/api/v1/channels");
     expect(router).toContain('path === "/channels"');
-    expect(router).toContain("path.match(/^\\/workspaces\\/([^/]+)\\/channels$/)");
+    expect(router).toContain(
+      "path.match(/^\\/workspaces\\/([^/]+)\\/channels$/)",
+    );
     expect(source).toContain('"X-Team-ID": root.dataset.workspaceId');
     expect(source).toContain("selectionGeneration");
     expect(source).toContain("You're up to date.");
+    expect(source).toContain("const refreshMessages = async () =>");
+    expect(source).toContain("setTimeout(pollForMessages, 15_000)");
+    expect(source).toContain('new URL("/api/events", window.location.href)');
+    expect(source).toContain(
+      'eventUrl.searchParams.set("teamId", root.dataset.workspaceId)',
+    );
+    expect(source).toContain('addEventListener("channel.message"');
+    expect(source).toContain('addEventListener("open"');
+    expect(source).toContain("notification.channelId === selected.id");
+    expect(source).toContain("drawMessages(messages, true)");
   });
 
   it("renders message JSON as text and exposes an accessible composer and navigation", () => {

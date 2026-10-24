@@ -35,11 +35,13 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "docker build --no-cache -t on:e2e . && node tests/docker-smoke.mjs",
+    "test:e2e:channels": "playwright test --config=playwright.config.mjs",
     "release": "npx --yes semantic-release@24 -b main --no-ci"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.1",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.64.0",
     "@tailwindcss/vite": "4.3.3",
     "@types/node": "^26.5.1",
     "@types/web-push": "^3.6.4",
