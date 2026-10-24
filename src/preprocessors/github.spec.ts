@@ -1,125 +1,187 @@
-import crypto from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
-import { GitHubPreprocessor } from './github.js';
+import crypto from "node:crypto";
+import { describe, expect, it, vi } from "vitest";
+import { GitHubPreprocessor } from "./github.js";
 
 const preprocessor = new GitHubPreprocessor();
 const inputs = {
-  event: 'push',
-  owner: 'octocat',
-  repo: 'example',
-  branch: 'releases/1.0',
-  tag: '',
-  ref: 'releases/1.0',
-  full_name: 'octocat/example',
-  changes: ['src/index.ts', 'package-lock.json'],
+  event: "push",
+  owner: "octocat",
+  repo: "example",
+  branch: "releases/1.0",
+  tag: "",
+  ref: "releases/1.0",
+  full_name: "octocat/example",
+  changes: ["src/index.ts", "package-lock.json"],
 };
 
-describe('GitHubPreprocessor filters', () => {
-  it('requires every configured field and allows any value within a field', () => {
+describe("GitHubPreprocessor filters", () => {
+  it("requires every configured field and allows any value within a field", () => {
     const result = preprocessor.filter(inputs, {
-      provider: 'github',
-      events: ['push'],
-      owner: 'octocat',
-      repo: ['another-example', 'example'],
-      branches: ['main', 'releases/*'],
-      paths: ['package*.json'],
-      if: 'false',
+      provider: "github",
+      events: ["push"],
+      owner: "octocat",
+      repo: ["another-example", "example"],
+      branches: ["main", "releases/*"],
+      paths: ["package*.json"],
+      if: "false",
     });
 
     expect(result.isValid).toBe(true);
   });
 
   it.each([
-    ['events', { events: ['pull_request'] }],
-    ['owner', { owner: 'other' }],
-    ['repo', { repo: ['other'] }],
-    ['branches', { branches: ['main'] }],
-    ['paths', { paths: ['docs/*'] }],
-  ])('rejects a non-matching %s filter', (_name, trigger) => {
-    expect(preprocessor.filter(inputs, { provider: 'github', ...trigger }).isValid).toBe(false);
+    ["events", { events: ["pull_request"] }],
+    ["owner", { owner: "other" }],
+    ["repo", { repo: ["other"] }],
+    ["branches", { branches: ["main"] }],
+    ["paths", { paths: ["docs/*"] }],
+  ])("rejects a non-matching %s filter", (_name, trigger) => {
+    expect(preprocessor.filter(inputs, { provider: "github", ...trigger }).isValid).toBe(false);
   });
 
-  it('matches branches and refs against both branch and tag names', () => {
-    const tagInputs = { ...inputs, branch: '', tag: 'v1.4.0', ref: 'v1.4.0' };
+  it("matches branches and refs against both branch and tag names", () => {
+    const tagInputs = { ...inputs, branch: "", tag: "v1.4.0", ref: "v1.4.0" };
 
-    expect(preprocessor.filter(inputs, { provider: 'github', branches: 'releases/*' }).isValid).toBe(true);
-    expect(preprocessor.filter(tagInputs, { provider: 'github', branches: 'v1.*' }).isValid).toBe(true);
-    expect(preprocessor.filter(tagInputs, { provider: 'github', refs: 'v1.*' }).isValid).toBe(true);
-    expect(preprocessor.filter(tagInputs, { provider: 'github', refs: 'main' }).isValid).toBe(false);
-    expect(preprocessor.filter(inputs, { provider: 'github', tag: true }).isValid).toBe(false);
+    expect(preprocessor.filter(inputs, { provider: "github", branches: "releases/*" }).isValid).toBe(true);
+    expect(preprocessor.filter(tagInputs, { provider: "github", branches: "v1.*" }).isValid).toBe(true);
+    expect(preprocessor.filter(tagInputs, { provider: "github", refs: "v1.*" }).isValid).toBe(true);
+    expect(preprocessor.filter(tagInputs, { provider: "github", refs: "main" }).isValid).toBe(false);
+    expect(preprocessor.filter(inputs, { provider: "github", tag: true }).isValid).toBe(false);
   });
 
-  it('matches full repository names and excludes negated values', () => {
-    expect(preprocessor.filter(inputs, { provider: 'github', name: 'octocat/example' }).isValid).toBe(true);
-    expect(preprocessor.filter(inputs, { provider: 'github', name: '!octocat/example' }).isValid).toBe(false);
-    expect(preprocessor.filter(inputs, { provider: 'github', name: '!octocat/other' }).isValid).toBe(true);
-    expect(preprocessor.filter(inputs, { provider: 'github', owner: ['octocat', '!octocat'] }).isValid).toBe(false);
-    expect(preprocessor.filter(inputs, { provider: 'github', repo: ['!other', '!another-example'] }).isValid).toBe(true);
+  it("matches full repository names and excludes negated values", () => {
+    expect(preprocessor.filter(inputs, { provider: "github", name: "octocat/example" }).isValid).toBe(true);
+    expect(preprocessor.filter(inputs, { provider: "github", name: "!octocat/example" }).isValid).toBe(false);
+    expect(preprocessor.filter(inputs, { provider: "github", name: "!octocat/other" }).isValid).toBe(true);
+    expect(preprocessor.filter(inputs, { provider: "github", owner: ["octocat", "!octocat"] }).isValid).toBe(false);
+    expect(preprocessor.filter(inputs, { provider: "github", repo: ["!other", "!another-example"] }).isValid).toBe(
+      true,
+    );
   });
 });
 
-describe('GitHubPreprocessor parsing', () => {
-  it('normalizes signed pushes and safely combines changed paths', () => {
-    const secret = 'secret';
+describe("GitHubPreprocessor parsing", () => {
+  it("normalizes signed pushes and safely combines changed paths", () => {
+    const secret = "secret";
     const body = Buffer.from(
       JSON.stringify({
-        ref: 'refs/heads/main',
-        repository: { full_name: 'octocat/example' },
-        commits: [{ added: ['new.ts'], modified: ['changed.ts'] }, { removed: ['old.ts'] }],
+        ref: "refs/heads/main",
+        repository: { full_name: "octocat/example" },
+        commits: [{ added: ["new.ts"], modified: ["changed.ts"] }, { removed: ["old.ts"] }],
       }),
     );
-    const signature = 'sha256=' + crypto.createHmac('sha256', secret).update(body).digest('hex');
-    const result = preprocessor.parse(
-      { 'x-github-event': 'push', 'x-hub-signature-256': signature },
-      body,
-      secret,
-    );
+    const signature = "sha256=" + crypto.createHmac("sha256", secret).update(body).digest("hex");
+    const result = preprocessor.parse({ "x-github-event": "push", "x-hub-signature-256": signature }, body, secret);
 
     expect(result.isValid).toBe(true);
     expect(result.inputs).toMatchObject({
-      event: 'push',
-      owner: 'octocat',
-      repo: 'example',
-      branch: 'main',
-      tag: '',
-      ref: 'main',
-      full_name: 'octocat/example',
-      changes: ['new.ts', 'changed.ts', 'old.ts'],
+      event: "push",
+      owner: "octocat",
+      repo: "example",
+      branch: "main",
+      tag: "",
+      ref: "main",
+      full_name: "octocat/example",
+      changes: ["new.ts", "changed.ts", "old.ts"],
     });
   });
 
-  it('rejects requests without a signature', () => {
-    expect(preprocessor.parse({}, Buffer.from('{}'), 'secret').isValid).toBe(false);
+  it("rejects requests without a signature", () => {
+    expect(preprocessor.parse({}, Buffer.from("{}"), "secret").isValid).toBe(false);
   });
 
-  it('uses the head commit from pull request payloads', () => {
-    const secret = 'secret';
+  it("rejects an invalid signature", () => {
+    const body = Buffer.from('{"ref":"refs/heads/main"}');
+    expect(preprocessor.parse({ "x-hub-signature-256": `sha256=${"0".repeat(64)}` }, body, "secret").isValid).toBe(
+      false,
+    );
+  });
+
+  it("normalizes verified pushes into a deduplicable event without copying secrets", () => {
+    const secret = "hook-secret";
     const body = Buffer.from(
       JSON.stringify({
-        repository: { full_name: 'octocat/example' },
-        pull_request: { head: { sha: 'pull-request-sha' } },
+        ref: "refs/heads/main",
+        after: "abc123",
+        repository: { full_name: "octocat/example", clone_url: "https://github.com/octocat/example.git" },
+        head_commit: {
+          timestamp: "2024-01-02T03:04:05Z",
+          message: "private commit",
+          author: { email: "private@example.test" },
+        },
+        token: "payload-secret",
       }),
     );
-    const signature = 'sha256=' + crypto.createHmac('sha256', secret).update(body).digest('hex');
+    const headers = {
+      "x-hub-signature-256": `sha256=${crypto.createHmac("sha256", secret).update(body).digest("hex")}`,
+      "x-github-event": "push",
+      "x-github-delivery": "delivery-1",
+    };
+    const parsed = preprocessor.parse(headers, body, secret);
+    expect(parsed.isValid).toBe(true);
+    const event = preprocessor.toDomainEvent(headers, parsed.inputs!);
+    expect(event).toMatchObject({
+      type: "git.push",
+      schemaVersion: 1,
+      source: "connector/github",
+      occurredAt: "2024-01-02T03:04:05.000Z",
+      causationId: "delivery-1",
+      idempotencyKey: "github:delivery:delivery-1",
+      data: {
+        repository: "octocat/example",
+        owner: "octocat",
+        name: "example",
+        commit: "abc123",
+        ref: "refs/heads/main",
+      },
+    });
+    expect(JSON.stringify(event)).not.toContain("hook-secret");
+    expect(JSON.stringify(event)).not.toContain("payload-secret");
+    expect(JSON.stringify(event)).not.toContain("private@example.test");
+    expect(preprocessor.toDomainEvent(headers, parsed.inputs!)).toEqual(event);
+    expect(preprocessor.toDomainEvent(headers, { ...parsed.inputs!, event: "pull_request" })).toBeNull();
+    const missingTimestamp = { ...parsed.inputs!, raw: { ...parsed.inputs!.raw, head_commit: undefined } };
+    expect(preprocessor.toDomainEvent(headers, missingTimestamp)).toEqual(
+      preprocessor.toDomainEvent(headers, missingTimestamp),
+    );
+    expect(preprocessor.toDomainEvent(headers, missingTimestamp)?.occurredAt).toBe("1970-01-01T00:00:00.000Z");
+  });
+
+  it("uses the head commit from pull request payloads", () => {
+    const secret = "secret";
+    const body = Buffer.from(
+      JSON.stringify({
+        repository: { full_name: "octocat/example" },
+        pull_request: { head: { sha: "pull-request-sha" } },
+      }),
+    );
+    const signature = "sha256=" + crypto.createHmac("sha256", secret).update(body).digest("hex");
     const result = preprocessor.parse(
-      { 'x-github-event': 'pull_request', 'x-hub-signature-256': signature },
+      { "x-github-event": "pull_request", "x-hub-signature-256": signature },
       body,
       secret,
     );
 
-    expect(result.inputs.commit_sha).toBe('pull-request-sha');
+    expect(result.inputs.commit_sha).toBe("pull-request-sha");
   });
 });
 
-describe('GitHubPreprocessor condition context', () => {
-  it('checks repository files through the GitHub contents API', async () => {
+describe("GitHubPreprocessor condition context", () => {
+  it("checks repository files through the GitHub contents API", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal("fetch", fetchMock);
 
-    await expect(new GitHubPreprocessor().conditionContext({ owner: 'octocat', repo: 'hello-world', ref: 'main' }, { GITHUB_TOKEN: 'server-token' }).github.fileExists('Dockerfile')).resolves.toBe(true);
+    await expect(
+      new GitHubPreprocessor()
+        .conditionContext({ owner: "octocat", repo: "hello-world", ref: "main" }, { GITHUB_TOKEN: "server-token" })
+        .github.fileExists("Dockerfile"),
+    ).resolves.toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.github.com/repos/octocat/hello-world/contents/Dockerfile?ref=main',
-      expect.objectContaining({ method: 'HEAD', headers: expect.objectContaining({ Authorization: 'Bearer server-token' }) }),
+      "https://api.github.com/repos/octocat/hello-world/contents/Dockerfile?ref=main",
+      expect.objectContaining({
+        method: "HEAD",
+        headers: expect.objectContaining({ Authorization: "Bearer server-token" }),
+      }),
     );
     vi.unstubAllGlobals();
   });

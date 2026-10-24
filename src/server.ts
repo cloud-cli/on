@@ -2066,6 +2066,18 @@ sessionStorage.removeItem('runner-pending-team-invite');
       validationStatus = "valid";
       normalizedInputs = inputs;
       incomingEventId = await this.incomingEvents.capture(teamId, provider, headers, rawBuffer);
+      if (provider === "github") {
+        const github = this.preprocessors.get(provider) as
+          | (WebhookPreprocessor & {
+              toDomainEvent?: (eventHeaders: Record<string, string>, eventInputs: Record<string, any>) => any;
+            })
+          | undefined;
+        const domainEvent = github?.toDomainEvent?.(headers, inputs);
+        if (domainEvent) {
+          const published = await this.domainEventRepository.publish(teamId, domainEvent);
+          await this.domainEventDeliveryRepository.fanout(teamId, published.id);
+        }
+      }
       const jobs = await this.matchWorkflows(
         provider,
         inputs,

@@ -9,3 +9,11 @@ these records through an API without an explicit access-control and data-retenti
 review. Idempotency keys are unique per workspace, regardless of source label, so
 publishers cannot bypass duplicate protection by changing `source`. Consumer
 delivery tracking is persisted separately from the immutable event.
+
+The GitHub connector currently normalizes verified `push` webhooks to schema
+version 1 of `git.push`. Its data contains only repository identity, owner/name,
+ref, commit SHA, and operation (push/delete); it does not copy the raw provider
+payload, commit author, message, or delivery signature. When GitHub omits the
+commit timestamp, `occurredAt` uses the stable Unix epoch sentinel so webhook
+retries retain identical event facts; `recordedAt` remains the actual receipt
+time.
