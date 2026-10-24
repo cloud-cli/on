@@ -200,3 +200,23 @@ WantedBy=multi-user.target
 - [ ] Implement `POST /api/jobs/:id/rerun` to append new attempt rows to `job_attempts`.
 - [ ] Build UI Tab View for comparing logs across attempts (`Attempt 1` vs `Attempt 2`).
 - [ ] Implement log streaming (WebSocket/SSE) from worker processes to central DB/storage.
+
+---
+
+## V3 delivery and agent coordination
+
+The authoritative product proposal is `v3.md` on the `v3` branch. Before implementing a v3 change, compare that proposal with the current branch and read `docs/v3-implementation-plan.md`. Treat examples in `v3.md` as design notation, not as settled schemas or APIs. Preserve existing behavior and migrations unless the approved slice explicitly changes them.
+
+### Parallel agent workflow
+
+- For every substantial v3 task, keep the lead model responsible for scope, architecture, security, integration, and acceptance. Break work into independent, bounded tasks and start multiple suitable subagents in parallel when their work does not conflict. Prefer GPT-6 Luna specialists; use the documented fallback if one is unavailable or cannot complete the task.
+- Give each agent explicit paths, constraints, acceptance criteria, and required checks. Assign a single owner per overlapping file set. Use read-only agents for analysis/review and implementation agents only for isolated changes.
+- Track each agent's task, status, relevant findings, and changed paths in the active task checklist. Check returned status/handoffs; do not treat a claimed completion as proof. Independently inspect every diff and run the checks required for integration.
+- At the end of **every turn that advances v3**, calculate progress using the milestone weights and evidence rules in `docs/v3-implementation-plan.md`. Report the percentage and remaining blockers. If progress is below 100%, identify next tasks and launch agents for the next unblocked, bounded work; do not repeat unchanged work or overlap active work. Continue across turns until all milestones are accepted or explicitly report why work is blocked/deferred.
+- Recalculate progress from the repository and tests, not from effort, estimates, agent claims, or documentation alone. A design document or plan is not implementation progress.
+
+### End-to-end and production authentication checks
+
+- Use local/unit/integration E2E against isolated fixtures for routine verification. The current `pnpm test:e2e` is a Docker smoke test, not proof of a real browser login or the v3 product journeys.
+- Only run production OIDC browser tests when the requested flow exists and the test can use the documented temporary-client procedure in the global OIDC runbook. Read the current Auth API and discovery specifications first; use `AGENT_ID`/`AGENT_SECRET` only in the documented Agent sign-in flow. Create a uniquely named temporary client with exact redirect URIs and always delete it in `finally`; cleanup failure is a blocker. Never expose credentials, client secrets, cookies, tokens, or sensitive page content.
+- Run Playwright against the exact v3 flows implemented, covering authorization and relevant failure paths. Capture screenshots at relevant viewport sizes as test artifacts, inspect console/network errors, and ensure screenshots contain no secrets or private user data. Do not claim a production test or screenshot exists unless it was actually run and reviewed. Do not use production data or mutate production workflows/resources for testing.
