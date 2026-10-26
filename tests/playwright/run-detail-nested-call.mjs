@@ -39,6 +39,10 @@ for (const viewport of [
     await page.getByRole("button", { name: "Child deployment, SUCCESS" }).click();
     await expect(page.locator(".log-panel h3")).toContainText("Child deployment");
     await expect(page.locator(".log-panel pre").first()).toContainText("child step output");
+    const failedCall = page.locator("summary", { hasText: "notify-operator@3.1.0" });
+    await expect(failedCall).toContainText("FAILED");
+    await failedCall.click();
+    await expect(page.getByText("Synthetic nested-call failure")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
 
     await page.reload();

@@ -43,6 +43,16 @@ const report = {
       inputs: { nestedSecretInput: "nested-input-value" },
       outputs: { nestedOutput: "nested-output-value" },
     },
+    {
+      callId: "call-nested-2",
+      target: "notify-operator@3.1.0",
+      functionName: "notify",
+      status: "failed",
+      error: "Synthetic nested-call failure",
+      stepIds: [],
+      inputs: { incident: "fixture-incident" },
+      outputs: {},
+    },
   ],
 };
 
