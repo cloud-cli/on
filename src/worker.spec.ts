@@ -185,6 +185,79 @@ describe("incremental workflow reports", () => {
     );
   });
 
+  it("records a distinct parent-child call tree for nested recipe invocations", async () => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {}),
+      saveStepAttempt: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+      isRecipeVersionRevoked: vi.fn(async () => false),
+    };
+    await processJob({
+      workerId: "nested-tree-worker",
+      job: {
+        id: 132,
+        workflow_id: "nested-tree",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "nested-tree-worker",
+        payload: JSON.stringify({ inputs: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
+      config: { storagePath: "/tmp/nested-call-tree", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
+      workflow: {
+        id: "nested-tree",
+        name: "Nested tree",
+        on: { provider: "generic" },
+        steps: [{ id: "outer", call: "team/outer@1#main", with: {} }],
+        _pinnedReferences: [
+          { namespace: "team", slug: "outer", version: 1, function: "main" },
+          { namespace: "team", slug: "inner", version: 2, function: "run" },
+        ],
+        _pinnedRecipeFunctions: {
+          "team/outer@1#main": {
+            inputs: { type: "object", properties: {}, additionalProperties: false },
+            outputs: { type: "object", properties: {}, additionalProperties: false },
+            returns: {},
+            steps: [{ id: "invoke-inner", call: "team/inner@2#run", with: {} }],
+          },
+          "team/inner@2#run": {
+            inputs: { type: "object", properties: {}, additionalProperties: false },
+            outputs: { type: "object", properties: {}, additionalProperties: false },
+            returns: {},
+            steps: [{ id: "work", eval: "true" }],
+          },
+        },
+      } as Processable,
+    } as Processable);
+
+    const report = queue.completeJob.mock.calls[0][2] as WorkflowExecutionReport;
+    expect(queue.completeJob.mock.calls[0][1]).toBe("success");
+    expect(report.callInstances).toEqual([
+      expect.objectContaining({
+        callId: "132:outer#attempt-1",
+        parentCallId: undefined,
+        target: "team/outer@1#main",
+        status: "success",
+        stepIds: ["outer#attempt-1/invoke-inner"],
+      }),
+      expect.objectContaining({
+        callId: "132:outer#attempt-1/invoke-inner#attempt-1",
+        parentCallId: "132:outer#attempt-1",
+        target: "team/inner@2#run",
+        status: "success",
+        stepIds: ["outer#attempt-1/invoke-inner#attempt-1/work"],
+      }),
+    ]);
+  });
+
   it.each([
     ["revoked", true, { "team/recipe@1#main": { inputs: {}, outputs: { type: "object" }, steps: [] } }],
     ["missing pinned snapshot", false, {}],
