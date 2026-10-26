@@ -126,7 +126,13 @@ describe("POST /api/v1/domain-events", () => {
       revision: 3,
       recordedAt: "2026-01-01T00:00:00.000Z",
       variants: [
-        { variantIndex: 0, admissionStatus: "admitted", errorCode: null, runId: "42" },
+        {
+          variantIndex: 0,
+          admissionStatus: "admitted",
+          admissionOutcome: "accepted",
+          errorCode: null,
+          runId: "42",
+        },
       ],
     });
     const response = await request(server, "GET", "/api/v1/workflow-invocations/invocation-1");
@@ -136,7 +142,7 @@ describe("POST /api/v1/domain-events", () => {
     );
     expect(JSON.parse(response.end.mock.calls[0][0])).toMatchObject({
       id: "invocation-1",
-      variants: [{ runId: "42", admissionStatus: "admitted" }],
+      variants: [{ runId: "42", admissionStatus: "admitted", admissionOutcome: "accepted" }],
     });
     expect(response.end.mock.calls[0][0]).not.toContain("inputsCiphertext");
 

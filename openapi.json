@@ -2084,7 +2084,7 @@
       "get": {
         "tags": ["workflows"],
         "summary": "Inspect a workflow invocation and its execution variants",
-        "description": "Requires runs.view. Returns a distinct invocation ID and its addressed request-event ID, workspace-scoped admission states, and run IDs without exposing captured request inputs. The invocation view reads current run status from the canonical run-detail API and refreshes it on workspace job-change notifications and stream reconnects.",
+        "description": "Requires runs.view. Returns a distinct invocation ID and its addressed request-event ID, per-variant admission lifecycle and accepted/rejected decision, and run IDs without exposing captured request inputs. The invocation view reads current run status from the canonical run-detail API and refreshes it on workspace job-change notifications and stream reconnects.",
         "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
         "parameters": [
           {

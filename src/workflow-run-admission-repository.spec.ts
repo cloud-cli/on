@@ -45,6 +45,36 @@ describe("WorkflowRunAdmissionRepository", () => {
     expect(statements.at(-1).s).toContain("EXISTS (SELECT 1 FROM workflow_run_admissions");
   });
 
+  it("persists rejected invocation decisions separately from processing lifecycle", async () => {
+    await repository.persistTerminal(
+      {
+        eventId: "request-event",
+        teamId: "team-a",
+        workflowId: "build",
+        revision: 3,
+        index: -1,
+        matrix: {},
+        tags: [],
+      },
+      "failed",
+      "invalid_inputs",
+      "rejected",
+    );
+
+    expect(database.run).toHaveBeenCalledWith(expect.stringContaining("admission_outcome"), [
+      "request-event",
+      "team-a",
+      "build",
+      3,
+      -1,
+      "{}",
+      "[]",
+      "failed",
+      "invalid_inputs",
+      "rejected",
+    ]);
+  });
+
   it("atomically claims pending or expired variants and fences completion by lease token", async () => {
     database.get.mockResolvedValue({
       event_id: "evt",

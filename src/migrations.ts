@@ -991,6 +991,18 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: "036_workflow_run_admission_outcomes",
+    async apply() {
+      const columns = await db.all("PRAGMA table_info(workflow_run_admissions)");
+      if (!columns.some((column: any) => column.name === "admission_outcome")) {
+        await db.exec(`ALTER TABLE workflow_run_admissions ADD COLUMN admission_outcome TEXT
+          CHECK (admission_outcome IN ('accepted','rejected','filtered'))`);
+      }
+      await db.exec(`UPDATE workflow_run_admissions SET admission_outcome = 'accepted'
+        WHERE status = 'admitted' AND admission_outcome IS NULL`);
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

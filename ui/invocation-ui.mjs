@@ -18,7 +18,11 @@ export function mountInvocation(root) {
   const heading = node("h1", "Workflow invocation", "text-2xl font-semibold");
   const status = node("p", "Loading invocation…", "text-sm text-app-secondary");
   status.setAttribute("role", "status");
-  const summary = node("dl", undefined, "grid gap-2 rounded-xl border border-app-border bg-app-card p-4 sm:grid-cols-[10rem_1fr]");
+  const summary = node(
+    "dl",
+    undefined,
+    "grid gap-2 rounded-xl border border-app-border bg-app-card p-4 sm:grid-cols-[10rem_1fr]",
+  );
   const variants = node("ol", undefined, "space-y-3");
   const runStatusRefreshers = new Map();
   let eventSource = null;
@@ -45,13 +49,19 @@ export function mountInvocation(root) {
         ["Requested", data.recordedAt],
       ];
       summary.replaceChildren(
-        ...fields.flatMap(([label, value]) => [node("dt", label, "text-sm font-semibold"), node("dd", String(value || "—"), "min-w-0 break-all text-sm")]),
+        ...fields.flatMap(([label, value]) => [
+          node("dt", label, "text-sm font-semibold"),
+          node("dd", String(value || "—"), "min-w-0 break-all text-sm"),
+        ]),
       );
       variants.replaceChildren(
         ...(data.variants || []).map((variant) => {
           const item = node("li", undefined, "space-y-2 rounded-xl border border-app-border bg-app-card p-4");
           item.append(node("h2", `Variant ${variant.variantIndex}`, "font-semibold"));
           item.append(node("p", `Admission: ${variant.admissionStatus}`, "text-sm"));
+          if (variant.admissionOutcome) {
+            item.append(node("p", `Decision: ${variant.admissionOutcome}`, "text-sm"));
+          }
           if (variant.errorCode) {
             item.append(node("p", `Admission error: ${variant.errorCode}`, "text-sm text-rose-700"));
           }
@@ -70,7 +80,13 @@ export function mountInvocation(root) {
         }),
       );
       if (!data.variants?.length) {
-        variants.append(node("li", "No execution variants have been admitted yet.", "rounded-xl border border-app-border p-4 text-sm"));
+        variants.append(
+          node(
+            "li",
+            "No execution variants have been admitted yet.",
+            "rounded-xl border border-app-border p-4 text-sm",
+          ),
+        );
       }
       status.textContent = "Invocation and execution state loaded.";
     } catch (error) {

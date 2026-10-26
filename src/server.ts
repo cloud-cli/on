@@ -1403,7 +1403,10 @@ export class WebhookServer {
                 ...body,
                 snapshotJson: await (async () => {
                   const safe = JSON.stringify(
-                    this.redactStructured(JSON.parse(rawSnapshotJson as string), await this.currentSecrets(String(job.team_id))),
+                    this.redactStructured(
+                      JSON.parse(rawSnapshotJson as string),
+                      await this.currentSecrets(String(job.team_id)),
+                    ),
                   );
                   return Buffer.byteLength(safe, "utf8") <= 65536
                     ? safe
@@ -2676,14 +2679,14 @@ sessionStorage.removeItem('runner-pending-team-invite');
       normalizedInputs = inputs;
       incomingEventId = await this.incomingEvents.capture(teamId, provider, headers, rawBuffer);
       const connector = this.preprocessors.get(provider) as
-          | (WebhookPreprocessor & {
-              toDomainEvent?: (
-                eventHeaders: Record<string, string>,
-                eventInputs: Record<string, any>,
-                receivedAt: string,
-              ) => any;
-            })
-          | undefined;
+        | (WebhookPreprocessor & {
+            toDomainEvent?: (
+              eventHeaders: Record<string, string>,
+              eventInputs: Record<string, any>,
+              receivedAt: string,
+            ) => any;
+          })
+        | undefined;
       if (connector?.toDomainEvent) {
         const receivedAt = await this.incomingEvents.receivedAtForTeam(teamId, incomingEventId);
         const domainEvent = connector.toDomainEvent(headers, inputs, receivedAt || "");
@@ -2996,8 +2999,65 @@ sessionStorage.removeItem('runner-pending-team-invite');
     try {
       plannedVariants = await resolveVariants(definition, acceptedInputs);
     } catch {
+      if (!previous) {
+        try {
+          previous = await this.domainEventRepository.publish(teamId, {
+            type: "workflow.run.requested",
+            schemaVersion: 1,
+            source: "api/workflows/run",
+            occurredAt: new Date().toISOString(),
+            correlationId: null,
+            causationId: null,
+            idempotencyKey: eventKey,
+            data: {
+              workflowId,
+              revision,
+              invocationId,
+              inputsCiphertext: this.secretRepository.encryptValue(serializedInputs),
+            },
+          });
+        } catch {
+          const raced = await this.domainEventRepository.getByIdempotencyKey<{
+            workflowId: string;
+            revision: number;
+            invocationId?: string;
+            inputsCiphertext: string;
+          }>(teamId, eventKey);
+          if (!raced) {
+            throw new Error("Rejected workflow invocation could not be durably recorded");
+          }
+          if (!sameRequest(raced)) {
+            res.writeHead(409, { "Content-Type": "application/json" });
+            return res.end(JSON.stringify({ error: "Idempotency-Key was already used for a different request" }));
+          }
+          previous = raced;
+          invocationId = raced.data.invocationId || raced.id;
+          revision = raced.data.revision;
+        }
+      }
+      await this.workflowRunAdmissions.persistTerminal(
+        {
+          eventId: previous.id,
+          teamId,
+          workflowId,
+          revision,
+          index: -1,
+          matrix: {},
+          tags: [],
+        },
+        "failed",
+        "invalid_inputs",
+        "rejected",
+      );
       res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ error: "Workflow inputs could not be admitted" }));
+      return res.end(
+        JSON.stringify({
+          error: "Workflow inputs could not be admitted",
+          eventId: previous.id,
+          invocationId,
+          admissionOutcome: "rejected",
+        }),
+      );
     }
 
     if (!previous) {
@@ -4882,7 +4942,12 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return deny(res, 404, "Channel not found");
     }
     const body = await this.readJson(req, res, 16 * 1024);
-    if (!body || Object.keys(body).some((key) => key !== "eventId") || typeof body.eventId !== "string" || !body.eventId) {
+    if (
+      !body ||
+      Object.keys(body).some((key) => key !== "eventId") ||
+      typeof body.eventId !== "string" ||
+      !body.eventId
+    ) {
       return deny(res, 400, "eventId is required");
     }
     const bound = await this.domainEventRepository.bindEventToStream(auth.teamId, channelId, body.eventId);

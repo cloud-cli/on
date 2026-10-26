@@ -533,10 +533,19 @@ for (const viewport of [
         data = {
           id: "invocation-1",
           teamId: "team-a",
+          requestEventId: "request-event-1",
           workflowId: "deploy",
           revision: 7,
           recordedAt: "2026-01-01T00:00:00.000Z",
-          variants: [{ variantIndex: 0, admissionStatus: "admitted", errorCode: null, runId: "42" }],
+          variants: [
+            {
+              variantIndex: 0,
+              admissionStatus: "admitted",
+              admissionOutcome: "accepted",
+              errorCode: null,
+              runId: "42",
+            },
+          ],
         };
       } else if (url.pathname === "/api/v1/runs/42") {
         runStatusRequests.push(route.request().headers()["x-team-id"]);
@@ -555,7 +564,9 @@ for (const viewport of [
     await page.goto("/tests/playwright/invocation-harness.html?workspaceId=team-a&invocationId=invocation-1");
     await expect(page.getByRole("heading", { name: "Workflow invocation" })).toBeVisible();
     await expect(page.getByText("deploy @ revision 7")).toBeVisible();
+    await expect(page.getByText("request-event-1")).toBeVisible();
     await expect(page.getByText("Admission: admitted")).toBeVisible();
+    await expect(page.getByText("Decision: accepted")).toBeVisible();
     await expect(page.getByRole("link", { name: "Run 42" })).toHaveAttribute("href", "/ui/runs/42?workspaceId=team-a");
     await expect(page.getByText("Current run status: running")).toBeVisible();
     await page.evaluate(() => {

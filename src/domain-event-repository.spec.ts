@@ -110,12 +110,14 @@ describe("DomainEventRepository", () => {
       {
         variant_index: 0,
         admission_status: "admitted",
+        admission_outcome: "accepted",
         error_code: null,
         job_id: 71,
       },
       {
         variant_index: 1,
         admission_status: "failed",
+        admission_outcome: "rejected",
         error_code: "invalid_input",
         job_id: null,
       },
@@ -129,8 +131,20 @@ describe("DomainEventRepository", () => {
       revision: 4,
       recordedAt: "2026-01-01T00:00:00.000Z",
       variants: [
-        { variantIndex: 0, admissionStatus: "admitted", errorCode: null, runId: "71" },
-        { variantIndex: 1, admissionStatus: "failed", errorCode: "invalid_input", runId: null },
+        {
+          variantIndex: 0,
+          admissionStatus: "admitted",
+          admissionOutcome: "accepted",
+          errorCode: null,
+          runId: "71",
+        },
+        {
+          variantIndex: 1,
+          admissionStatus: "failed",
+          admissionOutcome: "rejected",
+          errorCode: "invalid_input",
+          runId: null,
+        },
       ],
     });
     expect(database.get.mock.calls[0][0]).toContain("team_id = ? AND type = 'workflow.run.requested'");

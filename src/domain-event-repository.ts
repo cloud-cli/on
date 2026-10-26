@@ -58,6 +58,7 @@ export type WorkflowInvocationView = {
   variants: Array<{
     variantIndex: number;
     admissionStatus: string;
+    admissionOutcome: string | null;
     errorCode: string | null;
     runId: string | null;
   }>;
@@ -86,7 +87,7 @@ export class DomainEventRepository {
       return null;
     }
     const rows = await db.all(
-      `SELECT a.variant_index, a.status AS admission_status, a.error_code, a.job_id
+      `SELECT a.variant_index, a.status AS admission_status, a.admission_outcome, a.error_code, a.job_id
          FROM workflow_run_admissions a
         WHERE a.team_id = ? AND a.event_id = ?
         ORDER BY a.variant_index`,
@@ -102,6 +103,12 @@ export class DomainEventRepository {
       variants: rows.map((row: any) => ({
         variantIndex: Number(row.variant_index),
         admissionStatus: String(row.admission_status),
+        admissionOutcome:
+          row.admission_outcome === null || row.admission_outcome === undefined
+            ? row.admission_status === "admitted"
+              ? "accepted"
+              : null
+            : String(row.admission_outcome),
         errorCode: row.error_code === null || row.error_code === undefined ? null : String(row.error_code),
         runId: row.job_id === null || row.job_id === undefined ? null : String(row.job_id),
       })),

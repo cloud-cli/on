@@ -12,11 +12,16 @@ export type WorkflowRunVariant = {
 };
 
 export class WorkflowRunAdmissionRepository {
-  async persistTerminal(variant: WorkflowRunVariant, status: "admitted" | "failed", errorCode?: string): Promise<void> {
+  async persistTerminal(
+    variant: WorkflowRunVariant,
+    status: "admitted" | "failed",
+    errorCode?: string,
+    admissionOutcome?: "accepted" | "rejected" | "filtered",
+  ): Promise<void> {
     await db.run(
       `INSERT OR IGNORE INTO workflow_run_admissions
-        (event_id, team_id, workflow_id, revision, variant_index, matrix_json, tags_json, status, error_code)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (event_id, team_id, workflow_id, revision, variant_index, matrix_json, tags_json, status, error_code, admission_outcome)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         variant.eventId,
         variant.teamId,
@@ -27,6 +32,7 @@ export class WorkflowRunAdmissionRepository {
         JSON.stringify(variant.tags),
         status,
         errorCode ?? null,
+        admissionOutcome ?? (status === "admitted" ? "accepted" : null),
       ],
     );
   }
@@ -204,10 +210,11 @@ export class WorkflowRunAdmissionRepository {
   ) {
     const result = await db.run(
       `UPDATE workflow_run_admissions SET status = ?, job_id = COALESCE(?, job_id), error_code = ?,
+       admission_outcome = CASE WHEN ? = 'admitted' THEN 'accepted' ELSE admission_outcome END,
        retry_after = CASE WHEN ? = 'pending' THEN datetime('now', '+' || MIN(300, 5 * (1 + (SELECT COUNT(*) FROM workflow_run_admissions prior WHERE prior.event_id = workflow_run_admissions.event_id AND prior.variant_index = workflow_run_admissions.variant_index))) || ' seconds') ELSE NULL END,
        lease_token = NULL, lease_until = NULL, updated_at = CURRENT_TIMESTAMP
        WHERE event_id = ? AND variant_index = ? AND status = 'claimed' AND lease_token = ?`,
-      [status, jobId ?? null, errorCode ?? null, status, variant.eventId, variant.index, variant.token],
+      [status, jobId ?? null, errorCode ?? null, status, status, variant.eventId, variant.index, variant.token],
     );
     return Number(result?.changes || 0) === 1;
   }

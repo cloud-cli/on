@@ -364,6 +364,64 @@ describe("current IAM route authorization", () => {
     );
     expect(res.end.mock.calls[0][0]).toContain("one-time-signing-secret");
   });
+
+  it("records a rejected input decision durably and reuses it for an idempotent retry", async () => {
+    const domainEventRepository = {
+      getByIdempotencyKey: vi.fn(async () => null),
+      publish: vi.fn(async (_teamId: string, event: any) => ({ id: "request-event-1", ...event })),
+    };
+    const workflowRunAdmissions = { persistTerminal: vi.fn(async () => {}) };
+    const server = {
+      requireWorkspaceCapability: vi.fn(async () => ({
+        teamId: "team-a",
+        principal: { subject: "user-1", kind: "human" },
+        capabilities: ["runs.dispatch"],
+      })),
+      readJson: vi.fn(async () => ({ inputs: { foo: "bar" } })),
+      workflowsLoaded: Promise.resolve(),
+      workflows: {
+        getForTeam: vi.fn(async () => ({ id: "workflow-1" })),
+        latestRevision: vi.fn(async () => ({ revision: 1 })),
+        getRevision: vi.fn(async () => ({ tags: ["${("], steps: [] })),
+      },
+      agentWorkflowGrantRepository: { has: vi.fn(async () => true) },
+      domainEventRepository,
+      workflowRunAdmissions,
+      secretRepository: {
+        encryptValue: vi.fn((value: string) => `encrypted:${value}`),
+        decryptValue: vi.fn((value: string) => value.replace(/^encrypted:/, "")),
+      },
+    };
+    const req = request("/api/v1/workflows/workflow-1/run", "POST", { "idempotency-key": "reject-1" });
+    const first = response();
+    await (WebhookServer.prototype as any).handleWorkflowRun.call(server, req, first, "workflow-1");
+    const firstBody = JSON.parse(first.end.mock.calls[0][0]);
+    expect(first.writeHead).toHaveBeenCalledWith(400, expect.any(Object));
+    expect(firstBody).toMatchObject({
+      eventId: "request-event-1",
+      invocationId: expect.any(String),
+      admissionOutcome: "rejected",
+    });
+    expect(firstBody.invocationId).not.toBe(firstBody.eventId);
+    expect(domainEventRepository.publish).toHaveBeenCalledOnce();
+    expect(workflowRunAdmissions.persistTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: "request-event-1", teamId: "team-a", index: -1 }),
+      "failed",
+      "invalid_inputs",
+      "rejected",
+    );
+
+    const event = await domainEventRepository.publish.mock.results[0].value;
+    domainEventRepository.getByIdempotencyKey.mockResolvedValueOnce(event);
+    const retry = response();
+    await (WebhookServer.prototype as any).handleWorkflowRun.call(server, req, retry, "workflow-1");
+    expect(domainEventRepository.publish).toHaveBeenCalledOnce();
+    expect(JSON.parse(retry.end.mock.calls[0][0])).toMatchObject({
+      eventId: firstBody.eventId,
+      invocationId: firstBody.invocationId,
+      admissionOutcome: "rejected",
+    });
+  });
 });
 
 describe("incoming workflow webhook dispatch", () => {

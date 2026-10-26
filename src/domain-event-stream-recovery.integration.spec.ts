@@ -52,7 +52,7 @@ describe("persisted Stream event reconciliation", () => {
       CREATE TABLE jobs (id INTEGER PRIMARY KEY, team_id TEXT, status TEXT);
       CREATE TABLE workflow_run_admissions (
         team_id TEXT, event_id TEXT, workflow_id TEXT, revision INTEGER, variant_index INTEGER,
-        status TEXT, job_id INTEGER, error_code TEXT
+        status TEXT, job_id INTEGER, error_code TEXT, admission_outcome TEXT
       );
       INSERT INTO channels VALUES ('stream-a', 'team-a'), ('stream-a', 'team-b');
       INSERT INTO domain_events VALUES
@@ -61,9 +61,12 @@ describe("persisted Stream event reconciliation", () => {
         (3, 'event-a2', 'team-a', 'audit.created', 1, 'test', '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z', NULL, NULL, NULL, '{}'),
         (4, 'event-a3', 'team-a', 'audit.created', 1, 'test', '2026-01-03T00:00:00Z', '2026-01-03T00:00:00Z', NULL, NULL, NULL, '{}'),
         (5, 'request-event-1', 'team-a', 'workflow.run.requested', 1, 'api', '2026-01-04T00:00:00Z', '2026-01-04T00:00:00Z', NULL, NULL, NULL,
-         '{"workflowId":"deploy","revision":7,"invocationId":"invocation-1","inputsCiphertext":"do-not-return"}');
+         '{"workflowId":"deploy","revision":7,"invocationId":"invocation-1","inputsCiphertext":"do-not-return"}'),
+        (6, 'request-event-rejected', 'team-a', 'workflow.run.requested', 1, 'api', '2026-01-05T00:00:00Z', '2026-01-05T00:00:00Z', NULL, NULL, NULL,
+         '{"workflowId":"deploy","revision":7,"invocationId":"invocation-rejected","inputsCiphertext":"do-not-return"}');
       INSERT INTO jobs VALUES (42, 'team-a', 'running');
-      INSERT INTO workflow_run_admissions VALUES ('team-a', 'request-event-1', 'deploy', 7, 0, 'admitted', 42, NULL);
+      INSERT INTO workflow_run_admissions VALUES ('team-a', 'request-event-1', 'deploy', 7, 0, 'admitted', 42, NULL, 'accepted');
+      INSERT INTO workflow_run_admissions VALUES ('team-a', 'request-event-rejected', 'deploy', 7, -1, 'failed', NULL, 'invalid_inputs', 'rejected');
       INSERT INTO domain_event_deliveries VALUES ('team-a', 'event-a2', 'admitted', '[]', 'invocation-1');
       INSERT INTO stream_event_bindings VALUES
         ('team-a', 'stream-a', 'event-a1'), ('team-b', 'stream-a', 'event-b1'), ('team-a', 'stream-a', 'event-a3');
@@ -89,9 +92,30 @@ describe("persisted Stream event reconciliation", () => {
       workflowId: "deploy",
       revision: 7,
       recordedAt: "2026-01-04T00:00:00Z",
-      variants: [{ variantIndex: 0, admissionStatus: "admitted", errorCode: null, runId: "42" }],
+      variants: [
+        {
+          variantIndex: 0,
+          admissionStatus: "admitted",
+          admissionOutcome: "accepted",
+          errorCode: null,
+          runId: "42",
+        },
+      ],
     });
     await expect(afterRestart.getWorkflowInvocationForTeam("team-b", "invocation-1")).resolves.toBeNull();
+    await expect(afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-rejected")).resolves.toMatchObject({
+      id: "invocation-rejected",
+      requestEventId: "request-event-rejected",
+      variants: [
+        {
+          variantIndex: -1,
+          admissionStatus: "failed",
+          admissionOutcome: "rejected",
+          errorCode: "invalid_inputs",
+          runId: null,
+        },
+      ],
+    });
     await expect(afterRestart.listChannelEvents("team-b", "stream-a", 10, firstPage.nextCursor!)).rejects.toThrow(
       "Invalid event cursor",
     );
