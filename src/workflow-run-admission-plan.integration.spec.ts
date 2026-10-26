@@ -36,6 +36,7 @@ beforeEach(() => {
       matrix_json TEXT NOT NULL,
       tags_json TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
+      admission_outcome TEXT,
       job_id INTEGER,
       error_code TEXT,
       lease_token TEXT,
@@ -151,5 +152,38 @@ describe("workflow-run admission plan SQLite integration", () => {
       [1, "two"],
     ]);
     await expect(repository.claimNext()).resolves.toBeNull();
+  });
+
+  it("retains terminal admission decisions and accepted job linkage after SQLite reopen", async () => {
+    const rejected = {
+      eventId: "evt-rejected",
+      teamId: "team-1",
+      workflowId: "workflow-1",
+      revision: 3,
+      index: -1,
+      matrix: {},
+      tags: [],
+    };
+    await repository.persistTerminal(rejected, "failed", "invalid_inputs", "rejected");
+    await repository.persistPlan(plan("evt-accepted", ["one"]));
+    const claim = await repository.claimVariant("evt-accepted", 0);
+    expect(claim).not.toBeNull();
+    expect(await repository.finish(claim!, "admitted", 123)).toBe(true);
+
+    connection.close();
+    connection = new DatabaseSync(path.join(directory, "admissions.sqlite"));
+
+    await expect(repository.get("evt-rejected", -1)).resolves.toMatchObject({
+      status: "failed",
+      admissionOutcome: "rejected",
+      errorCode: "invalid_inputs",
+      jobId: null,
+    });
+    await expect(repository.get("evt-accepted", 0)).resolves.toMatchObject({
+      status: "admitted",
+      admissionOutcome: "accepted",
+      jobId: 123,
+    });
+    await expect(repository.claimVariant("evt-accepted", 0)).resolves.toBeNull();
   });
 });

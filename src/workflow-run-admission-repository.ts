@@ -15,6 +15,7 @@ export type WorkflowRunAdmissionStatus = "pending" | "claimed" | "admitted" | "f
 
 export type WorkflowRunAdmissionLookup = {
   status: WorkflowRunAdmissionStatus;
+  admissionOutcome: "accepted" | "rejected" | "filtered" | null;
   jobId: number | null;
   errorCode: string | null;
   leaseToken: string | null;
@@ -24,13 +25,14 @@ export type WorkflowRunAdmissionLookup = {
 export class WorkflowRunAdmissionRepository {
   async get(eventId: string, variantIndex: number): Promise<WorkflowRunAdmissionLookup | null> {
     const row = await db.get(
-      `SELECT status, job_id, error_code, lease_token, lease_until
+      `SELECT status, admission_outcome, job_id, error_code, lease_token, lease_until
        FROM workflow_run_admissions WHERE event_id = ? AND variant_index = ?`,
       [eventId, variantIndex],
     );
     return row
       ? {
           status: row.status,
+          admissionOutcome: row.admission_outcome ?? (row.status === "admitted" ? "accepted" : null),
           jobId: row.job_id === null || row.job_id === undefined ? null : Number(row.job_id),
           errorCode: row.error_code ?? null,
           leaseToken: row.lease_token ?? null,

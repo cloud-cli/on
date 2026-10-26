@@ -103,11 +103,13 @@ describe("WorkflowRunAdmissionRepository", () => {
   it("looks up terminal admission state and lease fields", async () => {
     database.get.mockResolvedValue({
       status: "failed",
+      admission_outcome: "rejected",
       job_id: 42,
       error_code: "invalid_inputs",
     });
     await expect(repository.get("evt", 3)).resolves.toEqual({
       status: "failed",
+      admissionOutcome: "rejected",
       jobId: 42,
       errorCode: "invalid_inputs",
       leaseToken: null,
