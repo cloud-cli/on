@@ -13,7 +13,7 @@ At the time this plan was created, `main` and the tip of `v3` have the same appl
 | 1. Contracts, compatibility, and migrations                    |    10% |
 | 2. Durable event model and common invocation admission         |    20% |
 | 3. Callable recipe functions and workflow contracts            |    15% |
-| 4. Durable channel history and live channel experience         |    15% |
+| 4. Durable stream history and live workspace experience        |    15% |
 | 5. Step attempts, checkpoints, replay, and reliable follow-ups |    20% |
 | 6. Connectors, agents, integrations, and end-to-end acceptance |    20% |
 
@@ -49,13 +49,13 @@ For each milestone, award its weight only after all acceptance criteria are impl
 
 **Dependencies:** Milestones 1 and 2.
 
-### 4. Durable channel history and live channel experience — 15%
+### 4. Durable stream history and live workspace experience — 15%
 
-**Scope:** Persist channel messages/bindings and paginated event/run history; provide resumable cursors, live execution cards, causal links, and the combined Automations/channel experience from §9 of `v3.md`.
+**Scope:** Persist workspace Streams, Threads, bindings, and paginated event/run history; provide resumable cursors, live execution cards, causal links, and the combined Automations/workspace experience from §9 of `v3.md`. Keep Stream, Thread, event, invocation, and run as distinct concepts; see [`v3-product-model.md`](./v3-product-model.md).
 
 **Likely UI areas:** `ui/app-shell.html`, `ui/app-router.mjs`, `ui/run.html`, `ui/run.mjs`, and related server APIs/styles.
 
-**Acceptance:** Reconnect resumes from a cursor without gaps, duplicate presentation, or rerunning work; channels link messages, events, invocations, runs, and causes; current status agrees with run detail; authorization is enforced; Playwright covers relevant desktop/mobile paths without console/runtime or unexpected network errors.
+**Acceptance:** Reconnect resumes from a cursor without gaps, duplicate presentation, or rerunning work; Streams link Threads, events, invocations, runs, and causes; current status agrees with run detail; authorization is enforced; Playwright covers relevant desktop/mobile paths without console/runtime or unexpected network errors.
 
 **Dependencies:** Durable event and run history from milestones 2 and 3.
 
@@ -71,13 +71,13 @@ For each milestone, award its weight only after all acceptance criteria are impl
 
 ### 6. Connectors, agents, integrations, and end-to-end acceptance — 20%
 
-**Scope:** Implement normalized provider connectors (begin with one end-to-end source), agent subscriptions and explicitly authorized workflow tools, durable correlated results, and remaining integration breadth. Validate the channel-first journeys and the v3 acceptance criteria in §14.
+**Scope:** Implement normalized provider connectors (begin with one end-to-end source), agent subscriptions and explicitly authorized workflow tools, durable correlated results, and remaining integration breadth. Validate the Stream-first workspace journeys and the v3 acceptance criteria in §14.
 
-**Likely code areas:** `src/server.ts`, `src/preprocessors/`, `src/ai-help.ts`, connector/event APIs, and channel UI paths.
+**Likely code areas:** `src/server.ts`, `src/preprocessors/`, `src/ai-help.ts`, connector/event APIs, and Stream/Thread UI paths.
 
 **Acceptance:** Provider-specific verification/normalization stays in connectors; a workflow can consume equivalent normalized events across sources; immutable commit/mirror selection is verified; agent requests are scoped, auditable, resumable, and correlated with outcomes; authorization, duplicate/replay, failure, and recovery paths have tests. Browser E2E exercises implemented user journeys, checks console/network errors, and saves reviewed screenshots at relevant viewport sizes.
 
-**Dependencies:** Durable events/admission, workflow contracts, channel history, and reliable execution primitives.
+**Dependencies:** Durable events/admission, workflow contracts, Stream/Thread history, and reliable execution primitives.
 
 ## Delivery order and cross-cutting gates
 

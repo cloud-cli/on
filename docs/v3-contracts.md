@@ -7,6 +7,12 @@ does not change existing APIs, schemas, or runtime behavior. The proposal
 schema specification. Nothing below claims that the proposed v3 capabilities
 are implemented.
 
+For current product vocabulary—including the distinction between a workspace,
+Stream, Thread, event, invocation, and run—see
+[`v3-product-model.md`](./v3-product-model.md). This terminology supersedes
+"channel" as the product-level name; existing channel tables/routes remain
+compatibility details until a reviewed migration decision.
+
 Status labels distinguish choices made here from work that depends on
 infrastructure not yet selected or delivered:
 
