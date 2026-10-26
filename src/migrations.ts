@@ -958,6 +958,20 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: "034_stream_event_binding_integrity",
+    async apply() {
+      await db.exec(`
+        CREATE TRIGGER IF NOT EXISTS stream_event_binding_team_guard
+          BEFORE INSERT ON stream_event_bindings
+          WHEN NOT EXISTS (
+            SELECT 1 FROM domain_events
+             WHERE domain_events.team_id = NEW.team_id AND domain_events.id = NEW.event_id
+          )
+          BEGIN SELECT RAISE(ABORT, 'stream event binding must reference an event in the same workspace'); END;
+      `);
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

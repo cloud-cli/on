@@ -27,6 +27,7 @@ describe("legacy system principal retirement migration", () => {
           "030_domain_event_delivery_invocation_link",
           "032_step_attempt_snapshots",
           "033_stream_event_bindings",
+          "034_stream_event_binding_integrity",
         ].map((version) => ({ version }));
       }
       if (sql.includes("sqlite_master")) {

@@ -33,6 +33,7 @@ describe("typed domain event migration", () => {
           "030_domain_event_delivery_invocation_link",
           "032_step_attempt_snapshots",
           "033_stream_event_bindings",
+          "034_stream_event_binding_integrity",
         ].map((version) => ({ version }));
       }
       return [];
@@ -75,6 +76,7 @@ describe("typed domain event migration", () => {
           "030_domain_event_delivery_invocation_link",
           "032_step_attempt_snapshots",
           "033_stream_event_bindings",
+          "034_stream_event_binding_integrity",
         ].map((version) => ({ version }));
       }
       return [];
@@ -113,6 +115,7 @@ describe("typed domain event migration", () => {
           "030_domain_event_delivery_invocation_link",
           "032_step_attempt_snapshots",
           "033_stream_event_bindings",
+          "034_stream_event_binding_integrity",
         ].map((version) => ({ version }));
       }
       if (sql === "PRAGMA table_info(domain_event_subscriptions)") {
@@ -151,6 +154,7 @@ describe("typed domain event migration", () => {
           "030_domain_event_delivery_invocation_link",
           "032_step_attempt_snapshots",
           "033_stream_event_bindings",
+          "034_stream_event_binding_integrity",
         ].map((version) => ({ version }));
       }
       if (sql.includes("GROUP BY team_id, workflow_id, workflow_revision, event_type")) {

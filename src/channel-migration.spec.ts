@@ -30,6 +30,7 @@ describe("durable channel migration", () => {
       "030_domain_event_delivery_invocation_link",
       "032_step_attempt_snapshots",
       "033_stream_event_bindings",
+      "034_stream_event_binding_integrity",
     ];
     database.all.mockImplementation(async (sql: string) =>
       sql.includes("SELECT version FROM schema_migrations") ? versions.map((version) => ({ version })) : [],

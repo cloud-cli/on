@@ -141,6 +141,7 @@ describe("v3 migrations against SQLite", () => {
     expect(versions.map(({ version }) => version)).toContain("031_stream_threads");
     expect(versions.map(({ version }) => version)).toContain("032_step_attempt_snapshots");
     expect(versions.map(({ version }) => version)).toContain("033_stream_event_bindings");
+    expect(versions.map(({ version }) => version)).toContain("034_stream_event_binding_integrity");
     expect(versions.map(({ version }) => version)).toContain("033_stream_event_bindings");
     expect(database.prepare("PRAGMA table_info(step_execution_attempt_starts)").all()).toEqual(
       expect.arrayContaining([
@@ -173,6 +174,11 @@ describe("v3 migrations against SQLite", () => {
         expect.objectContaining({ name: "event_id" }),
       ]),
     );
+    expect(
+      database
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'stream_event_binding_team_guard'")
+        .get(),
+    ).toBeTruthy();
     expect(database.prepare("PRAGMA table_info(workflow_run_admissions)").all()).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: "retry_after" })]),
     );
