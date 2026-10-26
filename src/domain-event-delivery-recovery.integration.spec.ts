@@ -46,7 +46,7 @@ describe("domain event delivery recovery in SQLite", () => {
       CREATE TABLE domain_event_deliveries (
         id TEXT PRIMARY KEY, team_id TEXT, event_id TEXT, subscription_id TEXT,
         status TEXT DEFAULT 'pending', attempt_count INTEGER DEFAULT 0, lease_until TEXT,
-        job_ids_json TEXT DEFAULT '[]', last_error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        job_ids_json TEXT DEFAULT '[]', invocation_id TEXT, last_error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(team_id, event_id, subscription_id)
       );
       INSERT INTO domain_events VALUES
@@ -76,16 +76,21 @@ describe("domain event delivery recovery in SQLite", () => {
           data: {},
         }),
       },
-      subscriptions: { getForTeam: async (team, id) => repository.getForTeam(team, id) },
+      subscriptions: {
+        getForTeam: async (team, id) => repository.getForTeam(team, id),
+      },
       deliveries: repository,
       resolveWorkflow: async (_team, workflowId) =>
         workflowId === "wf-missing" ? null : ({ name: workflowId, steps: [] } as unknown as ParsedWorkflow),
       matches: (_event, subscription) => subscription.id !== "filtered",
-      enqueue: async ({ workflowId }) => {
+      admitInvocation: async ({ workflowId, idempotencyKey }) => {
         if (workflowId === "wf-retry") {
-          throw new Error("temporary enqueue error");
+          throw new Error("temporary admission error");
         }
-        return workflowId === "wf-admit" ? 41 : 42;
+        return {
+          eventId: `run-event-${idempotencyKey}`,
+          invocationId: `invocation-${workflowId}`,
+        };
       },
     });
 
@@ -109,7 +114,8 @@ describe("domain event delivery recovery in SQLite", () => {
       (await reopened.listForEvent("team", eventId)).find((delivery) => delivery.subscriptionId === subscriptionId);
     expect(await outcome("admit-event", "admit")).toMatchObject({
       status: "admitted",
-      jobIds: ["41"],
+      jobIds: [],
+      invocationId: "invocation-wf-admit",
       lastError: null,
     });
     expect(await outcome("filtered-event", "filtered")).toMatchObject({
@@ -150,7 +156,7 @@ describe("domain event delivery recovery in SQLite", () => {
       CREATE TABLE domain_event_deliveries (
         id TEXT PRIMARY KEY, team_id TEXT, event_id TEXT, subscription_id TEXT,
         status TEXT DEFAULT 'pending', attempt_count INTEGER DEFAULT 0, lease_until TEXT,
-        job_ids_json TEXT DEFAULT '[]', last_error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        job_ids_json TEXT DEFAULT '[]', invocation_id TEXT, last_error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(team_id, event_id, subscription_id)
       );
       CREATE TABLE admissions (key TEXT PRIMARY KEY, job_id INTEGER);
@@ -164,7 +170,9 @@ describe("domain event delivery recovery in SQLite", () => {
     const [a, b] = initial.sort((left, right) => left.id.localeCompare(right.id));
     const claimA = await repository.claimNext("team");
     expect(claimA?.id).toBe(a.id);
-    await repository.finish("team", a.id, claimA!.attemptCount, { status: "filtered" });
+    await repository.finish("team", a.id, claimA!.attemptCount, {
+      status: "filtered",
+    });
     const claimB = await repository.claimNext("team", 1);
     expect(claimB?.id).toBe(b.id);
     testDb.database
@@ -177,7 +185,11 @@ describe("domain event delivery recovery in SQLite", () => {
     const restarted = new DomainEventDeliveryRepository();
     const reclaimed = await restarted.claimNext("team");
     expect(reclaimed).toMatchObject({ id: b.id, attemptCount: 2 });
-    expect(await restarted.finish("team", b.id, claimB!.attemptCount, { status: "failed" })).toBeNull();
+    expect(
+      await restarted.finish("team", b.id, claimB!.attemptCount, {
+        status: "failed",
+      }),
+    ).toBeNull();
 
     const event: DomainEvent = {
       id: "event",
@@ -195,19 +207,17 @@ describe("domain event delivery recovery in SQLite", () => {
     const workflow = { name: "wf", steps: [] } as unknown as ParsedWorkflow;
     const dispatcher = new DomainEventDispatcher({
       events: { getForTeam: async () => event },
-      subscriptions: { getForTeam: async (_team, id) => restarted.getForTeam("team", id) },
+      subscriptions: {
+        getForTeam: async (_team, id) => restarted.getForTeam("team", id),
+      },
       deliveries: restarted,
       resolveWorkflow: async () => workflow,
-      enqueue: async ({ idempotencyKey }) => {
-        testDb
-          .database!.prepare("INSERT OR IGNORE INTO admissions(key, job_id) VALUES (?, ?)")
-          .run(
-            idempotencyKey,
-            testDb.database!.prepare("SELECT COALESCE(MAX(job_id), 0) + 1 AS id FROM admissions").get()!.id,
-          );
-        return Number(
-          testDb.database!.prepare("SELECT job_id FROM admissions WHERE key = ?").get(idempotencyKey)!.job_id,
-        );
+      admitInvocation: async ({ idempotencyKey }) => {
+        testDb.database!.prepare("INSERT OR IGNORE INTO admissions(key, job_id) VALUES (?, ?)").run(idempotencyKey, 1);
+        return {
+          eventId: "run-event",
+          invocationId: `invocation-${testDb.database!.prepare("SELECT job_id FROM admissions WHERE key = ?").get(idempotencyKey)!.job_id}`,
+        };
       },
     });
     await dispatcher.process(reclaimed!);
@@ -223,7 +233,8 @@ describe("domain event delivery recovery in SQLite", () => {
     expect(final.find((delivery) => delivery.id === b.id)).toMatchObject({
       status: "admitted",
       attemptCount: 2,
-      jobIds: ["1"],
+      jobIds: [],
+      invocationId: "invocation-1",
     });
     expect(testDb.database.prepare("SELECT COUNT(*) AS n FROM admissions").get()).toEqual({ n: 1 });
   });

@@ -23,6 +23,7 @@ export type EventDelivery = {
   attemptCount: number;
   leaseUntil: string | null;
   jobIds: string[];
+  invocationId: string | null;
   lastError: string | null;
   createdAt: string;
   updatedAt: string;
@@ -184,6 +185,7 @@ export class DomainEventDeliveryRepository {
     result: {
       status: "admitted" | "filtered" | "failed" | "pending";
       jobIds?: string[];
+      invocationId?: string;
       error?: string | null;
     },
   ): Promise<EventDelivery | null> {
@@ -193,13 +195,14 @@ export class DomainEventDeliveryRepository {
     const leaseUntil = status === "pending" ? new Date(Date.now() + retryDelayMs).toISOString() : null;
     const row = await db.get(
       `UPDATE domain_event_deliveries
-       SET status = ?, lease_until = ?, job_ids_json = ?, last_error = ?, updated_at = CURRENT_TIMESTAMP
+        SET status = ?, lease_until = ?, job_ids_json = ?, invocation_id = ?, last_error = ?, updated_at = CURRENT_TIMESTAMP
        WHERE team_id = ? AND id = ? AND status = 'claimed' AND attempt_count = ?
        RETURNING *`,
       [
         status,
         leaseUntil,
         JSON.stringify(result.jobIds ?? []),
+        result.invocationId ?? null,
         result.error ?? null,
         teamId,
         deliveryId,
@@ -241,6 +244,7 @@ export class DomainEventDeliveryRepository {
       attemptCount: Number(row.attempt_count),
       leaseUntil: row.lease_until ?? null,
       jobIds: JSON.parse(row.job_ids_json),
+      invocationId: row.invocation_id ?? null,
       lastError: row.last_error ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

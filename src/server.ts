@@ -8,7 +8,8 @@ import { EventBroker } from "./events.js";
 import { DomainEventDeliveryRepository } from "./domain-event-delivery-repository.js";
 import { DomainEventRepository } from "./domain-event-repository.js";
 import { WorkflowRunAdmissionRepository } from "./workflow-run-admission-repository.js";
-import { DomainEventDispatcher } from "./domain-event-dispatcher.js";
+import { DomainEventDispatcher, type DomainEventInvocationRequest } from "./domain-event-dispatcher.js";
+import { planWorkflowInvocation } from "./workflow-invocation-admission.js";
 import { ChannelRepository } from "./channel-repository.js";
 import { GitHubPreprocessor } from "./preprocessors/github.js";
 import { IncomingEventRepository } from "./incoming-event-repository.js";
@@ -272,25 +273,7 @@ export class WebhookServer {
         );
         return row ? JSON.parse(row.normalized_json) : null;
       },
-      enqueue: async (input) => {
-        const jobId = await this.queue.enqueueDispatch(
-          input.workflowId,
-          input.revision,
-          input.payload,
-          input.requiredTags,
-          input.teamId,
-          null,
-          input.idempotencyKey,
-        );
-        if (jobId) {
-          this.events.publish("jobs.available", {
-            tags: input.requiredTags,
-            teamId: input.teamId,
-          });
-          return jobId;
-        }
-        return null;
-      },
+      admitInvocation: (input) => this.admitDomainEventInvocation(input),
     });
     this.secrets = options.secrets;
     this.push = new PushRepository(options.config);
@@ -1373,7 +1356,9 @@ export class WebhookServer {
           typeof body.stepId !== "string" ||
           body.stepId.length > 200 ||
           !Number.isSafeInteger(body.attempt) ||
-          body.attempt < 1
+          body.attempt < 1 ||
+          typeof body.attemptId !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.attemptId)
         ) {
           res
             .writeHead(400, { "Content-Type": "application/json" })
@@ -2890,17 +2875,20 @@ sessionStorage.removeItem('runner-pending-team-invite');
       workflowDefinition: NonNullable<typeof definition>,
       workflowInputs: typeof acceptedInputs,
     ) => {
-      const variants = expandMatrix(workflowDefinition);
-      const planned: Array<{
-        index: number;
-        variant: (typeof variants)[number];
-        requiredTags: string[];
-      }> = [];
-      for (const [index, variant] of variants.entries()) {
-        const requiredTags = await resolveMatrixTags(variant.tags, variant.matrixContext, workflowInputs);
-        planned.push({ index, variant, requiredTags });
-      }
-      return planned;
+      const variants = await planWorkflowInvocation({
+        invocationId: previous?.id || eventKey,
+        teamId,
+        workflowId,
+        revision,
+        workflow: workflowDefinition,
+        inputs: workflowInputs,
+        idempotencyKeyPrefix: "workflow-run",
+      });
+      return variants.map((variant) => ({
+        index: variant.index,
+        variant: { matrixContext: variant.matrix },
+        requiredTags: variant.requiredTags,
+      }));
     };
     let plannedVariants;
     try {
@@ -2997,6 +2985,85 @@ sessionStorage.removeItem('runner-pending-team-invite');
         accepted: true,
       }),
     );
+  }
+
+  private async admitDomainEventInvocation(request: DomainEventInvocationRequest) {
+    const idempotencyKey = request.idempotencyKey;
+    const source = `domain-event-delivery/${request.context.deliveryId}`;
+    const canonicalInputs = canonicalJson(request.inputs);
+    if (!canonicalInputs) {
+      throw new Error("Workflow invocation inputs are not JSON serializable");
+    }
+    const matchesRequest = (
+      event: {
+        id: string;
+        type: string;
+        source: string;
+        data: { workflowId: string; revision: number; inputsCiphertext: string };
+      } | null,
+    ) => {
+      if (
+        !event ||
+        event.type !== "workflow.run.requested" ||
+        event.source !== source ||
+        event.data.workflowId !== request.workflowId ||
+        event.data.revision !== request.revision
+      ) {
+        return false;
+      }
+      try {
+        const persistedInputs = JSON.parse(this.secretRepository.decryptValue(event.data.inputsCiphertext));
+        return canonicalJson(persistedInputs) === canonicalInputs;
+      } catch {
+        return false;
+      }
+    };
+    const existing = await this.domainEventRepository.getByIdempotencyKey<{
+      workflowId: string;
+      revision: number;
+      inputsCiphertext: string;
+    }>(request.teamId, idempotencyKey);
+    if (existing) {
+      if (!matchesRequest(existing)) {
+        throw new Error("Workflow invocation idempotency key conflicts");
+      }
+      return { eventId: existing.id, invocationId: existing.id };
+    }
+    try {
+      const event = await this.domainEventRepository.publish(request.teamId, {
+        type: "workflow.run.requested",
+        schemaVersion: 1,
+        source,
+        occurredAt: new Date().toISOString(),
+        correlationId: request.context.correlationId,
+        causationId: request.context.eventId,
+        idempotencyKey,
+        data: {
+          workflowId: request.workflowId,
+          revision: request.revision,
+          inputsCiphertext: this.secretRepository.encryptValue(JSON.stringify(request.inputs)),
+          sourceEventId: request.source.eventId,
+          deliveryId: request.context.deliveryId,
+        },
+      });
+      if (!matchesRequest(event)) {
+        throw new Error("Workflow invocation idempotency key conflicts");
+      }
+      return { eventId: event.id, invocationId: event.id };
+    } catch (error) {
+      const raced = await this.domainEventRepository.getByIdempotencyKey<{
+        workflowId: string;
+        revision: number;
+        inputsCiphertext: string;
+      }>(request.teamId, idempotencyKey);
+      if (!raced) {
+        throw error;
+      }
+      if (!matchesRequest(raced)) {
+        throw new Error("Workflow invocation idempotency key conflicts");
+      }
+      return { eventId: raced.id, invocationId: raced.id };
+    }
   }
 
   /**
@@ -5393,7 +5460,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
           }
           if (
             event.type !== "workflow.run.requested" ||
-            event.source !== "api/workflows/run" ||
+            (event.source !== "api/workflows/run" && !event.source.startsWith("domain-event-delivery/")) ||
             typeof workflowId !== "string" ||
             !Number.isInteger(revision) ||
             typeof inputsCiphertext !== "string"
@@ -5465,28 +5532,17 @@ sessionStorage.removeItem('runner-pending-team-invite');
             );
             continue;
           }
-          const planned: Array<{
-            eventId: string;
-            teamId: string;
-            workflowId: string;
-            revision: number;
-            index: number;
-            matrix: Record<string, any>;
-            tags: string[];
-          }> = [];
+          let planned: Awaited<ReturnType<typeof planWorkflowInvocation>>;
           try {
-            for (const [matrixIndex, variant] of expandMatrix(definition).entries()) {
-              const requiredTags = await resolveMatrixTags(variant.tags, variant.matrixContext, inputs);
-              planned.push({
-                eventId: event.id,
-                teamId: event.teamId,
-                workflowId,
-                revision,
-                index: matrixIndex,
-                matrix: variant.matrixContext,
-                tags: requiredTags,
-              });
-            }
+            planned = await planWorkflowInvocation({
+              invocationId: event.id,
+              teamId: event.teamId,
+              workflowId,
+              revision,
+              workflow: definition,
+              inputs: inputs as Record<string, unknown>,
+              idempotencyKeyPrefix: "workflow-run",
+            });
           } catch {
             try {
               await this.workflowRunAdmissions.persistTerminal(
@@ -5508,7 +5564,17 @@ sessionStorage.removeItem('runner-pending-team-invite');
             continue;
           }
           if (planned.length) {
-            await this.workflowRunAdmissions.persistPlan(planned);
+            await this.workflowRunAdmissions.persistPlan(
+              planned.map((variant) => ({
+                eventId: event.id,
+                teamId: variant.teamId,
+                workflowId: variant.workflowId,
+                revision: variant.revision,
+                index: variant.index,
+                matrix: variant.matrix,
+                tags: variant.requiredTags,
+              })),
+            );
           } else {
             await this.workflowRunAdmissions.persistTerminal(
               {
@@ -5543,7 +5609,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
             revision: number;
             inputsCiphertext: string;
           }>(claim.teamId, claim.eventId);
-          if (!event || event.type !== "workflow.run.requested" || event.source !== "api/workflows/run") {
+          if (
+            !event ||
+            event.type !== "workflow.run.requested" ||
+            (event.source !== "api/workflows/run" && !event.source.startsWith("domain-event-delivery/"))
+          ) {
             await this.workflowRunAdmissions.finish(claim, "failed", undefined, "request_unavailable");
             continue;
           }

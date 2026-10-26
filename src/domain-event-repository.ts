@@ -38,6 +38,7 @@ export type WorkflowRunRequest<T = unknown> = DomainEvent<T> & {
 
 export type DomainEventLinks = {
   messageIds: string[];
+  invocationIds: string[];
   runIds: string[];
   causationEventId: string | null;
 };
@@ -106,10 +107,19 @@ export class DomainEventRepository {
           [teamId, channelId, event.id],
         );
         const runs = await db.all(
-          `SELECT DISTINCT j.value AS id FROM domain_event_deliveries d,
-           json_each(CASE WHEN json_valid(d.job_ids_json) THEN d.job_ids_json ELSE '[]' END) j
-         WHERE d.team_id = ? AND d.event_id = ? AND d.status = 'admitted'
-         ORDER BY j.value`,
+          `SELECT DISTINCT CAST(COALESCE(j.value, a.job_id) AS TEXT) AS id
+           FROM domain_event_deliveries d
+           LEFT JOIN workflow_run_admissions a ON a.event_id = d.invocation_id AND a.team_id = d.team_id
+           LEFT JOIN json_each(CASE WHEN json_valid(d.job_ids_json) THEN d.job_ids_json ELSE '[]' END) j
+          WHERE d.team_id = ? AND d.event_id = ? AND d.status = 'admitted'
+            AND (j.value IS NOT NULL OR a.job_id IS NOT NULL)
+          ORDER BY id`,
+          [teamId, event.id],
+        );
+        const invocations = await db.all(
+          `SELECT DISTINCT invocation_id AS id FROM domain_event_deliveries
+            WHERE team_id = ? AND event_id = ? AND status = 'admitted' AND invocation_id IS NOT NULL
+            ORDER BY invocation_id`,
           [teamId, event.id],
         );
         const causationEventId =
@@ -118,6 +128,7 @@ export class DomainEventRepository {
           ...event,
           links: {
             messageIds: messages.map((message: any) => String(message.id)),
+            invocationIds: invocations.map((invocation: any) => String(invocation.id)),
             runIds: runs.map((run: any) => String(run.id)),
             causationEventId,
           },
@@ -230,7 +241,8 @@ export class DomainEventRepository {
     cursorSequence?: number,
   ): Promise<WorkflowRunRequest<T>[]> {
     const boundedLimit = Math.max(1, Math.min(500, Math.floor(limit)));
-    const whereBase = `FROM domain_events WHERE type = 'workflow.run.requested' AND source = 'api/workflows/run'`;
+    const whereBase = `FROM domain_events WHERE type = 'workflow.run.requested'
+      AND (source = 'api/workflows/run' OR source LIKE 'domain-event-delivery/%')`;
     if (cursorSequence != null) {
       const rows = await db.all(
         `SELECT sequence, id, team_id, type, schema_version, source, occurred_at, recorded_at,

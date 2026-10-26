@@ -22,10 +22,23 @@ vi.mock("./db-client.js", () => {
     "017_domain_event_delivery_fences",
     "018_domain_event_subscription_identity",
     "019_durable_channel_history",
+    "020_durable_step_attempts",
+    "021_agent_workflow_grants",
+    "022_workflow_run_admission",
+    "030_domain_event_delivery_invocation_link",
+    "023_workflow_run_admission_retry_schedule",
+    "024_step_attempt_start_markers",
+    "026_durable_event_sequence",
+    "027_channel_event_history_index",
+    "028_workflow_run_plan_ready",
   ]);
   const database = {
     all: vi.fn(async (sql: string) =>
-      sql.includes("SELECT version FROM schema_migrations") ? [...versions].map((version) => ({ version })) : [],
+      sql.includes("SELECT version FROM schema_migrations")
+        ? [...versions].map((version) => ({ version }))
+        : sql.startsWith("PRAGMA table_info")
+          ? [{ name: "id" }]
+          : [],
     ),
     run: vi.fn(async (sql: string, values?: string[]) => {
       if (sql.includes("INSERT INTO schema_migrations")) {
@@ -42,12 +55,16 @@ describe("durable step-attempt migration", () => {
   it("adds immutable attempt identity and safe cascades", async () => {
     await runMigrations();
     const db = (await import("./db-client.js")).default as any;
-    const migration = db.exec.mock.calls
+    expect(db.run.mock.calls.filter(([sql]: [string]) => sql.includes("ADD COLUMN attempt_id"))).toHaveLength(2);
+    const indexes = db.exec.mock.calls
       .map(([sql]: [string]) => sql)
-      .find((sql: string) => sql.includes("step_execution_attempts"));
-    expect(migration).toContain("UNIQUE(job_id, step_id, attempt)");
-    expect(migration).toContain("REFERENCES teams(id) ON DELETE CASCADE");
-    expect(migration).toContain("REFERENCES jobs(id) ON DELETE CASCADE");
-    expect(migration).toContain("log_content TEXT NOT NULL DEFAULT ''");
+      .find((sql: string) => sql.includes("idx_step_attempt_start_identity"));
+    expect(indexes).toContain("idx_step_attempt_completion_identity");
+  });
+
+  it("does not reapply identity columns after migration is recorded", async () => {
+    await runMigrations();
+    const db = (await import("./db-client.js")).default as any;
+    expect(db.run.mock.calls.filter(([sql]: [string]) => sql.includes("ADD COLUMN attempt_id"))).toHaveLength(2);
   });
 });

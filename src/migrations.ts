@@ -847,6 +847,38 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: "029_step_attempt_identity",
+    async apply() {
+      for (const table of ["step_execution_attempt_starts", "step_execution_attempts"]) {
+        const columns = await db.all(`PRAGMA table_info(${table})`);
+        if (!columns.length) {
+          throw new Error(`Cannot add step attempt identity: ${table} is missing`);
+        }
+        if (!columns.some((column: any) => column.name === "attempt_id")) {
+          await db.run(`ALTER TABLE ${table} ADD COLUMN attempt_id TEXT`);
+        }
+      }
+      await db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_step_attempt_start_identity
+          ON step_execution_attempt_starts(attempt_id) WHERE attempt_id IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_step_attempt_completion_identity
+          ON step_execution_attempts(attempt_id) WHERE attempt_id IS NOT NULL;
+      `);
+    },
+  },
+  {
+    version: "030_domain_event_delivery_invocation_link",
+    async apply() {
+      const columns = await db.all("PRAGMA table_info(domain_event_deliveries)");
+      if (!columns.some((column: any) => column.name === "invocation_id")) {
+        await db.exec("ALTER TABLE domain_event_deliveries ADD COLUMN invocation_id TEXT");
+      }
+      await db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_domain_event_deliveries_invocation ON domain_event_deliveries(team_id, invocation_id)",
+      );
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

@@ -1,5 +1,5 @@
 import FS from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import Path from "node:path";
 import { resolveDriver } from "./drivers/index.js";
 import { QueueManager } from "./queue.js";
@@ -630,6 +630,7 @@ async function processSteps(
       for (let attempt = 1; attempt <= retries + 1; attempt++) {
         const attemptStartedAt = new Date().toISOString();
         const attemptStartedMs = Date.now();
+        const attemptId = randomUUID();
         attemptLogContent = "";
         if (!queue.saveStepAttemptStart) {
           throw new Error("Durable step attempt start persistence is unavailable");
@@ -639,6 +640,7 @@ async function processSteps(
           stepId: step.id!,
           attempt,
           startedAt: attemptStartedAt,
+          attemptId,
         });
         stepResult = await executeSingleStep({
           workerId,
@@ -661,6 +663,7 @@ async function processSteps(
           jobId: job.id,
           stepId: step.id!,
           attempt,
+          attemptId,
           status: stepResult.report?.status || (stepResult.skipped ? "skipped" : "failed"),
           startedAt: attemptStartedAt,
           completedAt: attemptCompletedAt,
@@ -915,7 +918,11 @@ async function executeSingleStep(params: {
         outputs[name] = await SafeExpressionEvaluator.evaluateExpression(runtimePath, nestedContext);
       }
       validateRecipeInputs(fn.outputs, outputs, "outputs");
-      executionContext.steps[step.id!] = { status: "success", exitCode: 0, outputs };
+      executionContext.steps[step.id!] = {
+        status: "success",
+        exitCode: 0,
+        outputs,
+      };
       return {
         failed: false,
         cancelled: false,

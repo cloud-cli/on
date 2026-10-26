@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const database = vi.hoisted(() => ({ all: vi.fn(), get: vi.fn(), run: vi.fn() }));
+const database = vi.hoisted(() => ({
+  all: vi.fn(),
+  get: vi.fn(),
+  run: vi.fn(),
+}));
 vi.mock("./db-client.js", () => ({ default: database }));
 
 import { DomainEventDeliveryRepository } from "./domain-event-delivery-repository.js";
@@ -103,18 +107,28 @@ describe("DomainEventDeliveryRepository", () => {
       attempt_count: 1,
       lease_until: null,
       job_ids_json: '["job"]',
+      invocation_id: "invocation-1",
       last_error: "oops",
       created_at: "now",
       updated_at: "now",
     });
     await expect(
-      repository.finish("team-a", "d", 1, { status, jobIds: ["job"], error: "oops" }),
+      repository.finish("team-a", "d", 1, {
+        status,
+        jobIds: ["job"],
+        invocationId: status === "admitted" ? "invocation-1" : undefined,
+        error: "oops",
+      }),
     ).resolves.toMatchObject({
       status,
       jobIds: ["job"],
     });
+    if (status === "admitted") {
+      expect(database.get.mock.calls[0][0]).toContain("invocation_id = ?");
+      expect(database.get.mock.calls[0][1][3]).toBe("invocation-1");
+    }
     expect(database.get.mock.calls[0][0]).toContain("AND attempt_count = ?");
-    expect(database.get.mock.calls[0][1].slice(4)).toEqual(["team-a", "d", 1]);
+    expect(database.get.mock.calls[0][1].slice(5)).toEqual(["team-a", "d", 1]);
   });
 
   it("does not let a stale claim overwrite the result of a newer claim", async () => {

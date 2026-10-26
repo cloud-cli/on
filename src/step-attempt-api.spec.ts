@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { WebhookServer } from "./server.js";
 
-const response = () => ({ writeHead: vi.fn().mockReturnThis(), end: vi.fn(), headersSent: false }) as any;
+const response = () =>
+  ({
+    writeHead: vi.fn().mockReturnThis(),
+    end: vi.fn(),
+    headersSent: false,
+  }) as any;
 
 function makeServer(allowed = true, job: any = { id: 7 }) {
   return {
@@ -20,8 +25,19 @@ function makeServer(allowed = true, job: any = { id: 7 }) {
         teamId === "team-a" && jobId === "7" ? job : null,
       ),
       getStepAttemptsForTeam: vi.fn(async () => [
-        { step_id: "build", attempt: 1, status: "failed", log_content: "redacted" },
-        { step_id: "test", attempt: 1, status: "interrupted_or_unknown", lifecycle_status: "started", log_content: "" },
+        {
+          step_id: "build",
+          attempt: 1,
+          status: "failed",
+          log_content: "redacted",
+        },
+        {
+          step_id: "test",
+          attempt: 1,
+          status: "interrupted_or_unknown",
+          lifecycle_status: "started",
+          log_content: "",
+        },
       ]),
     },
     currentSecrets: vi.fn(async () => ({})),
@@ -32,7 +48,11 @@ function makeServer(allowed = true, job: any = { id: 7 }) {
 async function request(server: any, res = response()) {
   await WebhookServer.prototype.handleRequest.call(
     server,
-    { method: "GET", url: "/api/v1/jobs/7/step-attempts", headers: { host: "app.test" } } as any,
+    {
+      method: "GET",
+      url: "/api/v1/jobs/7/step-attempts",
+      headers: { host: "app.test" },
+    } as any,
     res,
   );
   return res;

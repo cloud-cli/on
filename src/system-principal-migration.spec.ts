@@ -23,6 +23,8 @@ describe("legacy system principal retirement migration", () => {
           "009_workflow_definition_ids",
           "010_unified_principals_and_permissions",
           "011_workspace_deletion_fence",
+          "029_step_attempt_identity",
+          "030_domain_event_delivery_invocation_link",
         ].map((version) => ({ version }));
       }
       if (sql.includes("sqlite_master")) {

@@ -80,17 +80,29 @@ describe("durable step attempt visibility", () => {
   it("writes a durable start marker before step execution", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ changes: 1 }) });
     vi.stubGlobal("fetch", fetchMock);
-    await new QueueManager("test").saveStepAttemptStart({ jobId: 42, stepId: "build", attempt: 1, startedAt: "now" });
+    await new QueueManager("test").saveStepAttemptStart({
+      jobId: 42,
+      stepId: "build",
+      attempt: 1,
+      startedAt: "now",
+      attemptId: "id-1",
+    });
     const request = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(request.s).toContain("ON CONFLICT(job_id, step_id, attempt) DO NOTHING");
-    expect(request.d).toEqual(["build", 1, "now", 42]);
+    expect(request.d).toEqual(["build", 1, "now", "id-1", 42]);
   });
 
   it("fails closed when an attempt start cannot be recorded", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ changes: 0 }) });
     vi.stubGlobal("fetch", fetchMock);
     await expect(
-      new QueueManager("test").saveStepAttemptStart({ jobId: 42, stepId: "build", attempt: 1, startedAt: "now" }),
+      new QueueManager("test").saveStepAttemptStart({
+        jobId: 42,
+        stepId: "build",
+        attempt: 1,
+        startedAt: "now",
+        attemptId: "id-1",
+      }),
     ).rejects.toThrow("refusing to execute step");
   });
 });
@@ -108,13 +120,17 @@ describe("runner step attempt writes", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ changes: 0 }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => (expected ? { matched: 1 } : null) });
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => (expected ? { matched: 1 } : null),
+      });
     vi.stubGlobal("fetch", fetchMock);
     const manager = new QueueManager("test");
     const result = await manager.saveStepAttemptStartForRunner(7, "runner", "lease", "hash", {
       stepId: "build",
       attempt: 1,
       startedAt: "2026-01-01T00:00:00Z",
+      attemptId: "id-1",
     });
     expect(result).toBe(expected);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).s).toContain("lease_fenced = 0");
@@ -140,6 +156,7 @@ describe("runner step attempt writes", () => {
       durationMs: 12,
       exitCode: 0,
       logContent: "ok",
+      attemptId: "id-1",
     });
     expect(result).toBe(true);
     const duplicateCheck = JSON.parse(fetchMock.mock.calls[1][1].body);

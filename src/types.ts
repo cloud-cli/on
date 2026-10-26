@@ -336,11 +336,13 @@ export interface WorkerExecutionQueue {
     stepId: string;
     attempt: number;
     startedAt: string;
+    attemptId: string;
   }): Promise<void>;
   saveStepAttempt?(attempt: {
     jobId: string | number;
     stepId: string;
     attempt: number;
+    attemptId: string;
     status: string;
     startedAt: string;
     completedAt: string;

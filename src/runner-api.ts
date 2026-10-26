@@ -128,7 +128,13 @@ export class RunnerApi {
 
   stepAttemptStart(
     lease: RunnerLease,
-    start: { jobId: string | number; stepId: string; attempt: number; startedAt: string },
+    start: {
+      jobId: string | number;
+      stepId: string;
+      attempt: number;
+      startedAt: string;
+      attemptId: string;
+    },
   ): Promise<unknown> {
     return this.request(
       `/api/v1/runner/leases/${encodeURIComponent(lease.leaseId)}/attempt-start`,

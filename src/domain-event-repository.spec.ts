@@ -92,6 +92,7 @@ describe("DomainEventRepository", () => {
         },
       ]);
     }
+    expect(database.all.mock.calls[0][0]).toContain("source LIKE 'domain-event-delivery/%'");
     expect(database.all.mock.calls[2][0]).toContain("sequence > ? ORDER BY sequence");
     expect(database.all.mock.calls[2][1]).toEqual([2, 10]);
   });
@@ -183,7 +184,7 @@ describe("DomainEventRepository", () => {
     const next = await repository.listChannelEvents("team-a", "chan-1", 2, first.nextCursor!);
     expect(next.events.map((event) => event.id)).toEqual(["event-3"]);
     expect(next.nextCursor).toBeNull();
-    expect(database.all.mock.calls[5][1]).toEqual(["team-a", "chan-1", 4, 3]);
+    expect(database.all.mock.calls[7][1]).toEqual(["team-a", "chan-1", 4, 3]);
   });
 
   it("adds only team and channel scoped message, admitted-run, and resolvable cause links", async () => {
@@ -196,7 +197,8 @@ describe("DomainEventRepository", () => {
     database.all
       .mockResolvedValueOnce([event])
       .mockResolvedValueOnce([{ id: "message-a" }])
-      .mockResolvedValueOnce([{ id: "job-7" }]);
+      .mockResolvedValueOnce([{ id: "job-7" }])
+      .mockResolvedValueOnce([{ id: "invoke-7" }]);
     database.get.mockResolvedValueOnce({
       ...row,
       id: "cause-1",
@@ -205,12 +207,15 @@ describe("DomainEventRepository", () => {
     const page = await repository.listChannelEvents("team-a", "chan-1");
     expect(page.events[0].links).toEqual({
       messageIds: ["message-a"],
+      invocationIds: ["invoke-7"],
       runIds: ["job-7"],
       causationEventId: "cause-1",
     });
     expect(database.all.mock.calls[1][1]).toEqual(["team-a", "chan-1", "event-1"]);
     expect(database.all.mock.calls[2][1]).toEqual(["team-a", "event-1"]);
     expect(database.all.mock.calls[2][0]).toContain("d.status = 'admitted'");
+    expect(database.all.mock.calls[2][0]).toContain("workflow_run_admissions");
+    expect(database.all.mock.calls[3][1]).toEqual(["team-a", "event-1"]);
     expect(database.get.mock.calls[0][1]).toEqual(["team-a", "cause-1"]);
   });
 

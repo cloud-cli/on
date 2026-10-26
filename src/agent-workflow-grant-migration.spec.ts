@@ -23,6 +23,8 @@ vi.mock("./db-client.js", () => {
     "018_domain_event_subscription_identity",
     "019_durable_channel_history",
     "020_durable_step_attempts",
+    "029_step_attempt_identity",
+    "030_domain_event_delivery_invocation_link",
   ]);
   const database = {
     all: vi.fn(async (sql: string) =>

@@ -1,7 +1,26 @@
 import type { DomainEvent } from "./domain-event-repository.js";
 import type { EventDelivery, EventSubscription } from "./domain-event-delivery-repository.js";
-import { expandMatrix, resolveMatrixTags } from "./parser/matrix-expander.js";
 import type { ParsedWorkflow } from "./types.js";
+
+export type DomainEventInvocationRequest = {
+  teamId: string;
+  workflowId: string;
+  revision: number;
+  inputs: Record<string, unknown>;
+  context: {
+    eventId: string;
+    deliveryId: string;
+    correlationId: string | null;
+    causationId: string | null;
+  };
+  source: {
+    eventId: string;
+    deliveryId: string;
+    correlationId: string | null;
+    causationId: string | null;
+  };
+  idempotencyKey: string;
+};
 
 export type DomainEventDispatcherDependencies = {
   events: {
@@ -15,6 +34,7 @@ export type DomainEventDispatcherDependencies = {
       result: {
         status: "admitted" | "filtered" | "failed" | "pending";
         jobIds?: string[];
+        invocationId?: string;
         error?: string | null;
       },
     ): Promise<unknown>;
@@ -23,18 +43,7 @@ export type DomainEventDispatcherDependencies = {
     getForTeam(teamId: string, subscriptionId: string): Promise<EventSubscription | null>;
   };
   resolveWorkflow(teamId: string, workflowId: string, revision: number): Promise<ParsedWorkflow | null>;
-  enqueue(input: {
-    teamId: string;
-    workflowId: string;
-    revision: number;
-    payload: {
-      inputs: Record<string, unknown>;
-      matrix?: Record<string, string | number | boolean>;
-    };
-    requiredTags: string[];
-    parentId: string;
-    idempotencyKey: string;
-  }): Promise<number | null>;
+  admitInvocation(input: DomainEventInvocationRequest): Promise<{ eventId: string; invocationId: string }>;
   /** Optional event filter; false marks this delivery as intentionally filtered. */
   matches?(event: DomainEvent, subscription: EventSubscription, workflow: ParsedWorkflow): Promise<boolean> | boolean;
 };
@@ -95,25 +104,26 @@ export class DomainEventDispatcher {
           idempotencyKey: event.idempotencyKey,
         },
       };
-      const variants = expandMatrix(workflow);
-      const jobIds: number[] = [];
-      for (const [index, variant] of variants.entries()) {
-        const requiredTags = await resolveMatrixTags(variant.tags, variant.matrixContext, inputs);
-        const id = await this.dependencies.enqueue({
-          teamId: delivery.teamId,
-          workflowId: subscription.workflowId,
-          revision: subscription.workflowRevision,
-          payload: { inputs, matrix: variant.matrixContext },
-          requiredTags,
-          parentId: delivery.id,
-          idempotencyKey: `domain-event:${delivery.id}:${index}`,
-        });
-        if (id === null) {
-          throw new Error("Pinned workflow invocation could not be enqueued");
-        }
-        jobIds.push(id);
-      }
-      await finish({ status: "admitted", jobIds: jobIds.map(String) });
+      const result = await this.dependencies.admitInvocation({
+        teamId: delivery.teamId,
+        workflowId: subscription.workflowId,
+        revision: subscription.workflowRevision,
+        inputs,
+        context: {
+          eventId: event.id,
+          deliveryId: delivery.id,
+          correlationId: event.correlationId,
+          causationId: event.causationId,
+        },
+        source: {
+          eventId: event.id,
+          deliveryId: delivery.id,
+          correlationId: event.correlationId,
+          causationId: event.causationId,
+        },
+        idempotencyKey: `domain-event-delivery:${delivery.id}`,
+      });
+      await finish({ status: "admitted", invocationId: result.invocationId });
     } catch {
       await finish({
         status: "pending",

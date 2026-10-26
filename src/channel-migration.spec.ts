@@ -26,6 +26,8 @@ describe("durable channel migration", () => {
       "016_domain_event_deliveries",
       "017_domain_event_delivery_fences",
       "018_domain_event_subscription_identity",
+      "029_step_attempt_identity",
+      "030_domain_event_delivery_invocation_link",
     ];
     database.all.mockImplementation(async (sql: string) =>
       sql.includes("SELECT version FROM schema_migrations") ? versions.map((version) => ({ version })) : [],

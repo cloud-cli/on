@@ -29,6 +29,8 @@ describe("typed domain event migration", () => {
           "012_retire_flow_system_principals",
           "013_oidc_subject_workspace_invitations",
           "014_incoming_event_inbox",
+          "029_step_attempt_identity",
+          "030_domain_event_delivery_invocation_link",
         ].map((version) => ({ version }));
       }
       return [];
@@ -67,6 +69,8 @@ describe("typed domain event migration", () => {
           "014_incoming_event_inbox",
           "015_typed_domain_events",
           "016_domain_event_deliveries",
+          "029_step_attempt_identity",
+          "030_domain_event_delivery_invocation_link",
         ].map((version) => ({ version }));
       }
       return [];
@@ -101,6 +105,8 @@ describe("typed domain event migration", () => {
           "014_incoming_event_inbox",
           "015_typed_domain_events",
           "016_domain_event_deliveries",
+          "029_step_attempt_identity",
+          "030_domain_event_delivery_invocation_link",
         ].map((version) => ({ version }));
       }
       if (sql === "PRAGMA table_info(domain_event_subscriptions)") {
@@ -135,6 +141,8 @@ describe("typed domain event migration", () => {
           "015_typed_domain_events",
           "016_domain_event_deliveries",
           "017_domain_event_delivery_fences",
+          "029_step_attempt_identity",
+          "030_domain_event_delivery_invocation_link",
         ].map((version) => ({ version }));
       }
       if (sql.includes("GROUP BY team_id, workflow_id, workflow_revision, event_type")) {

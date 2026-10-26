@@ -647,13 +647,13 @@ export class QueueManager {
   async getStepAttemptsForTeam(teamId: string, jobId: string | number): Promise<any[]> {
     return db.all(
       `SELECT c.id, c.job_id, c.step_id, c.attempt, c.status, c.started_at, c.completed_at,
-              c.duration_ms, c.exit_code, c.error, c.log_content, 'completed' AS lifecycle_status
+              c.duration_ms, c.exit_code, c.error, c.log_content, c.attempt_id, 'completed' AS lifecycle_status
          FROM step_execution_attempts c
         WHERE c.team_id = ? AND c.job_id = ?
         UNION ALL
        SELECT s.id, s.job_id, s.step_id, s.attempt, 'interrupted_or_unknown' AS status,
               s.started_at, NULL AS completed_at, NULL AS duration_ms, NULL AS exit_code,
-              NULL AS error, '' AS log_content, 'started' AS lifecycle_status
+               NULL AS error, '' AS log_content, s.attempt_id, 'started' AS lifecycle_status
          FROM step_execution_attempt_starts s
         WHERE s.team_id = ? AND s.job_id = ?
           AND NOT EXISTS (
@@ -672,13 +672,14 @@ export class QueueManager {
     stepId: string;
     attempt: number;
     startedAt: string;
+    attemptId: string;
   }): Promise<void> {
     const result = await db.run(
-      `INSERT INTO step_execution_attempt_starts (team_id, job_id, step_id, attempt, started_at)
-       SELECT team_id, id, ?, ?, ? FROM jobs
-        WHERE id = ? AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)
+      `INSERT INTO step_execution_attempt_starts (team_id, job_id, step_id, attempt, started_at, attempt_id)
+       SELECT team_id, id, ?, ?, ?, ? FROM jobs
+         WHERE id = ? AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)
        ON CONFLICT(job_id, step_id, attempt) DO NOTHING`,
-      [start.stepId, start.attempt, start.startedAt, start.jobId],
+      [start.stepId, start.attempt, start.startedAt, start.attemptId, start.jobId],
     );
     if (Number(result?.changes || 0) !== 1) {
       throw new Error("Step attempt start already exists or could not be persisted; refusing to execute step");
@@ -690,16 +691,21 @@ export class QueueManager {
     runnerId: string,
     leaseId: string,
     leaseTokenHash: string,
-    start: { stepId: string; attempt: number; startedAt: string },
+    start: {
+      stepId: string;
+      attempt: number;
+      startedAt: string;
+      attemptId: string;
+    },
   ): Promise<boolean> {
     const result = await db.run(
-      `INSERT INTO step_execution_attempt_starts (team_id, job_id, step_id, attempt, started_at)
-       SELECT team_id, id, ?, ?, ? FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
+      `INSERT INTO step_execution_attempt_starts (team_id, job_id, step_id, attempt, started_at, attempt_id)
+       SELECT team_id, id, ?, ?, ?, ? FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
          AND status = 'running' AND lease_fenced = 0 AND lease_completed = 0
          AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
          AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)
        ON CONFLICT(job_id, step_id, attempt) DO NOTHING`,
-      [start.stepId, start.attempt, start.startedAt, jobId, runnerId, leaseId, leaseTokenHash],
+      [start.stepId, start.attempt, start.startedAt, start.attemptId, jobId, runnerId, leaseId, leaseTokenHash],
     );
     if (Number(result?.changes || 0) === 1) {
       return true;
@@ -707,12 +713,12 @@ export class QueueManager {
     const existing = await db.get(
       `SELECT 1 AS matched FROM step_execution_attempt_starts s JOIN jobs
           ON jobs.id = s.job_id AND jobs.team_id = s.team_id
-        WHERE s.job_id = ? AND s.step_id = ? AND s.attempt = ? AND s.started_at = ?
+        WHERE s.job_id = ? AND s.step_id = ? AND s.attempt = ? AND s.started_at = ? AND s.attempt_id = ?
           AND jobs.worker_id = ? AND jobs.lease_id = ? AND jobs.lease_token_hash = ?
           AND jobs.status = 'running' AND jobs.lease_fenced = 0 AND jobs.lease_completed = 0
           AND julianday(jobs.lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
           AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)`,
-      [jobId, start.stepId, start.attempt, start.startedAt, runnerId, leaseId, leaseTokenHash],
+      [jobId, start.stepId, start.attempt, start.startedAt, start.attemptId, runnerId, leaseId, leaseTokenHash],
     );
     return Boolean(existing);
   }
@@ -905,12 +911,15 @@ export class QueueManager {
     exitCode?: number;
     error?: string;
     logContent: string;
+    attemptId: string;
   }): Promise<void> {
     const result = await db.run(
       `INSERT INTO step_execution_attempts
-       (team_id, job_id, step_id, attempt, status, started_at, completed_at, duration_ms, exit_code, error, log_content)
-       SELECT team_id, id, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM jobs
+       (team_id, job_id, step_id, attempt, status, started_at, completed_at, duration_ms, exit_code, error, log_content, attempt_id)
+       SELECT team_id, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM jobs
         WHERE id = ? AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)
+          AND EXISTS (SELECT 1 FROM step_execution_attempt_starts s WHERE s.job_id = jobs.id
+            AND s.step_id = ? AND s.attempt = ? AND s.started_at = ? AND s.attempt_id = ?)
        ON CONFLICT(job_id, step_id, attempt) DO NOTHING`,
       [
         attempt.stepId,
@@ -922,11 +931,39 @@ export class QueueManager {
         attempt.exitCode ?? null,
         attempt.error?.slice(0, 4000) ?? null,
         attempt.logContent.slice(0, 65536),
+        attempt.attemptId,
         attempt.jobId,
+        attempt.stepId,
+        attempt.attempt,
+        attempt.startedAt,
+        attempt.attemptId,
       ],
     );
-    if (Number(result?.changes || 0) > 1) {
-      throw new Error("Unexpected step attempt insert count");
+    if (Number(result?.changes || 0) === 1) {
+      return;
+    }
+    const existing = await db.get(
+      `SELECT 1 AS matched FROM step_execution_attempts a
+        JOIN jobs j ON j.id = a.job_id AND j.team_id = a.team_id
+        WHERE a.job_id = ? AND a.step_id = ? AND a.attempt = ? AND a.attempt_id = ?
+          AND a.status = ? AND a.started_at = ? AND a.completed_at = ? AND a.duration_ms = ?
+          AND a.exit_code IS ? AND a.error IS ? AND a.log_content = ?`,
+      [
+        attempt.jobId,
+        attempt.stepId,
+        attempt.attempt,
+        attempt.attemptId,
+        attempt.status,
+        attempt.startedAt,
+        attempt.completedAt,
+        attempt.durationMs,
+        attempt.exitCode ?? null,
+        attempt.error?.slice(0, 4000) ?? null,
+        attempt.logContent.slice(0, 65536),
+      ],
+    );
+    if (!existing) {
+      throw new Error("Step attempt completion does not match its durable start");
     }
   }
 
@@ -945,15 +982,18 @@ export class QueueManager {
       exitCode?: number;
       error?: string;
       logContent: string;
+      attemptId: string;
     },
   ): Promise<boolean> {
     const result = await db.run(
       `INSERT INTO step_execution_attempts
-       (team_id, job_id, step_id, attempt, status, started_at, completed_at, duration_ms, exit_code, error, log_content)
-       SELECT team_id, id, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM jobs
+       (team_id, job_id, step_id, attempt, status, started_at, completed_at, duration_ms, exit_code, error, log_content, attempt_id)
+       SELECT team_id, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM jobs
         WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ? AND status = 'running'
           AND lease_fenced = 0 AND lease_completed = 0 AND julianday(lease_expires_at) > julianday('now')
-          AND ${CURRENT_RUNNER_AUTHORIZATION} AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)
+           AND ${CURRENT_RUNNER_AUTHORIZATION} AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)
+           AND EXISTS (SELECT 1 FROM step_execution_attempt_starts s WHERE s.job_id = jobs.id AND s.step_id = ?
+             AND s.attempt = ? AND s.attempt_id = ?)
        ON CONFLICT(job_id, step_id, attempt) DO NOTHING`,
       [
         attempt.stepId,
@@ -965,7 +1005,11 @@ export class QueueManager {
         attempt.exitCode ?? null,
         attempt.error?.slice(0, 4000) ?? null,
         attempt.logContent.slice(0, 65536),
+        attempt.attemptId,
         attempt.jobId,
+        attempt.stepId,
+        attempt.attempt,
+        attempt.attemptId,
         runnerId,
         leaseId,
         leaseTokenHash,
@@ -977,7 +1021,7 @@ export class QueueManager {
     const existing = await db.get(
       `SELECT 1 AS matched FROM step_execution_attempts a JOIN jobs
           ON jobs.id = a.job_id AND jobs.team_id = a.team_id
-        WHERE a.job_id = ? AND a.step_id = ? AND a.attempt = ? AND a.status = ?
+        WHERE a.job_id = ? AND a.step_id = ? AND a.attempt = ? AND a.attempt_id = ? AND a.status = ?
           AND a.started_at = ? AND a.completed_at = ? AND a.duration_ms = ?
           AND a.exit_code IS ? AND a.error IS ? AND a.log_content = ?
           AND jobs.worker_id = ? AND jobs.lease_id = ? AND jobs.lease_token_hash = ?
@@ -988,6 +1032,7 @@ export class QueueManager {
         attempt.jobId,
         attempt.stepId,
         attempt.attempt,
+        attempt.attemptId,
         attempt.status,
         attempt.startedAt,
         attempt.completedAt,

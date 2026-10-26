@@ -14,6 +14,8 @@ const applied = [
   "006_scope_push_subscriptions_to_teams",
   "007_scope_api_keys_to_teams",
   "008_workflows_team_foreign_key",
+  "029_step_attempt_identity",
+  "030_domain_event_delivery_invocation_link",
 ];
 
 const workflowRow = (id: string, definitionId: string | null = null) => ({
