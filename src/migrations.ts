@@ -609,7 +609,7 @@ const migrations: Migration[] = [
         CREATE TABLE IF NOT EXISTS domain_event_deliveries (
           id TEXT PRIMARY KEY,
           team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-          event_id TEXT NOT NULL,
+          event_id TEXT NOT NULL REFERENCES domain_events(id) ON DELETE CASCADE,
           subscription_id TEXT NOT NULL,
           status TEXT NOT NULL DEFAULT 'pending'
             CHECK (status IN ('pending', 'claimed', 'admitted', 'filtered', 'failed')),
@@ -933,6 +933,29 @@ const migrations: Migration[] = [
       if (!columns.some((column: any) => column.name === "snapshot_json")) {
         await db.run("ALTER TABLE step_execution_attempts ADD COLUMN snapshot_json TEXT");
       }
+    },
+  },
+  {
+    version: "033_stream_event_bindings",
+    async apply() {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS stream_event_bindings (
+          team_id TEXT NOT NULL,
+          stream_id TEXT NOT NULL,
+          event_id TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (team_id, stream_id, event_id),
+          FOREIGN KEY (team_id, stream_id) REFERENCES channels(team_id, id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_stream_event_bindings_event
+          ON stream_event_bindings(team_id, event_id, stream_id);
+        INSERT OR IGNORE INTO stream_event_bindings (team_id, stream_id, event_id)
+        SELECT e.team_id, json_extract(e.data_json, '$.channelId'), e.id
+          FROM domain_events e
+          JOIN channels c ON c.team_id = e.team_id AND c.id = json_extract(e.data_json, '$.channelId')
+         WHERE json_valid(e.data_json)
+           AND json_type(e.data_json, '$.channelId') = 'text';
+      `);
     },
   },
 ];

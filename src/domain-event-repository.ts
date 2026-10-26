@@ -77,11 +77,12 @@ export class DomainEventRepository {
       afterSequence = (decoded as any).sequence;
     }
     const rows = await db.all(
-      `SELECT sequence, id, team_id, type, schema_version, source, occurred_at, recorded_at,
-              correlation_id, causation_id, idempotency_key, data_json
-       FROM domain_events
-        WHERE team_id = ? AND json_extract(data_json, '$.channelId') = ? AND sequence > ?
-        ORDER BY sequence LIMIT ?`,
+      `SELECT e.sequence, e.id, e.team_id, e.type, e.schema_version, e.source, e.occurred_at, e.recorded_at,
+              e.correlation_id, e.causation_id, e.idempotency_key, e.data_json
+         FROM domain_events e
+         JOIN stream_event_bindings b ON b.team_id = e.team_id AND b.event_id = e.id
+        WHERE e.team_id = ? AND b.stream_id = ? AND sequence > ?
+        ORDER BY e.sequence LIMIT ?`,
       [teamId, channelId, afterSequence, boundedLimit + 1],
     );
     const hasMore = rows.length > boundedLimit;
@@ -136,6 +137,26 @@ export class DomainEventRepository {
       }),
     );
     return { events, nextCursor };
+  }
+
+  /** Bind a canonical event to a workspace Stream without copying or redispatching it. */
+  async bindEventToStream(teamId: string, streamId: string, eventId: string): Promise<boolean> {
+    const result = await db.run(
+      `INSERT OR IGNORE INTO stream_event_bindings (team_id, stream_id, event_id)
+       SELECT e.team_id, c.id, e.id
+         FROM domain_events e JOIN channels c ON c.team_id = e.team_id
+        WHERE e.team_id = ? AND c.id = ? AND e.id = ?`,
+      [teamId, streamId, eventId],
+    );
+    if (Number(result?.changes || 0) === 1) {
+      return true;
+    }
+    return Boolean(
+      await db.get(
+        "SELECT 1 AS bound FROM stream_event_bindings WHERE team_id = ? AND stream_id = ? AND event_id = ?",
+        [teamId, streamId, eventId],
+      ),
+    );
   }
 
   async publish<T>(teamId: string, event: PublishDomainEvent<T>): Promise<DomainEvent<T>> {

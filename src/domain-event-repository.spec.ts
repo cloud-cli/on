@@ -180,11 +180,23 @@ describe("DomainEventRepository", () => {
     expect(first.events.map((event) => event.id)).toEqual(["event-1", "event-2"]);
     expect(first.nextCursor).toBeTruthy();
     expect(database.all.mock.calls[0][1]).toEqual(["team-a", "chan-1", 0, 3]);
+    expect(database.all.mock.calls[0][0]).toContain("JOIN stream_event_bindings");
+    expect(database.all.mock.calls[0][0]).not.toContain("json_extract(data_json");
     database.all.mockResolvedValueOnce([{ ...row, id: "event-3", sequence: 5 }]);
     const next = await repository.listChannelEvents("team-a", "chan-1", 2, first.nextCursor!);
     expect(next.events.map((event) => event.id)).toEqual(["event-3"]);
     expect(next.nextCursor).toBeNull();
     expect(database.all.mock.calls[7][1]).toEqual(["team-a", "chan-1", 4, 3]);
+  });
+
+  it("binds canonical events idempotently within a workspace", async () => {
+    database.run.mockResolvedValueOnce({ changes: 1 });
+    await expect(repository.bindEventToStream("team-a", "stream-a", "event-a")).resolves.toBe(true);
+    expect(database.run.mock.calls[0][0]).toContain("e.team_id = ? AND c.id = ? AND e.id = ?");
+    expect(database.run.mock.calls[0][1]).toEqual(["team-a", "stream-a", "event-a"]);
+    database.run.mockResolvedValueOnce({ changes: 0 });
+    database.get.mockResolvedValueOnce({ bound: 1 });
+    await expect(repository.bindEventToStream("team-a", "stream-a", "event-a")).resolves.toBe(true);
   });
 
   it("adds only team and channel scoped message, admitted-run, and resolvable cause links", async () => {

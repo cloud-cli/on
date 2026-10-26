@@ -140,6 +140,8 @@ describe("v3 migrations against SQLite", () => {
     expect(versions.map(({ version }) => version)).toContain("030_domain_event_delivery_invocation_link");
     expect(versions.map(({ version }) => version)).toContain("031_stream_threads");
     expect(versions.map(({ version }) => version)).toContain("032_step_attempt_snapshots");
+    expect(versions.map(({ version }) => version)).toContain("033_stream_event_bindings");
+    expect(versions.map(({ version }) => version)).toContain("033_stream_event_bindings");
     expect(database.prepare("PRAGMA table_info(step_execution_attempt_starts)").all()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "started_at" }),
@@ -162,6 +164,13 @@ describe("v3 migrations against SQLite", () => {
       expect.arrayContaining([
         expect.objectContaining({ name: "thread_id" }),
         expect.objectContaining({ name: "body_json" }),
+      ]),
+    );
+    expect(database.prepare("PRAGMA table_info(stream_event_bindings)").all()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "team_id" }),
+        expect.objectContaining({ name: "stream_id" }),
+        expect.objectContaining({ name: "event_id" }),
       ]),
     );
     expect(database.prepare("PRAGMA table_info(workflow_run_admissions)").all()).toEqual(

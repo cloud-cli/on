@@ -33,6 +33,7 @@ describe("workflow team foreign-key migration", () => {
           "029_step_attempt_identity",
           "030_domain_event_delivery_invocation_link",
           "032_step_attempt_snapshots",
+          "033_stream_event_bindings",
         ].map((version) => ({ version }));
       }
       if (sql === "PRAGMA table_info(workflows)") {
@@ -104,6 +105,7 @@ describe("workflow team foreign-key migration", () => {
           "029_step_attempt_identity",
           "030_domain_event_delivery_invocation_link",
           "032_step_attempt_snapshots",
+          "033_stream_event_bindings",
         ].map((version) => ({
           version,
         }));
@@ -178,6 +180,7 @@ describe("workflow team foreign-key migration", () => {
           "029_step_attempt_identity",
           "030_domain_event_delivery_invocation_link",
           "032_step_attempt_snapshots",
+          "033_stream_event_bindings",
         ].map((version) => ({ version }));
       }
       if (sql === "PRAGMA table_info(teams)") {
@@ -237,6 +240,7 @@ describe("workflow team foreign-key migration", () => {
           "029_step_attempt_identity",
           "030_domain_event_delivery_invocation_link",
           "032_step_attempt_snapshots",
+          "033_stream_event_bindings",
         ].map((version) => ({ version }));
       }
       if (sql === "PRAGMA table_info(workflows)") {

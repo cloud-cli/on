@@ -57,6 +57,9 @@ function makeServer(capabilities = ["workflows.view", "workflows.edit"]) {
         events: [],
         nextCursor: null,
       })),
+      bindEventToStream: vi.fn(async (teamId, streamId, eventId) =>
+        teamId === "team-a" && streamId === "chan" && eventId === "event-a",
+      ),
     },
     readJson: vi.fn(),
   };
@@ -273,5 +276,17 @@ describe("workspace channel APIs", () => {
       "chan",
     );
     expect(missing.writeHead).toHaveBeenCalledWith(404, expect.anything());
+  });
+
+  it("binds only workspace events to a Stream with edit authorization", async () => {
+    const server = makeServer();
+    server.readJson.mockResolvedValue({ eventId: "event-a" });
+    const res = response();
+    await WebhookServer.prototype.handleChannelEventBinding.call(server, {}, res, "chan");
+    expect(server.domainEventRepository.bindEventToStream).toHaveBeenCalledWith("team-a", "chan", "event-a");
+    expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({ bound: true, eventId: "event-a", channelId: "chan" });
+    const denied = makeServer(["workflows.view"]);
+    await WebhookServer.prototype.handleChannelEventBinding.call(denied, {}, response(), "chan");
+    expect(denied.domainEventRepository.bindEventToStream).not.toHaveBeenCalled();
   });
 });

@@ -2220,6 +2220,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (channelEvents && req.method === "GET") {
       return this.handleChannelEvents(req, res, decodeURIComponent(channelEvents[1]));
     }
+    const channelEventBindings = url.pathname.match(/^\/api\/v1\/channels\/([^/]+)\/event-bindings$/);
+    if (channelEventBindings && req.method === "POST") {
+      return this.handleChannelEventBinding(req, res, decodeURIComponent(channelEventBindings[1]));
+    }
     const channelMessages = url.pathname.match(/^\/api\/channels\/([^/]+)\/messages$/);
     if (channelMessages && req.method === "GET") {
       return this.handleChannelMessages(req, res, decodeURIComponent(channelMessages[1]));
@@ -4827,6 +4831,26 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       throw error;
     }
+  }
+
+  private async handleChannelEventBinding(req: http.IncomingMessage, res: http.ServerResponse, channelId: string) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.edit");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getChannel(auth.teamId, channelId))) {
+      return deny(res, 404, "Channel not found");
+    }
+    const body = await this.readJson(req, res, 16 * 1024);
+    if (!body || Object.keys(body).some((key) => key !== "eventId") || typeof body.eventId !== "string" || !body.eventId) {
+      return deny(res, 400, "eventId is required");
+    }
+    const bound = await this.domainEventRepository.bindEventToStream(auth.teamId, channelId, body.eventId);
+    if (!bound) {
+      return deny(res, 404, "Event not found in workspace");
+    }
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ bound: true, eventId: body.eventId, channelId }));
   }
 
   private async handleChannelMessageAppend(req: http.IncomingMessage, res: http.ServerResponse, channelId: string) {

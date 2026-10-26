@@ -3681,7 +3681,7 @@
       "get": {
         "tags": ["events"],
         "summary": "List workspace events for a channel",
-        "description": "Returns events in stable ascending storage-sequence order. The opaque cursor is scoped to the authenticated workspace and channel; caller-supplied workspace identifiers are not used for authorization.",
+        "description": "Returns events in stable ascending storage-sequence order using explicit workspace-scoped Stream bindings. Legacy channelId event references are backfilled during migration. The opaque cursor is scoped to the authenticated workspace and channel.",
         "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
         "parameters": [
           {
@@ -3700,6 +3700,40 @@
           "200": { "description": "Ascending event page with opaque next cursor" },
           "400": { "description": "Invalid limit or cursor" },
           "404": { "description": "Channel not found in workspace" }
+        }
+      }
+    },
+    "/api/v1/channels/{channelId}/event-bindings": {
+      "post": {
+        "tags": ["events"],
+        "summary": "Bind a workspace event to a Stream",
+        "description": "Requires workflows.edit. Adds a visibility-only binding; it does not duplicate the event or cause workflow execution. Event and Stream are resolved within the authenticated workspace.",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "parameters": [
+          {
+            "name": "channelId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["eventId"],
+                "properties": { "eventId": { "type": "string", "minLength": 1 } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Event is bound to the Stream" },
+          "400": { "description": "Invalid binding request" },
+          "404": { "description": "Stream or workspace event not found" }
         }
       }
     },
