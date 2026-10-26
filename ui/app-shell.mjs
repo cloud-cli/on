@@ -11,6 +11,8 @@ export default function setup() {
   const userInitial = ref("U");
   const teams = ref([]);
   const selectedWorkspaceId = ref("");
+  const quickSwitchOpen = ref(false);
+  let quickSwitchItems = [];
   const themePreference = ref("system");
   const themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
   const isDarkTheme = ref(
@@ -99,6 +101,138 @@ export default function setup() {
     selectedWorkspaceId.value = teamId;
     activeSection.value = `workspace-${page === "channels" ? "channels" : page === "workflows" ? "workflows" : "runs"}`;
     syncWorkspaceNavigation();
+  };
+  const workspaceInitial = (name) =>
+    String(name || "W")
+      .trim()
+      .slice(0, 1)
+      .toUpperCase();
+  const navigateShell = (path) => {
+    history.pushState(null, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+  const switchWorkspace = (teamId) => {
+    const page =
+      activeSection.value === "workspace-channels"
+        ? "channels"
+        : activeSection.value === "workspace-workflows"
+          ? "workflows"
+          : "runs";
+    selectedWorkspaceId.value = teamId;
+    syncWorkspaceNavigation();
+    navigateShell(workspacePath(teamId, page));
+    closeMobileMenu();
+  };
+  const renderQuickSwitch = (query = "") => {
+    const results = document.querySelector("[data-quick-switch-results]");
+    if (!results) {
+      return;
+    }
+    const normalized = query.trim().toLocaleLowerCase();
+    const items = [];
+    for (const team of teams.value) {
+      items.push({ label: team.name, type: "Workspace", path: workspacePath(team.id, "runs") });
+      for (const [label, page] of [
+        ["Streams", "channels"],
+        ["Runs", "runs"],
+        ["Workflows", "workflows"],
+      ]) {
+        items.push({
+          label: `${team.name} · ${label}`,
+          type: label === "channels" ? "Stream" : label,
+          path: workspacePath(team.id, page),
+        });
+      }
+    }
+    items.push(
+      { label: "Recipes", type: "Route", path: "/ui/recipes" },
+      { label: "Settings", type: "Route", path: "/ui/settings" },
+      { label: "Workspaces", type: "Route", path: "/ui/workspaces" },
+    );
+    quickSwitchItems = items.filter((item) => `${item.label} ${item.type}`.toLocaleLowerCase().includes(normalized));
+    results.replaceChildren(
+      ...quickSwitchItems.map((item, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.role = "option";
+        button.dataset.quickSwitchIndex = String(index);
+        button.className =
+          "flex min-h-11 w-full items-center justify-between rounded-lg px-3 text-left text-sm hover:bg-app-panel focus-visible:ring-2 focus-visible:ring-app-primary";
+        const name = document.createElement("span");
+        name.textContent = item.label;
+        const kind = document.createElement("span");
+        kind.className = "text-xs text-app-secondary";
+        kind.textContent = item.type;
+        button.append(name, kind);
+        button.addEventListener("click", () => {
+          closeQuickSwitch();
+          navigateShell(item.path);
+        });
+        return button;
+      }),
+    );
+    if (!quickSwitchItems.length) {
+      const empty = document.createElement("p");
+      empty.className = "px-3 py-4 text-sm text-app-secondary";
+      empty.textContent = "No matching destinations.";
+      results.append(empty);
+    }
+  };
+  const openQuickSwitch = () => {
+    quickSwitchOpen.value = true;
+    requestAnimationFrame(() => {
+      renderQuickSwitch();
+      document.querySelector("[data-quick-switch-search]")?.focus();
+    });
+  };
+  const closeQuickSwitch = () => {
+    if (!quickSwitchOpen.value) {
+      return;
+    }
+    quickSwitchOpen.value = false;
+    requestAnimationFrame(() => document.querySelector("[data-quick-switch-open]")?.focus());
+  };
+  const filterQuickSwitch = (query) => renderQuickSwitch(query);
+  const stopQuickSwitchClick = (event) => event.stopPropagation();
+  const handleGlobalQuickSwitch = (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      openQuickSwitch();
+    } else if (event.key === "Escape" && quickSwitchOpen.value) {
+      event.preventDefault();
+      closeQuickSwitch();
+    } else if (quickSwitchOpen.value && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      event.preventDefault();
+      const options = [...document.querySelectorAll("[data-quick-switch-results] button")];
+      if (!options.length) {
+        return;
+      }
+      const index = options.indexOf(document.activeElement);
+      if (index < 0) {
+        options[event.key === "ArrowDown" ? 0 : options.length - 1].focus();
+      } else {
+        options[(index + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length].focus();
+      }
+    } else if (
+      quickSwitchOpen.value &&
+      event.key === "Enter" &&
+      event.target.matches?.("[data-quick-switch-search]") &&
+      quickSwitchItems[0]
+    ) {
+      event.preventDefault();
+      closeQuickSwitch();
+      navigateShell(quickSwitchItems[0].path);
+    } else if (quickSwitchOpen.value && event.key === "Tab") {
+      const search = document.querySelector("[data-quick-switch-search]");
+      const focusable = [search, ...document.querySelectorAll("[data-quick-switch-results] button")].filter(Boolean);
+      if (event.shiftKey && document.activeElement === focusable[0]) {
+        event.preventDefault();
+        focusable.at(-1)?.focus();
+      } else if (!event.shiftKey && document.activeElement === focusable.at(-1)) {
+        event.preventDefault();
+        focusable[0]?.focus();
+      }
+    }
   };
   const workspacePath = (teamId, page) =>
     `/ui/workspaces/${encodeURIComponent(teamId || selectedWorkspaceId.value)}/${page}`;
@@ -198,6 +332,7 @@ export default function setup() {
     window.addEventListener("resize", syncMobileMenu);
     window.addEventListener("runner-team-changed", syncWorkspace);
     document.addEventListener("keydown", handleSkipKeydown);
+    document.addEventListener("keydown", handleGlobalQuickSwitch);
     document.addEventListener("keydown", handleMenuKeydown);
     document.addEventListener("click", handleMenuClick);
     void fetch("/api/v1/auth/session", { credentials: "same-origin", headers: { accept: "application/json" } })
@@ -228,6 +363,7 @@ export default function setup() {
     window.removeEventListener("runner-teams-updated", loadTeams);
     themeMedia.removeEventListener("change", syncSystemTheme);
     document.removeEventListener("keydown", handleSkipKeydown);
+    document.removeEventListener("keydown", handleGlobalQuickSwitch);
     document.removeEventListener("keydown", handleMenuKeydown);
     document.removeEventListener("click", handleMenuClick);
   });
@@ -244,6 +380,13 @@ export default function setup() {
     isDarkTheme,
     setActive,
     selectWorkspace,
+    switchWorkspace,
+    workspaceInitial,
+    quickSwitchOpen,
+    openQuickSwitch,
+    closeQuickSwitch,
+    filterQuickSwitch,
+    stopQuickSwitchClick,
     workspacePath,
     openPreferences,
     toggleMobileMenu,

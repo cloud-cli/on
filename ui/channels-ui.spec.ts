@@ -27,7 +27,7 @@ describe("channels UI", () => {
     expect(source).toContain('"Message body"');
     expect(source).toContain("JSON message body");
     expect(source).toContain("JSON.stringify(message.body, null, 2)");
-    expect(shell).toContain("Channels</a");
+    expect(shell).toContain("Streams</a");
     expect(shell).toContain("activeSection === 'workspace-channels'");
   });
 

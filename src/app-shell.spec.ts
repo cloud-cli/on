@@ -71,8 +71,8 @@ describe("On application shell", () => {
     expect(html).not.toContain("Engineering");
     expect(html).not.toContain("JD");
     expect(html).not.toContain("min-h-screen border-r border-app-border");
-    expect(html.indexOf("Workspaces</a")).toBeLessThan(html.indexOf("Your workspaces"));
-    expect(html.indexOf("Recipes</a")).toBeLessThan(html.indexOf("Your workspaces"));
+    expect(html.indexOf("Workspaces</a")).toBeLessThan(html.indexOf(">Streams</p>"));
+    expect(html.indexOf("Recipes</a")).toBeLessThan(html.indexOf(">Streams</p>"));
     expect(html).toContain("Workspace navigation");
     expect(html).not.toContain("mt-auto");
   });
@@ -92,7 +92,7 @@ describe("On application shell", () => {
 
     expect(teamsList).toBeGreaterThan(html.indexOf('aria-label="Primary navigation"'));
     expect(teamsList).toBeLessThan(html.indexOf('id="main-content"'));
-    expect(html).toContain("# {{ team.name }}");
+    expect(html).toContain("{{ team.name }}</a");
     expect(html).toContain("workspacePath(team.id, 'runs')");
     expect(html).toContain('on-click="selectWorkspace(team.id)"');
     expect(html).toContain('attr-data-workspace-nav-item="team.id"');
@@ -107,10 +107,30 @@ describe("On application shell", () => {
     expect(shellSetup).toContain('fetch("/api/v1/workspaces"');
     expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
     expect(shellSetup).toContain('path.startsWith("/workspaces/")');
-    expect(html).toContain(">Your workspaces</p>");
+    expect(html).toContain(">Workspaces</p>");
     expect(html).toContain("px-3 py-2.5 text-sm text-app-secondary");
     expect(html).toContain("selectedWorkspaceId === team.id");
     expect(html).toContain("workspacePath(team.id, 'workflows')");
+    expect(html).toContain('aria-label="Switch workspace"');
+    expect(html).toContain('attr-data-workspace-switch="team.id"');
+    expect(html).toContain('on-click="switchWorkspace(team.id)"');
+    expect(html).toContain(">Streams</a");
+    expect(html).toContain("Messages are not yet modeled as Threads");
+  });
+
+  it("supports accessible keyboard quick navigation across known workspaces and routes", () => {
+    expect(html).toContain("data-quick-switch-open");
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('aria-modal="true"');
+    expect(html).toContain("data-quick-switch-search");
+    expect(shellSetup).toContain("(event.metaKey || event.ctrlKey)");
+    expect(shellSetup).toContain('event.key.toLowerCase() === "k"');
+    expect(shellSetup).toContain('type: label === "channels" ? "Stream" : label');
+    expect(shellSetup).toContain('label: "Settings", type: "Route"');
+    expect(shellSetup).toContain('event.key === "ArrowDown" || event.key === "ArrowUp"');
+    expect(shellSetup).toContain('event.key === "Enter"');
+    expect(shellSetup).toContain('event.key === "Escape"');
+    expect(shellSetup).toContain('removeEventListener("keydown", handleGlobalQuickSwitch)');
   });
 
   it("handles Enter and Space on the skip link without triggering browser navigation", () => {
