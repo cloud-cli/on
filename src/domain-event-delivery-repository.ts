@@ -29,6 +29,8 @@ export type EventDelivery = {
   updatedAt: string;
 };
 
+export type EventFanoutOutcome = { status: "matched" | "repeat" | "unmatched"; deliveryCount: number };
+
 export class DomainEventDeliveryRepository {
   async getForTeam(teamId: string, subscriptionId: string): Promise<EventSubscription | null> {
     const row = await db.get("SELECT * FROM domain_event_subscriptions WHERE team_id = ? AND id = ?", [
@@ -96,7 +98,7 @@ export class DomainEventDeliveryRepository {
   }
 
   /** Creates only deliveries for subscriptions active when the event was recorded. */
-  async fanout(teamId: string, eventId: string): Promise<number> {
+  async fanout(teamId: string, eventId: string): Promise<EventFanoutOutcome> {
     const event = await db.get("SELECT sequence, type FROM domain_events WHERE team_id = ? AND id = ?", [
       teamId,
       eventId,
@@ -115,7 +117,19 @@ export class DomainEventDeliveryRepository {
       "SELECT COUNT(*) AS count FROM domain_event_deliveries WHERE team_id = ? AND event_id = ?",
       [teamId, eventId],
     );
-    return Number(count?.count ?? 0);
+    const deliveryCount = Number(count?.count ?? 0);
+    await db.run(
+      `INSERT INTO domain_event_fanout_outcomes (team_id, event_id, status, delivery_count)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(team_id, event_id) DO UPDATE SET status = 'repeat', delivery_count = excluded.delivery_count,
+         updated_at = CURRENT_TIMESTAMP`,
+      [teamId, eventId, deliveryCount ? "matched" : "unmatched", deliveryCount],
+    );
+    const outcome = await db.get(
+      "SELECT status, delivery_count FROM domain_event_fanout_outcomes WHERE team_id = ? AND event_id = ?",
+      [teamId, eventId],
+    );
+    return { status: outcome.status, deliveryCount: Number(outcome.delivery_count) };
   }
 
   /** Repairs the publish/fanout crash window without backfilling pre-subscription events. */

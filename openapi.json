@@ -1926,13 +1926,18 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["eventId", "deliveryCount"],
+                  "required": ["eventId", "deliveryCount", "fanoutStatus"],
                   "properties": {
                     "eventId": {
                       "type": "string"
                     },
                     "deliveryCount": {
                       "type": "integer"
+                    },
+                    "fanoutStatus": {
+                      "type": "string",
+                      "enum": ["matched", "repeat", "unmatched"],
+                      "description": "Whether this is the first fanout with matching subscriptions, a repeated fanout, or no matching subscriptions."
                     }
                   }
                 }

@@ -2312,13 +2312,13 @@ sessionStorage.removeItem('runner-pending-team-invite');
           idempotencyKey: body.idempotencyKey ?? null,
           data: body.data,
         });
-        const deliveryCount = await this.domainEventDeliveryRepository.fanout(teamId, event.id);
+        const fanout = await this.domainEventDeliveryRepository.fanout(teamId, event.id);
         res
           .writeHead(202, {
             "Cache-Control": "no-store",
             "Content-Type": "application/json; charset=utf-8",
           })
-          .end(JSON.stringify({ eventId: event.id, deliveryCount }));
+          .end(JSON.stringify({ eventId: event.id, deliveryCount: fanout.deliveryCount, fanoutStatus: fanout.status }));
       } catch (error) {
         const conflict = error instanceof Error && error.message.includes("idempotency key conflicts");
         res

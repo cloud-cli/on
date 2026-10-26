@@ -58,12 +58,29 @@ describe("DomainEventDeliveryRepository", () => {
   });
 
   it("fans out only currently matching subscriptions and tolerates duplicates", async () => {
-    database.get.mockResolvedValueOnce({ sequence: 9, type: "order.created" }).mockResolvedValueOnce({ count: 1 });
-    await expect(repository.fanout("team-a", "event-a")).resolves.toBe(1);
+    database.get.mockResolvedValueOnce({ sequence: 9, type: "order.created" }).mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ status: "matched", delivery_count: 1 });
+    await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({ status: "matched", deliveryCount: 1 });
     expect(database.run.mock.calls[0][0]).toContain("INSERT OR IGNORE");
     expect(database.run.mock.calls[0][0]).toContain("? > s.high_water_event_sequence");
     expect(database.run.mock.calls[0][1]).toEqual(["team-a", "event-a", "team-a", "order.created", 9]);
     expect(database.get.mock.calls[1][1]).toEqual(["team-a", "event-a"]);
+    expect(database.run.mock.calls[1][1]).toEqual(["team-a", "event-a", "matched", 1]);
+  });
+
+  it("records distinct unmatched and repeated fanout outcomes within the workspace", async () => {
+    database.get
+      .mockResolvedValueOnce({ sequence: 10, type: "missing.type" })
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ status: "unmatched", delivery_count: 0 });
+    await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({ status: "unmatched", deliveryCount: 0 });
+    expect(database.run.mock.calls[1][1]).toEqual(["team-a", "event-a", "unmatched", 0]);
+    database.get
+      .mockResolvedValueOnce({ sequence: 10, type: "missing.type" })
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ status: "repeat", delivery_count: 0 });
+    await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({ status: "repeat", deliveryCount: 0 });
+    expect(database.run.mock.calls[1][0]).toContain("status = 'repeat'");
+    expect(database.get.mock.calls.at(-1)?.[1]).toEqual(["team-a", "event-a"]);
   });
 
   it("repairs missing fanout without backfilling events before subscription start", async () => {
@@ -74,13 +91,13 @@ describe("DomainEventDeliveryRepository", () => {
   });
 
   it("uses a durable event sequence high-water mark rather than timestamps", async () => {
-    database.get.mockResolvedValueOnce({ sequence: 4, type: "order.created" }).mockResolvedValueOnce({ count: 0 });
+    database.get.mockResolvedValueOnce({ sequence: 4, type: "order.created" }).mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ status: "unmatched", delivery_count: 0 });
     await repository.fanout("team-a", "before-subscription");
     expect(database.run.mock.calls[0][0]).toContain("? > s.high_water_event_sequence");
     expect(database.run.mock.calls[0][1].at(-1)).toBe(4);
     database.get.mockReset();
     database.run.mockReset();
-    database.get.mockResolvedValueOnce({ sequence: 5, type: "order.created" }).mockResolvedValueOnce({ count: 1 });
+    database.get.mockResolvedValueOnce({ sequence: 5, type: "order.created" }).mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ status: "matched", delivery_count: 1 });
     await repository.fanout("team-a", "after-subscription");
     expect(database.run.mock.calls[0][1].at(-1)).toBe(5);
   });

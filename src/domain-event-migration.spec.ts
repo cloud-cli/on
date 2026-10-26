@@ -52,6 +52,16 @@ describe("typed domain event migration", () => {
     expect(migration).not.toContain("incoming_events");
   });
 
+  it("adds workspace-scoped durable explicit fanout outcomes", async () => {
+    await runMigrations();
+    const migration = database.exec.mock.calls.find(([sql]: [string]) =>
+      sql.includes("CREATE TABLE IF NOT EXISTS domain_event_fanout_outcomes"),
+    )?.[0];
+    expect(migration).toContain("PRIMARY KEY(team_id, event_id)");
+    expect(migration).toContain("'matched', 'repeat', 'unmatched'");
+    expect(migration).toContain("FOREIGN KEY(team_id, event_id) REFERENCES domain_events(team_id, id)");
+  });
+
   it("adds a safe high-water boundary for future-only subscriptions", async () => {
     database.all.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT version FROM schema_migrations")) {
