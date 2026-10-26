@@ -32,6 +32,7 @@ describe("workflow team foreign-key migration", () => {
           "009_workflow_definition_ids",
           "029_step_attempt_identity",
           "030_domain_event_delivery_invocation_link",
+          "032_step_attempt_snapshots",
         ].map((version) => ({ version }));
       }
       if (sql === "PRAGMA table_info(workflows)") {
@@ -99,7 +100,11 @@ describe("workflow team foreign-key migration", () => {
   it("does not provision an implicit default workspace or assign OIDC users", async () => {
     database.all.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT version FROM schema_migrations")) {
-        return ["029_step_attempt_identity", "030_domain_event_delivery_invocation_link"].map((version) => ({
+        return [
+          "029_step_attempt_identity",
+          "030_domain_event_delivery_invocation_link",
+          "032_step_attempt_snapshots",
+        ].map((version) => ({
           version,
         }));
       }
@@ -172,6 +177,7 @@ describe("workflow team foreign-key migration", () => {
           "010_unified_principals_and_permissions",
           "029_step_attempt_identity",
           "030_domain_event_delivery_invocation_link",
+          "032_step_attempt_snapshots",
         ].map((version) => ({ version }));
       }
       if (sql === "PRAGMA table_info(teams)") {
@@ -230,6 +236,7 @@ describe("workflow team foreign-key migration", () => {
           "009_workflow_definition_ids",
           "029_step_attempt_identity",
           "030_domain_event_delivery_invocation_link",
+          "032_step_attempt_snapshots",
         ].map((version) => ({ version }));
       }
       if (sql === "PRAGMA table_info(workflows)") {

@@ -157,11 +157,16 @@ describe("runner step attempt writes", () => {
       exitCode: 0,
       logContent: "ok",
       attemptId: "id-1",
+      snapshotJson: '{"version":1,"status":"captured","inputs":{}}',
     });
     expect(result).toBe(true);
     const duplicateCheck = JSON.parse(fetchMock.mock.calls[1][1].body);
     expect(duplicateCheck.s).toContain("a.duration_ms = ?");
     expect(duplicateCheck.s).toContain("a.log_content = ?");
+    expect(duplicateCheck.s).toContain("a.snapshot_json IS ?");
+    const insert = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(insert.s).toContain("snapshot_json");
+    expect(insert.d).toContain('{"version":1,"status":"captured","inputs":{}}');
     expect(duplicateCheck.s).toContain("jobs.lease_fenced = 0");
   });
 });

@@ -1009,6 +1009,9 @@ describe("incremental workflow reports", () => {
     expect(final.steps.map(({ id }) => id)).toContain("invoke#attempt-1/effect");
     expect(final.steps.map(({ id }) => id)).toContain("invoke#attempt-2/effect");
     expect(JSON.stringify({ reports, logs, attempts, final })).not.toContain(secret);
+    expect(attempts.every(({ snapshotJson }) => typeof snapshotJson === "string")).toBe(true);
+    expect(JSON.stringify(attempts.map(({ snapshotJson }) => JSON.parse(snapshotJson)))).not.toContain("password");
+    expect(JSON.stringify(attempts)).not.toContain(secret);
     expect(logs).toHaveLength(2);
     expect(logs.every((log) => log.includes("****"))).toBe(true);
   });

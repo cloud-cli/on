@@ -8,17 +8,17 @@ const response = () =>
     headersSent: false,
   }) as any;
 
-function makeServer(allowed = true, job: any = { id: 7 }) {
+function makeServer(allowed: boolean | string[] = true, job: any = { id: 7 }) {
   return {
     workflowsLoaded: Promise.resolve(),
     handleStepAttempts: (WebhookServer.prototype as any).handleStepAttempts,
     requireWorkspaceCapability: vi.fn(async (_req, res) => {
-      if (!allowed) {
+      if (allowed === false) {
         res.writeHead(403, { "Content-Type": "application/json" });
         res.end();
         return null;
       }
-      return { teamId: "team-a" };
+      return { teamId: "team-a", capabilities: Array.isArray(allowed) ? allowed : ["runs.logs", "runs.inputs"] };
     }),
     queue: {
       getJobForTeam: vi.fn(async (teamId: string, jobId: string) =>
@@ -30,6 +30,7 @@ function makeServer(allowed = true, job: any = { id: 7 }) {
           attempt: 1,
           status: "failed",
           log_content: "redacted",
+          snapshot_json: '{"version":1,"status":"captured","inputs":{"branch":"main"}}',
         },
         {
           step_id: "test",
@@ -69,9 +70,20 @@ describe("GET /api/v1/jobs/:id/step-attempts", () => {
       jobId: "7",
       attempts: [{ step_id: "build" }, { step_id: "test", status: "interrupted_or_unknown" }],
     });
+    expect(JSON.parse(res.end.mock.calls[0][0]).attempts[0].snapshot).toMatchObject({
+      version: 1,
+      status: "captured",
+    });
 
     const denied = await request(makeServer(false));
     expect(denied.writeHead).toHaveBeenCalledWith(403, expect.any(Object));
+  });
+
+  it("does not expose input/output snapshots to principals with log-only access", async () => {
+    const res = await request(makeServer(["runs.logs"]));
+    const attempts = JSON.parse(res.end.mock.calls[0][0]).attempts;
+    expect(attempts[0]).not.toHaveProperty("snapshot");
+    expect(attempts[0]).not.toHaveProperty("snapshot_json");
   });
 
   it("returns 404 for a missing or foreign job before loading attempts", async () => {

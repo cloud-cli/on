@@ -648,12 +648,14 @@ export class QueueManager {
     return db.all(
       `SELECT c.id, c.job_id, c.step_id, c.attempt, c.status, c.started_at, c.completed_at,
               c.duration_ms, c.exit_code, c.error, c.log_content, c.attempt_id, 'completed' AS lifecycle_status
+              , c.snapshot_json
          FROM step_execution_attempts c
         WHERE c.team_id = ? AND c.job_id = ?
         UNION ALL
        SELECT s.id, s.job_id, s.step_id, s.attempt, 'interrupted_or_unknown' AS status,
               s.started_at, NULL AS completed_at, NULL AS duration_ms, NULL AS exit_code,
-               NULL AS error, '' AS log_content, s.attempt_id, 'started' AS lifecycle_status
+                NULL AS error, '' AS log_content, s.attempt_id, 'started' AS lifecycle_status
+                , NULL AS snapshot_json
          FROM step_execution_attempt_starts s
         WHERE s.team_id = ? AND s.job_id = ?
           AND NOT EXISTS (
@@ -912,11 +914,15 @@ export class QueueManager {
     error?: string;
     logContent: string;
     attemptId: string;
+    snapshotJson?: string;
   }): Promise<void> {
+    if (attempt.snapshotJson !== undefined && Buffer.byteLength(attempt.snapshotJson, "utf8") > 65536) {
+      throw new Error("Step attempt snapshot exceeds the 64 KiB limit");
+    }
     const result = await db.run(
       `INSERT INTO step_execution_attempts
-       (team_id, job_id, step_id, attempt, status, started_at, completed_at, duration_ms, exit_code, error, log_content, attempt_id)
-       SELECT team_id, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM jobs
+       (team_id, job_id, step_id, attempt, status, started_at, completed_at, duration_ms, exit_code, error, log_content, attempt_id, snapshot_json)
+       SELECT team_id, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM jobs
         WHERE id = ? AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)
           AND EXISTS (SELECT 1 FROM step_execution_attempt_starts s WHERE s.job_id = jobs.id
             AND s.step_id = ? AND s.attempt = ? AND s.started_at = ? AND s.attempt_id = ?)
@@ -932,6 +938,7 @@ export class QueueManager {
         attempt.error?.slice(0, 4000) ?? null,
         attempt.logContent.slice(0, 65536),
         attempt.attemptId,
+        attempt.snapshotJson ?? null,
         attempt.jobId,
         attempt.stepId,
         attempt.attempt,
@@ -947,7 +954,7 @@ export class QueueManager {
         JOIN jobs j ON j.id = a.job_id AND j.team_id = a.team_id
         WHERE a.job_id = ? AND a.step_id = ? AND a.attempt = ? AND a.attempt_id = ?
           AND a.status = ? AND a.started_at = ? AND a.completed_at = ? AND a.duration_ms = ?
-          AND a.exit_code IS ? AND a.error IS ? AND a.log_content = ?`,
+          AND a.exit_code IS ? AND a.error IS ? AND a.log_content = ? AND a.snapshot_json IS ?`,
       [
         attempt.jobId,
         attempt.stepId,
@@ -960,6 +967,7 @@ export class QueueManager {
         attempt.exitCode ?? null,
         attempt.error?.slice(0, 4000) ?? null,
         attempt.logContent.slice(0, 65536),
+        attempt.snapshotJson ?? null,
       ],
     );
     if (!existing) {
@@ -983,12 +991,16 @@ export class QueueManager {
       error?: string;
       logContent: string;
       attemptId: string;
+      snapshotJson?: string;
     },
   ): Promise<boolean> {
+    if (attempt.snapshotJson !== undefined && Buffer.byteLength(attempt.snapshotJson, "utf8") > 65536) {
+      return false;
+    }
     const result = await db.run(
       `INSERT INTO step_execution_attempts
-       (team_id, job_id, step_id, attempt, status, started_at, completed_at, duration_ms, exit_code, error, log_content, attempt_id)
-       SELECT team_id, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM jobs
+       (team_id, job_id, step_id, attempt, status, started_at, completed_at, duration_ms, exit_code, error, log_content, attempt_id, snapshot_json)
+       SELECT team_id, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM jobs
         WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ? AND status = 'running'
           AND lease_fenced = 0 AND lease_completed = 0 AND julianday(lease_expires_at) > julianday('now')
            AND ${CURRENT_RUNNER_AUTHORIZATION} AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)
@@ -1006,6 +1018,7 @@ export class QueueManager {
         attempt.error?.slice(0, 4000) ?? null,
         attempt.logContent.slice(0, 65536),
         attempt.attemptId,
+        attempt.snapshotJson ?? null,
         attempt.jobId,
         attempt.stepId,
         attempt.attempt,
@@ -1023,7 +1036,7 @@ export class QueueManager {
           ON jobs.id = a.job_id AND jobs.team_id = a.team_id
         WHERE a.job_id = ? AND a.step_id = ? AND a.attempt = ? AND a.attempt_id = ? AND a.status = ?
           AND a.started_at = ? AND a.completed_at = ? AND a.duration_ms = ?
-          AND a.exit_code IS ? AND a.error IS ? AND a.log_content = ?
+          AND a.exit_code IS ? AND a.error IS ? AND a.log_content = ? AND a.snapshot_json IS ?
           AND jobs.worker_id = ? AND jobs.lease_id = ? AND jobs.lease_token_hash = ?
           AND jobs.status = 'running' AND jobs.lease_fenced = 0 AND jobs.lease_completed = 0
           AND julianday(jobs.lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
@@ -1040,6 +1053,7 @@ export class QueueManager {
         attempt.exitCode ?? null,
         attempt.error?.slice(0, 4000) ?? null,
         attempt.logContent.slice(0, 65536),
+        attempt.snapshotJson ?? null,
         runnerId,
         leaseId,
         leaseTokenHash,

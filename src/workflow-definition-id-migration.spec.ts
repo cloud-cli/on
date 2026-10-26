@@ -16,6 +16,7 @@ const applied = [
   "008_workflows_team_foreign_key",
   "029_step_attempt_identity",
   "030_domain_event_delivery_invocation_link",
+  "032_step_attempt_snapshots",
 ];
 
 const workflowRow = (id: string, definitionId: string | null = null) => ({

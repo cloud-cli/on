@@ -27,6 +27,7 @@ vi.mock("./db-client.js", () => {
     "022_workflow_run_admission",
     "029_step_attempt_identity",
     "030_domain_event_delivery_invocation_link",
+    "032_step_attempt_snapshots",
   ];
   const state = {
     versions: new Set(initialVersions),

@@ -101,6 +101,23 @@ function isBoundedDomainEventData(value: unknown): value is Record<string, unkno
   }
 }
 
+function isValidStepAttemptSnapshot(value: unknown): value is string {
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > 65536) {
+    return false;
+  }
+  try {
+    const snapshot = JSON.parse(value);
+    return Boolean(
+      snapshot &&
+        typeof snapshot === "object" &&
+        snapshot.version === 1 &&
+        (snapshot.status === "captured" || snapshot.status === "omitted"),
+    );
+  } catch {
+    return false;
+  }
+}
+
 function canonicalJson(value: unknown): string | undefined {
   return JSON.stringify(value, (_key, nested) => {
     if (nested && typeof nested === "object" && !Array.isArray(nested)) {
@@ -1365,6 +1382,31 @@ export class WebhookServer {
             .end(JSON.stringify({ error: "Invalid step attempt" }));
           return;
         }
+        if (
+          action === "attempt-completion" &&
+          body.snapshotJson !== undefined &&
+          !isValidStepAttemptSnapshot(body.snapshotJson)
+        ) {
+          res
+            .writeHead(400, { "Content-Type": "application/json" })
+            .end(JSON.stringify({ error: "Invalid attempt snapshot" }));
+          return;
+        }
+        const rawSnapshotJson = body.snapshotJson;
+        const completionBody =
+          action === "attempt-completion" && typeof rawSnapshotJson === "string"
+            ? {
+                ...body,
+                snapshotJson: await (async () => {
+                  const safe = JSON.stringify(
+                    this.redactStructured(JSON.parse(rawSnapshotJson as string), await this.currentSecrets(String(job.team_id))),
+                  );
+                  return Buffer.byteLength(safe, "utf8") <= 65536
+                    ? safe
+                    : JSON.stringify({ version: 1, status: "omitted", reason: "too_large" });
+                })(),
+              }
+            : body;
         const saved =
           action === "attempt-start"
             ? typeof body.startedAt === "string" &&
@@ -1382,7 +1424,7 @@ export class WebhookServer {
               body.durationMs >= 0 &&
               typeof body.logContent === "string" &&
               body.logContent.length <= 65536 &&
-              (await this.queue.saveStepAttemptForRunner(principal.runnerId, leaseId, leaseTokenHash, body));
+              (await this.queue.saveStepAttemptForRunner(principal.runnerId, leaseId, leaseTokenHash, completionBody));
         res.writeHead(saved ? 204 : 409, { "Cache-Control": "no-store" }).end();
         return;
       }
@@ -3214,7 +3256,18 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return res.end(JSON.stringify({ error: "Job not found" }));
     }
     const attempts = await this.queue.getStepAttemptsForTeam(teamId, jobId);
-    const safe = this.redactStructured(attempts, await this.currentSecrets(teamId));
+    const canViewInputs = access.capabilities.includes("runs.inputs");
+    const safe = this.redactStructured(attempts, await this.currentSecrets(teamId)).map((attempt: any) => {
+      const { snapshot_json: snapshotJson, ...visible } = attempt;
+      if (!canViewInputs || typeof snapshotJson !== "string") {
+        return visible;
+      }
+      try {
+        return { ...visible, snapshot: JSON.parse(snapshotJson) };
+      } catch {
+        return { ...visible, snapshot: { version: 1, status: "omitted" } };
+      }
+    });
     res.writeHead(200, {
       "Cache-Control": "no-store",
       "Content-Type": "application/json; charset=utf-8",

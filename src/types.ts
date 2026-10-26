@@ -350,6 +350,7 @@ export interface WorkerExecutionQueue {
     exitCode?: number;
     error?: string;
     logContent: string;
+    snapshotJson?: string;
   }): Promise<void>;
   saveStoredFiles(
     kind: "artifact" | "cache",

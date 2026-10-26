@@ -25,6 +25,7 @@ vi.mock("./db-client.js", () => {
     "020_durable_step_attempts",
     "029_step_attempt_identity",
     "030_domain_event_delivery_invocation_link",
+    "032_step_attempt_snapshots",
   ]);
   const database = {
     all: vi.fn(async (sql: string) =>

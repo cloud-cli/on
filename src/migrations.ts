@@ -923,6 +923,18 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: "032_step_attempt_snapshots",
+    async apply() {
+      const columns = await db.all("PRAGMA table_info(step_execution_attempts)");
+      if (!columns.length) {
+        throw new Error("Cannot add step attempt snapshots: step_execution_attempts is missing");
+      }
+      if (!columns.some((column: any) => column.name === "snapshot_json")) {
+        await db.run("ALTER TABLE step_execution_attempts ADD COLUMN snapshot_json TEXT");
+      }
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

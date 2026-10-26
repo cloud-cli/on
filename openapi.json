@@ -3707,7 +3707,7 @@
       "get": {
         "tags": ["jobs"],
         "summary": "List immutable step execution attempts for a job",
-        "description": "Requires runs.view. Results are strictly scoped to the authenticated team; missing and foreign jobs return 404.",
+        "description": "Requires runs.logs. Results are strictly scoped to the authenticated team; missing and foreign jobs return 404. Bounded, redacted input/output snapshots are included only for principals with runs.inputs.",
         "security": [
           {
             "oidcSessionCookie": []
@@ -3726,7 +3726,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Ordered step attempts including recorded logs",
+            "description": "Ordered immutable attempts including logs. Snapshot captures may be omitted when oversized and require runs.inputs.",
             "content": {
               "application/json": {
                 "schema": {

@@ -32,6 +32,7 @@ import { validateRecipeInputs } from "./recipe-schema.js";
 import { createWorkflowPlugin } from "./plugins/workflow-registry.js";
 import { RUNNER_VERSION } from "./version.js";
 import { activeStepHandles, shutdownState } from "./worker-state.js";
+import { createStepAttemptSnapshot } from "./step-attempt-snapshot.js";
 export { abortActiveJob, abortActiveWorkerTask, shutdownState } from "./worker-state.js";
 
 let eventStreamController: AbortController | null = null;
@@ -334,12 +335,27 @@ export async function processJob(p: Processable) {
         if (typeof value !== "function") {
           return undefined;
         }
-        return (record: any) =>
-          value.call(target, {
+        return (record: any) => {
+          let snapshotJson: string | undefined;
+          if (typeof record.snapshotJson === "string") {
+            try {
+              const snapshot = redactValue(JSON.parse(record.snapshotJson));
+              const encoded = JSON.stringify(snapshot);
+              snapshotJson =
+                Buffer.byteLength(encoded, "utf8") <= 65536
+                  ? encoded
+                  : JSON.stringify({ version: 1, status: "omitted", reason: "too_large" });
+            } catch {
+              snapshotJson = JSON.stringify({ version: 1, status: "omitted", reason: "too_large" });
+            }
+          }
+          return value.call(target, {
             ...record,
             error: record.error ? secrets.redactText(record.error).slice(0, 4000) : undefined,
             logContent: secrets.redactText(record.logContent).slice(0, 65536),
+            snapshotJson,
           });
+        };
       }
       if (property === "saveReport") {
         return (jobId: string | number, report: WorkflowExecutionReport) =>
@@ -671,6 +687,14 @@ async function processSteps(
           exitCode: stepResult.report?.exitCode,
           error: stepResult.report?.error,
           logContent: attemptLogContent,
+          snapshotJson: JSON.stringify(
+            createStepAttemptSnapshot({
+              inputs: executionContext.inputs,
+              priorSteps: executionContext.steps,
+              outputs: stepResult.report?.outputs || {},
+              writeOnlyInputNames: p.writeOnlyInputNames,
+            }),
+          ),
         });
         if (!stepResult.failed || stepResult.cancelled || attempt > retries) {
           break;

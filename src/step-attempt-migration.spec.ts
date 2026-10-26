@@ -56,6 +56,7 @@ describe("durable step-attempt migration", () => {
     await runMigrations();
     const db = (await import("./db-client.js")).default as any;
     expect(db.run.mock.calls.filter(([sql]: [string]) => sql.includes("ADD COLUMN attempt_id"))).toHaveLength(2);
+    expect(db.run).toHaveBeenCalledWith("ALTER TABLE step_execution_attempts ADD COLUMN snapshot_json TEXT");
     const indexes = db.exec.mock.calls
       .map(([sql]: [string]) => sql)
       .find((sql: string) => sql.includes("idx_step_attempt_start_identity"));
