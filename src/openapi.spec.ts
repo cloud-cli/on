@@ -40,6 +40,10 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api/v1/session"].get.security).toEqual([{ oidcSessionCookie: [] }, { oidcAdminBearer: [] }]);
     expect(spec.paths["/api/v1/workflows/{workflowId}"]).toHaveProperty("put");
     expect(spec.paths["/api/v1/workflows/{workflowId}/run"]).toHaveProperty("post");
+    expect(spec.paths["/api/v1/channels/{channelId}/threads"]).toHaveProperty("get");
+    expect(spec.paths["/api/v1/channels/{channelId}/threads"]).toHaveProperty("post");
+    expect(spec.paths["/api/v1/channels/{channelId}/threads/{threadId}/messages"]).toHaveProperty("get");
+    expect(spec.paths["/api/v1/channels/{channelId}/threads/{threadId}/messages"]).toHaveProperty("post");
     expect(spec.paths["/api/v1/workflows"].get.security).toEqual([
       { oidcSessionCookie: [] },
       { bearerAuth: [] },

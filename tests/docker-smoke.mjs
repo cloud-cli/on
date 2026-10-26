@@ -32,6 +32,9 @@ const database = http.createServer(async (request, response) => {
   if (query.m === "all" && /^PRAGMA table_info\(teams\)$/i.test(query.s)) {
     result = ["id", "deleting_at"].map((name, cid) => ({ name, cid }));
   }
+  if (query.m === "all" && /^PRAGMA table_info\(step_execution_attempt(?:_starts|s)\)$/i.test(query.s)) {
+    result = ["attempt_id"].map((name, cid) => ({ name, cid }));
+  }
   if (query.m === "get" && /FROM sqlite_master WHERE type = 'table' AND name = 'workflows'/i.test(query.s)) {
     result = {
       sql: "CREATE TABLE workflows (id TEXT PRIMARY KEY, team_id TEXT NOT NULL, FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE RESTRICT)",

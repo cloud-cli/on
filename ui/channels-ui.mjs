@@ -14,7 +14,7 @@ const element = (tag, text, className) => {
 export function mountChannels(root) {
   root.className = "mx-auto w-full max-w-6xl space-y-5 py-6";
   root.setAttribute("aria-labelledby", "channels-title");
-  const heading = element("h1", "Channels", "text-2xl font-semibold");
+  const heading = element("h1", "Streams", "text-2xl font-semibold");
   heading.id = "channels-title";
   const layout = element("div", undefined, "grid gap-5 md:grid-cols-[minmax(14rem,0.35fr)_minmax(0,1fr)]");
   const sidebar = element(
@@ -22,20 +22,20 @@ export function mountChannels(root) {
     undefined,
     "min-w-0 space-y-3 rounded-xl border border-app-border bg-app-card p-4",
   );
-  sidebar.setAttribute("aria-label", "Channels");
+  sidebar.setAttribute("aria-label", "Streams");
   const form = document.createElement("form");
   form.className = "flex gap-2";
   const name = document.createElement("input");
   name.name = "name";
   name.maxLength = 120;
   name.required = true;
-  name.placeholder = "New channel";
-  name.setAttribute("aria-label", "New channel name");
+  name.placeholder = "New Stream";
+  name.setAttribute("aria-label", "New Stream name");
   name.className = "min-w-0 flex-1 rounded-lg border border-app-border px-3 py-2";
   const create = element("button", "Create", "rounded-lg bg-app-primary px-3 py-2 text-sm font-semibold text-white");
   form.append(name, create);
   const channelsList = element("ul", undefined, "space-y-1");
-  channelsList.setAttribute("aria-label", "Available channels");
+  channelsList.setAttribute("aria-label", "Available Streams");
   sidebar.append(form, channelsList);
   const conversation = element(
     "section",
@@ -78,6 +78,47 @@ export function mountChannels(root) {
   eventMore.hidden = true;
   eventActions.append(eventRetry, eventReload, eventMore);
   eventHistory.append(eventSummary, eventStatus, eventList, eventActions);
+  const threadsSection = element("section", undefined, "min-w-0 space-y-3 rounded-lg border border-app-border p-3");
+  threadsSection.setAttribute("aria-label", "Threads");
+  const threadsHeading = element("h3", "Threads", "font-semibold");
+  const threadForm = document.createElement("form");
+  threadForm.className = "flex gap-2";
+  const threadTitle = document.createElement("input");
+  threadTitle.name = "title";
+  threadTitle.maxLength = 160;
+  threadTitle.required = true;
+  threadTitle.placeholder = "New thread";
+  threadTitle.setAttribute("aria-label", "New thread title");
+  threadTitle.className = "min-w-0 flex-1 rounded-lg border border-app-border px-3 py-2";
+  const createThreadButton = element(
+    "button",
+    "Create thread",
+    "rounded-lg border border-app-border px-3 py-2 text-sm",
+  );
+  threadForm.append(threadTitle, createThreadButton);
+  const threadList = element("ul", undefined, "space-y-1");
+  threadList.setAttribute("aria-label", "Stream threads");
+  const threadStatus = element("p", "Select a Stream to view its threads.", "text-sm text-app-secondary");
+  threadStatus.setAttribute("role", "status");
+  const threadTranscript = element("ol", undefined, "max-h-[40vh] space-y-2 overflow-auto");
+  threadTranscript.setAttribute("aria-label", "Thread messages");
+  threadTranscript.hidden = true;
+  const threadComposer = document.createElement("form");
+  threadComposer.className = "space-y-2 border-t border-app-border pt-3";
+  threadComposer.hidden = true;
+  const threadPayload = document.createElement("textarea");
+  threadPayload.rows = 3;
+  threadPayload.required = true;
+  threadPayload.placeholder = '{"text":"Reply"}';
+  threadPayload.setAttribute("aria-label", "Thread message JSON body");
+  threadPayload.className = "w-full rounded-lg border border-app-border p-3 font-mono text-sm";
+  const sendThreadMessage = element(
+    "button",
+    "Reply",
+    "rounded-lg bg-app-primary px-4 py-2 text-sm font-semibold text-white",
+  );
+  threadComposer.append(threadPayload, sendThreadMessage);
+  threadsSection.append(threadsHeading, threadStatus, threadList, threadForm, threadTranscript, threadComposer);
   const status = element("p", "Loading channels…", "text-sm text-app-secondary");
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
@@ -113,11 +154,12 @@ export function mountChannels(root) {
   );
   composer.append(help, payload, send);
   composer.hidden = true;
-  conversation.append(title, eventHistory, status, transcript, more, refresh, composer);
+  conversation.append(title, threadsSection, eventHistory, status, transcript, more, refresh, composer);
   layout.append(sidebar, conversation);
   root.replaceChildren(heading, layout);
 
   let selected = null;
+  let selectedThread = null;
   let cursor = null;
   let latestMessageId = null;
   let selectionGeneration = 0;
@@ -225,6 +267,93 @@ export function mountChannels(root) {
       if (activeMessageRequest === requestToken) {
         activeMessageRequest = null;
         more.disabled = false;
+      }
+    }
+  };
+  const loadThreadMessages = async () => {
+    if (!selected || !selectedThread) {
+      return;
+    }
+    const channelId = selected.id;
+    const threadId = selectedThread.id;
+    const generation = selectionGeneration;
+    threadStatus.textContent = "Loading thread messages…";
+    try {
+      const data = await request(
+        `/api/v1/channels/${encodeURIComponent(channelId)}/threads/${encodeURIComponent(threadId)}/messages?limit=100`,
+      );
+      if (generation !== selectionGeneration || selectedThread?.id !== threadId) {
+        return;
+      }
+      threadTranscript.replaceChildren(
+        ...(data.messages || []).map((message) => {
+          const item = element("li", undefined, "rounded-lg bg-app-panel p-3");
+          item.append(
+            element("p", `${message.author || "Member"} · ${message.createdAt || ""}`, "text-xs text-app-secondary"),
+          );
+          item.append(
+            element(
+              "pre",
+              typeof message.body === "string" ? message.body : JSON.stringify(message.body, null, 2),
+              "mt-2 whitespace-pre-wrap break-all text-sm",
+            ),
+          );
+          return item;
+        }),
+      );
+      threadTranscript.hidden = false;
+      threadComposer.hidden = !canEdit;
+      threadStatus.textContent = data.messages?.length ? "" : "No messages in this thread yet.";
+    } catch (error) {
+      if (generation === selectionGeneration && selectedThread?.id === threadId) {
+        threadStatus.textContent = error.message || "Unable to load thread messages.";
+      }
+    }
+  };
+  const selectThread = async (thread) => {
+    selectedThread = thread;
+    threadTranscript.replaceChildren();
+    threadTranscript.hidden = false;
+    for (const button of threadList.querySelectorAll("button")) {
+      button.setAttribute("aria-pressed", String(button.dataset.id === thread.id));
+    }
+    await loadThreadMessages();
+  };
+  const loadThreads = async (channel) => {
+    selectedThread = null;
+    threadTranscript.replaceChildren();
+    threadTranscript.hidden = true;
+    threadComposer.hidden = true;
+    threadStatus.textContent = "Loading threads…";
+    try {
+      const data = await request(`/api/v1/channels/${encodeURIComponent(channel.id)}/threads`);
+      if (selected?.id !== channel.id) {
+        return;
+      }
+      const threads = data.threads || [];
+      threadList.replaceChildren(
+        ...threads.map((thread) => {
+          const item = document.createElement("li");
+          const button = element(
+            "button",
+            thread.title,
+            "w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-app-panel",
+          );
+          button.type = "button";
+          button.dataset.id = thread.id;
+          button.setAttribute("aria-pressed", "false");
+          button.addEventListener("click", () => void selectThread(thread));
+          item.append(button);
+          return item;
+        }),
+      );
+      threadForm.hidden = !canEdit;
+      threadStatus.textContent = threads.length
+        ? "Choose a thread to open the conversation."
+        : "No threads in this Stream yet.";
+    } catch (error) {
+      if (selected?.id === channel.id) {
+        threadStatus.textContent = error.message || "Unable to load threads.";
       }
     }
   };
@@ -348,6 +477,7 @@ export function mountChannels(root) {
     eventStatus.textContent = "";
     eventHistory.open = false;
     selected = channel;
+    selectedThread = null;
     cursor = null;
     latestMessageId = null;
     transcript.replaceChildren();
@@ -359,12 +489,15 @@ export function mountChannels(root) {
       void loadEvents(null, true);
     }
     composer.hidden = !canEdit;
+    threadList.replaceChildren();
+    threadForm.hidden = !canEdit;
+    threadStatus.textContent = "Loading threads…";
     for (const button of channelsList.querySelectorAll("button")) {
       button.setAttribute("aria-pressed", String(button.dataset.id === channel.id));
       button.classList.toggle("bg-slate-100", button.dataset.id === channel.id);
       button.classList.toggle("font-semibold", button.dataset.id === channel.id);
     }
-    await loadMessages();
+    await Promise.all([loadMessages(), loadThreads(channel)]);
   };
   const refreshMessages = async () => {
     if (!selected || activeMessageRequest) {
@@ -483,6 +616,65 @@ export function mountChannels(root) {
       create.disabled = false;
     }
   });
+  threadForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!selected) {
+      return;
+    }
+    createThreadButton.disabled = true;
+    try {
+      const channelId = selected.id;
+      const data = await request(`/api/v1/channels/${encodeURIComponent(channelId)}/threads`, {
+        method: "POST",
+        body: JSON.stringify({ title: threadTitle.value.trim() }),
+      });
+      threadTitle.value = "";
+      await loadThreads(selected);
+      if (data.thread) {
+        await selectThread(data.thread);
+      }
+    } catch (error) {
+      threadStatus.textContent = error.message || "Unable to create thread.";
+    } finally {
+      createThreadButton.disabled = false;
+    }
+  });
+  threadComposer.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!selected || !selectedThread) {
+      return;
+    }
+    let body;
+    try {
+      body = JSON.parse(threadPayload.value);
+    } catch {
+      threadStatus.textContent = "Enter valid JSON before replying.";
+      threadStatus.setAttribute("role", "alert");
+      threadPayload.focus();
+      return;
+    }
+    sendThreadMessage.disabled = true;
+    try {
+      const channelId = selected.id;
+      const threadId = selectedThread.id;
+      await request(
+        `/api/v1/channels/${encodeURIComponent(channelId)}/threads/${encodeURIComponent(threadId)}/messages`,
+        {
+          method: "POST",
+          body: JSON.stringify({ body }),
+        },
+      );
+      threadPayload.value = "";
+      await loadThreadMessages();
+      threadStatus.setAttribute("role", "status");
+      threadStatus.textContent = "Reply sent.";
+    } catch (error) {
+      threadStatus.setAttribute("role", "alert");
+      threadStatus.textContent = error.message || "Unable to send reply.";
+    } finally {
+      sendThreadMessage.disabled = false;
+    }
+  });
   more.addEventListener("click", () => void loadMessages(cursor));
   eventSummary.addEventListener("click", () => {
     if (!eventHistory.open && selected) {
@@ -571,6 +763,23 @@ export function mountChannels(root) {
       // Notifications are wake-ups only; the scoped API is authoritative.
       if (!disposed && selected && notification.channelId === selected.id) {
         void refreshMessages();
+      }
+    });
+    channelEvents.addEventListener("channel.thread.message", (event) => {
+      let notification;
+      try {
+        notification = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      if (
+        !disposed &&
+        selected &&
+        selectedThread &&
+        notification.channelId === selected.id &&
+        notification.threadId === selectedThread.id
+      ) {
+        void loadThreadMessages();
       }
     });
     channelEvents.addEventListener("open", () => {

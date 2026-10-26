@@ -24,6 +24,8 @@ for (const viewport of [
       body: { text: index === 0 ? "Earlier message" : `Message ${index + 1}` },
     }));
     const longName = "x".repeat(120);
+    let threads = [];
+    let threadMessages = [];
     const requests = [];
     await page.addInitScript(() => {
       window.__eventSources = [];
@@ -57,6 +59,22 @@ for (const viewport of [
           canEdit: true,
           channels: [{ id: "chan-local", name: longName }],
         };
+      } else if (url.pathname.endsWith("/threads") && request.method() === "GET") {
+        data = { threads };
+      } else if (url.pathname.includes("/threads/") && url.pathname.endsWith("/messages")) {
+        if (request.method() === "GET") {
+          data = { messages: threadMessages };
+        } else {
+          const body = JSON.parse(request.postData());
+          const message = { id: "thread-message-1", author: "You", body: body.body, createdAt: "2026-01-01T00:02:00Z" };
+          threadMessages = [...threadMessages, message];
+          data = { message };
+        }
+      } else if (url.pathname.endsWith("/threads") && request.method() === "POST") {
+        const body = JSON.parse(request.postData());
+        const thread = { id: "thread-local", title: body.title };
+        threads = [...threads, thread];
+        data = { thread };
       } else if (url.pathname.endsWith("/messages") && request.method() === "GET") {
         const after = url.searchParams.get("after");
         const start = after ? messages.findIndex((message) => message.id === after) + 1 : 0;
@@ -90,12 +108,18 @@ for (const viewport of [
     });
 
     await page.goto("/tests/playwright/channel-harness.html");
-    await expect(page.getByRole("heading", { name: "Channels" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Streams" })).toBeVisible();
     const channel = page.getByRole("button", { name: longName });
     await channel.click();
     await expect(channel).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByText("Earlier message")).toBeVisible();
     await expect(page.locator("[data-message-id]")).toHaveCount(50);
+    await page.getByLabel("New thread title").fill("Investigate incident");
+    await page.getByRole("button", { name: "Create thread" }).click();
+    await expect(page.getByRole("button", { name: "Investigate incident" })).toHaveAttribute("aria-pressed", "true");
+    await page.getByLabel("Thread message JSON body").fill('{"text":"Investigating in the Thread"}');
+    await page.getByRole("button", { name: "Reply" }).click();
+    await expect(page.getByText("Investigating in the Thread")).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
     const colors = await page.locator('[data-message-id="m001"] pre').evaluate((node) => ({

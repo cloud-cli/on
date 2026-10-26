@@ -879,6 +879,50 @@ const migrations: Migration[] = [
       );
     },
   },
+  {
+    version: "031_stream_threads",
+    async apply() {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS channel_threads (
+          id TEXT NOT NULL,
+          team_id TEXT NOT NULL,
+          channel_id TEXT NOT NULL,
+          title TEXT NOT NULL CHECK(length(trim(title)) BETWEEN 1 AND 160),
+          created_by TEXT NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY(team_id, id),
+          UNIQUE(team_id, channel_id, id),
+          FOREIGN KEY(team_id, channel_id) REFERENCES channels(team_id, id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_channel_threads_stream
+          ON channel_threads(team_id, channel_id, updated_at DESC, id);
+        CREATE TABLE IF NOT EXISTS channel_thread_messages (
+          id TEXT NOT NULL,
+          team_id TEXT NOT NULL,
+          channel_id TEXT NOT NULL,
+          thread_id TEXT NOT NULL,
+          author TEXT NOT NULL,
+          body_json TEXT NOT NULL CHECK(json_valid(body_json)),
+          caused_by_event_id TEXT,
+          caused_by_job_id INTEGER,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY(team_id, id),
+          FOREIGN KEY(team_id, channel_id, thread_id) REFERENCES channel_threads(team_id, channel_id, id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_channel_thread_messages_history
+          ON channel_thread_messages(team_id, channel_id, thread_id, created_at, id);
+        CREATE TRIGGER IF NOT EXISTS channel_thread_messages_immutable_update
+          BEFORE UPDATE ON channel_thread_messages BEGIN SELECT RAISE(ABORT, 'thread messages are immutable'); END;
+        CREATE TRIGGER IF NOT EXISTS channel_thread_messages_touch_thread
+          AFTER INSERT ON channel_thread_messages
+          BEGIN
+            UPDATE channel_threads SET updated_at = CURRENT_TIMESTAMP
+             WHERE team_id = NEW.team_id AND channel_id = NEW.channel_id AND id = NEW.thread_id;
+          END;
+      `);
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

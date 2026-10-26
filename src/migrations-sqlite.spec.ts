@@ -138,6 +138,7 @@ describe("v3 migrations against SQLite", () => {
     expect(versions.map(({ version }) => version)).toContain("028_workflow_run_plan_ready");
     expect(versions.map(({ version }) => version)).toContain("029_step_attempt_identity");
     expect(versions.map(({ version }) => version)).toContain("030_domain_event_delivery_invocation_link");
+    expect(versions.map(({ version }) => version)).toContain("031_stream_threads");
     expect(database.prepare("PRAGMA table_info(step_execution_attempt_starts)").all()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "started_at" }),
@@ -149,6 +150,15 @@ describe("v3 migrations against SQLite", () => {
     );
     expect(database.prepare("PRAGMA table_info(domain_event_deliveries)").all()).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: "invocation_id" })]),
+    );
+    expect(database.prepare("PRAGMA table_info(channel_threads)").all()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "created_by" })]),
+    );
+    expect(database.prepare("PRAGMA table_info(channel_thread_messages)").all()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "thread_id" }),
+        expect.objectContaining({ name: "body_json" }),
+      ]),
     );
     expect(database.prepare("PRAGMA table_info(workflow_run_admissions)").all()).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: "retry_after" })]),
@@ -191,6 +201,29 @@ describe("v3 migrations against SQLite", () => {
     insert.run("event-c");
     const last = database.prepare("SELECT id, sequence FROM domain_events ORDER BY sequence DESC LIMIT 1").get();
     expect(last).toMatchObject({ id: "event-c", sequence: 3 });
+  });
+
+  it("keeps legacy Stream messages separate from explicit Thread conversations", async () => {
+    createPreV3Database(true);
+    await runMigrations();
+    const database = dbTestHooks.currentDatabase() as DatabaseSync;
+    database.exec(`
+      INSERT INTO channels(id, team_id, name) VALUES ('stream-a', 'team-a', 'Operations');
+      INSERT INTO channel_messages(id, team_id, channel_id, author, body_json)
+        VALUES ('legacy-message', 'team-a', 'stream-a', 'human-a', '{"text":"legacy stream note"}');
+      INSERT INTO channel_threads(id, team_id, channel_id, title, created_by)
+        VALUES ('thread-a', 'team-a', 'stream-a', 'Investigate alert', 'human-a');
+      INSERT INTO channel_thread_messages(id, team_id, channel_id, thread_id, author, body_json)
+        VALUES ('thread-message', 'team-a', 'stream-a', 'thread-a', 'human-a', '{"text":"thread reply"}');
+    `);
+
+    expect(database.prepare("SELECT id, body_json FROM channel_messages").all()).toEqual([
+      { id: "legacy-message", body_json: '{"text":"legacy stream note"}' },
+    ]);
+    expect(database.prepare("SELECT id, thread_id, body_json FROM channel_thread_messages").all()).toEqual([
+      { id: "thread-message", thread_id: "thread-a", body_json: '{"text":"thread reply"}' },
+    ]);
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 
   it("uses the channel history expression index without changing ordered cursor pages", async () => {

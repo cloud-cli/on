@@ -37,6 +37,19 @@ function makeServer(capabilities = ["workflows.view", "workflows.edit"]) {
         id: "msg",
         createdAt: "now",
       })),
+      listThreads: vi.fn(async () => [{ id: "thread-1", title: "Investigate" }]),
+      getThread: vi.fn(async (teamId, channelId, threadId) =>
+        teamId === "team-a" && channelId === "chan" && threadId === "thread-1" ? { id: threadId } : null,
+      ),
+      createThread: vi.fn(async (teamId, channelId, title, createdBy) => ({
+        id: "thread-1",
+        teamId,
+        channelId,
+        title,
+        createdBy,
+      })),
+      listThreadMessages: vi.fn(async () => [{ id: "reply-1", body: { text: "hello" } }]),
+      appendThreadMessage: vi.fn(async (input) => ({ ...input, id: "reply-1" })),
     },
     events: { publish: vi.fn() },
     domainEventRepository: {
@@ -110,6 +123,67 @@ describe("workspace channel APIs", () => {
       expect(res.writeHead).toHaveBeenCalledWith(400, expect.any(Object));
     }
     expect(server.channels.appendMessage).not.toHaveBeenCalled();
+  });
+
+  it("scopes Stream Threads and their messages to the authenticated workspace", async () => {
+    const server = makeServer();
+    const list = response();
+    await WebhookServer.prototype.handleThreadList.call(server, {}, list, "chan");
+    expect(server.channels.listThreads).toHaveBeenCalledWith("team-a", "chan");
+    expect(JSON.parse(list.end.mock.calls[0][0]).threads).toHaveLength(1);
+
+    server.readJson.mockResolvedValueOnce({ title: "Investigate", teamId: "team-b", createdBy: "forged" });
+    const forged = response();
+    await WebhookServer.prototype.handleThreadCreate.call(server, {}, forged, "chan");
+    expect(forged.writeHead).toHaveBeenCalledWith(400, expect.anything());
+    expect(server.channels.createThread).not.toHaveBeenCalled();
+
+    server.readJson.mockResolvedValueOnce({ title: "Investigate" });
+    const created = response();
+    await WebhookServer.prototype.handleThreadCreate.call(server, {}, created, "chan");
+    expect(server.channels.createThread).toHaveBeenCalledWith("team-a", "chan", "Investigate", "actor-a");
+
+    const history = response();
+    await WebhookServer.prototype.handleThreadMessages.call(
+      server,
+      { url: "/api/channels/chan/threads/thread-1/messages?limit=3&after=reply-0" },
+      history,
+      "chan",
+      "thread-1",
+    );
+    expect(server.channels.listThreadMessages).toHaveBeenCalledWith("team-a", "chan", "thread-1", 3, "reply-0");
+
+    server.readJson.mockResolvedValueOnce({ body: { text: "reply" } });
+    const posted = response();
+    await WebhookServer.prototype.handleThreadMessageAppend.call(server, {}, posted, "chan", "thread-1");
+    expect(server.channels.appendThreadMessage).toHaveBeenCalledWith({
+      teamId: "team-a",
+      channelId: "chan",
+      threadId: "thread-1",
+      author: "actor-a",
+      body: { text: "reply" },
+    });
+    expect(server.events.publish).toHaveBeenCalledWith("channel.thread.message", {
+      teamId: "team-a",
+      channelId: "chan",
+      threadId: "thread-1",
+      messageId: "reply-1",
+    });
+  });
+
+  it("denies Thread reads to unauthorized principals and hides cross-workspace IDs", async () => {
+    const denied = makeServer([]);
+    const deniedResponse = response();
+    await WebhookServer.prototype.handleThreadList.call(denied, {}, deniedResponse, "chan");
+    expect(denied.channels.getChannel).not.toHaveBeenCalled();
+    expect(denied.channels.listThreads).not.toHaveBeenCalled();
+
+    const missing = makeServer();
+    missing.channels.getThread.mockResolvedValue(null);
+    const missingResponse = response();
+    await WebhookServer.prototype.handleThreadMessages.call(missing, {}, missingResponse, "chan", "other-thread");
+    expect(missingResponse.writeHead).toHaveBeenCalledWith(404, expect.anything());
+    expect(missing.channels.listThreadMessages).not.toHaveBeenCalled();
   });
 
   it("isolates history by workspace and bounds pagination", async () => {

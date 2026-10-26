@@ -2150,6 +2150,30 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (url.pathname === "/api/channels" && req.method === "POST") {
       return this.handleChannelCreate(req, res);
     }
+    const channelThreads = url.pathname.match(/^\/api\/channels\/([^/]+)\/threads$/);
+    if (channelThreads && req.method === "GET") {
+      return this.handleThreadList(req, res, decodeURIComponent(channelThreads[1]));
+    }
+    if (channelThreads && req.method === "POST") {
+      return this.handleThreadCreate(req, res, decodeURIComponent(channelThreads[1]));
+    }
+    const threadMessages = url.pathname.match(/^\/api\/channels\/([^/]+)\/threads\/([^/]+)\/messages$/);
+    if (threadMessages && req.method === "GET") {
+      return this.handleThreadMessages(
+        req,
+        res,
+        decodeURIComponent(threadMessages[1]),
+        decodeURIComponent(threadMessages[2]),
+      );
+    }
+    if (threadMessages && req.method === "POST") {
+      return this.handleThreadMessageAppend(
+        req,
+        res,
+        decodeURIComponent(threadMessages[1]),
+        decodeURIComponent(threadMessages[2]),
+      );
+    }
     const channelEvents = url.pathname.match(/^\/api\/channels\/([^/]+)\/events$/);
     if (channelEvents && req.method === "GET") {
       return this.handleChannelEvents(req, res, decodeURIComponent(channelEvents[1]));
@@ -4579,6 +4603,109 @@ sessionStorage.removeItem('runner-pending-team-invite');
       "Cache-Control": "no-store",
     });
     res.end(JSON.stringify({ channel, teamId: auth.teamId }));
+  }
+
+  private async handleThreadList(req: http.IncomingMessage, res: http.ServerResponse, channelId: string) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.view");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getChannel(auth.teamId, channelId))) {
+      return deny(res, 404, "Stream not found");
+    }
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ threads: await this.channels.listThreads(auth.teamId, channelId), channelId }));
+  }
+
+  private async handleThreadCreate(req: http.IncomingMessage, res: http.ServerResponse, channelId: string) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.edit");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getChannel(auth.teamId, channelId))) {
+      return deny(res, 404, "Stream not found");
+    }
+    const body = await this.readJson(req, res, 16 * 1024);
+    if (
+      !body ||
+      typeof body.title !== "string" ||
+      !body.title.trim() ||
+      body.title.length > 160 ||
+      Object.keys(body).length !== 1
+    ) {
+      if (!res.headersSent) {
+        deny(res, 400, "A thread title is required");
+      }
+      return;
+    }
+    const thread = await this.channels.createThread(auth.teamId, channelId, body.title.trim(), auth.principal.subject);
+    res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ thread }));
+  }
+
+  private async handleThreadMessages(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    channelId: string,
+    threadId: string,
+  ) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.view");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getThread(auth.teamId, channelId, threadId))) {
+      return deny(res, 404, "Thread not found");
+    }
+    const url = new URL(req.url || "/", "http://localhost");
+    const rawLimit = url.searchParams.get("limit");
+    const limit = rawLimit === null ? 50 : Number(rawLimit);
+    const after = url.searchParams.get("after") || undefined;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (after && after.length > 256)) {
+      return deny(res, 400, "Invalid thread message pagination");
+    }
+    const messages = await this.channels.listThreadMessages(auth.teamId, channelId, threadId, limit, after);
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(
+      JSON.stringify({
+        messages,
+        channelId,
+        threadId,
+        limit,
+        next: messages.length === limit ? messages.at(-1)?.id : null,
+      }),
+    );
+  }
+
+  private async handleThreadMessageAppend(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    channelId: string,
+    threadId: string,
+  ) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.edit");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getThread(auth.teamId, channelId, threadId))) {
+      return deny(res, 404, "Thread not found");
+    }
+    const body = await this.readJson(req, res, 256 * 1024);
+    if (!body || Object.keys(body).length !== 1 || !Object.hasOwn(body, "body") || !isSafeChannelBody(body.body)) {
+      if (!res.headersSent) {
+        deny(res, 400, "Thread message body is invalid, too large/deep, or contains a secret field");
+      }
+      return;
+    }
+    const message = await this.channels.appendThreadMessage({
+      teamId: auth.teamId,
+      channelId,
+      threadId,
+      author: auth.principal.subject,
+      body: body.body,
+    });
+    this.events.publish("channel.thread.message", { teamId: auth.teamId, channelId, threadId, messageId: message.id });
+    res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ message }));
   }
 
   private async handleChannelMessages(req: http.IncomingMessage, res: http.ServerResponse, channelId: string) {

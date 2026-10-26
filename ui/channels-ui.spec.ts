@@ -31,6 +31,16 @@ describe("channels UI", () => {
     expect(shell).toContain("activeSection === 'workspace-channels'");
   });
 
+  it("keeps Threads distinct from Stream history and uses scoped Thread message endpoints", () => {
+    expect(source).toContain('setAttribute("aria-label", "Threads")');
+    expect(source).toContain('setAttribute("aria-label", "Stream threads")');
+    expect(source).toContain("/api/v1/channels/${encodeURIComponent(channel.id)}/threads");
+    expect(source).toContain("/threads/${encodeURIComponent(threadId)}/messages");
+    expect(source).toContain('addEventListener("channel.thread.message"');
+    expect(source).toContain('setAttribute("aria-label", "Thread messages")');
+    expect(source).toContain("New Stream");
+  });
+
   it("loads saved events lazily with opaque cursor pagination and text-only rendering", () => {
     expect(source).toContain('"Event history"');
     expect(source).toContain("/api/channels/${encodeURIComponent(channelId)}/events?${query}");
