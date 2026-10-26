@@ -170,8 +170,10 @@ export function mountChannels(root) {
   let channelEvents = null;
   let removalObserver = null;
   let eventCursor = null;
+  let eventResumeCursor = null;
   let eventFailedCursor = null;
   let eventRequest = null;
+  let eventRefreshPending = false;
   let eventGeneration = 0;
   const request = async (url, options) => {
     const { headers: requestHeaders, ...requestOptions } = options || {};
@@ -441,6 +443,7 @@ export function mountChannels(root) {
         eventList.append(...items);
       }
       eventCursor = data.nextCursor || null;
+      eventResumeCursor = data.resumeCursor || after || null;
       eventFailedCursor = null;
       eventMore.hidden = !eventCursor;
       eventRetry.hidden = true;
@@ -464,14 +467,30 @@ export function mountChannels(root) {
         eventRequest = null;
         eventMore.disabled = false;
       }
+      if (eventRefreshPending && !disposed && selected && eventHistory.open) {
+        eventRefreshPending = false;
+        void reconcileEvents();
+      }
     }
+  };
+  const reconcileEvents = () => {
+    if (!selected || !eventHistory.open) {
+      return;
+    }
+    if (eventRequest) {
+      eventRefreshPending = true;
+      return;
+    }
+    void loadEvents(eventResumeCursor, eventResumeCursor === null);
   };
   const select = async (channel) => {
     selectionGeneration += 1;
     eventGeneration += 1;
     eventRequest = null;
     eventCursor = null;
+    eventResumeCursor = null;
     eventFailedCursor = null;
+    eventRefreshPending = false;
     eventList.replaceChildren();
     eventMore.hidden = true;
     eventStatus.textContent = "";
@@ -782,10 +801,22 @@ export function mountChannels(root) {
         void loadThreadMessages();
       }
     });
+    channelEvents.addEventListener("channel.domain-event", (event) => {
+      let notification;
+      try {
+        notification = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      if (!disposed && selected && notification.channelId === selected.id) {
+        reconcileEvents();
+      }
+    });
     channelEvents.addEventListener("open", () => {
       // Reconcile after initial connect and every automatic reconnect to recover gaps.
       if (!disposed && selected) {
         void refreshMessages();
+        reconcileEvents();
       }
     });
   }

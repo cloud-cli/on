@@ -18,7 +18,10 @@ describe("channels UI", () => {
     expect(source).toContain('new URL("/api/events", window.location.href)');
     expect(source).toContain('eventUrl.searchParams.set("teamId", root.dataset.workspaceId)');
     expect(source).toContain('addEventListener("channel.message"');
+    expect(source).toContain('addEventListener("channel.domain-event"');
     expect(source).toContain('addEventListener("open"');
+    expect(source).toContain("const reconcileEvents = () =>");
+    expect(source).toContain("eventResumeCursor = data.resumeCursor || after || null");
     expect(source).toContain("notification.channelId === selected.id");
     expect(source).toContain("drawMessages(messages, true)");
   });

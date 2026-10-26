@@ -404,6 +404,92 @@ test("saved event history paginates safely and reloads without message notificat
   }
 });
 
+test("Stream event notifications reconcile from the durable cursor without duplicate cards", async ({ page }) => {
+  const cursors = [];
+  await page.addInitScript(() => {
+    window.__eventSources = [];
+    window.EventSource = class extends EventTarget {
+      constructor(url) {
+        super();
+        this.url = String(url);
+        window.__eventSources.push(this);
+      }
+      close() {
+        this.closed = true;
+      }
+    };
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    let data;
+    if (url.pathname === "/api/v1/auth/token") {
+      data = { access_token: "local-test-token", expires_at: Date.now() + 600000 };
+    } else if (url.pathname === "/api/v1/channels") {
+      data = { canEdit: false, channels: [{ id: "live-stream", name: "Live" }] };
+    } else if (url.pathname.endsWith("/messages")) {
+      data = { messages: [], next: null };
+    } else if (url.pathname.endsWith("/events")) {
+      const cursor = url.searchParams.get("cursor");
+      cursors.push(cursor);
+      data =
+        cursor === "cursor-e1"
+          ? {
+              events: [{ id: "event-2", type: "task.updated", data: { status: "done" } }],
+              nextCursor: null,
+              resumeCursor: "cursor-e2",
+            }
+          : {
+              events: [{ id: "event-1", type: "task.created", data: { status: "queued" } }],
+              nextCursor: null,
+              resumeCursor: "cursor-e1",
+            };
+    } else {
+      data = {};
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
+  });
+  await page.route("**/api/channels/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/events")) {
+      const cursor = url.searchParams.get("cursor");
+      cursors.push(cursor);
+      const data =
+        cursor === "cursor-e1"
+          ? {
+              events: [{ id: "event-2", type: "task.updated", data: { status: "done" } }],
+              nextCursor: null,
+              resumeCursor: "cursor-e2",
+            }
+          : {
+              events: [{ id: "event-1", type: "task.created", data: { status: "queued" } }],
+              nextCursor: null,
+              resumeCursor: "cursor-e1",
+            };
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
+      return;
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ messages: [], next: null }) });
+  });
+  await page.route("**/api/events**", async (route) => {
+    await route.fulfill({ status: 204, body: "" });
+  });
+  await page.goto("/tests/playwright/channel-harness.html");
+  await page.getByRole("button", { name: "Live" }).click();
+  const history = page.getByText("Event history", { exact: true });
+  await history.click();
+  await expect(page.locator('[data-event-id="event-1"]')).toBeVisible();
+  const eventSource = await page.evaluateHandle(() => window.__eventSources[0]);
+  await eventSource.evaluate((source) => {
+    source.dispatchEvent(
+      new MessageEvent("channel.domain-event", { data: JSON.stringify({ channelId: "live-stream" }) }),
+    );
+  });
+  await expect(page.locator('[data-event-id="event-2"]')).toBeVisible();
+  await expect(page.locator('[data-event-id="event-1"]')).toHaveCount(1);
+  expect(cursors).toEqual([null, "cursor-e1"]);
+  expect(await eventSource.evaluate((source) => source.url)).toContain("/api/events");
+});
+
 test("event history can retry initial and later-page failures without losing its cursor", async ({ page }) => {
   let initialAttempts = 0;
   let laterAttempts = 0;

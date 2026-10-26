@@ -30,7 +30,12 @@ export type PublishDomainEvent<T> = Omit<DomainEvent<T>, "id" | "teamId" | "reco
 export type DomainEventPage<T = unknown> = {
   events: DomainEvent<T>[];
   nextCursor: string | null;
+  resumeCursor: string | null;
 };
+
+function encodeSequenceCursor(teamId: string, channelId: string, sequence: number): string {
+  return Buffer.from(JSON.stringify({ v: 1, teamId, channelId, sequence })).toString("base64url");
+}
 
 export type WorkflowRunRequest<T = unknown> = DomainEvent<T> & {
   sequence: number;
@@ -81,24 +86,14 @@ export class DomainEventRepository {
               e.correlation_id, e.causation_id, e.idempotency_key, e.data_json
          FROM domain_events e
          JOIN stream_event_bindings b ON b.team_id = e.team_id AND b.event_id = e.id
-        WHERE e.team_id = ? AND b.stream_id = ? AND sequence > ?
+        WHERE e.team_id = ? AND b.stream_id = ? AND e.sequence > ?
         ORDER BY e.sequence LIMIT ?`,
       [teamId, channelId, afterSequence, boundedLimit + 1],
     );
     const hasMore = rows.length > boundedLimit;
     const pageRows = hasMore ? rows.slice(0, boundedLimit) : rows;
     const last = pageRows.at(-1);
-    const nextCursor =
-      hasMore && last
-        ? Buffer.from(
-            JSON.stringify({
-              v: 1,
-              teamId,
-              channelId,
-              sequence: Number(last.sequence),
-            }),
-          ).toString("base64url")
-        : null;
+    const nextCursor = hasMore && last ? encodeSequenceCursor(teamId, channelId, Number(last.sequence)) : null;
     const events = await Promise.all(
       pageRows.map(async (row: any) => {
         const event = this.parse<T>(row);
@@ -136,7 +131,11 @@ export class DomainEventRepository {
         };
       }),
     );
-    return { events, nextCursor };
+    return {
+      events,
+      nextCursor,
+      resumeCursor: last ? encodeSequenceCursor(teamId, channelId, Number(last.sequence)) : cursor || null,
+    };
   }
 
   /** Bind a canonical event to a workspace Stream without copying or redispatching it. */

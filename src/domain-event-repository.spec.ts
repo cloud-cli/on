@@ -233,7 +233,11 @@ describe("DomainEventRepository", () => {
 
   it("returns empty pages and rejects malformed or cross-workspace cursors", async () => {
     database.all.mockResolvedValueOnce([]);
-    await expect(repository.listChannelEvents("team-a", "chan-1")).resolves.toEqual({ events: [], nextCursor: null });
+    await expect(repository.listChannelEvents("team-a", "chan-1")).resolves.toEqual({
+      events: [],
+      nextCursor: null,
+      resumeCursor: null,
+    });
     await expect(repository.listChannelEvents("team-a", "chan-1", 10, "not-a-cursor")).rejects.toThrow(
       "Invalid event cursor",
     );

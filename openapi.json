@@ -3723,7 +3723,10 @@
           }
         ],
         "responses": {
-          "200": { "description": "Ascending event page with opaque next cursor" },
+          "200": {
+            "description": "Ascending persisted event page. resumeCursor identifies the last event included and is suitable for reconnect reconciliation; nextCursor is present only when older history remains.",
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
           "400": { "description": "Invalid limit or cursor" },
           "404": { "description": "Channel not found in workspace" }
         }

@@ -4869,6 +4869,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (!bound) {
       return deny(res, 404, "Event not found in workspace");
     }
+    this.events.publish("channel.domain-event", { teamId: auth.teamId, channelId, eventId: body.eventId });
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
     res.end(JSON.stringify({ bound: true, eventId: body.eventId, channelId }));
   }

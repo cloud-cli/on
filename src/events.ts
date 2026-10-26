@@ -7,7 +7,8 @@ export type RunnerEvent =
   | "runner.drain"
   | "runner.update"
   | "channel.message"
-  | "channel.thread.message";
+  | "channel.thread.message"
+  | "channel.domain-event";
 
 export class EventBroker {
   private clients = new Map<
@@ -78,7 +79,10 @@ export class EventBroker {
   publish(event: RunnerEvent, data: Record<string, unknown> = {}): void {
     const message = `id: ${this.nextId++}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const [client, clientContext] of this.clients) {
-      if ((event === "channel.message" || event === "channel.thread.message") && clientContext.worker) {
+      if (
+        (event === "channel.message" || event === "channel.thread.message" || event === "channel.domain-event") &&
+        clientContext.worker
+      ) {
         continue;
       }
       if (clientContext.worker && !clientContext.runnerTeamIds && event !== "jobs.available") {

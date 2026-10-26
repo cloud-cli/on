@@ -226,6 +226,7 @@ describe("workspace channel APIs", () => {
         },
       ],
       nextCursor: "next",
+      resumeCursor: "resume",
     });
     const res = response();
     await WebhookServer.prototype.handleChannelEvents.call(
@@ -284,6 +285,11 @@ describe("workspace channel APIs", () => {
     const res = response();
     await WebhookServer.prototype.handleChannelEventBinding.call(server, {}, res, "chan");
     expect(server.domainEventRepository.bindEventToStream).toHaveBeenCalledWith("team-a", "chan", "event-a");
+    expect(server.events.publish).toHaveBeenCalledWith("channel.domain-event", {
+      teamId: "team-a",
+      channelId: "chan",
+      eventId: "event-a",
+    });
     expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({ bound: true, eventId: "event-a", channelId: "chan" });
     const denied = makeServer(["workflows.view"]);
     await WebhookServer.prototype.handleChannelEventBinding.call(denied, {}, response(), "chan");

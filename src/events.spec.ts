@@ -75,6 +75,29 @@ describe("EventBroker team and worker subscriptions", () => {
     broker.close();
   });
 
+  it("sends persisted Stream event wake-ups only to the event's workspace", () => {
+    const broker = new EventBroker();
+    const response = () => ({ writeHead: vi.fn(), write: vi.fn(() => true), end: vi.fn(), once: vi.fn() });
+    const teamA = response();
+    const teamB = response();
+    const worker = response();
+    broker.subscribe({ once: vi.fn() } as any, teamA as any, "team-a");
+    broker.subscribe({ once: vi.fn() } as any, teamB as any, "team-b");
+    broker.subscribe({ once: vi.fn() } as any, worker as any, undefined, true);
+    teamA.write.mockClear();
+    teamB.write.mockClear();
+    worker.write.mockClear();
+
+    broker.publish("channel.domain-event", { teamId: "team-a", channelId: "stream-a", eventId: "event-a" });
+
+    expect(teamA.write).toHaveBeenCalledOnce();
+    expect(teamA.write.mock.calls[0][0]).toContain("event: channel.domain-event");
+    expect(teamA.write.mock.calls[0][0]).toContain('"eventId":"event-a"');
+    expect(teamB.write).not.toHaveBeenCalled();
+    expect(worker.write).not.toHaveBeenCalled();
+    broker.close();
+  });
+
   it("limits runner events to authorized teams and closes streams after grant changes", () => {
     const broker = new EventBroker();
     const response = () => ({ writeHead: vi.fn(), write: vi.fn(() => true), end: vi.fn(), once: vi.fn() });
