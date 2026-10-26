@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local invocation test harness</title>
+    <link rel="stylesheet" href="/ui/index.css" />
+    <script type="importmap">
+      { "imports": { "@app/api-client.mjs": "/ui/api-client.mjs" } }
+    </script>
+  </head>
+  <body class="bg-app-background p-4 font-sans text-app-foreground">
+    <main id="invocation"></main>
+    <script type="module">
+      import { mountInvocation } from "/ui/invocation-ui.mjs";
+      const root = document.querySelector("#invocation");
+      const params = new URLSearchParams(location.search);
+      root.dataset.workspaceId = params.get("workspaceId") || "";
+      root.dataset.invocationId = params.get("invocationId") || "";
+      localStorage.setItem("runner-team-id", root.dataset.workspaceId);
+      mountInvocation(root);
+    </script>
+  </body>
+</html>

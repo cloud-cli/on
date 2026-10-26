@@ -97,6 +97,48 @@ describe("DomainEventRepository", () => {
     expect(database.all.mock.calls[2][1]).toEqual([2, 10]);
   });
 
+  it("returns workspace-scoped invocation and canonical run state without encrypted request inputs", async () => {
+    database.get.mockResolvedValueOnce({
+      id: "invocation-1",
+      team_id: "team-a",
+      recorded_at: "2026-01-01T00:00:00.000Z",
+      workflow_id: "deploy",
+      revision: 4,
+    });
+    database.all.mockResolvedValueOnce([
+      {
+        variant_index: 0,
+        admission_status: "admitted",
+        error_code: null,
+        job_id: 71,
+      },
+      {
+        variant_index: 1,
+        admission_status: "failed",
+        error_code: "invalid_input",
+        job_id: null,
+      },
+    ]);
+
+    await expect(repository.getWorkflowInvocationForTeam("team-a", "invocation-1")).resolves.toEqual({
+      id: "invocation-1",
+      teamId: "team-a",
+      workflowId: "deploy",
+      revision: 4,
+      recordedAt: "2026-01-01T00:00:00.000Z",
+      variants: [
+        { variantIndex: 0, admissionStatus: "admitted", errorCode: null, runId: "71" },
+        { variantIndex: 1, admissionStatus: "failed", errorCode: "invalid_input", runId: null },
+      ],
+    });
+    expect(database.get.mock.calls[0][0]).toContain("team_id = ? AND id = ? AND type = 'workflow.run.requested'");
+    expect(database.get.mock.calls[0][1]).toEqual(["team-a", "invocation-1"]);
+    expect(database.all.mock.calls[0][0]).not.toContain("inputsCiphertext");
+
+    database.get.mockResolvedValueOnce(null);
+    await expect(repository.getWorkflowInvocationForTeam("team-b", "invocation-1")).resolves.toBeNull();
+  });
+
   it("paginates workflow requests by durable sequence despite tied timestamps and out-of-order IDs", async () => {
     const timestamp = "2025-01-01T00:00:01.000Z";
     const olderSequence = {

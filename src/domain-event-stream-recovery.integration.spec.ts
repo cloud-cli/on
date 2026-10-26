@@ -49,13 +49,21 @@ describe("persisted Stream event reconciliation", () => {
       CREATE TABLE domain_event_deliveries (
         team_id TEXT, event_id TEXT, status TEXT, job_ids_json TEXT, invocation_id TEXT
       );
-      CREATE TABLE workflow_run_admissions (team_id TEXT, event_id TEXT, job_id INTEGER);
+      CREATE TABLE jobs (id INTEGER PRIMARY KEY, team_id TEXT, status TEXT);
+      CREATE TABLE workflow_run_admissions (
+        team_id TEXT, event_id TEXT, workflow_id TEXT, revision INTEGER, variant_index INTEGER,
+        status TEXT, job_id INTEGER, error_code TEXT
+      );
       INSERT INTO channels VALUES ('stream-a', 'team-a'), ('stream-a', 'team-b');
       INSERT INTO domain_events VALUES
         (1, 'event-a1', 'team-a', 'audit.created', 1, 'test', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', NULL, NULL, NULL, '{}'),
         (2, 'event-b1', 'team-b', 'audit.created', 1, 'test', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', NULL, NULL, NULL, '{}'),
         (3, 'event-a2', 'team-a', 'audit.created', 1, 'test', '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z', NULL, NULL, NULL, '{}'),
-        (4, 'event-a3', 'team-a', 'audit.created', 1, 'test', '2026-01-03T00:00:00Z', '2026-01-03T00:00:00Z', NULL, NULL, NULL, '{}');
+        (4, 'event-a3', 'team-a', 'audit.created', 1, 'test', '2026-01-03T00:00:00Z', '2026-01-03T00:00:00Z', NULL, NULL, NULL, '{}'),
+        (5, 'invocation-1', 'team-a', 'workflow.run.requested', 1, 'api', '2026-01-04T00:00:00Z', '2026-01-04T00:00:00Z', NULL, NULL, NULL,
+         '{"workflowId":"deploy","revision":7,"inputsCiphertext":"do-not-return"}');
+      INSERT INTO jobs VALUES (42, 'team-a', 'running');
+      INSERT INTO workflow_run_admissions VALUES ('team-a', 'invocation-1', 'deploy', 7, 0, 'admitted', 42, NULL);
       INSERT INTO stream_event_bindings VALUES
         ('team-a', 'stream-a', 'event-a1'), ('team-b', 'stream-a', 'event-b1'), ('team-a', 'stream-a', 'event-a3');
     `);
@@ -72,6 +80,15 @@ describe("persisted Stream event reconciliation", () => {
     const resumed = await afterRestart.listChannelEvents("team-a", "stream-a", 10, firstPage.nextCursor!);
     expect(resumed.events.map(({ id }) => id)).toEqual(["event-a2", "event-a3"]);
     expect(resumed.events.some(({ id }) => id === "event-b1")).toBe(false);
+    await expect(afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1")).resolves.toEqual({
+      id: "invocation-1",
+      teamId: "team-a",
+      workflowId: "deploy",
+      revision: 7,
+      recordedAt: "2026-01-04T00:00:00Z",
+      variants: [{ variantIndex: 0, admissionStatus: "admitted", errorCode: null, runId: "42" }],
+    });
+    await expect(afterRestart.getWorkflowInvocationForTeam("team-b", "invocation-1")).resolves.toBeNull();
     await expect(afterRestart.listChannelEvents("team-b", "stream-a", 10, firstPage.nextCursor!)).rejects.toThrow(
       "Invalid event cursor",
     );

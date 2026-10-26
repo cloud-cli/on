@@ -189,6 +189,7 @@ function internalApiPath(pathname: string, method: string): string {
   if (
     pathname.startsWith("/api/v1/runner/") ||
     pathname.startsWith("/api/v1/runners") ||
+    pathname.startsWith("/api/v1/workflow-invocations/") ||
     pathname === "/api/v1/agent-workflow-grants" ||
     pathname === "/api/v1/runner-enrollments" ||
     pathname === "/api/v1/domain-events" ||
@@ -639,6 +640,7 @@ export class WebhookServer {
       (url.pathname === "/runs" ||
         url.pathname === "/" ||
         /^\/workspaces\/[^/]+\/runs(?:\/events)?$/.test(url.pathname) ||
+        /^\/workspaces\/[^/]+\/invocations\/[^/]+$/.test(url.pathname) ||
         /^\/workspaces\/[^/]+\/workflows(?:\/(?:new|[a-z0-9-]+))?$/.test(url.pathname))
     ) {
       return this.renderAppShell(res);
@@ -2225,6 +2227,14 @@ sessionStorage.removeItem('runner-pending-team-invite');
     const channelEventBindings = url.pathname.match(/^\/api\/v1\/channels\/([^/]+)\/event-bindings$/);
     if (channelEventBindings && req.method === "POST") {
       return this.handleChannelEventBinding(req, res, decodeURIComponent(channelEventBindings[1]));
+    }
+    const workflowInvocation = url.pathname.match(/^\/api\/v1\/workflow-invocations\/([^/]+)$/);
+    if (workflowInvocation && req.method === "GET") {
+      try {
+        return this.handleWorkflowInvocationGet(req, res, decodeURIComponent(workflowInvocation[1]));
+      } catch {
+        return deny(res, 400, "Invalid workflow invocation ID");
+      }
     }
     const channelMessages = url.pathname.match(/^\/api\/channels\/([^/]+)\/messages$/);
     if (channelMessages && req.method === "GET") {
@@ -4872,6 +4882,19 @@ sessionStorage.removeItem('runner-pending-team-invite');
     this.events.publish("channel.domain-event", { teamId: auth.teamId, channelId, eventId: body.eventId });
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
     res.end(JSON.stringify({ bound: true, eventId: body.eventId, channelId }));
+  }
+
+  private async handleWorkflowInvocationGet(req: http.IncomingMessage, res: http.ServerResponse, invocationId: string) {
+    const auth = await this.requireWorkspaceCapability(req, res, "runs.view");
+    if (!auth) {
+      return;
+    }
+    const invocation = await this.domainEventRepository.getWorkflowInvocationForTeam(auth.teamId, invocationId);
+    if (!invocation) {
+      return deny(res, 404, "Workflow invocation not found");
+    }
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify(invocation));
   }
 
   private async handleChannelMessageAppend(req: http.IncomingMessage, res: http.ServerResponse, channelId: string) {

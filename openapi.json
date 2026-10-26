@@ -2080,6 +2080,28 @@
         }
       }
     },
+    "/api/v1/workflow-invocations/{invocationId}": {
+      "get": {
+        "tags": ["workflows"],
+        "summary": "Inspect a workflow invocation and its execution variants",
+        "description": "Requires runs.view. Returns workspace-scoped admission states and run IDs without exposing captured request inputs. The invocation view reads current run status from the canonical run-detail API and refreshes it on workspace job-change notifications and stream reconnects.",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "parameters": [
+          {
+            "name": "invocationId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1 }
+          },
+          { "$ref": "#/components/parameters/WorkspaceId" }
+        ],
+        "responses": {
+          "200": { "description": "Invocation revision, variant admission states, and related run IDs" },
+          "403": { "description": "Missing runs.view capability" },
+          "404": { "description": "Invocation not found in workspace" }
+        }
+      }
+    },
     "/api/v1/domain-events/{eventId}/deliveries/{deliveryId}/retry": {
       "post": {
         "tags": ["events"],

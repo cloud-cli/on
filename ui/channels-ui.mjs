@@ -416,6 +416,12 @@ export function mountChannels(root) {
             link.href = `/ui/runs/${encodeURIComponent(runId)}`;
             targets.append(link);
           }
+          for (const invocationId of links.invocationIds || []) {
+            const workspaceId = root.dataset.workspaceId || localStorage.getItem("runner-team-id") || "";
+            const link = element("a", `Invocation ${invocationId}`, "underline focus-visible:ring-2");
+            link.href = `/ui/workspaces/${encodeURIComponent(workspaceId)}/invocations/${encodeURIComponent(invocationId)}`;
+            targets.append(link);
+          }
           if (links.causationEventId) {
             const link = element("a", `Caused by event ${links.causationEventId}`, "underline focus-visible:ring-2");
             link.href = `#event-${encodeURIComponent(links.causationEventId)}`;

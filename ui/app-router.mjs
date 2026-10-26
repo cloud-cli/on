@@ -1,6 +1,7 @@
 import { getElement, load, onDestroy, onInit, templateRef } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
 import { mountChannels } from "@app/channels-ui.mjs";
+import { mountInvocation } from "@app/invocation-ui.mjs";
 
 export function navigateTo(path) {
   history.pushState(null, "", path);
@@ -113,7 +114,30 @@ export default function () {
       return { component: "page-dashboard", url: "/assets/pages/dashboard.html", page: "dashboard" };
     }
     if (path.match(/^\/runs\/\d+$/)) {
-      return { component: "page-run", url: `/assets/pages/run.html?jobId=${path.split("/").pop()}`, page: "run" };
+      const workspaceId = url.searchParams.get("workspaceId") || "";
+      return {
+        component: "page-run",
+        url: `/assets/pages/run.html?jobId=${path.split("/").pop()}`,
+        page: "run",
+        ...(workspaceId ? { teamId: workspaceId } : {}),
+      };
+    }
+    const teamInvocation = path.match(/^\/workspaces\/([^/]+)\/invocations\/([^/]+)$/);
+    if (teamInvocation) {
+      let teamId;
+      let invocationId;
+      try {
+        teamId = decodeURIComponent(teamInvocation[1]);
+        invocationId = decodeURIComponent(teamInvocation[2]);
+      } catch {
+        return { component: "page-not-found", page: "not-found" };
+      }
+      return {
+        component: "page-invocation",
+        page: "invocation",
+        teamId,
+        invocationId,
+      };
     }
     if (path === "/help") {
       return { component: "page-help", url: "/assets/pages/help.html", page: "help" };
@@ -262,6 +286,7 @@ export default function () {
           "workflows",
           "incoming-events",
           "channels",
+          "invocation",
         ].includes(current.page);
         const cacheKey = current.teamId ? `${current.page}:${current.teamId}` : current.page;
         let component = persistentPage ? mountedPages.get(cacheKey) : null;
@@ -280,6 +305,11 @@ export default function () {
           if (current.page === "channels") {
             component.dataset.workspaceId = current.teamId || "";
             mountChannels(component);
+          }
+          if (current.page === "invocation") {
+            component.dataset.workspaceId = current.teamId;
+            component.dataset.invocationId = current.invocationId;
+            mountInvocation(component);
           }
           if (persistentPage) {
             mountedPages.set(cacheKey, component);

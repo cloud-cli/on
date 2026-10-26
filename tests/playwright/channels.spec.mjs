@@ -279,6 +279,7 @@ test("channel reconnect reconciles missed messages across pages without rerunnin
 
 test("saved event history paginates safely and reloads without message notifications", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 844 });
+  await page.addInitScript(() => localStorage.setItem("runner-team-id", "team-a"));
   const calls = [];
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
@@ -314,6 +315,7 @@ test("saved event history paginates safely and reloads without message notificat
                   data: { text: { html: "<img src=x onerror=alert(1)>" } },
                   links: {
                     messageIds: ["linked-message"],
+                    invocationIds: ["invoke-7"],
                     runIds: ["7"],
                     causationEventId: "cause-1",
                   },
@@ -352,6 +354,7 @@ test("saved event history paginates safely and reloads without message notificat
                 data: { text: { html: "<img src=x onerror=alert(1)>" } },
                 links: {
                   messageIds: ["linked-message"],
+                  invocationIds: ["invoke-7"],
                   runIds: ["7"],
                   causationEventId: "cause-1",
                 },
@@ -380,6 +383,10 @@ test("saved event history paginates safely and reloads without message notificat
   await page.getByRole("link", { name: "Message linked-message" }).click();
   await expect(page.locator('[data-message-id="linked-message"]')).toBeVisible();
   await expect(page.getByRole("link", { name: "Run 7" })).toHaveAttribute("href", "/ui/runs/7");
+  await expect(page.getByRole("link", { name: "Invocation invoke-7" })).toHaveAttribute(
+    "href",
+    "/ui/workspaces/team-a/invocations/invoke-7",
+  );
   await expect(page.getByRole("link", { name: "Caused by event cause-1" })).toBeVisible();
   await page.getByRole("button", { name: "Load more events" }).click();
   await expect(page.locator("[data-event-id]")).toHaveCount(2);
@@ -489,6 +496,79 @@ test("Stream event notifications reconcile from the durable cursor without dupli
   expect(cursors).toEqual([null, "cursor-e1"]);
   expect(await eventSource.evaluate((source) => source.url)).toContain("/api/events");
 });
+
+for (const viewport of [
+  { name: "desktop", width: 1280, height: 900 },
+  { name: "mobile", width: 390, height: 844 },
+]) {
+  test(`invocation view keeps admission and run state distinct (${viewport.name})`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.addInitScript(() => {
+      window.__eventSources = [];
+      window.EventSource = class extends EventTarget {
+        constructor(url) {
+          super();
+          this.url = String(url);
+          window.__eventSources.push(this);
+        }
+        close() {
+          this.closed = true;
+        }
+      };
+    });
+    const errors = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        errors.push(message.text());
+      }
+    });
+    page.on("pageerror", (error) => errors.push(error.message));
+    const runStatusRequests = [];
+    await page.route("**/api/v1/**", async (route) => {
+      const url = new URL(route.request().url());
+      let data;
+      if (url.pathname === "/api/v1/auth/token") {
+        data = { access_token: "local-test-token", expires_at: Date.now() + 600000 };
+      } else if (url.pathname === "/api/v1/workflow-invocations/invocation-1") {
+        data = {
+          id: "invocation-1",
+          teamId: "team-a",
+          workflowId: "deploy",
+          revision: 7,
+          recordedAt: "2026-01-01T00:00:00.000Z",
+          variants: [{ variantIndex: 0, admissionStatus: "admitted", errorCode: null, runId: "42" }],
+        };
+      } else if (url.pathname === "/api/v1/runs/42") {
+        runStatusRequests.push(route.request().headers()["x-team-id"]);
+        data = { status: runStatusRequests.length === 1 ? "running" : "success", jobId: "42" };
+      } else {
+        await route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Not found" }),
+        });
+        return;
+      }
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
+    });
+
+    await page.goto("/tests/playwright/invocation-harness.html?workspaceId=team-a&invocationId=invocation-1");
+    await expect(page.getByRole("heading", { name: "Workflow invocation" })).toBeVisible();
+    await expect(page.getByText("deploy @ revision 7")).toBeVisible();
+    await expect(page.getByText("Admission: admitted")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Run 42" })).toHaveAttribute("href", "/ui/runs/42?workspaceId=team-a");
+    await expect(page.getByText("Current run status: running")).toBeVisible();
+    await page.evaluate(() => {
+      window.__eventSources[0].dispatchEvent(
+        new MessageEvent("jobs.changed", { data: JSON.stringify({ teamId: "team-a", jobId: 42 }) }),
+      );
+    });
+    await expect(page.getByText("Current run status: success")).toBeVisible();
+    expect(runStatusRequests).toEqual(["team-a", "team-a"]);
+    expect(errors).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath(`invocation-${viewport.name}.png`), fullPage: true });
+  });
+}
 
 test("event history can retry initial and later-page failures without losing its cursor", async ({ page }) => {
   let initialAttempts = 0;

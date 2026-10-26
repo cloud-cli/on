@@ -10,8 +10,14 @@ import { DomainEventRepository } from "./domain-event-repository.js";
 const response = () => ({ writeHead: vi.fn().mockReturnThis(), end: vi.fn(), headersSent: false }) as any;
 const user = { subject: "user-1", kind: "human", platformRole: "user", platformCapabilities: [], disabled: false };
 
-function makeServer(capabilities = ["webhooks.manage", "webhooks.view", "workflows.edit"]) {
+function makeServer(capabilities = ["webhooks.manage", "webhooks.view", "workflows.edit", "runs.view"]) {
   const server: any = {
+    requireWorkspaceCapability(req: unknown, res: unknown, capability: string) {
+      return (WebhookServer.prototype as any).requireWorkspaceCapability.call(this, req, res, capability);
+    },
+    handleWorkflowInvocationGet(req: unknown, res: unknown, invocationId: string) {
+      return (WebhookServer.prototype as any).handleWorkflowInvocationGet.call(this, req, res, invocationId);
+    },
     authorizer: {
       workspace: vi.fn(async (_req: unknown, res: any, capability: string) => {
         if (capabilities.includes(capability)) {
@@ -108,6 +114,38 @@ describe("POST /api/v1/domain-events", () => {
     const res = await request(server, "GET", "/api/v1/domain-events/evt-1/fanout-outcome");
     expect(server.domainEventDeliveryRepository.getFanoutOutcome).toHaveBeenCalledWith("workspace-a", "evt-1");
     expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({ eventId: "evt-1", status: "unmatched", deliveryCount: 0 });
+  });
+
+  it("exposes scoped invocation admission and run status without request inputs", async () => {
+    const server = makeServer();
+    vi.spyOn(server.domainEventRepository, "getWorkflowInvocationForTeam").mockResolvedValue({
+      id: "invocation-1",
+      teamId: "workspace-a",
+      workflowId: "deploy",
+      revision: 3,
+      recordedAt: "2026-01-01T00:00:00.000Z",
+      variants: [
+        { variantIndex: 0, admissionStatus: "admitted", errorCode: null, runId: "42" },
+      ],
+    });
+    const response = await request(server, "GET", "/api/v1/workflow-invocations/invocation-1");
+    expect(server.domainEventRepository.getWorkflowInvocationForTeam).toHaveBeenCalledWith(
+      "workspace-a",
+      "invocation-1",
+    );
+    expect(JSON.parse(response.end.mock.calls[0][0])).toMatchObject({
+      id: "invocation-1",
+      variants: [{ runId: "42", admissionStatus: "admitted" }],
+    });
+    expect(response.end.mock.calls[0][0]).not.toContain("inputsCiphertext");
+
+    const denied = makeServer(["workflows.view"]);
+    const deniedLookup = vi.spyOn(denied.domainEventRepository, "getWorkflowInvocationForTeam");
+    await request(denied, "GET", "/api/v1/workflow-invocations/invocation-1");
+    expect(deniedLookup).not.toHaveBeenCalled();
+
+    const malformed = await request(server, "GET", "/api/v1/workflow-invocations/%E0%A4%A");
+    expect(malformed.writeHead).toHaveBeenCalledWith(400, expect.anything());
   });
 
   it("returns conflict for an idempotency key reused with different data", async () => {

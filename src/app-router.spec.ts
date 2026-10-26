@@ -57,13 +57,20 @@ describe("SPA router", () => {
   });
 
   it("routes run detail URLs through the app shell and loads the run component on refresh", () => {
-    expect(routerSetup).toContain(
-      'component: "page-run", url: `/assets/pages/run.html?jobId=${path.split("/").pop()}`',
-    );
+    expect(routerSetup).toContain('component: "page-run"');
+    expect(routerSetup).toContain('url: `/assets/pages/run.html?jobId=${path.split("/").pop()}`');
+    expect(routerSetup).toContain('url.searchParams.get("workspaceId")');
     expect(serverSetup).toContain('if (req.method === "GET" && /^\\/runs\\/\\d+$/.test(url.pathname))');
     expect(serverSetup).toContain("return this.renderAppShell(res);");
     expect(serverSetup).toContain('if (req.method === "GET" && url.pathname.startsWith("/api/runs/"))');
     expect(handleClick).toContain('target.pathname.startsWith("/api/v1/")');
+  });
+
+  it("keeps invocation details workspace-scoped and mounts a separate invocation view", () => {
+    expect(routerSetup).toContain("path.match(/^\\/workspaces\\/([^/]+)\\/invocations\\/([^/]+)$/)");
+    expect(routerSetup).toContain('component: "page-invocation"');
+    expect(routerSetup).toContain("mountInvocation(component)");
+    expect(serverSetup).toContain("/^\\/workspaces\\/[^/]+\\/invocations\\/[^/]+$/");
   });
 
   it("serves workspace run routes directly so refreshes load the app shell", () => {

@@ -22,6 +22,8 @@ describe("channels UI", () => {
     expect(source).toContain('addEventListener("open"');
     expect(source).toContain("const reconcileEvents = () =>");
     expect(source).toContain("eventResumeCursor = data.resumeCursor || after || null");
+    expect(source).toContain("links.invocationIds || []");
+    expect(source).toContain("/invocations/${encodeURIComponent(invocationId)}");
     expect(source).toContain("notification.channelId === selected.id");
     expect(source).toContain("drawMessages(messages, true)");
   });

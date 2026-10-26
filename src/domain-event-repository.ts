@@ -48,11 +48,61 @@ export type DomainEventLinks = {
   causationEventId: string | null;
 };
 
+export type WorkflowInvocationView = {
+  id: string;
+  teamId: string;
+  workflowId: string;
+  revision: number;
+  recordedAt: string;
+  variants: Array<{
+    variantIndex: number;
+    admissionStatus: string;
+    errorCode: string | null;
+    runId: string | null;
+  }>;
+};
+
 /**
  * Persists immutable, workspace-scoped event facts. Event data is ordinary JSON,
  * not encrypted; callers must restrict access and must not put secrets in it.
  */
 export class DomainEventRepository {
+  /** Returns invocation admission and run references without exposing request inputs. */
+  async getWorkflowInvocationForTeam(teamId: string, invocationId: string): Promise<WorkflowInvocationView | null> {
+    const event = await db.get(
+      `SELECT id, team_id, recorded_at,
+              CASE WHEN json_valid(data_json) THEN json_extract(data_json, '$.workflowId') END AS workflow_id,
+              CASE WHEN json_valid(data_json) THEN json_extract(data_json, '$.revision') END AS revision
+         FROM domain_events
+        WHERE team_id = ? AND id = ? AND type = 'workflow.run.requested'`,
+      [teamId, invocationId],
+    );
+    const revision = Number(event?.revision);
+    if (!event || typeof event.workflow_id !== "string" || !Number.isInteger(revision) || revision < 1) {
+      return null;
+    }
+    const rows = await db.all(
+      `SELECT a.variant_index, a.status AS admission_status, a.error_code, a.job_id
+         FROM workflow_run_admissions a
+        WHERE a.team_id = ? AND a.event_id = ?
+        ORDER BY a.variant_index`,
+      [teamId, invocationId],
+    );
+    return {
+      id: String(event.id),
+      teamId: String(event.team_id),
+      workflowId: event.workflow_id,
+      revision,
+      recordedAt: String(event.recorded_at),
+      variants: rows.map((row: any) => ({
+        variantIndex: Number(row.variant_index),
+        admissionStatus: String(row.admission_status),
+        errorCode: row.error_code === null || row.error_code === undefined ? null : String(row.error_code),
+        runId: row.job_id === null || row.job_id === undefined ? null : String(row.job_id),
+      })),
+    };
+  }
+
   async listChannelEvents<T = unknown>(
     teamId: string,
     channelId: string,
