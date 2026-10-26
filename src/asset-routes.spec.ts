@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { WebhookServer } from "./server.js";
 import recipeTemplate from "../ui/recipes.html?raw";
 import recipeSetup from "../ui/recipes-ui.mjs?raw";
+import channelsSetup from "../ui/channels-ui.mjs?raw";
 
 const htmlFiles = [
   ...readdirSync(new URL("../ui/", import.meta.url))
@@ -86,6 +87,16 @@ describe("canonical setup-script asset routes", () => {
       "Content-Type": "text/javascript; charset=utf-8",
     });
     expect(response.end).toHaveBeenCalledOnce();
+  });
+
+  it("serves the channels module imported by the application router", async () => {
+    const response = await request("/assets/channels-ui.mjs");
+
+    expect(response.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-cache",
+      "Content-Type": "text/javascript; charset=utf-8",
+    });
+    expect(response.end).toHaveBeenCalledWith(channelsSetup);
   });
 
   it("serves the safe recipe insertion helper through the assets namespace", async () => {

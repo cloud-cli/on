@@ -4,7 +4,13 @@ import { runMigrations } from "./migrations.js";
 import type { WorkflowDefinition, WorkflowRevision } from "./types.js";
 import { ensureTeamDataSchema } from "./team-data-schema.js";
 import { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
-import { RecipeRepository, validateRecipeInputs, ordinaryRecipeInputSchema } from "./recipes.js";
+import {
+  Recipe,
+  RecipeRepository,
+  isSafeRecipeExpression,
+  validateRecipeInputs,
+  ordinaryRecipeInputSchema,
+} from "./recipes.js";
 
 export { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
 
@@ -213,6 +219,21 @@ export class WorkflowRepository {
     recipeSecrets?: Record<string, string>;
     recipeFunction?: string;
     recipeOutputs?: Record<string, unknown>;
+    _pinnedRecipeFunctions?: Record<
+      string,
+      {
+        inputs: Record<string, unknown>;
+        outputs: Record<string, unknown>;
+        returns?: Record<string, string>;
+        steps: any[];
+      }
+    >;
+    _pinnedReferences?: Array<{
+      namespace: string;
+      slug: string;
+      version: number;
+      function: string;
+    }>;
   }> {
     const parsed = YAML.parse(sourceYaml);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -367,6 +388,29 @@ export class WorkflowRepository {
     for (const step of workflows[0].steps) {
       step.__recipeTemplate = true;
     }
+    const pinned = await this.collectPinnedReferences(
+      selected.steps,
+      recipe,
+      selectedFunction,
+      Object.keys(recipeSecrets),
+    );
+    (workflows[0] as any)._pinnedReferences = pinned.references;
+    (workflows[0] as any)._pinnedRecipeFunctions = pinned.functions;
+    const compiledWithRefs = {
+      ...parsed,
+      steps: selected.steps.map(rewriteSecrets),
+      _recipeTemplate: true,
+    };
+    for (const step of compiledWithRefs.steps) {
+      step.__recipeTemplate = true;
+    }
+    delete compiledWithRefs.using;
+    delete compiledWithRefs.with;
+    delete compiledWithRefs.secrets;
+    const validatedWorkflows = this.validate(YAML.stringify(compiledWithRefs));
+    for (const step of validatedWorkflows[0].steps) {
+      step.__recipeTemplate = true;
+    }
     return {
       workflows,
       recipeRef: { namespace, slug, version },
@@ -375,7 +419,179 @@ export class WorkflowRepository {
       recipeSecrets,
       recipeFunction: selectedFunction,
       recipeOutputs: selected.outputs,
+      _pinnedReferences: pinned.references,
+      _pinnedRecipeFunctions: pinned.functions,
     };
+  }
+
+  /**
+   * Collects all pinned (namespace, slug, version, function) references from
+   * nested call steps in a recipe.
+   * @param steps - The compiled recipe steps (with secrets rewritten)
+   * @param recipe - The published Recipe object from the registry
+   */
+  async collectPinnedReferences(
+    steps: any[],
+    recipe: Recipe,
+    functionName: string,
+    rootSecretAliases: string[],
+  ): Promise<{
+    references: Array<{ namespace: string; slug: string; version: number; function: string }>;
+    functions: Record<
+      string,
+      {
+        inputs: Record<string, unknown>;
+        outputs: Record<string, unknown>;
+        returns?: Record<string, string>;
+        steps: any[];
+      }
+    >;
+  }> {
+    const references: Array<{
+      namespace: string;
+      slug: string;
+      version: number;
+      function: string;
+    }> = [];
+    const visited = new Set<string>();
+    const visiting = new Set<string>();
+    const functions: Record<
+      string,
+      { inputs: Record<string, unknown>; outputs: Record<string, unknown>; steps: any[] }
+    > = {};
+    const rootKey = `${recipe.namespace}/${recipe.slug}@${recipe.version}#${functionName}`;
+    visiting.add(rootKey);
+
+    const inspectSteps = async (
+      nestedSteps: any[],
+      depth: number,
+      availableSecretAliases: Set<string>,
+    ): Promise<void> => {
+      if (depth > 16) {
+        throw new Error("Nested call graph depth exceeds maximum of 16 levels");
+      }
+      for (const step of nestedSteps) {
+        if (!step || typeof step.call !== "string") {
+          continue;
+        }
+        const match = step.call.match(
+          /^([a-z0-9][a-z0-9-]{0,62})\/([a-z0-9][a-z0-9-]{0,62})@([1-9][0-9]*)#([A-Za-z_][A-Za-z0-9_]*)$/,
+        );
+        if (!match) {
+          throw new Error(`Invalid nested recipe target: ${String(step.call)}`);
+        }
+        const [, namespace, slug, versionText, calledFunction] = match;
+        const version = Number(versionText);
+        if (!Number.isSafeInteger(version)) {
+          throw new Error(`Nested recipe version is not a safe integer: ${step.call}`);
+        }
+        const reference = {
+          namespace,
+          slug,
+          version,
+          function: calledFunction,
+        };
+        const key = `${namespace}/${slug}@${version}#${calledFunction}`;
+        if (visiting.has(key)) {
+          throw new Error(`Recursive call graph detected involving "${key}"`);
+        }
+        if (
+          !references.some(
+            (candidate) =>
+              candidate.namespace === namespace &&
+              candidate.slug === slug &&
+              candidate.version === version &&
+              candidate.function === calledFunction,
+          )
+        ) {
+          references.push(reference);
+        }
+        const nestedRecipe =
+          namespace === recipe.namespace && slug === recipe.slug && version === recipe.version
+            ? recipe
+            : await this.recipes.get(namespace, slug, version);
+        if (!nestedRecipe) {
+          throw new Error(`Nested recipe version not found: ${namespace}/${slug}@${version}`);
+        }
+        if (nestedRecipe.revoked) {
+          throw new Error(`Nested recipe version has been revoked: ${namespace}/${slug}@${version}`);
+        }
+        const nestedFunctions = nestedRecipe.functions || {
+          main: {
+            inputs: nestedRecipe.inputs,
+            outputs: { type: "object" },
+            steps: nestedRecipe.steps,
+          },
+        };
+        const nestedFunction = nestedFunctions[calledFunction];
+        if (!nestedFunction) {
+          throw new Error(`Nested recipe function not found: ${calledFunction}`);
+        }
+        functions[key] = JSON.parse(JSON.stringify(nestedFunction));
+        this.validateNestedCallBindings(step, nestedFunction.inputs, availableSecretAliases);
+        const contextKey = `${key}\u0000${[...Object.keys(step.secrets || {})].sort().join("\u0000")}`;
+        if (visited.has(contextKey)) {
+          continue;
+        }
+        visiting.add(key);
+        await inspectSteps(nestedFunction.steps, depth + 1, new Set(Object.keys(step.secrets || {})));
+        visiting.delete(key);
+        visited.add(contextKey);
+      }
+    };
+
+    await inspectSteps(steps, 1, new Set(rootSecretAliases));
+    return { references, functions };
+  }
+
+  private validateNestedCallBindings(
+    step: any,
+    schema: Record<string, any>,
+    availableSecretAliases: Set<string>,
+  ): void {
+    const properties = schema?.properties || {};
+    const ordinary = step.with === undefined ? {} : step.with;
+    const secrets = step.secrets === undefined ? {} : step.secrets;
+    if (!ordinary || typeof ordinary !== "object" || Array.isArray(ordinary)) {
+      throw new Error("Nested call with must be an object");
+    }
+    if (!secrets || typeof secrets !== "object" || Array.isArray(secrets)) {
+      throw new Error("Nested call secrets must be an object");
+    }
+    for (const [key, value] of Object.entries(ordinary)) {
+      const property = properties[key];
+      if (!property || property.writeOnly === true) {
+        throw new Error(`Unknown ordinary nested recipe input: ${key}`);
+      }
+      if (typeof value === "string" && value.includes("${")) {
+        if (!isSafeRecipeExpression(value)) {
+          throw new Error(`Invalid nested recipe expression: with.${key}`);
+        }
+      } else {
+        validateRecipeInputs(property, value, `with.${key}`);
+      }
+    }
+    for (const key of schema?.required || []) {
+      if (properties[key]?.writeOnly !== true && !Object.hasOwn(ordinary, key)) {
+        throw new Error(`Required nested recipe input is missing: ${key}`);
+      }
+    }
+    for (const [key, reference] of Object.entries(secrets)) {
+      if (
+        !properties[key] ||
+        properties[key].writeOnly !== true ||
+        typeof reference !== "string" ||
+        !/^\$\{secrets\.[A-Za-z_][A-Za-z0-9_]*\}$/.test(reference) ||
+        !availableSecretAliases.has(reference.slice(10, -1))
+      ) {
+        throw new Error(`Invalid nested recipe secret mapping: ${key}`);
+      }
+    }
+    for (const key of schema?.required || []) {
+      if (properties[key]?.writeOnly === true && !Object.hasOwn(secrets, key)) {
+        throw new Error(`Required nested recipe secret is missing: ${key}`);
+      }
+    }
   }
 
   async validateForSave(sourceYaml: string): Promise<WorkflowDefinition[]> {
@@ -449,6 +665,8 @@ export class WorkflowRepository {
                   _recipeSecrets: resolved.recipeSecrets,
                   _recipeFunction: resolved.recipeFunction,
                   _recipeOutputs: resolved.recipeOutputs,
+                  _pinnedReferences: resolved._pinnedReferences,
+                  _pinnedRecipeFunctions: resolved._pinnedRecipeFunctions,
                 }
               : workflows[0],
           ),
@@ -547,15 +765,15 @@ export class WorkflowRepository {
     } else {
       commands.push({
         s: `INSERT INTO domain_event_subscriptions
-              (id, team_id, workflow_id, workflow_revision, event_type, high_water_event_rowid, enabled)
+              (id, team_id, workflow_id, workflow_revision, event_type, high_water_event_sequence, enabled)
             SELECT lower(hex(randomblob(16))), w.team_id, w.id, w.active_revision, event_type.value,
-                   (SELECT COALESCE(MAX(rowid), 0) FROM domain_events e WHERE e.team_id = w.team_id), 1
+                   (SELECT COALESCE(MAX(sequence), 0) FROM domain_events e WHERE e.team_id = w.team_id), 1
             FROM workflows w
             JOIN workflow_revisions wr ON wr.workflow_id = w.id AND wr.revision = w.active_revision
             JOIN json_each(json_extract(wr.normalized_json, '$.eventTypes')) AS event_type
             WHERE w.team_id = ? AND w.id = ? AND w.status = 'published' AND w.enabled = 1
             ON CONFLICT(team_id, workflow_id, workflow_revision, event_type)
-            DO UPDATE SET enabled = 1, high_water_event_rowid = excluded.high_water_event_rowid`,
+            DO UPDATE SET enabled = 1, high_water_event_sequence = excluded.high_water_event_sequence`,
         d: [teamId, id],
         m: "run",
       });
@@ -639,15 +857,15 @@ export class WorkflowRepository {
       },
       {
         s: `INSERT INTO domain_event_subscriptions
-              (id, team_id, workflow_id, workflow_revision, event_type, high_water_event_rowid, enabled)
+              (id, team_id, workflow_id, workflow_revision, event_type, high_water_event_sequence, enabled)
             SELECT lower(hex(randomblob(16))), w.team_id, w.id, w.active_revision, event_type.value,
-                   (SELECT COALESCE(MAX(rowid), 0) FROM domain_events e WHERE e.team_id = w.team_id), 1
+                   (SELECT COALESCE(MAX(sequence), 0) FROM domain_events e WHERE e.team_id = w.team_id), 1
             FROM workflows w
             JOIN workflow_revisions wr ON wr.workflow_id = w.id AND wr.revision = w.active_revision
             JOIN json_each(json_extract(wr.normalized_json, '$.eventTypes')) AS event_type
             WHERE w.team_id = ? AND w.id = ? AND w.status = 'published' AND w.enabled = 1
             ON CONFLICT(team_id, workflow_id, workflow_revision, event_type)
-            DO UPDATE SET enabled = 1, high_water_event_rowid = excluded.high_water_event_rowid`,
+            DO UPDATE SET enabled = 1, high_water_event_sequence = excluded.high_water_event_sequence`,
         d: [teamId, id],
         m: "run",
       },

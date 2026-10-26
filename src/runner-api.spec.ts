@@ -51,6 +51,21 @@ describe("RunnerApi", () => {
     });
   });
 
+  it("checks exact recipe-version revocation with the lease token", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ revoked: true })));
+    const api = new RunnerApi("https://runner.example", "credential", fetcher as typeof fetch);
+    const lease = { leaseId: "lease-1", leaseToken: "fence", job: { id: 3 }, workflow: {} };
+    await expect(api.checkRecipeVersionRevoked(lease, "team-a", "release-1", 2)).resolves.toBe(true);
+    const [url, request] = fetcher.mock.calls[0];
+    expect(url).toEqual(
+      new URL(
+        "https://runner.example/api/v1/runner/leases/lease-1/recipe-version-revocation?namespace=team-a&slug=release-1&version=2",
+      ),
+    );
+    expect(new Headers(request?.headers).get("x-runner-lease-token")).toBe("fence");
+    await expect(api.checkRecipeVersionRevoked(lease, "../secret", "x", 1)).rejects.toThrow("Invalid recipe version");
+  });
+
   it("treats update events as hints and uses the authenticated REST update protocol", async () => {
     const fetcher = vi
       .fn()

@@ -50,6 +50,16 @@ export class IncomingEventRepository {
     return id;
   }
 
+  async receivedAtForTeam(teamId: string, id: string): Promise<string | null> {
+    const row = await db.get("SELECT received_at FROM incoming_events WHERE team_id = ? AND id = ?", [teamId, id]);
+    if (!row?.received_at || typeof row.received_at !== "string") {
+      return null;
+    }
+    const value = row.received_at.includes("T") ? row.received_at : `${row.received_at.replace(" ", "T")}Z`;
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+  }
+
   async finish(
     teamId: string,
     id: string,

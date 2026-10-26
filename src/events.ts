@@ -1,6 +1,12 @@
 import type http from "node:http";
 
-export type RunnerEvent = "jobs.available" | "jobs.changed" | "lease.cancelled" | "runner.drain" | "runner.update";
+export type RunnerEvent =
+  | "jobs.available"
+  | "jobs.changed"
+  | "lease.cancelled"
+  | "runner.drain"
+  | "runner.update"
+  | "channel.message";
 
 export class EventBroker {
   private clients = new Map<
@@ -71,6 +77,9 @@ export class EventBroker {
   publish(event: RunnerEvent, data: Record<string, unknown> = {}): void {
     const message = `id: ${this.nextId++}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const [client, clientContext] of this.clients) {
+      if (event === "channel.message" && clientContext.worker) {
+        continue;
+      }
       if (clientContext.worker && !clientContext.runnerTeamIds && event !== "jobs.available") {
         continue;
       }

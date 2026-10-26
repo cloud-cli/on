@@ -86,20 +86,22 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
   }
 
   /** Convert verified push inputs to the provider-neutral immutable event contract. */
-  toDomainEvent(headers: Record<string, string>, inputs: Record<string, any>) {
+  toDomainEvent(headers: Record<string, string>, inputs: Record<string, any>, receivedAt: string) {
     if (inputs.event !== "push" || !inputs.commit_sha || !inputs.full_name) {
       return null;
     }
     const deliveryId = headers["x-github-delivery"];
     const occurredAt = inputs.raw?.head_commit?.timestamp;
+    const parsedOccurredAt = typeof occurredAt === "string" ? Date.parse(occurredAt) : Number.NaN;
+    const parsedReceivedAt = Date.parse(receivedAt);
+    if (!Number.isFinite(parsedReceivedAt)) {
+      return null;
+    }
     return {
       type: "git.push",
       schemaVersion: 1,
       source: "connector/github",
-      occurredAt:
-        typeof occurredAt === "string" && Number.isFinite(Date.parse(occurredAt))
-          ? new Date(occurredAt).toISOString()
-          : new Date(0).toISOString(),
+      occurredAt: Number.isFinite(parsedOccurredAt) ? new Date(parsedOccurredAt).toISOString() : receivedAt,
       correlationId: null,
       causationId: deliveryId || null,
       idempotencyKey: deliveryId ? `github:delivery:${deliveryId}` : null,

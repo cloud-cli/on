@@ -137,6 +137,17 @@ try {
   const appBaseUrl = await getAppBaseUrl();
   await waitForServer(appBaseUrl);
 
+  for (const asset of ["/assets/app-router.mjs", "/assets/channels-ui.mjs", "/assets/api-client.mjs"]) {
+    const response = await fetch(`${appBaseUrl}${asset}`);
+    const body = await response.text();
+    if (response.status !== 200 || !response.headers.get("content-type")?.includes("javascript")) {
+      throw new Error(`Expected ${asset} to be served as JavaScript, got ${response.status}`);
+    }
+    if (asset.endsWith("channels-ui.mjs") && !body.includes("export function mountChannels")) {
+      throw new Error("Channels setup module was not served from the application asset route");
+    }
+  }
+
   const apiResponse = await fetch(`${appBaseUrl}/api`);
   const apiSpec = await apiResponse.json();
   if (apiResponse.status !== 200 || apiSpec.openapi !== "3.0.3") {

@@ -16,6 +16,17 @@ describe("recipe documents", () => {
     expect(() => parseRecipe("inputs: {type: object}\nsteps: [{using: ns/recipe@v1}]\n")).toThrow("Nested recipe");
   });
 
+  it("rejects nested-call timeouts until the runtime can enforce them", () => {
+    expect(() =>
+      parseRecipe(`functions:
+  build:
+    inputs: {type: object}
+    outputs: {type: object}
+    steps: [{id: child, call: other/child@1#build, with: {}, timeoutMs: 1000}]
+`),
+    ).toThrow("unsupported call fields");
+  });
+
   it("normalizes legacy recipes to main and parses named functions", () => {
     const legacy = parseRecipe("inputs: {type: object}\nsteps: [{run: echo hi}]\n");
     expect(legacy.functions.main).toMatchObject({ inputs: legacy.inputs, steps: legacy.steps });
@@ -24,6 +35,57 @@ describe("recipe documents", () => {
     );
     expect(Object.keys(parsed.functions)).toEqual(["build", "test"]);
     expect(parsed.functions.build.steps).toHaveLength(1);
+  });
+
+  it("requires mappings for required outputs and rejects undeclared return fields", () => {
+    const valid = parseRecipe(`functions:
+  build:
+    inputs: {type: object}
+    outputs:
+      type: object
+      properties: {digest: {type: string}}
+      required: [digest]
+    returns:
+      digest: "\u0024{steps.publish.outputs.digest}"
+    steps: [{id: publish, run: publish}]
+`);
+    expect(valid.functions.build.returns).toEqual({ digest: "${steps.publish.outputs.digest}" });
+
+    expect(() =>
+      parseRecipe(`functions:
+  build:
+    inputs: {type: object}
+    outputs: {type: object, properties: {digest: {type: string}}, required: [digest]}
+    steps: [{run: publish}]
+`),
+    ).toThrow("must return required output: digest");
+    expect(() =>
+      parseRecipe(`functions:
+  build:
+    inputs: {type: object}
+    outputs: {type: object, properties: {digest: {type: string}}}
+    returns: {unknown: "\u0024{steps.publish.outputs.value}"}
+    steps: [{id: publish, run: publish}]
+`),
+    ).toThrow("returns.unknown");
+    expect(() =>
+      parseRecipe(`functions:
+  build:
+    inputs: {type: object}
+    outputs: {type: object, properties: {digest: {type: string}}}
+    returns: {digest: "\u0024{secrets.TOKEN}"}
+    steps: [{id: publish, run: publish}]
+`),
+    ).toThrow("returns.digest");
+    expect(() =>
+      parseRecipe(`functions:
+  build:
+    inputs: {type: object}
+    outputs: {type: object, properties: {digest: {type: string}}}
+    returns: {digest: "prefix \u0024{steps.publish.outputs.value}"}
+    steps: [{id: publish, run: publish}]
+`),
+    ).toThrow("returns.digest");
   });
 
   it("rejects malformed function sets and invalid function names", () => {
@@ -35,6 +97,20 @@ describe("recipe documents", () => {
     expect(() =>
       parseRecipe("functions:\n  build: {inputs: {type: object}, outputs: {type: string}, steps: [{run: hi}]}\n"),
     ).toThrow("outputs schema must declare type: object");
+  });
+
+  it("does not infer cross-recipe cycles from matching local function names", () => {
+    const recipe = parseRecipe(`functions:
+  main:
+    inputs: {type: object}
+    outputs: {type: object}
+    steps: [{id: build-call, call: external/child@1#build, with: {}}]
+  build:
+    inputs: {type: object}
+    outputs: {type: object}
+    steps: [{id: main-call, call: external/child@1#main, with: {}}]
+`);
+    expect(recipe.functions.main.steps).toHaveLength(1);
   });
 
   it("validates required, properties, items, enums and additional properties", () => {

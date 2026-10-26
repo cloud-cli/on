@@ -649,10 +649,12 @@ const migrations: Migration[] = [
         `SELECT team_id, workflow_id, workflow_revision, event_type
          FROM domain_event_subscriptions
          GROUP BY team_id, workflow_id, workflow_revision, event_type
-         HAVING COUNT(*) > 1 LIMIT 1`,
+         HAVING COUNT(*) > 1`,
       );
       if (duplicates.length) {
-        throw new Error("Cannot enforce domain event subscription identity while duplicate subscriptions exist");
+        throw new Error(
+          `Cannot enforce domain event subscription identity: ${duplicates.length} duplicate identity group(s) exist; inspect and reconcile subscriptions/deliveries before retrying migration`,
+        );
       }
       await db.exec(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_event_subscription_identity
@@ -711,6 +713,137 @@ const migrations: Migration[] = [
         );
         CREATE INDEX IF NOT EXISTS idx_step_execution_attempts_job
           ON step_execution_attempts(team_id, job_id, step_id, attempt);
+      `);
+    },
+  },
+  {
+    version: "021_agent_workflow_grants",
+    async apply() {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS agent_workflow_grants (
+          team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+          agent_principal_id TEXT NOT NULL,
+          workflow_id TEXT NOT NULL,
+          granted_by TEXT NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (team_id, agent_principal_id, workflow_id),
+          FOREIGN KEY (team_id, agent_principal_id) REFERENCES team_members(team_id, subject) ON DELETE CASCADE,
+          FOREIGN KEY (team_id, workflow_id) REFERENCES workflows(team_id, id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_workflow_grants_agent
+          ON agent_workflow_grants(team_id, agent_principal_id);
+      `);
+    },
+  },
+  {
+    version: "022_workflow_run_admission",
+    async apply() {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS workflow_run_admissions (
+          event_id TEXT NOT NULL,
+          team_id TEXT NOT NULL,
+          workflow_id TEXT NOT NULL,
+          revision INTEGER NOT NULL,
+          variant_index INTEGER NOT NULL,
+          matrix_json TEXT NOT NULL,
+          tags_json TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','claimed','admitted','failed')),
+          lease_token TEXT,
+          lease_until TEXT,
+          job_id INTEGER,
+          error_code TEXT,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (event_id, variant_index)
+        );
+        CREATE INDEX IF NOT EXISTS workflow_run_admissions_pending
+          ON workflow_run_admissions(status, lease_until, event_id, variant_index);
+      `);
+    },
+  },
+  {
+    version: "023_workflow_run_admission_retry_schedule",
+    async apply() {
+      const columns = await db.all("PRAGMA table_info(workflow_run_admissions)");
+      if (!columns.some((column: any) => column.name === "retry_after")) {
+        await db.run("ALTER TABLE workflow_run_admissions ADD COLUMN retry_after TEXT");
+      }
+      await db.exec(`
+        CREATE INDEX IF NOT EXISTS workflow_run_admissions_retry
+          ON workflow_run_admissions(status, retry_after, updated_at, event_id, variant_index);
+      `);
+    },
+  },
+  {
+    version: "024_step_attempt_start_markers",
+    async apply() {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS step_execution_attempt_starts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+          job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+          step_id TEXT NOT NULL,
+          attempt INTEGER NOT NULL CHECK (attempt > 0),
+          started_at DATETIME NOT NULL,
+          UNIQUE(job_id, step_id, attempt)
+        );
+        CREATE INDEX IF NOT EXISTS idx_step_execution_attempt_starts_job
+          ON step_execution_attempt_starts(team_id, job_id, step_id, attempt);
+        CREATE TRIGGER IF NOT EXISTS step_attempt_starts_immutable_update
+          BEFORE UPDATE ON step_execution_attempt_starts
+          BEGIN SELECT RAISE(ABORT, 'step attempt start markers are immutable'); END;
+      `);
+    },
+  },
+  {
+    version: "026_durable_event_sequence",
+    async apply() {
+      const columns = await db.all("PRAGMA table_info(domain_events)");
+      if (!columns.some((column: any) => column.name === "sequence")) {
+        await db.exec("ALTER TABLE domain_events ADD COLUMN sequence INTEGER");
+      }
+      await db.exec(`
+        UPDATE domain_events SET sequence = rowid WHERE sequence IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_events_sequence ON domain_events(sequence);
+        CREATE TRIGGER IF NOT EXISTS trg_domain_events_sequence
+        AFTER INSERT ON domain_events WHEN NEW.sequence IS NULL
+        BEGIN
+          UPDATE domain_events SET sequence = (SELECT COALESCE(MAX(sequence), 0) + 1
+            FROM domain_events WHERE id <> NEW.id) WHERE id = NEW.id;
+        END;
+      `);
+      const subscriptionColumns = await db.all("PRAGMA table_info(domain_event_subscriptions)");
+      if (!subscriptionColumns.some((column: any) => column.name === "high_water_event_sequence")) {
+        await db.exec(
+          "ALTER TABLE domain_event_subscriptions ADD COLUMN high_water_event_sequence INTEGER NOT NULL DEFAULT 0",
+        );
+      }
+      await db.exec(`
+        UPDATE domain_event_subscriptions
+        SET high_water_event_sequence = high_water_event_rowid
+        WHERE high_water_event_sequence = 0 AND high_water_event_rowid > 0;
+        CREATE INDEX IF NOT EXISTS idx_domain_events_sequence_team_type ON domain_events(team_id, type, sequence);
+      `);
+    },
+  },
+  {
+    version: "027_channel_event_history_index",
+    async apply() {
+      await db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_domain_events_channel_sequence
+          ON domain_events(team_id, json_extract(data_json, '$.channelId'), sequence);
+      `);
+    },
+  },
+  {
+    version: "028_workflow_run_plan_ready",
+    async apply() {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS workflow_run_admission_plans (
+          event_id TEXT PRIMARY KEY,
+          variant_count INTEGER NOT NULL CHECK (variant_count > 0),
+          plan_hash TEXT NOT NULL,
+          ready_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
       `);
     },
   },

@@ -126,6 +126,27 @@ export class RunnerApi {
     );
   }
 
+  stepAttemptStart(
+    lease: RunnerLease,
+    start: { jobId: string | number; stepId: string; attempt: number; startedAt: string },
+  ): Promise<unknown> {
+    return this.request(
+      `/api/v1/runner/leases/${encodeURIComponent(lease.leaseId)}/attempt-start`,
+      "POST",
+      start,
+      lease.leaseToken,
+    );
+  }
+
+  stepAttemptCompletion(lease: RunnerLease, attempt: unknown): Promise<unknown> {
+    return this.request(
+      `/api/v1/runner/leases/${encodeURIComponent(lease.leaseId)}/attempt-completion`,
+      "POST",
+      attempt,
+      lease.leaseToken,
+    );
+  }
+
   files(lease: RunnerLease, kind: string, action: string, cacheKey: string, files: unknown[]): Promise<any> {
     return this.request(
       `/api/v1/runner/leases/${encodeURIComponent(lease.leaseId)}/files`,
@@ -166,5 +187,32 @@ export class RunnerApi {
       {},
       lease.leaseToken,
     );
+  }
+
+  /**
+   * Check if a recipe version has been revoked in the immutable registry.
+   * Lease-authenticated action for nested recipe call safety validation.
+   */
+  async checkRecipeVersionRevoked(
+    lease: RunnerLease,
+    namespace: string,
+    slug: string,
+    version: number,
+  ): Promise<boolean> {
+    if (
+      !/^[a-z0-9][a-z0-9-]{0,62}$/.test(namespace) ||
+      !/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug) ||
+      !Number.isSafeInteger(version) ||
+      version < 1
+    ) {
+      throw new Error("Invalid recipe version reference");
+    }
+    const result = await this.request(
+      `/api/v1/runner/leases/${encodeURIComponent(lease.leaseId)}/recipe-version-revocation?namespace=${encodeURIComponent(namespace)}&slug=${encodeURIComponent(slug)}&version=${version}`,
+      "GET",
+      undefined,
+      lease.leaseToken,
+    );
+    return result?.revoked === true;
   }
 }

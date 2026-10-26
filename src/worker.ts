@@ -367,7 +367,14 @@ export async function processJob(p: Processable) {
     throw new Error(`Matrix variant for job ${job.id} was not found`);
   }
   const resolvedWorkflow = candidateWorkflow as typeof p.workflow;
-  const processable = { ...p, queue, workflow: resolvedWorkflow };
+  const processable = {
+    ...p,
+    queue,
+    workflow: resolvedWorkflow,
+    writeOnlyInputNames: Object.entries(resolvedWorkflow._recipeInputSchema?.properties || {})
+      .filter(([, schema]) => (schema as { writeOnly?: boolean }).writeOnly === true)
+      .map(([name]) => name),
+  };
   const steps = resolvedWorkflow.steps;
   const postSteps = resolvedWorkflow.post || [];
   const inputs = { ...(payload.inputs || {}) };
@@ -581,8 +588,9 @@ async function processSteps(
       const value = Reflect.get(target, property, receiver);
       if (property === "saveStepLog") {
         return (jobId: string | number, stepId: string, content: string) => {
-          attemptLogContent = `${attemptLogContent}${content}`.slice(-65536);
-          return value.call(target, jobId, stepId, content);
+          const safeContent = p.secrets.redactText(content);
+          attemptLogContent = `${attemptLogContent}${safeContent}`.slice(-65536);
+          return value.call(target, jobId, stepId, safeContent);
         };
       }
       return typeof value === "function" ? value.bind(target) : value;
@@ -623,6 +631,15 @@ async function processSteps(
         const attemptStartedAt = new Date().toISOString();
         const attemptStartedMs = Date.now();
         attemptLogContent = "";
+        if (!queue.saveStepAttemptStart) {
+          throw new Error("Durable step attempt start persistence is unavailable");
+        }
+        await queue.saveStepAttemptStart({
+          jobId: job.id,
+          stepId: step.id!,
+          attempt,
+          startedAt: attemptStartedAt,
+        });
         stepResult = await executeSingleStep({
           workerId,
           jobId: job.id,
@@ -631,6 +648,10 @@ async function processSteps(
           attempt,
           executionContext,
           recipeSecrets: p.workflow?._recipeSecrets,
+          pinnedRecipeFunctions: p.workflow?._pinnedRecipeFunctions,
+          processable: p,
+          executionReport,
+          reportOffset,
           driver,
           queue: attemptQueue,
           config,
@@ -725,6 +746,10 @@ async function executeSingleStep(params: {
   attempt: number;
   executionContext: JobExecutionContext;
   recipeSecrets?: Record<string, string>;
+  pinnedRecipeFunctions?: NonNullable<Processable["workflow"]>["_pinnedRecipeFunctions"];
+  processable: ContextualizedProcessable;
+  executionReport: WorkflowExecutionReport;
+  reportOffset: number;
   driver: ExecutionDriver;
   queue: WorkerExecutionQueue;
   config: RunnerConfig;
@@ -755,6 +780,171 @@ async function executeSingleStep(params: {
         cancelled: false,
         skipped: true,
         report: null,
+      };
+    }
+  }
+
+  if ("call" in step) {
+    const started = Date.now();
+    try {
+      const match =
+        typeof step.call === "string"
+          ? step.call.match(
+              /^([a-z0-9][a-z0-9-]{0,62})\/([a-z0-9][a-z0-9-]{0,62})@([1-9][0-9]*)#([A-Za-z_][A-Za-z0-9_]*)$/,
+            )
+          : null;
+      if (!match) {
+        throw new Error("Nested recipe call must use an exact pinned target");
+      }
+      const [, namespace, slug, versionText, functionName] = match;
+      const version = Number(versionText);
+      if (!Number.isSafeInteger(version) || (await params.queue.isRecipeVersionRevoked(namespace, slug, version))) {
+        throw new Error(`Pinned recipe ${step.call} is unavailable or revoked`);
+      }
+      const key = `${namespace}/${slug}@${version}#${functionName}`;
+      const isPinned = params.processable.workflow?._pinnedReferences?.some(
+        (reference) =>
+          reference.namespace === namespace &&
+          reference.slug === slug &&
+          reference.version === version &&
+          reference.function === functionName,
+      );
+      if (!isPinned) {
+        throw new Error(`Nested recipe target is not in the immutable pin set: ${key}`);
+      }
+      const fn = params.pinnedRecipeFunctions?.[key];
+      if (!fn) {
+        throw new Error(`Pinned recipe function snapshot is missing: ${key}`);
+      }
+      if ((params.processable.nestedCallDepth || 0) >= 16) {
+        throw new Error("Nested recipe call depth exceeds maximum of 16 levels");
+      }
+      const evaluateBinding = async (value: unknown): Promise<unknown> => {
+        if (typeof value === "string") {
+          const expression = value.match(/^\$\{((?:inputs|steps|job|matrix|github)(?:\.[A-Za-z_$][\w$]*)+)\}$/);
+          if (expression) {
+            const inputProperty = expression[1].match(/^inputs\.([A-Za-z_$][\w$]*)/)?.[1];
+            if (inputProperty && params.processable.writeOnlyInputNames?.includes(inputProperty)) {
+              throw new Error("Nested bindings cannot read write-only inputs");
+            }
+            return SafeExpressionEvaluator.evaluateExpression(expression[1], stepExecutionContext);
+          }
+          if (value.includes("${")) {
+            throw new Error("Nested bindings only allow single property-path expressions");
+          }
+          return value;
+        }
+        if (Array.isArray(value)) {
+          return Promise.all(value.map(evaluateBinding));
+        }
+        if (value && typeof value === "object") {
+          return Object.fromEntries(
+            await Promise.all(Object.entries(value).map(async ([name, item]) => [name, await evaluateBinding(item)])),
+          );
+        }
+        return value;
+      };
+      const ordinary = await evaluateBinding(step.with || {});
+      if (!ordinary || typeof ordinary !== "object" || Array.isArray(ordinary)) {
+        throw new Error("Nested recipe inputs must evaluate to an object");
+      }
+      const resolvedInputs = { ...(ordinary as Record<string, unknown>) };
+      const inputProperties = ((fn.inputs as any)?.properties || {}) as Record<string, { writeOnly?: boolean }>;
+      const scopedSecrets: Record<string, string> = {};
+      for (const inputName of Object.keys(resolvedInputs)) {
+        if (inputProperties[inputName]?.writeOnly === true) {
+          throw new Error(`Nested write-only input must use a secret mapping: ${inputName}`);
+        }
+      }
+      for (const [alias, reference] of Object.entries(step.secrets || {})) {
+        const source =
+          typeof reference === "string" ? reference.match(/^\$\{secrets\.([A-Za-z_][A-Za-z0-9_]*)\}$/)?.[1] : undefined;
+        if (!inputProperties[alias]?.writeOnly || !source || !Object.hasOwn(stepExecutionContext.secrets, source)) {
+          throw new Error(`Invalid or unavailable nested secret mapping: ${alias}`);
+        }
+        const secret = stepExecutionContext.secrets[source];
+        resolvedInputs[alias] = secret;
+        scopedSecrets[alias] = secret;
+      }
+      validateRecipeInputs(fn.inputs, resolvedInputs, "with");
+
+      const callPath = `${step.id}#attempt-${params.attempt}`;
+      const nestedSteps = fn.steps.map((nested, index) => ({
+        ...nested,
+        id: `${callPath}/${nested.id || `step-${index}`}`,
+        name: `${step.name}/${nested.name || nested.id || `step-${index}`}`,
+      }));
+      const nestedContext: JobExecutionContext = {
+        ...stepExecutionContext,
+        inputs: ordinary as Record<string, unknown>,
+        secrets: scopedSecrets,
+        steps: { ...stepExecutionContext.steps },
+      };
+      const nestedResult = await processSteps(
+        {
+          ...params.processable,
+          steps: nestedSteps,
+          executionContext: nestedContext,
+          nestedCallDepth: (params.processable.nestedCallDepth || 0) + 1,
+          writeOnlyInputNames: Object.entries((fn.inputs as any)?.properties || {})
+            .filter(([, schema]) => (schema as { writeOnly?: boolean }).writeOnly === true)
+            .map(([name]) => name),
+          workflow: params.processable.workflow ? { ...params.processable.workflow, retries: 0 } : undefined,
+        },
+        params.executionReport,
+        params.executionReport.steps.length,
+      );
+      if (nestedResult.failed || nestedResult.cancelled) {
+        throw new Error(`Nested recipe function failed: ${key}`);
+      }
+
+      const outputs: Record<string, unknown> = {};
+      for (const [name, expression] of Object.entries(fn.returns || {})) {
+        const path = expression.match(/^\$\{((?:inputs|steps|job|matrix|github)(?:\.[A-Za-z_$][\w$]*)+)\}$/)?.[1];
+        if (!path) {
+          throw new Error(`Unsupported nested recipe return expression: ${expression}`);
+        }
+        const returnedInput = path.match(/^inputs\.([A-Za-z_$][\w$]*)/)?.[1];
+        if (returnedInput && inputProperties[returnedInput]?.writeOnly === true) {
+          throw new Error("Nested recipe returns cannot read write-only inputs");
+        }
+        const localStep = path.match(/^steps\.([A-Za-z0-9_-]+)(\.|$)(.*)$/);
+        const runtimePath = localStep
+          ? `steps[${JSON.stringify(`${callPath}/${localStep[1]}`)}]${localStep[2]}${localStep[3]}`
+          : path;
+        outputs[name] = await SafeExpressionEvaluator.evaluateExpression(runtimePath, nestedContext);
+      }
+      validateRecipeInputs(fn.outputs, outputs, "outputs");
+      executionContext.steps[step.id!] = { status: "success", exitCode: 0, outputs };
+      return {
+        failed: false,
+        cancelled: false,
+        skipped: false,
+        report: {
+          id: step.id!,
+          name: step.name!,
+          status: "success",
+          durationMs: Date.now() - started,
+          exitCode: 0,
+          outputs,
+          logContent: "",
+        },
+      };
+    } catch (error) {
+      return {
+        failed: true,
+        cancelled: false,
+        skipped: false,
+        report: {
+          id: step.id!,
+          name: step.name!,
+          status: "failed",
+          durationMs: Date.now() - started,
+          exitCode: 1,
+          error: error instanceof Error ? error.message : String(error),
+          outputs: {},
+          logContent: "",
+        },
       };
     }
   }

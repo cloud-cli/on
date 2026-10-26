@@ -49,7 +49,7 @@ describe("workflow event subscriptions", () => {
     expect(statements[2].s).toContain("ON CONFLICT(team_id, workflow_id, workflow_revision, event_type)");
     expect(statements[2].s).toContain("json_each(json_extract(wr.normalized_json, '$.eventTypes'))");
     expect(statements[2].s).toContain(
-      "SELECT COALESCE(MAX(rowid), 0) FROM domain_events e WHERE e.team_id = w.team_id",
+      "SELECT COALESCE(MAX(sequence), 0) FROM domain_events e WHERE e.team_id = w.team_id",
     );
     expect(statements[2].d).toEqual(["team-a", "release"]);
   });

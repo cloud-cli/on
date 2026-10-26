@@ -18,13 +18,30 @@ export type Recipe = {
   revoked: boolean;
 };
 
-export type RecipeFunction = { inputs: Record<string, unknown>; outputs: Record<string, unknown>; steps: unknown[] };
+export type RecipeCallStep = {
+  id: string;
+  call: string;
+  with: Record<string, unknown>;
+  secrets?: Record<string, string>;
+};
+export type RecipeFunction = {
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown>;
+  returns?: Record<string, string>;
+  steps: unknown[];
+};
 export type ParsedRecipe = {
   name: string;
   inputs: Record<string, unknown>;
   steps: unknown[];
   functions: Record<string, RecipeFunction>;
 };
+
+export function isSafeRecipeExpression(value: unknown): value is string {
+  return (
+    typeof value === "string" && /^\$\{(?:inputs|steps|job|matrix|github)(?:\.[A-Za-z_][A-Za-z0-9_-]*)+\}$/.test(value)
+  );
+}
 
 export function parseRecipe(sourceYaml: string): ParsedRecipe {
   const doc = YAML.parse(sourceYaml);
@@ -39,7 +56,13 @@ export function parseRecipe(sourceYaml: string): ParsedRecipe {
     throw new Error("Recipe must use either top-level inputs/steps or functions, not both");
   }
   const functionDefinitions: Record<string, any> = legacy
-    ? { main: { inputs: doc.inputs, outputs: { type: "object" }, steps: doc.steps } }
+    ? {
+        main: {
+          inputs: doc.inputs,
+          outputs: { type: "object" },
+          steps: doc.steps,
+        },
+      }
     : doc.functions;
   if (
     !functionDefinitions ||
@@ -58,12 +81,13 @@ export function parseRecipe(sourceYaml: string): ParsedRecipe {
       !definition ||
       typeof definition !== "object" ||
       Array.isArray(definition) ||
-      Object.keys(definition).some((key) => !["inputs", "outputs", "steps"].includes(key))
+      Object.keys(definition).some((key) => !["inputs", "outputs", "returns", "steps"].includes(key))
     ) {
       throw new Error(`Recipe function "${functionName}" must contain inputs, outputs, and steps`);
     }
     const docInputs = (definition as any).inputs;
     const outputs = (definition as any).outputs;
+    const returns = (definition as any).returns;
     const steps = (definition as any).steps;
     if (!docInputs || typeof docInputs !== "object" || Array.isArray(docInputs)) {
       throw new Error("Recipe inputs must be a JSON Schema object");
@@ -87,6 +111,25 @@ export function parseRecipe(sourceYaml: string): ParsedRecipe {
     if (outputs.type !== "object") {
       throw new Error(`Recipe function "${functionName}" outputs schema must declare type: object`);
     }
+    if (returns !== undefined) {
+      const properties = outputs.properties || {};
+      if (!returns || typeof returns !== "object" || Array.isArray(returns)) {
+        throw new Error(`Recipe function "${functionName}" returns must be an object of output expressions`);
+      }
+      for (const [name, expression] of Object.entries(returns)) {
+        if (!Object.hasOwn(properties, name) || !isSafeRecipeExpression(expression)) {
+          throw new Error(
+            `Recipe function "${functionName}" returns.${name} must map a declared output to a supported expression`,
+          );
+        }
+      }
+    }
+    const requiredOutputs = Array.isArray(outputs.required) ? (outputs.required as string[]) : [];
+    for (const name of requiredOutputs) {
+      if (returns === undefined || !Object.hasOwn(returns, name)) {
+        throw new Error(`Recipe function "${functionName}" must return required output: ${name}`);
+      }
+    }
     if (!Array.isArray(steps) || !steps.length) {
       throw new Error("Recipe requires at least one step");
     }
@@ -94,16 +137,46 @@ export function parseRecipe(sourceYaml: string): ParsedRecipe {
       if (!step || typeof step !== "object" || Array.isArray(step)) {
         throw new Error(`functions.${functionName}.steps[${index}] must be an object`);
       }
-      if ("using" in step || "secrets" in step) {
-        throw new Error("Nested recipe references are not supported");
+      if ("using" in step) {
+        throw new Error("Nested recipe references must use the call target field");
+      }
+      if ("call" in step) {
+        if (Object.keys(step).some((key) => !["id", "call", "with", "secrets", "name", "if"].includes(key))) {
+          throw new Error(`functions.${functionName}.steps[${index}] has unsupported call fields`);
+        }
+        if (typeof step.id !== "string" || !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(step.id)) {
+          throw new Error(`functions.${functionName}.steps[${index}] nested call requires a stable id`);
+        }
+        if (
+          typeof step.call !== "string" ||
+          !/^[a-z0-9][a-z0-9-]{0,62}\/[a-z0-9][a-z0-9-]{0,62}@[1-9][0-9]*#[A-Za-z_][A-Za-z0-9_]*$/.test(step.call)
+        ) {
+          throw new Error(
+            `functions.${functionName}.steps[${index}].call must be namespace/slug@<integer-version>#<function-name>`,
+          );
+        }
+        if (!step.with || typeof step.with !== "object" || Array.isArray(step.with)) {
+          throw new Error(`functions.${functionName}.steps[${index}].with must be an object`);
+        }
+        if (
+          step.secrets !== undefined &&
+          (!step.secrets || typeof step.secrets !== "object" || Array.isArray(step.secrets))
+        ) {
+          throw new Error(`functions.${functionName}.steps[${index}].secrets must be an object`);
+        }
+        continue;
+      }
+      if ("secrets" in step) {
+        throw new Error("Secrets are valid only for nested calls");
       }
       const timeoutMs = (step as any).timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
       if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
         throw new Error(`functions.${functionName}.steps[${index}].timeoutMs must be a positive integer`);
       }
     }
-    functions[functionName] = { inputs: docInputs, outputs, steps };
+    functions[functionName] = { inputs: docInputs, outputs, ...(returns ? { returns } : {}), steps };
   }
+
   return {
     name: "",
     inputs: legacy ? doc.inputs : functions[Object.keys(functions)[0]].inputs,
@@ -242,7 +315,15 @@ export class RecipeRepository {
     if (!owned || owned.owner_subject !== ownerSubject) {
       throw new Error("Recipe namespace is owned by another publisher");
     }
-    return { namespace, slug, version, ...parsed, name: name.trim(), sourceYaml, revoked: false };
+    return {
+      namespace,
+      slug,
+      version,
+      ...parsed,
+      name: name.trim(),
+      sourceYaml,
+      revoked: false,
+    };
   }
 
   async revoke(namespace: string, slug: string, version: number): Promise<boolean> {

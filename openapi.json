@@ -56,6 +56,10 @@
     {
       "name": "recipes",
       "description": "Global immutable recipe registry"
+    },
+    {
+      "name": "agent-workflow-grants",
+      "description": "Agent workflow grant management"
     }
   ],
   "paths": {
@@ -1049,7 +1053,7 @@
     "/api/v1/workflows/{workflowId}/run": {
       "post": {
         "tags": ["jobs"],
-        "summary": "Run the latest saved workflow revision immediately",
+        "summary": "Accept a run request for the latest saved workflow revision",
         "security": [
           {
             "oidcSessionCookie": []
@@ -1069,6 +1073,17 @@
           },
           {
             "$ref": "#/components/parameters/WorkspaceId"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Stable client-generated key to safely retry an accepted request.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
           }
         ],
         "requestBody": {
@@ -1083,7 +1098,51 @@
         },
         "responses": {
           "202": {
-            "description": "Jobs queued"
+            "description": "Run request durably accepted for asynchronous admission; jobs are initially empty and this does not indicate run completion.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "workflowId",
+                    "revision",
+                    "eventId",
+                    "jobs",
+                    "idempotencyKey",
+                    "admissionStatus",
+                    "accepted"
+                  ],
+                  "properties": {
+                    "workflowId": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "type": "integer"
+                    },
+                    "eventId": {
+                      "type": "string"
+                    },
+                    "jobs": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    },
+                    "idempotencyKey": {
+                      "type": "string"
+                    },
+                    "admissionStatus": {
+                      "type": "string",
+                      "enum": ["admitted", "pending"]
+                    },
+                    "accepted": {
+                      "type": "boolean",
+                      "enum": [true]
+                    }
+                  }
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/ValidationError"
@@ -1093,6 +1152,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The idempotency key was already used with a different request."
           }
         }
       }
@@ -3515,6 +3577,41 @@
         }
       }
     },
+    "/api/v1/channels/{channelId}/events": {
+      "parameters": [
+        {
+          "name": "channelId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        { "$ref": "#/components/parameters/WorkspaceId" }
+      ],
+      "get": {
+        "tags": ["events"],
+        "summary": "List workspace events for a channel",
+        "description": "Returns events in stable ascending storage-sequence order. The opaque cursor is scoped to the authenticated workspace and channel; caller-supplied workspace identifiers are not used for authorization.",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque continuation cursor scoped to this authenticated workspace and channel",
+            "schema": { "type": "string", "maxLength": 512 }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Ascending event page with opaque next cursor" },
+          "400": { "description": "Invalid limit or cursor" },
+          "404": { "description": "Channel not found in workspace" }
+        }
+      }
+    },
     "/api/v1/jobs/{jobId}/step-attempts": {
       "get": {
         "tags": ["jobs"],
@@ -3560,6 +3657,183 @@
           },
           "404": {
             "description": "Job not found"
+          }
+        }
+      }
+    },
+    "/api/v1/agent-workflow-grants": {
+      "post": {
+        "tags": ["agent-workflow-grants"],
+        "summary": "Grant a workflow to an agent principal",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["agentPrincipalId", "workflowId"],
+                "properties": {
+                  "teamId": {
+                    "type": "string",
+                    "description": "Optional consistency check; must match the authenticated workspace"
+                  },
+                  "agentPrincipalId": {
+                    "type": "string",
+                    "description": "Agent principal subject (agent_: prefix)"
+                  },
+                  "workflowId": {
+                    "type": "string",
+                    "description": "Workflow ID"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Grant created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "teamId": {
+                      "type": "string"
+                    },
+                    "agentPrincipalId": {
+                      "type": "string"
+                    },
+                    "workflowId": {
+                      "type": "string"
+                    },
+                    "grantedBy": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request - required grant identifiers are missing"
+          },
+          "404": {
+            "description": "Workflow or agent membership not found in the authenticated workspace"
+          },
+          "403": {
+            "description": "Forbidden - missing workflows.edit capability"
+          }
+        }
+      },
+      "get": {
+        "tags": ["agent-workflow-grants"],
+        "summary": "List workflow grants in the authenticated workspace",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agentPrincipalId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace-scoped workflow grant metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "grants": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "teamId": { "type": "string" },
+                          "agentPrincipalId": { "type": "string" },
+                          "workflowId": { "type": "string" },
+                          "grantedBy": { "type": "string" },
+                          "createdAt": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - missing workflows.view capability"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["agent-workflow-grants"],
+        "summary": "Revoke a workflow grant from an agent principal",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["agentPrincipalId", "workflowId"],
+                "properties": {
+                  "teamId": {
+                    "type": "string",
+                    "description": "Optional consistency check; must match the authenticated workspace"
+                  },
+                  "agentPrincipalId": {
+                    "type": "string",
+                    "description": "Agent principal subject"
+                  },
+                  "workflowId": {
+                    "type": "string",
+                    "description": "Workflow ID"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Grant revoked"
+          },
+          "400": {
+            "description": "Invalid request - missing fields"
+          },
+          "403": {
+            "description": "Forbidden - missing workflows.edit capability"
+          },
+          "404": {
+            "description": "Workflow not found in team"
           }
         }
       }

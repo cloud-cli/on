@@ -16,11 +16,7 @@ export function mountChannels(root) {
   root.setAttribute("aria-labelledby", "channels-title");
   const heading = element("h1", "Channels", "text-2xl font-semibold");
   heading.id = "channels-title";
-  const layout = element(
-    "div",
-    undefined,
-    "grid gap-5 md:grid-cols-[minmax(14rem,0.35fr)_minmax(0,1fr)]",
-  );
+  const layout = element("div", undefined, "grid gap-5 md:grid-cols-[minmax(14rem,0.35fr)_minmax(0,1fr)]");
   const sidebar = element(
     "section",
     undefined,
@@ -35,13 +31,8 @@ export function mountChannels(root) {
   name.required = true;
   name.placeholder = "New channel";
   name.setAttribute("aria-label", "New channel name");
-  name.className =
-    "min-w-0 flex-1 rounded-lg border border-app-border px-3 py-2";
-  const create = element(
-    "button",
-    "Create",
-    "rounded-lg bg-app-primary px-3 py-2 text-sm font-semibold text-white",
-  );
+  name.className = "min-w-0 flex-1 rounded-lg border border-app-border px-3 py-2";
+  const create = element("button", "Create", "rounded-lg bg-app-primary px-3 py-2 text-sm font-semibold text-white");
   form.append(name, create);
   const channelsList = element("ul", undefined, "space-y-1");
   channelsList.setAttribute("aria-label", "Available channels");
@@ -52,37 +43,51 @@ export function mountChannels(root) {
     "min-w-0 space-y-4 rounded-xl border border-app-border bg-app-card p-4",
   );
   conversation.setAttribute("aria-label", "Channel transcript");
-  const title = element(
-    "h2",
-    "Select a channel",
-    "min-w-0 break-all text-lg font-semibold",
+  const title = element("h2", "Select a channel", "min-w-0 break-all text-lg font-semibold");
+  const eventHistory = document.createElement("details");
+  eventHistory.className = "min-w-0 rounded-lg border border-app-border p-3";
+  eventHistory.hidden = true;
+  const eventSummary = element(
+    "summary",
+    "Event history",
+    "min-h-11 cursor-pointer py-2 font-semibold focus-visible:ring-2 focus-visible:ring-app-primary",
   );
-  const status = element(
-    "p",
-    "Loading channels…",
-    "text-sm text-app-secondary",
+  const eventStatus = element("p", "", "text-sm text-app-secondary");
+  eventStatus.setAttribute("role", "status");
+  const eventList = element("ol", undefined, "space-y-2");
+  const eventActions = element("div", undefined, "flex flex-wrap gap-2");
+  const eventRetry = element(
+    "button",
+    "Retry loading events",
+    "min-h-11 rounded-lg border border-app-border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-app-primary",
   );
+  eventRetry.type = "button";
+  eventRetry.hidden = true;
+  const eventReload = element(
+    "button",
+    "Reload history",
+    "min-h-11 rounded-lg border border-app-border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-app-primary",
+  );
+  eventReload.type = "button";
+  const eventMore = element(
+    "button",
+    "Load more events",
+    "min-h-11 rounded-lg border border-app-border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-app-primary",
+  );
+  eventMore.type = "button";
+  eventMore.hidden = true;
+  eventActions.append(eventRetry, eventReload, eventMore);
+  eventHistory.append(eventSummary, eventStatus, eventList, eventActions);
+  const status = element("p", "Loading channels…", "text-sm text-app-secondary");
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
-  const transcript = element(
-    "ol",
-    undefined,
-    "max-h-[55vh] space-y-3 overflow-auto",
-  );
+  const transcript = element("ol", undefined, "max-h-[55vh] space-y-3 overflow-auto");
   transcript.setAttribute("aria-label", "Messages");
   transcript.tabIndex = 0;
-  const more = element(
-    "button",
-    "Load newer messages",
-    "rounded-lg border border-app-border px-3 py-2 text-sm",
-  );
+  const more = element("button", "Load newer messages", "rounded-lg border border-app-border px-3 py-2 text-sm");
   more.type = "button";
   more.hidden = true;
-  const refresh = element(
-    "button",
-    "Check for new messages",
-    "rounded-lg border border-app-border px-3 py-2 text-sm",
-  );
+  const refresh = element("button", "Check for new messages", "rounded-lg border border-app-border px-3 py-2 text-sm");
   refresh.type = "button";
   refresh.hidden = true;
   const composer = document.createElement("form");
@@ -94,8 +99,7 @@ export function mountChannels(root) {
   payload.placeholder = '{\n  "text": "Hello"\n}';
   payload.setAttribute("aria-label", "JSON message body");
   payload.setAttribute("aria-describedby", "json-help");
-  payload.className =
-    "w-full rounded-lg border border-app-border p-3 font-mono text-sm";
+  payload.className = "w-full rounded-lg border border-app-border p-3 font-mono text-sm";
   const help = element(
     "p",
     "Enter a JSON value. Do not include passwords, tokens, secrets, credentials, or authorization data.",
@@ -109,7 +113,7 @@ export function mountChannels(root) {
   );
   composer.append(help, payload, send);
   composer.hidden = true;
-  conversation.append(title, status, transcript, more, refresh, composer);
+  conversation.append(title, eventHistory, status, transcript, more, refresh, composer);
   layout.append(sidebar, conversation);
   root.replaceChildren(heading, layout);
 
@@ -123,6 +127,10 @@ export function mountChannels(root) {
   let pollTimer = null;
   let channelEvents = null;
   let removalObserver = null;
+  let eventCursor = null;
+  let eventFailedCursor = null;
+  let eventRequest = null;
+  let eventGeneration = 0;
   const request = async (url, options) => {
     const { headers: requestHeaders, ...requestOptions } = options || {};
     const response = await apiFetch(url, {
@@ -130,9 +138,7 @@ export function mountChannels(root) {
       headers: {
         accept: "application/json",
         "content-type": "application/json",
-        ...(root.dataset.workspaceId
-          ? { "X-Team-ID": root.dataset.workspaceId }
-          : {}),
+        ...(root.dataset.workspaceId ? { "X-Team-ID": root.dataset.workspaceId } : {}),
         ...requestHeaders,
       },
     });
@@ -144,21 +150,14 @@ export function mountChannels(root) {
   };
   const drawMessages = (messages, append = false) => {
     const existing = append
-      ? new Set(
-          [...transcript.querySelectorAll("[data-message-id]")].map(
-            (node) => node.dataset.messageId,
-          ),
-        )
+      ? new Set([...transcript.querySelectorAll("[data-message-id]")].map((node) => node.dataset.messageId))
       : new Set();
     const items = messages
       .filter((message) => !existing.has(message.id))
       .map((message) => {
-        const item = element(
-          "li",
-          undefined,
-          "min-w-0 rounded-lg bg-app-panel p-3",
-        );
+        const item = element("li", undefined, "min-w-0 rounded-lg bg-app-panel p-3");
         item.dataset.messageId = message.id;
+        item.id = `message-${message.id}`;
         const metadata = element(
           "p",
           `${message.author || "Member"} · ${message.createdAt || ""}`,
@@ -167,9 +166,7 @@ export function mountChannels(root) {
         item.append(metadata);
         const body = element(
           "pre",
-          typeof message.body === "string"
-            ? message.body
-            : JSON.stringify(message.body, null, 2),
+          typeof message.body === "string" ? message.body : JSON.stringify(message.body, null, 2),
           "mt-2 max-h-64 min-w-0 overflow-auto whitespace-pre-wrap break-all text-sm text-app-foreground",
         );
         body.setAttribute("aria-label", "Message body");
@@ -200,20 +197,15 @@ export function mountChannels(root) {
       if (after) {
         query.set("after", after);
       }
-      const data = await request(
-        `/api/v1/channels/${encodeURIComponent(channelId)}/messages?${query}`,
-      );
+      const data = await request(`/api/v1/channels/${encodeURIComponent(channelId)}/messages?${query}`);
       if (generation !== selectionGeneration || selected?.id !== channelId) {
         return;
       }
       drawMessages(data.messages || [], Boolean(after));
       cursor = data.next || null;
       if (data.messages?.length) {
-        const renderedMessages =
-          transcript.querySelectorAll("[data-message-id]");
-        latestMessageId =
-          renderedMessages[renderedMessages.length - 1]?.dataset.messageId ||
-          latestMessageId;
+        const renderedMessages = transcript.querySelectorAll("[data-message-id]");
+        latestMessageId = renderedMessages[renderedMessages.length - 1]?.dataset.messageId || latestMessageId;
       }
       more.hidden = !cursor;
       refresh.hidden = !selected;
@@ -236,8 +228,125 @@ export function mountChannels(root) {
       }
     }
   };
+  const loadEvents = async (after = null, reset = false) => {
+    if (!selected || eventRequest) {
+      return;
+    }
+    const channelId = selected.id;
+    const generation = eventGeneration;
+    const token = {};
+    eventRequest = token;
+    eventMore.disabled = true;
+    eventStatus.setAttribute("role", "status");
+    eventStatus.textContent = "Loading events…";
+    try {
+      const query = new URLSearchParams({ limit: "50" });
+      if (after) {
+        query.set("cursor", after);
+      }
+      const data = await request(`/api/channels/${encodeURIComponent(channelId)}/events?${query}`);
+      if (generation !== eventGeneration || selected?.id !== channelId) {
+        return;
+      }
+      const existing = reset
+        ? new Set()
+        : new Set([...eventList.querySelectorAll("[data-event-id]")].map((node) => node.dataset.eventId));
+      const items = (data.events || [])
+        .filter((entry) => !existing.has(String(entry.id)))
+        .map((entry) => {
+          const item = element(
+            "li",
+            undefined,
+            "min-w-0 whitespace-pre-wrap break-all rounded-lg bg-app-panel p-3 text-sm",
+          );
+          item.dataset.eventId = String(entry.id);
+          item.id = `event-${entry.id}`;
+          item.textContent = JSON.stringify(entry, null, 2);
+          const links = entry.links || {};
+          const targets = element("div", undefined, "mt-2 flex flex-wrap gap-3");
+          for (const messageId of links.messageIds || []) {
+            const link = element("a", `Message ${messageId}`, "underline focus-visible:ring-2");
+            link.href = `#message-${encodeURIComponent(messageId)}`;
+            link.addEventListener("click", (click) => {
+              click.preventDefault();
+              const message = [...transcript.querySelectorAll("[data-message-id]")].find(
+                (node) => node.dataset.messageId === messageId,
+              );
+              if (message) {
+                message.scrollIntoView({ behavior: "smooth", block: "center" });
+              } else {
+                eventStatus.textContent = "Linked message is not in the currently loaded history.";
+              }
+            });
+            targets.append(link);
+          }
+          for (const runId of links.runIds || []) {
+            const link = element("a", `Run ${runId}`, "underline focus-visible:ring-2");
+            link.href = `/ui/runs/${encodeURIComponent(runId)}`;
+            targets.append(link);
+          }
+          if (links.causationEventId) {
+            const link = element("a", `Caused by event ${links.causationEventId}`, "underline focus-visible:ring-2");
+            link.href = `#event-${encodeURIComponent(links.causationEventId)}`;
+            link.addEventListener("click", (click) => {
+              click.preventDefault();
+              const cause = [...eventList.querySelectorAll("[data-event-id]")].find(
+                (node) => node.dataset.eventId === links.causationEventId,
+              );
+              if (cause) {
+                cause.scrollIntoView({ behavior: "smooth", block: "center" });
+              } else {
+                eventStatus.textContent = "Causing event is not in the loaded history.";
+              }
+            });
+            targets.append(link);
+          }
+          if (targets.childElementCount) {
+            item.append(targets);
+          }
+          return item;
+        });
+      if (reset) {
+        eventList.replaceChildren(...items);
+      } else {
+        eventList.append(...items);
+      }
+      eventCursor = data.nextCursor || null;
+      eventFailedCursor = null;
+      eventMore.hidden = !eventCursor;
+      eventRetry.hidden = true;
+      eventStatus.textContent =
+        reset && !(data.events || []).length
+          ? "No saved events in this channel yet."
+          : eventCursor
+            ? `${items.length} saved events loaded. Recorded order; earliest first.`
+            : items.length
+              ? "End of saved event history. Recorded order; earliest first."
+              : "End of saved event history.";
+    } catch (error) {
+      if (generation === eventGeneration && selected?.id === channelId) {
+        eventStatus.setAttribute("role", "alert");
+        eventStatus.textContent = error.message || "Unable to load saved events.";
+        eventFailedCursor = after;
+        eventRetry.hidden = false;
+      }
+    } finally {
+      if (eventRequest === token) {
+        eventRequest = null;
+        eventMore.disabled = false;
+      }
+    }
+  };
   const select = async (channel) => {
     selectionGeneration += 1;
+    eventGeneration += 1;
+    eventRequest = null;
+    eventCursor = null;
+    eventFailedCursor = null;
+    eventList.replaceChildren();
+    eventMore.hidden = true;
+    eventStatus.textContent = "";
+    eventHistory.open = false;
     selected = channel;
     cursor = null;
     latestMessageId = null;
@@ -245,17 +354,15 @@ export function mountChannels(root) {
     more.hidden = true;
     refresh.hidden = true;
     title.textContent = channel.name;
+    eventHistory.hidden = false;
+    if (eventHistory.open) {
+      void loadEvents(null, true);
+    }
     composer.hidden = !canEdit;
     for (const button of channelsList.querySelectorAll("button")) {
-      button.setAttribute(
-        "aria-pressed",
-        String(button.dataset.id === channel.id),
-      );
+      button.setAttribute("aria-pressed", String(button.dataset.id === channel.id));
       button.classList.toggle("bg-slate-100", button.dataset.id === channel.id);
-      button.classList.toggle(
-        "font-semibold",
-        button.dataset.id === channel.id,
-      );
+      button.classList.toggle("font-semibold", button.dataset.id === channel.id);
     }
     await loadMessages();
   };
@@ -278,9 +385,7 @@ export function mountChannels(root) {
         if (after) {
           query.set("after", after);
         }
-        const data = await request(
-          `/api/v1/channels/${encodeURIComponent(channelId)}/messages?${query}`,
-        );
+        const data = await request(`/api/v1/channels/${encodeURIComponent(channelId)}/messages?${query}`);
         if (generation !== selectionGeneration || selected?.id !== channelId) {
           return;
         }
@@ -336,10 +441,7 @@ export function mountChannels(root) {
           );
           button.type = "button";
           button.dataset.id = channel.id;
-          button.setAttribute(
-            "aria-pressed",
-            String(selected?.id === channel.id),
-          );
+          button.setAttribute("aria-pressed", String(selected?.id === channel.id));
           if (selected?.id === channel.id) {
             button.classList.add("bg-slate-100", "font-semibold");
           }
@@ -349,15 +451,12 @@ export function mountChannels(root) {
         }),
       );
       if (!channels.length) {
-        status.textContent =
-          "No channels yet. Create one to start a conversation.";
+        status.textContent = "No channels yet. Create one to start a conversation.";
       } else if (!selected) {
         status.textContent = "Choose a channel to view its transcript.";
       }
       if (selected) {
-        await select(
-          channels.find((channel) => channel.id === selected.id) || channels[0],
-        );
+        await select(channels.find((channel) => channel.id === selected.id) || channels[0]);
       }
     } catch (error) {
       status.textContent = error.message || "Unable to load channels.";
@@ -385,6 +484,14 @@ export function mountChannels(root) {
     }
   });
   more.addEventListener("click", () => void loadMessages(cursor));
+  eventSummary.addEventListener("click", () => {
+    if (!eventHistory.open && selected) {
+      void loadEvents(null, true);
+    }
+  });
+  eventMore.addEventListener("click", () => void loadEvents(eventCursor));
+  eventRetry.addEventListener("click", () => void loadEvents(eventFailedCursor, eventFailedCursor === null));
+  eventReload.addEventListener("click", () => void loadEvents(null, true));
   refresh.addEventListener("click", () => void refreshMessages());
   composer.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -400,13 +507,10 @@ export function mountChannels(root) {
     send.disabled = true;
     try {
       const channelId = selected.id;
-      const data = await request(
-        `/api/v1/channels/${encodeURIComponent(channelId)}/messages`,
-        {
-          method: "POST",
-          body: JSON.stringify({ body }),
-        },
-      );
+      const data = await request(`/api/v1/channels/${encodeURIComponent(channelId)}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      });
       if (selected?.id === channelId && data.message) {
         // Render our acknowledged send immediately; reconciliation may already be in flight.
         drawMessages([data.message], true);

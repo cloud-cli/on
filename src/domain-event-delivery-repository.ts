@@ -72,8 +72,8 @@ export class DomainEventDeliveryRepository {
     const id = input.id || crypto.randomUUID();
     await db.run(
       `INSERT OR IGNORE INTO domain_event_subscriptions
-         (id, team_id, workflow_id, workflow_revision, event_type, high_water_event_rowid)
-       VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(rowid), 0) FROM domain_events WHERE team_id = ?))`,
+         (id, team_id, workflow_id, workflow_revision, event_type, high_water_event_sequence)
+       VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sequence), 0) FROM domain_events WHERE team_id = ?))`,
       [id, teamId, input.workflowId, input.workflowRevision, input.eventType, teamId],
     );
     const row = await db.get(
@@ -96,7 +96,10 @@ export class DomainEventDeliveryRepository {
 
   /** Creates only deliveries for subscriptions active when the event was recorded. */
   async fanout(teamId: string, eventId: string): Promise<number> {
-    const event = await db.get("SELECT rowid, type FROM domain_events WHERE team_id = ? AND id = ?", [teamId, eventId]);
+    const event = await db.get("SELECT sequence, type FROM domain_events WHERE team_id = ? AND id = ?", [
+      teamId,
+      eventId,
+    ]);
     if (!event) {
       throw new Error("Event not found for team");
     }
@@ -104,8 +107,8 @@ export class DomainEventDeliveryRepository {
       `INSERT OR IGNORE INTO domain_event_deliveries (id, team_id, event_id, subscription_id)
        SELECT lower(hex(randomblob(16))), ?, ?, s.id FROM domain_event_subscriptions s
        WHERE s.team_id = ? AND s.event_type = ? AND s.enabled = 1
-          AND ? > s.high_water_event_rowid`,
-      [teamId, eventId, teamId, event.type, event.rowid],
+           AND ? > s.high_water_event_sequence`,
+      [teamId, eventId, teamId, event.type, event.sequence],
     );
     const count = await db.get(
       "SELECT COUNT(*) AS count FROM domain_event_deliveries WHERE team_id = ? AND event_id = ?",
@@ -121,12 +124,12 @@ export class DomainEventDeliveryRepository {
       `INSERT OR IGNORE INTO domain_event_deliveries (id, team_id, event_id, subscription_id)
        SELECT lower(hex(randomblob(16))), s.team_id, e.id, s.id
        FROM domain_events e JOIN domain_event_subscriptions s ON s.team_id = e.team_id
-       WHERE s.enabled = 1 AND s.event_type = e.type AND e.rowid > s.high_water_event_rowid
+        WHERE s.enabled = 1 AND s.event_type = e.type AND e.sequence > s.high_water_event_sequence
          AND NOT EXISTS (
            SELECT 1 FROM domain_event_deliveries d
            WHERE d.team_id = s.team_id AND d.event_id = e.id AND d.subscription_id = s.id
          )
-       ORDER BY e.rowid LIMIT ?`,
+        ORDER BY e.sequence LIMIT ?`,
       [boundedLimit],
     );
     return Number(result?.changes ?? 0);

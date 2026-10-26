@@ -142,7 +142,7 @@ describe("typed domain event migration", () => {
       }
       return [];
     });
-    await expect(runMigrations()).rejects.toThrow("duplicate subscriptions exist");
+    await expect(runMigrations()).rejects.toThrow("1 duplicate identity group(s) exist");
     expect(database.exec).not.toHaveBeenCalledWith(expect.stringContaining("idx_domain_event_subscription_identity"));
   });
 });

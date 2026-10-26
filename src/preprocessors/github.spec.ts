@@ -119,7 +119,7 @@ describe("GitHubPreprocessor parsing", () => {
     };
     const parsed = preprocessor.parse(headers, body, secret);
     expect(parsed.isValid).toBe(true);
-    const event = preprocessor.toDomainEvent(headers, parsed.inputs!);
+    const event = preprocessor.toDomainEvent(headers, parsed.inputs!, "2024-01-03T00:00:00.000Z");
     expect(event).toMatchObject({
       type: "git.push",
       schemaVersion: 1,
@@ -138,13 +138,17 @@ describe("GitHubPreprocessor parsing", () => {
     expect(JSON.stringify(event)).not.toContain("hook-secret");
     expect(JSON.stringify(event)).not.toContain("payload-secret");
     expect(JSON.stringify(event)).not.toContain("private@example.test");
-    expect(preprocessor.toDomainEvent(headers, parsed.inputs!)).toEqual(event);
-    expect(preprocessor.toDomainEvent(headers, { ...parsed.inputs!, event: "pull_request" })).toBeNull();
+    expect(preprocessor.toDomainEvent(headers, parsed.inputs!, "2024-01-03T00:00:00.000Z")).toEqual(event);
+    expect(
+      preprocessor.toDomainEvent(headers, { ...parsed.inputs!, event: "pull_request" }, "2024-01-03T00:00:00.000Z"),
+    ).toBeNull();
     const missingTimestamp = { ...parsed.inputs!, raw: { ...parsed.inputs!.raw, head_commit: undefined } };
-    expect(preprocessor.toDomainEvent(headers, missingTimestamp)).toEqual(
-      preprocessor.toDomainEvent(headers, missingTimestamp),
+    expect(preprocessor.toDomainEvent(headers, missingTimestamp, "2024-01-03T00:00:00.000Z")).toEqual(
+      preprocessor.toDomainEvent(headers, missingTimestamp, "2024-01-03T00:00:00.000Z"),
     );
-    expect(preprocessor.toDomainEvent(headers, missingTimestamp)?.occurredAt).toBe("1970-01-01T00:00:00.000Z");
+    expect(preprocessor.toDomainEvent(headers, missingTimestamp, "2024-01-03T00:00:00.000Z")?.occurredAt).toBe(
+      "2024-01-03T00:00:00.000Z",
+    );
   });
 
   it("uses the head commit from pull request payloads", () => {

@@ -9,18 +9,14 @@ describe("channels UI", () => {
     expect(source).toContain('query.set("after", after)');
     expect(source).toContain("/api/v1/channels");
     expect(router).toContain('path === "/channels"');
-    expect(router).toContain(
-      "path.match(/^\\/workspaces\\/([^/]+)\\/channels$/)",
-    );
+    expect(router).toContain("path.match(/^\\/workspaces\\/([^/]+)\\/channels$/)");
     expect(source).toContain('"X-Team-ID": root.dataset.workspaceId');
     expect(source).toContain("selectionGeneration");
     expect(source).toContain("You're up to date.");
     expect(source).toContain("const refreshMessages = async () =>");
     expect(source).toContain("setTimeout(pollForMessages, 15_000)");
     expect(source).toContain('new URL("/api/events", window.location.href)');
-    expect(source).toContain(
-      'eventUrl.searchParams.set("teamId", root.dataset.workspaceId)',
-    );
+    expect(source).toContain('eventUrl.searchParams.set("teamId", root.dataset.workspaceId)');
     expect(source).toContain('addEventListener("channel.message"');
     expect(source).toContain('addEventListener("open"');
     expect(source).toContain("notification.channelId === selected.id");
@@ -33,5 +29,21 @@ describe("channels UI", () => {
     expect(source).toContain("JSON.stringify(message.body, null, 2)");
     expect(shell).toContain("Channels</a");
     expect(shell).toContain("activeSection === 'workspace-channels'");
+  });
+
+  it("loads saved events lazily with opaque cursor pagination and text-only rendering", () => {
+    expect(source).toContain('"Event history"');
+    expect(source).toContain("/api/channels/${encodeURIComponent(channelId)}/events?${query}");
+    expect(source).toContain('query.set("cursor", after)');
+    expect(source).toContain("data.nextCursor || null");
+    expect(source).toContain("item.textContent = JSON.stringify(entry, null, 2)");
+    expect(source).toContain("eventGeneration");
+    expect(source).toContain("No saved events in this channel yet.");
+    expect(source).toContain("Retry loading events");
+    expect(source).toContain("Reload history");
+    expect(source).toContain("eventMore");
+    expect(source).toContain("links.messageIds");
+    expect(source).toContain("/ui/runs/${encodeURIComponent(runId)}");
+    expect(source).toContain("Linked message is not in the currently loaded history.");
   });
 });

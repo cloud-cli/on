@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueueManager } from "./queue.js";
+import { SecretRepository } from "./secret-repository.js";
+
+process.env.RUNNER_MASTER_KEY ||= "unit-test-runner-master-key";
 
 vi.mock("./db-client.js", () => {
   const query = (method: string, statement: string, data?: unknown[]) =>
@@ -60,6 +63,92 @@ describe("QueueManager.listJobs", () => {
   });
 });
 
+describe("durable step attempt visibility", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("projects only unmatched starts as interrupted-or-unknown within the requested team", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    await new QueueManager("test").getStepAttemptsForTeam("team-a", 42);
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(request.s).toContain("FROM step_execution_attempt_starts s");
+    expect(request.s).toContain("NOT EXISTS");
+    expect(request.s).toContain("'interrupted_or_unknown' AS status");
+    expect(request.d).toEqual(["team-a", 42, "team-a", 42]);
+  });
+
+  it("writes a durable start marker before step execution", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ changes: 1 }) });
+    vi.stubGlobal("fetch", fetchMock);
+    await new QueueManager("test").saveStepAttemptStart({ jobId: 42, stepId: "build", attempt: 1, startedAt: "now" });
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(request.s).toContain("ON CONFLICT(job_id, step_id, attempt) DO NOTHING");
+    expect(request.d).toEqual(["build", 1, "now", 42]);
+  });
+
+  it("fails closed when an attempt start cannot be recorded", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ changes: 0 }) });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      new QueueManager("test").saveStepAttemptStart({ jobId: 42, stepId: "build", attempt: 1, startedAt: "now" }),
+    ).rejects.toThrow("refusing to execute step");
+  });
+});
+
+describe("runner step attempt writes", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([
+    ["stale lease", false],
+    ["expired lease", false],
+    ["fenced lease", false],
+    ["exact duplicate under current lease", true],
+    ["conflicting duplicate", false],
+  ])("returns %s outcome correctly", async (_case, expected) => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ changes: 0 }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => (expected ? { matched: 1 } : null) });
+    vi.stubGlobal("fetch", fetchMock);
+    const manager = new QueueManager("test");
+    const result = await manager.saveStepAttemptStartForRunner(7, "runner", "lease", "hash", {
+      stepId: "build",
+      attempt: 1,
+      startedAt: "2026-01-01T00:00:00Z",
+    });
+    expect(result).toBe(expected);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).s).toContain("lease_fenced = 0");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).s).toContain(
+      "julianday(jobs.lease_expires_at) > julianday('now')",
+    );
+  });
+
+  it("accepts a complete attempt retry only when its immutable persisted fields match", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ changes: 0 }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ matched: 1 }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const manager = new QueueManager("test");
+    const result = await manager.saveStepAttemptForRunner("runner", "lease", "hash", {
+      jobId: 7,
+      stepId: "build",
+      attempt: 1,
+      status: "success",
+      startedAt: "start",
+      completedAt: "done",
+      durationMs: 12,
+      exitCode: 0,
+      logContent: "ok",
+    });
+    expect(result).toBe(true);
+    const duplicateCheck = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(duplicateCheck.s).toContain("a.duration_ms = ?");
+    expect(duplicateCheck.s).toContain("a.log_content = ?");
+    expect(duplicateCheck.s).toContain("jobs.lease_fenced = 0");
+  });
+});
+
 describe("QueueManager.enqueueDispatch", () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -84,6 +173,10 @@ describe("QueueManager.enqueueDispatch", () => {
     expect(insert.s).toContain("ON CONFLICT(dispatch_key) DO NOTHING");
     expect(insert.s).toContain("rv.revoked = 1");
     expect(insert.d).toContain("dispatch:12:handoff");
+    expect(insert.d[4]).toMatch(/^enc:v1:/);
+    expect(new SecretRepository().decryptValue(insert.d[4].slice("enc:v1:".length))).toBe(
+      JSON.stringify({ inputs: { value: { ok: true } } }),
+    );
     expect(JSON.parse(String(lookupRequest[1].body)).s).toContain("WHERE dispatch_key = ? AND team_id = ?");
   });
 
@@ -120,6 +213,84 @@ describe("QueueManager.claimNextJob", () => {
     expect(request.s).toContain("required_tag.value NOT IN (SELECT value FROM json_each(?))");
     expect(request.d).toEqual(["build-node", '["linux","docker"]']);
   });
+
+  it("decrypts new encrypted payloads and preserves legacy plaintext rows", async () => {
+    const payload = { inputs: { note: "private" } };
+    const encrypted = `enc:v1:${new SecretRepository().encryptValue(JSON.stringify(payload))}`;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 1, payload: encrypted }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 2, payload: JSON.stringify(payload) }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(new QueueManager("worker").claimNextJob()).resolves.toMatchObject({
+      id: 1,
+      payload,
+    });
+    await expect(new QueueManager("worker").claimNextJob()).resolves.toMatchObject({
+      id: 2,
+      payload,
+    });
+  });
+});
+
+describe("QueueManager.listJobsForTeam", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("does not select job payloads for API-facing listings", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+    vi.stubGlobal("fetch", fetchMock);
+    await new QueueManager("test").listJobsForTeam("team-a");
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(request.s).not.toContain("payload");
+  });
+
+  it("filters encrypted inputs without returning their payload or interpreting regex syntax", async () => {
+    const serialize = (inputs: Record<string, unknown>) =>
+      `enc:v1:${new SecretRepository().encryptValue(JSON.stringify({ inputs }))}`;
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { id: 8, payload: serialize({ note: "release[blue]" }) },
+        { id: 7, payload: serialize({ note: "release-blue" }) },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      new QueueManager("test").listJobsForTeam("team-a", 10, undefined, undefined, "note:release[blue]"),
+    ).resolves.toEqual([{ id: 8 }]);
+  });
+});
+
+describe("QueueManager job lookups", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("decrypts encrypted payloads on authorized detail and leased-job retrieval", async () => {
+    const payload = { inputs: { token: "sensitive" } };
+    const stored = `enc:v1:${new SecretRepository().encryptValue(JSON.stringify(payload))}`;
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 7, payload: stored }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const queue = new QueueManager("test");
+
+    await expect(queue.getJobForTeam("team-a", 7)).resolves.toMatchObject({
+      id: 7,
+      payload,
+    });
+    await expect(queue.getLeasedJob("lease", "runner", "hash")).resolves.toMatchObject({
+      id: 7,
+      payload,
+    });
+  });
 });
 
 describe("API runner lease fencing", () => {
@@ -150,9 +321,10 @@ describe("API runner lease fencing", () => {
   });
 
   it("fences active jobs instead of making them immediately claimable on revocation", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ ok: true, json: async () => [{ jobId: 8, teamId: "team-a", leaseId: "lease-1" }] });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ jobId: 8, teamId: "team-a", leaseId: "lease-1" }],
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(new QueueManager("runner-1").revokeRunnerLeases("runner-1")).resolves.toEqual([
@@ -206,6 +378,9 @@ describe("QueueManager.restartJob", () => {
     expect(request.s).toContain("rv.revoked = 1");
     expect(request.s).toContain("team_id");
     expect(request.s).toContain("WHERE jobs.id = ? AND teams.deleting_at IS NULL");
-    expect(request.d).toEqual([7, JSON.stringify({ inputs: {} }), 42, 7]);
+    expect(request.d[0]).toBe(7);
+    expect(request.d[1]).toMatch(/^enc:v1:/);
+    expect(request.d[2]).toBe(42);
+    expect(request.d[3]).toBe(7);
   });
 });

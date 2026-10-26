@@ -15,6 +15,180 @@ const request = (url: string, method = "GET", headers: Record<string, string> = 
   ({ url, method, headers: { host: "app.test", ...headers } }) as any;
 
 describe("current IAM route authorization", () => {
+  it("serves recipe revocation status only through an authorized active lease", async () => {
+    const server = {
+      workflowsLoaded: Promise.resolve(),
+      authenticateRunner: vi.fn(async () => ({ runnerId: "runner-1" })),
+      queue: {
+        getLeasedJob: vi.fn(async () => ({ id: 7, status: "running", lease_completed: 0 })),
+        isRecipeVersionRevoked: vi.fn(async () => true),
+      },
+    };
+    const res = response();
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      request(
+        "/api/v1/runner/leases/lease-1/recipe-version-revocation?namespace=team-a&slug=release-1&version=2",
+        "GET",
+        { authorization: "Bearer runner", "x-runner-lease-token": "lease-token" },
+      ),
+      res,
+    );
+    expect(server.queue.getLeasedJob).toHaveBeenCalledWith("lease-1", "runner-1", expect.any(String));
+    expect(server.queue.isRecipeVersionRevoked).toHaveBeenCalledWith("team-a", "release-1", 2);
+    expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({ revoked: true });
+
+    const invalidResponse = response();
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      request("/api/v1/runner/leases/lease-1/recipe-version-revocation?namespace=../x&slug=release-1&version=2"),
+      invalidResponse,
+    );
+    expect(invalidResponse.writeHead).toHaveBeenCalledWith(400, expect.any(Object));
+    expect(server.queue.isRecipeVersionRevoked).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["missing", false],
+    ["revoked", false],
+    ["active", true],
+  ])("requires an active grant for agent workflow runs (%s)", async (_label, granted) => {
+    const server = {
+      requireWorkspaceCapability: vi.fn(async () => ({
+        principal: { subject: "agent:build", kind: "agent" },
+        teamId: "team-1",
+        capabilities: ["runs.dispatch"],
+      })),
+      workflowsLoaded: Promise.resolve(),
+      readJson: vi.fn(async () => null),
+      workflows: {
+        getForTeam: vi.fn(async () => ({ id: "workflow-1" })),
+        latestRevision: vi.fn(async () => ({ revision: 1 })),
+        getRevision: vi.fn(async () => ({ tags: [], steps: [{ run: "true" }] })),
+      },
+      agentWorkflowGrantRepository: { has: vi.fn(async () => granted) },
+      queue: { enqueueDispatch: vi.fn(async () => 10) },
+      workflowRunAdmissions: { claimNext: vi.fn(), finish: vi.fn() },
+      domainEventRepository: {
+        getByIdempotencyKey: vi.fn(async () => null),
+        publish: vi.fn(async () => ({
+          id: "event-1",
+          type: "workflow.run.requested",
+          source: "api/workflows/run",
+          data: { workflowId: "workflow-1", revision: 1, inputsCiphertext: "cipher" },
+        })),
+      },
+      secretRepository: {
+        encryptValue: vi.fn((value: string) => value),
+        decryptValue: vi.fn(() => JSON.stringify({ trigger: { type: "manual", source: "api" } })),
+      },
+      events: { publish: vi.fn() },
+    };
+    const runRequest = request("/api/v1/workflows/workflow-1/run", "POST", { "idempotency-key": "retry-1" });
+    const res = response();
+    await (WebhookServer.prototype as any).handleWorkflowRun.call(server, runRequest, res, "workflow-1");
+    expect(server.agentWorkflowGrantRepository.has).toHaveBeenCalledWith("team-1", "agent:build", "workflow-1");
+    if (granted) {
+      expect(server.queue.enqueueDispatch).not.toHaveBeenCalled();
+      expect(server.domainEventRepository.publish).toHaveBeenCalledOnce();
+      expect(JSON.parse(res.end.mock.calls[0][0])).toMatchObject({
+        accepted: true,
+        admissionStatus: "pending",
+        jobs: [],
+      });
+
+      const acceptedEvent = await server.domainEventRepository.publish.mock.results[0].value;
+      server.domainEventRepository.getByIdempotencyKey.mockResolvedValueOnce(acceptedEvent);
+      const retryResponse = response();
+      await (WebhookServer.prototype as any).handleWorkflowRun.call(server, runRequest, retryResponse, "workflow-1");
+      expect(server.domainEventRepository.publish).toHaveBeenCalledOnce();
+      expect(JSON.parse(retryResponse.end.mock.calls[0][0])).toMatchObject({
+        eventId: "event-1",
+        accepted: true,
+        admissionStatus: "pending",
+        jobs: [],
+      });
+
+      server.domainEventRepository.getByIdempotencyKey.mockResolvedValueOnce(acceptedEvent);
+      server.readJson.mockResolvedValueOnce({ inputs: { different: true } });
+      const conflictResponse = response();
+      await (WebhookServer.prototype as any).handleWorkflowRun.call(server, runRequest, conflictResponse, "workflow-1");
+      expect(conflictResponse.writeHead).toHaveBeenCalledWith(409, expect.any(Object));
+      expect(server.domainEventRepository.publish).toHaveBeenCalledOnce();
+    } else {
+      expect(res.writeHead).toHaveBeenCalledWith(403, expect.any(Object));
+      expect(server.queue.enqueueDispatch).not.toHaveBeenCalled();
+      expect(server.domainEventRepository.publish).not.toHaveBeenCalled();
+    }
+  });
+
+  it("hides diagnostic inputs unless the principal has runs.inputs", async () => {
+    const makeServer = (capabilities: string[]) => ({
+      requireWorkspaceCapability: vi.fn(async () => ({ teamId: "team-1", capabilities })),
+      queue: {
+        getJobForTeam: vi.fn(async () => ({
+          id: 1,
+          report: JSON.stringify({ inputs: { customer: "private" }, steps: [] }),
+          workflow_id: "workflow-1",
+          workflow_revision: 1,
+          status: "success",
+        })),
+        getJobLogs: vi.fn(async () => ({})),
+      },
+      workflows: {
+        getRevision: vi.fn(async () => ({})),
+        getRevisionSnapshot: vi.fn(async () => null),
+      },
+      currentSecrets: vi.fn(async () => ({})),
+      redactStructured: (value: unknown) => value,
+      redact: (value: unknown) => value,
+    });
+    const logsOnly = makeServer(["runs.logs"]);
+    const hiddenResponse = response();
+    await (WebhookServer.prototype as any).handleDiagnostics.call(
+      logsOnly,
+      request("/api/runs/1/diagnostics"),
+      hiddenResponse,
+      "1",
+    );
+    const hidden = JSON.parse(hiddenResponse.end.mock.calls[0][0]);
+    expect(hidden).not.toHaveProperty("inputs");
+
+    const inputReader = makeServer(["runs.logs", "runs.inputs"]);
+    const visibleResponse = response();
+    await (WebhookServer.prototype as any).handleDiagnostics.call(
+      inputReader,
+      request("/api/runs/1/diagnostics"),
+      visibleResponse,
+      "1",
+    );
+    expect(JSON.parse(visibleResponse.end.mock.calls[0][0]).inputs).toEqual({
+      customer: "private",
+    });
+  });
+
+  it("blocks dashboard filters from actors without runs.inputs", async () => {
+    const server = {
+      requireWorkspaceCapability: vi.fn(async () => ({
+        teamId: "team-1",
+        capabilities: ["runs.view"],
+      })),
+      queue: { listJobsForTeam: vi.fn() },
+    };
+    const res = response();
+    await (WebhookServer.prototype as any).renderDashboardJobs.call(
+      server,
+      request("/api/jobs"),
+      res,
+      50,
+      undefined,
+      undefined,
+      "region:prod",
+    );
+    expect(res.writeHead).toHaveBeenCalledWith(403, expect.any(Object));
+    expect(server.queue.listJobsForTeam).not.toHaveBeenCalled();
+  });
+
   it("accepts pending subject invitations for the verified OIDC subject after login", async () => {
     const user = { id: "auth-agent-sub", name: "Automation Agent", email: undefined };
     const server = {

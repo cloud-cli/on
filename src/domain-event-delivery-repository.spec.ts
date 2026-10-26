@@ -33,7 +33,7 @@ describe("DomainEventDeliveryRepository", () => {
       ["team-a", "wf"],
     ]);
     expect(database.run.mock.calls[0][0]).toContain(
-      "SELECT COALESCE(MAX(rowid), 0) FROM domain_events WHERE team_id = ?",
+      "SELECT COALESCE(MAX(sequence), 0) FROM domain_events WHERE team_id = ?",
     );
     expect(database.run.mock.calls[0][1].at(-1)).toBe("team-a");
     await repository.listSubscriptions("team-b");
@@ -54,10 +54,10 @@ describe("DomainEventDeliveryRepository", () => {
   });
 
   it("fans out only currently matching subscriptions and tolerates duplicates", async () => {
-    database.get.mockResolvedValueOnce({ rowid: 9, type: "order.created" }).mockResolvedValueOnce({ count: 1 });
+    database.get.mockResolvedValueOnce({ sequence: 9, type: "order.created" }).mockResolvedValueOnce({ count: 1 });
     await expect(repository.fanout("team-a", "event-a")).resolves.toBe(1);
     expect(database.run.mock.calls[0][0]).toContain("INSERT OR IGNORE");
-    expect(database.run.mock.calls[0][0]).toContain("? > s.high_water_event_rowid");
+    expect(database.run.mock.calls[0][0]).toContain("? > s.high_water_event_sequence");
     expect(database.run.mock.calls[0][1]).toEqual(["team-a", "event-a", "team-a", "order.created", 9]);
     expect(database.get.mock.calls[1][1]).toEqual(["team-a", "event-a"]);
   });
@@ -65,18 +65,18 @@ describe("DomainEventDeliveryRepository", () => {
   it("repairs missing fanout without backfilling events before subscription start", async () => {
     database.run.mockResolvedValueOnce({ changes: 3 });
     await expect(repository.reconcileFanout(1000)).resolves.toBe(3);
-    expect(database.run.mock.calls[0][0]).toContain("e.rowid > s.high_water_event_rowid");
+    expect(database.run.mock.calls[0][0]).toContain("e.sequence > s.high_water_event_sequence");
     expect(database.run.mock.calls[0][1]).toEqual([500]);
   });
 
-  it("uses an event rowid high-water mark rather than second-precision timestamps", async () => {
-    database.get.mockResolvedValueOnce({ rowid: 4, type: "order.created" }).mockResolvedValueOnce({ count: 0 });
+  it("uses a durable event sequence high-water mark rather than timestamps", async () => {
+    database.get.mockResolvedValueOnce({ sequence: 4, type: "order.created" }).mockResolvedValueOnce({ count: 0 });
     await repository.fanout("team-a", "before-subscription");
-    expect(database.run.mock.calls[0][0]).toContain("? > s.high_water_event_rowid");
+    expect(database.run.mock.calls[0][0]).toContain("? > s.high_water_event_sequence");
     expect(database.run.mock.calls[0][1].at(-1)).toBe(4);
     database.get.mockReset();
     database.run.mockReset();
-    database.get.mockResolvedValueOnce({ rowid: 5, type: "order.created" }).mockResolvedValueOnce({ count: 1 });
+    database.get.mockResolvedValueOnce({ sequence: 5, type: "order.created" }).mockResolvedValueOnce({ count: 1 });
     await repository.fanout("team-a", "after-subscription");
     expect(database.run.mock.calls[0][1].at(-1)).toBe(5);
   });

@@ -3,6 +3,51 @@ import { WorkflowExecutionReport, JobPayload, JobRecord, JobStatus } from "./typ
 import { timestampLogLines } from "./timestamped-log.js";
 import { FileStorage } from "./file-storage.js";
 import { ensureTeamDataSchema } from "./team-data-schema.js";
+import { SecretRepository } from "./secret-repository.js";
+
+const payloadSecrets = new SecretRepository();
+const encryptPayload = (payload: JobPayload): string =>
+  `enc:v1:${payloadSecrets.encryptValue(JSON.stringify(payload))}`;
+const decryptPayload = (payload: unknown): JobPayload => {
+  if (typeof payload !== "string" || !payload.startsWith("enc:v1:")) {
+    return (typeof payload === "string" ? JSON.parse(payload) : payload) as JobPayload;
+  }
+  return JSON.parse(payloadSecrets.decryptValue(payload.slice("enc:v1:".length))) as JobPayload;
+};
+
+function globMatches(value: unknown, pattern: string): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+  const text = typeof value === "string" ? value : typeof value === "object" ? JSON.stringify(value) : String(value);
+  const expression = [...pattern]
+    .map((character) => {
+      if (character === "*") {
+        return ".*";
+      }
+      if (character === "?") {
+        return ".";
+      }
+      return character.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+    })
+    .join("");
+  return new RegExp(`^${expression}$`).test(text);
+}
+
+function matchesPayloadFilter(payload: unknown, filter: string): boolean {
+  const serialized = JSON.stringify(payload);
+  const separator = filter.indexOf(":");
+  if (separator > 0) {
+    const field = filter.slice(0, separator).trim();
+    const pattern = filter.slice(separator + 1).trim();
+    if (!/^[A-Za-z0-9_-]+$/.test(field) || !pattern) {
+      throw new Error("Invalid job filter");
+    }
+    const inputs = (payload as any)?.inputs;
+    return inputs && typeof inputs === "object" ? globMatches(inputs[field], pattern) : false;
+  }
+  return serialized.toLowerCase().includes(filter.toLowerCase());
+}
 
 const CURRENT_RUNNER_AUTHORIZATION = `EXISTS (
   SELECT 1 FROM runners AS authorized_runner
@@ -57,7 +102,7 @@ export class QueueManager {
         workflowRevision,
         JSON.stringify(requiredTags),
         concurrencyKey || "",
-        JSON.stringify(payload),
+        encryptPayload(payload),
         workflowId,
         workflowRevision,
       ],
@@ -87,12 +132,17 @@ export class QueueManager {
     teamId: string,
     parentId: string | number | null,
     dispatchKey: string,
+    admissionFence?: {
+      eventId: string;
+      variantIndex: number;
+      leaseToken: string;
+    },
   ): Promise<number> {
     await db.run(
       `INSERT INTO jobs (parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id, dispatch_key)
        SELECT ?, ?, ?, ?, '', ?, ?, ?
-       WHERE EXISTS (
-         SELECT 1 FROM workflows JOIN teams ON teams.id = workflows.team_id
+        WHERE EXISTS (
+          SELECT 1 FROM workflows JOIN teams ON teams.id = workflows.team_id
           WHERE workflows.id = ? AND workflows.team_id = ? AND teams.deleting_at IS NULL
             AND NOT EXISTS (
               SELECT 1 FROM workflow_revisions wr
@@ -100,7 +150,12 @@ export class QueueManager {
                 AND rv.slug = json_extract(wr.normalized_json, '$._recipeRef.slug')
                 AND rv.version = json_extract(wr.normalized_json, '$._recipeRef.version')
               WHERE wr.workflow_id = workflows.id AND wr.revision = ? AND rv.revoked = 1
-            )
+        )
+        AND (? IS NULL OR EXISTS (
+          SELECT 1 FROM workflow_run_admissions a
+           WHERE a.event_id = ? AND a.variant_index = ? AND a.status = 'claimed'
+             AND a.lease_token = ? AND julianday(a.lease_until) > julianday('now')
+        ))
        )
        ON CONFLICT(dispatch_key) DO NOTHING`,
       [
@@ -108,16 +163,23 @@ export class QueueManager {
         workflowId,
         workflowRevision,
         JSON.stringify(requiredTags),
-        JSON.stringify(payload),
+        encryptPayload(payload),
         teamId,
         dispatchKey,
         workflowId,
         teamId,
         workflowRevision,
+        admissionFence ? 1 : null,
+        admissionFence?.eventId ?? null,
+        admissionFence?.variantIndex ?? null,
+        admissionFence?.leaseToken ?? null,
       ],
     );
     const existing = await db.get("SELECT id FROM jobs WHERE dispatch_key = ? AND team_id = ?", [dispatchKey, teamId]);
-    return Number(existing?.id || 0);
+    if (existing) {
+      return Number(existing.id);
+    }
+    return 0;
   }
 
   /**
@@ -152,7 +214,7 @@ export class QueueManager {
       [this.workerId, JSON.stringify(workerTags)],
     );
 
-    return result ? (result as JobRecord) : null;
+    return result ? ({ ...result, payload: decryptPayload(result.payload) } as JobRecord) : null;
   }
 
   /** Atomically claims an API job only for teams granted to the authenticated runner. */
@@ -208,7 +270,7 @@ export class QueueManager {
         JSON.stringify(workerTags),
       ],
     );
-    return result ? (result as JobRecord) : null;
+    return result ? ({ ...result, payload: decryptPayload(result.payload) } as JobRecord) : null;
   }
 
   async leaseIsCurrent(jobId: string | number, runnerId: string, leaseId: string, leaseTokenHash: string) {
@@ -361,11 +423,7 @@ export class QueueManager {
     if (!Number.isSafeInteger(activeRevision) || activeRevision < 1) {
       throw new Error(`Workflow ${job.workflow_id} has no active revision`);
     }
-    const payload = job.payload
-      ? typeof job.payload === "string"
-        ? JSON.parse(job.payload)
-        : job.payload
-      : { inputs: {} };
+    const payload = job.payload ? decryptPayload(job.payload) : { inputs: {} };
     payload.inputs = { ...(payload.inputs || {}), ...manualInputs };
 
     const newJob = await db.get(
@@ -384,7 +442,7 @@ export class QueueManager {
            WHERE wr.workflow_id = jobs.workflow_id AND wr.revision = ? AND rv.revoked = 1
          )
         RETURNING *`,
-      [activeRevision, JSON.stringify(payload), jobId, activeRevision],
+      [activeRevision, encryptPayload(payload), jobId, activeRevision],
     );
     if (!newJob?.id) {
       throw new Error("Workflow is unavailable or its pinned recipe has been revoked");
@@ -415,12 +473,26 @@ export class QueueManager {
   }
 
   async getLeasedJob(leaseId: string, runnerId: string, leaseTokenHash: string): Promise<JobRecord | null> {
-    return db.get(
+    const job = await db.get(
       `SELECT * FROM jobs WHERE lease_id = ? AND worker_id = ? AND lease_token_hash = ?
        AND status IN ('running', 'cancelled', 'success', 'failed') AND julianday(lease_expires_at) > julianday('now')
        AND ${CURRENT_RUNNER_AUTHORIZATION}`,
       [leaseId, runnerId, leaseTokenHash],
     );
+    return job ? ({ ...job, payload: decryptPayload(job.payload) } as JobRecord) : null;
+  }
+
+  /**
+   * Check if a recipe version has been revoked in the immutable registry.
+   * Used as a guard before executing nested recipe calls.
+   */
+  async isRecipeVersionRevoked(namespace: string, slug: string, version: number): Promise<boolean> {
+    const row = await db.get(`SELECT revoked FROM recipe_versions WHERE namespace = ? AND slug = ? AND version = ?`, [
+      namespace,
+      slug,
+      version,
+    ]);
+    return Boolean(row?.revoked);
   }
 
   async renewRunnerLease(
@@ -561,24 +633,88 @@ export class QueueManager {
    * Fetch job details + report by ID
    */
   async getJob(jobId: string | number): Promise<any> {
-    return db.get(`SELECT * FROM jobs WHERE id = ?`, [jobId]);
+    const job = await db.get(`SELECT * FROM jobs WHERE id = ?`, [jobId]);
+    return job ? { ...job, payload: decryptPayload(job.payload) } : null;
   }
 
   /** Tenant-scoped job lookup for authenticated server requests. */
   async getJobForTeam(teamId: string, jobId: string | number): Promise<any> {
-    return db.get("SELECT * FROM jobs WHERE team_id = ? AND id = ?", [teamId, jobId]);
+    const job = await db.get("SELECT * FROM jobs WHERE team_id = ? AND id = ?", [teamId, jobId]);
+    return job ? { ...job, payload: decryptPayload(job.payload) } : null;
   }
 
   /** Read immutable step execution attempts, scoped to the owning team and job. */
   async getStepAttemptsForTeam(teamId: string, jobId: string | number): Promise<any[]> {
     return db.all(
-      `SELECT id, job_id, step_id, attempt, status, started_at, completed_at,
-              duration_ms, exit_code, error, log_content
-         FROM step_execution_attempts
-        WHERE team_id = ? AND job_id = ?
+      `SELECT c.id, c.job_id, c.step_id, c.attempt, c.status, c.started_at, c.completed_at,
+              c.duration_ms, c.exit_code, c.error, c.log_content, 'completed' AS lifecycle_status
+         FROM step_execution_attempts c
+        WHERE c.team_id = ? AND c.job_id = ?
+        UNION ALL
+       SELECT s.id, s.job_id, s.step_id, s.attempt, 'interrupted_or_unknown' AS status,
+              s.started_at, NULL AS completed_at, NULL AS duration_ms, NULL AS exit_code,
+              NULL AS error, '' AS log_content, 'started' AS lifecycle_status
+         FROM step_execution_attempt_starts s
+        WHERE s.team_id = ? AND s.job_id = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM step_execution_attempts c
+             WHERE c.team_id = s.team_id AND c.job_id = s.job_id
+               AND c.step_id = s.step_id AND c.attempt = s.attempt
+          )
         ORDER BY step_id ASC, attempt ASC, id ASC`,
-      [teamId, jobId],
+      [teamId, jobId, teamId, jobId],
     );
+  }
+
+  /** Append the immutable durable fact that a step attempt is about to be invoked. */
+  async saveStepAttemptStart(start: {
+    jobId: string | number;
+    stepId: string;
+    attempt: number;
+    startedAt: string;
+  }): Promise<void> {
+    const result = await db.run(
+      `INSERT INTO step_execution_attempt_starts (team_id, job_id, step_id, attempt, started_at)
+       SELECT team_id, id, ?, ?, ? FROM jobs
+        WHERE id = ? AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)
+       ON CONFLICT(job_id, step_id, attempt) DO NOTHING`,
+      [start.stepId, start.attempt, start.startedAt, start.jobId],
+    );
+    if (Number(result?.changes || 0) !== 1) {
+      throw new Error("Step attempt start already exists or could not be persisted; refusing to execute step");
+    }
+  }
+
+  async saveStepAttemptStartForRunner(
+    jobId: string | number,
+    runnerId: string,
+    leaseId: string,
+    leaseTokenHash: string,
+    start: { stepId: string; attempt: number; startedAt: string },
+  ): Promise<boolean> {
+    const result = await db.run(
+      `INSERT INTO step_execution_attempt_starts (team_id, job_id, step_id, attempt, started_at)
+       SELECT team_id, id, ?, ?, ? FROM jobs WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ?
+         AND status = 'running' AND lease_fenced = 0 AND lease_completed = 0
+         AND julianday(lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
+         AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)
+       ON CONFLICT(job_id, step_id, attempt) DO NOTHING`,
+      [start.stepId, start.attempt, start.startedAt, jobId, runnerId, leaseId, leaseTokenHash],
+    );
+    if (Number(result?.changes || 0) === 1) {
+      return true;
+    }
+    const existing = await db.get(
+      `SELECT 1 AS matched FROM step_execution_attempt_starts s JOIN jobs
+          ON jobs.id = s.job_id AND jobs.team_id = s.team_id
+        WHERE s.job_id = ? AND s.step_id = ? AND s.attempt = ? AND s.started_at = ?
+          AND jobs.worker_id = ? AND jobs.lease_id = ? AND jobs.lease_token_hash = ?
+          AND jobs.status = 'running' AND jobs.lease_fenced = 0 AND jobs.lease_completed = 0
+          AND julianday(jobs.lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
+          AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)`,
+      [jobId, start.stepId, start.attempt, start.startedAt, runnerId, leaseId, leaseTokenHash],
+    );
+    return Boolean(existing);
   }
 
   /**
@@ -645,26 +781,52 @@ export class QueueManager {
       conditions.push("id < ?");
       values.push(beforeId);
     }
-    if (filter) {
-      const separator = filter.indexOf(":");
-      if (separator > 0) {
-        const field = filter.slice(0, separator).trim();
-        const pattern = filter.slice(separator + 1).trim();
-        if (!/^[A-Za-z0-9_-]+$/.test(field) || !pattern) {
-          throw new Error("Invalid job filter");
-        }
-        conditions.push("json_extract(payload, '$.inputs.' || ?) GLOB ?");
-        values.push(field, pattern);
-      } else {
-        conditions.push("LOWER(payload) LIKE LOWER(?)");
-        values.push(`%${filter}%`);
-      }
-    }
     if (workflowId) {
       conditions.push("workflow_id = ?");
       values.push(workflowId);
     }
-    return db.all(`SELECT * FROM jobs WHERE ${conditions.join(" AND ")} ORDER BY id DESC LIMIT ?`, [...values, limit]);
+    const columns =
+      "id, parentId, workflow_id, workflow_revision, required_tags, concurrency_key, team_id, status, worker_id, report, created_at, updated_at, started_at, finished_at, dispatch_key";
+    if (!filter) {
+      return db.all(`SELECT ${columns} FROM jobs WHERE ${conditions.join(" AND ")} ORDER BY id DESC LIMIT ?`, [
+        ...values,
+        limit,
+      ]);
+    }
+
+    const matches: any[] = [];
+    const batchSize = Math.max(100, Math.min(500, limit * 2));
+    let beforeCursor: number | undefined = beforeId;
+    while (matches.length < limit) {
+      const pageConditions = [...conditions];
+      const pageValues = [...values];
+      if (beforeCursor !== undefined) {
+        pageConditions.push("id < ?");
+        pageValues.push(beforeCursor);
+      }
+      const rows = await db.all(
+        `SELECT ${columns}, payload FROM jobs WHERE ${pageConditions.join(" AND ")} ORDER BY id DESC LIMIT ?`,
+        [...pageValues, batchSize],
+      );
+      if (!rows.length) {
+        break;
+      }
+      for (const row of rows) {
+        beforeCursor = Number(row.id);
+        const payload = decryptPayload(row.payload);
+        if (matchesPayloadFilter(payload, filter)) {
+          const { payload: _payload, ...safeRow } = row;
+          matches.push(safeRow);
+          if (matches.length === limit) {
+            break;
+          }
+        }
+      }
+      if (rows.length < batchSize) {
+        break;
+      }
+    }
+    return matches;
   }
 
   /**
@@ -766,6 +928,79 @@ export class QueueManager {
     if (Number(result?.changes || 0) > 1) {
       throw new Error("Unexpected step attempt insert count");
     }
+  }
+
+  async saveStepAttemptForRunner(
+    runnerId: string,
+    leaseId: string,
+    leaseTokenHash: string,
+    attempt: {
+      jobId: string | number;
+      stepId: string;
+      attempt: number;
+      status: string;
+      startedAt: string;
+      completedAt: string;
+      durationMs: number;
+      exitCode?: number;
+      error?: string;
+      logContent: string;
+    },
+  ): Promise<boolean> {
+    const result = await db.run(
+      `INSERT INTO step_execution_attempts
+       (team_id, job_id, step_id, attempt, status, started_at, completed_at, duration_ms, exit_code, error, log_content)
+       SELECT team_id, id, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM jobs
+        WHERE id = ? AND worker_id = ? AND lease_id = ? AND lease_token_hash = ? AND status = 'running'
+          AND lease_fenced = 0 AND lease_completed = 0 AND julianday(lease_expires_at) > julianday('now')
+          AND ${CURRENT_RUNNER_AUTHORIZATION} AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)
+       ON CONFLICT(job_id, step_id, attempt) DO NOTHING`,
+      [
+        attempt.stepId,
+        attempt.attempt,
+        attempt.status,
+        attempt.startedAt,
+        attempt.completedAt,
+        attempt.durationMs,
+        attempt.exitCode ?? null,
+        attempt.error?.slice(0, 4000) ?? null,
+        attempt.logContent.slice(0, 65536),
+        attempt.jobId,
+        runnerId,
+        leaseId,
+        leaseTokenHash,
+      ],
+    );
+    if (Number(result?.changes || 0) === 1) {
+      return true;
+    }
+    const existing = await db.get(
+      `SELECT 1 AS matched FROM step_execution_attempts a JOIN jobs
+          ON jobs.id = a.job_id AND jobs.team_id = a.team_id
+        WHERE a.job_id = ? AND a.step_id = ? AND a.attempt = ? AND a.status = ?
+          AND a.started_at = ? AND a.completed_at = ? AND a.duration_ms = ?
+          AND a.exit_code IS ? AND a.error IS ? AND a.log_content = ?
+          AND jobs.worker_id = ? AND jobs.lease_id = ? AND jobs.lease_token_hash = ?
+          AND jobs.status = 'running' AND jobs.lease_fenced = 0 AND jobs.lease_completed = 0
+          AND julianday(jobs.lease_expires_at) > julianday('now') AND ${CURRENT_RUNNER_AUTHORIZATION}
+          AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND deleting_at IS NULL)`,
+      [
+        attempt.jobId,
+        attempt.stepId,
+        attempt.attempt,
+        attempt.status,
+        attempt.startedAt,
+        attempt.completedAt,
+        attempt.durationMs,
+        attempt.exitCode ?? null,
+        attempt.error?.slice(0, 4000) ?? null,
+        attempt.logContent.slice(0, 65536),
+        runnerId,
+        leaseId,
+        leaseTokenHash,
+      ],
+    );
+    return Boolean(existing);
   }
 
   /**

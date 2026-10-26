@@ -4,13 +4,261 @@ import { processJob } from "./worker.js";
 import { SecretStore } from "./secrets.js";
 
 describe("incremental workflow reports", () => {
+  it("does not invoke a driver when durable attempt start persistence fails", async () => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {
+        throw new Error("storage unavailable");
+      }),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+    };
+    const driver = { execute: vi.fn(), readLog: vi.fn(async () => "") };
+    await processJob({
+      workerId: "start-failure-worker",
+      job: {
+        id: 126,
+        workflow_id: "start-failure",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "start-failure-worker",
+        payload: JSON.stringify({ inputs: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
+      config: { storagePath: "/tmp/start-failure", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver,
+      workflow: {
+        id: "start-failure",
+        name: "Start failure",
+        on: { provider: "generic" },
+        steps: [{ id: "build", run: "true" }],
+      },
+    } as Processable);
+    expect(driver.execute).not.toHaveBeenCalled();
+    expect(queue.saveStepAttemptStart).toHaveBeenCalledTimes(1);
+  });
+
+  it("executes exact pinned nested recipe functions inline and persists their step reports", async () => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+      isRecipeVersionRevoked: vi.fn(async () => false),
+      saveStepAttempt: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {}),
+    };
+    const driver = {
+      execute: vi.fn(() => ({
+        done: Promise.resolve({ exitCode: 0, durationMs: 1 }),
+        cancel: vi.fn(),
+        logFilePath: "",
+      })),
+      readLog: vi.fn(async () => ""),
+    };
+    await processJob({
+      workerId: "nested-worker",
+      job: {
+        id: 125,
+        workflow_id: "nested",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "nested-worker",
+        payload: JSON.stringify({ inputs: { original: "second" } }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({ token: "secret-value" }), redactText: (text: string) => text },
+      config: {
+        storagePath: "/tmp/nested-call-test",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
+      driver,
+      workflow: {
+        id: "nested",
+        name: "Nested",
+        on: { provider: "generic" },
+        steps: [
+          {
+            id: "nested-call",
+            call: "team/recipe@1#main",
+            with: { message: "hello" },
+            secrets: { password: "${secrets.token}" },
+          },
+          {
+            id: "second-call",
+            call: "team/recipe@1#main",
+            with: { message: "${inputs.original}" },
+            secrets: { password: "${secrets.token}" },
+          },
+          { id: "consume-output", eval: "steps['nested-call'].outputs.message" },
+        ],
+        _pinnedReferences: [{ namespace: "team", slug: "recipe", version: 1, function: "main" }],
+        _pinnedRecipeFunctions: {
+          "team/recipe@1#main": {
+            inputs: {
+              type: "object",
+              properties: { message: { type: "string" }, password: { type: "string", writeOnly: true } },
+              required: ["message", "password"],
+              additionalProperties: false,
+            },
+            outputs: {
+              type: "object",
+              properties: { message: { type: "string" } },
+              required: ["message"],
+              additionalProperties: false,
+            },
+            returns: { message: "${steps.main.outputs}" },
+            steps: [
+              { id: "secret-check", eval: "secrets.password.length" },
+              { id: "main", eval: "inputs.message" },
+            ],
+          },
+        },
+      } as Processable,
+    } as Processable);
+
+    expect(queue.isRecipeVersionRevoked).toHaveBeenCalledWith("team", "recipe", 1);
+    expect(driver.execute).not.toHaveBeenCalled();
+    expect(queue.completeJob.mock.calls[0][1]).toBe("success");
+    expect(queue.completeJob.mock.calls[0][2].steps[0].status).toBe("success");
+    expect(queue.completeJob.mock.calls[0][2].steps[2]).toMatchObject({
+      id: "consume-output",
+      status: "success",
+      outputs: "hello",
+    });
+    expect(queue.completeJob.mock.calls[0][2].steps[1].outputs).toEqual({ message: "second" });
+    expect(queue.completeJob.mock.calls[0][2].steps[3]).toMatchObject({
+      id: "nested-call#attempt-1/secret-check",
+      status: "success",
+      outputs: 12,
+    });
+    expect(queue.completeJob.mock.calls[0][2].steps[4]).toMatchObject({
+      id: "nested-call#attempt-1/main",
+      status: "success",
+    });
+    expect(queue.completeJob.mock.calls[0][2].steps[5]).toMatchObject({
+      id: "second-call#attempt-1/secret-check",
+      status: "success",
+    });
+    expect(queue.completeJob.mock.calls[0][2].steps[6]).toMatchObject({
+      id: "second-call#attempt-1/main",
+      status: "success",
+    });
+    expect(JSON.stringify(queue.completeJob.mock.calls[0][2])).not.toContain("secret-value");
+    expect(queue.saveStepAttemptStart).toHaveBeenCalledWith(
+      expect.objectContaining({ stepId: "nested-call#attempt-1/main" }),
+    );
+    expect(queue.saveStepAttemptStart).toHaveBeenCalledWith(
+      expect.objectContaining({ stepId: "second-call#attempt-1/main" }),
+    );
+  });
+
+  it.each([
+    ["revoked", true, { "team/recipe@1#main": { inputs: {}, outputs: { type: "object" }, steps: [] } }],
+    ["missing pinned snapshot", false, {}],
+  ])("fails nested calls closed for %s dependencies", async (_label, revoked, pinned) => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {}),
+      saveStepAttempt: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+      isRecipeVersionRevoked: vi.fn(async () => revoked),
+    };
+    const driver = { execute: vi.fn(), readLog: vi.fn(async () => "") };
+    await processJob({
+      workerId: "invalid-nested-worker",
+      job: {
+        id: 127,
+        workflow_id: "nested-invalid",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "invalid-nested-worker",
+        payload: JSON.stringify({ inputs: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
+      config: { storagePath: "/tmp/nested-invalid", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver,
+      workflow: {
+        id: "nested-invalid",
+        name: "Nested invalid",
+        on: { provider: "generic" },
+        steps: [{ id: "call", call: "team/recipe@1#main", with: {} }],
+        _pinnedReferences: [{ namespace: "team", slug: "recipe", version: 1, function: "main" }],
+        _pinnedRecipeFunctions: pinned,
+      },
+    } as Processable);
+
+    expect(driver.execute).not.toHaveBeenCalled();
+    expect(queue.completeJob.mock.calls[0][1]).toBe("failed");
+    expect(queue.completeJob.mock.calls[0][2].steps[0].status).toBe("failed");
+  });
+
+  it("requires the nested target to be in the captured exact pin set", async () => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {}),
+      saveStepAttempt: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+      isRecipeVersionRevoked: vi.fn(async () => false),
+    };
+    await processJob({
+      workerId: "unpinned-worker",
+      job: {
+        id: 131,
+        workflow_id: "unpinned",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "unpinned-worker",
+        payload: JSON.stringify({ inputs: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
+      config: { storagePath: "/tmp/unpinned", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
+      workflow: {
+        id: "unpinned",
+        name: "Unpinned",
+        on: { provider: "generic" },
+        steps: [{ id: "call", call: "team/recipe@1#main", with: {} }],
+        _pinnedReferences: [],
+        _pinnedRecipeFunctions: { "team/recipe@1#main": { inputs: {}, outputs: { type: "object" }, steps: [] } },
+      },
+    } as Processable);
+    expect(queue.isRecipeVersionRevoked).toHaveBeenCalledWith("team", "recipe", 1);
+    expect(queue.completeJob.mock.calls[0][1]).toBe("failed");
+    expect(queue.completeJob.mock.calls[0][2].steps[0].status).toBe("failed");
+  });
+
   it("evaluates typed recipe bindings and exposes only explicitly mapped recipe secrets", async () => {
     const queue = {
       saveReport: vi.fn(async () => {}),
       saveStepLog: vi.fn(async () => {}),
       completeJob: vi.fn(async () => {}),
       isCancelled: vi.fn(async () => false),
+      saveStepAttemptStart: vi.fn(async () => {}),
       saveStepAttempt: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {}),
     };
     const driver = {
       execute: vi.fn(() => ({
@@ -90,6 +338,7 @@ describe("incremental workflow reports", () => {
         saveStepLog: vi.fn(async () => {}),
         completeJob: vi.fn(async () => {}),
         isCancelled: vi.fn(async () => false),
+        saveStepAttemptStart: vi.fn(async () => {}),
       };
       const driver = {
         execute: vi.fn((context: any) => {
@@ -147,6 +396,7 @@ describe("incremental workflow reports", () => {
       saveStepLog: vi.fn(async () => {}),
       completeJob: vi.fn(async () => {}),
       isCancelled: vi.fn(async () => false),
+      saveStepAttemptStart: vi.fn(async () => {}),
     };
     const driver = {
       execute: vi.fn(() => ({
@@ -209,6 +459,7 @@ describe("incremental workflow reports", () => {
       saveStepLog: vi.fn(async () => {}),
       completeJob: vi.fn(async () => {}),
       isCancelled: vi.fn(async () => false),
+      saveStepAttemptStart: vi.fn(async () => {}),
     };
     const driver = {
       execute: vi.fn(() => ({
@@ -278,6 +529,7 @@ describe("incremental workflow reports", () => {
       saveStepLog: vi.fn(async () => {}),
       completeJob: vi.fn(async () => {}),
       isCancelled: vi.fn(async () => false),
+      saveStepAttemptStart: vi.fn(async () => {}),
       dispatch,
     };
     await processJob({
@@ -339,6 +591,7 @@ describe("incremental workflow reports", () => {
         reports.push(structuredClone(report));
       }),
       isCancelled: vi.fn(async () => false),
+      saveStepAttemptStart: vi.fn(async () => {}),
     };
     const payload = {
       inputs: { repo: "example" },
@@ -417,22 +670,30 @@ describe("incremental workflow reports", () => {
 
   it("retries failed steps according to the workflow setting", async () => {
     let attempts = 0;
+    const order: string[] = [];
     const queue = {
       saveReport: vi.fn(async () => {}),
       saveStepLog: vi.fn(async () => {}),
       completeJob: vi.fn(async () => {}),
       isCancelled: vi.fn(async () => false),
+      saveStepAttemptStart: vi.fn(async () => {}),
       saveStepAttempt: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {
+        order.push("start");
+      }),
     };
     const driver = {
-      execute: vi.fn(() => ({
-        done: Promise.resolve({
-          exitCode: ++attempts === 2 ? 0 : 1,
-          durationMs: 1,
-        }),
-        cancel: async () => {},
-        logFilePath: "",
-      })),
+      execute: vi.fn(() => {
+        order.push("driver");
+        return {
+          done: Promise.resolve({
+            exitCode: ++attempts === 2 ? 0 : 1,
+            durationMs: 1,
+          }),
+          cancel: async () => {},
+          logFilePath: "",
+        };
+      }),
       readLog: vi.fn(async () => ""),
     };
 
@@ -468,6 +729,7 @@ describe("incremental workflow reports", () => {
     } as Processable);
 
     expect(driver.execute).toHaveBeenCalledTimes(2);
+    expect(order).toEqual(["start", "driver", "start", "driver"]);
     expect(queue.completeJob).toHaveBeenCalledWith(2, "success", expect.any(Object));
     expect(queue.saveStepAttempt.mock.calls.map(([record]) => [record.attempt, record.status])).toEqual([
       [1, "failed"],
@@ -483,6 +745,7 @@ describe("incremental workflow reports", () => {
       saveStepLog: vi.fn(async (_jobId: string | number, _stepId: string, content: string) => logs.push(content)),
       completeJob: vi.fn(async () => {}),
       isCancelled: vi.fn(async () => false),
+      saveStepAttemptStart: vi.fn(async () => {}),
     };
     const secrets = new SecretStore();
     secrets.replace({ DEPLOY_TOKEN: "sensitive-token-value" });
@@ -525,5 +788,228 @@ describe("incremental workflow reports", () => {
     expect(logs[0]).toContain("****");
     expect(JSON.stringify(reports)).not.toContain("sensitive-token-value");
     expect(JSON.stringify(reports)).toContain("****");
+  });
+
+  it.each([
+    [
+      "invalid nested input",
+      {
+        inputs: { type: "object", properties: { count: { type: "integer" } }, required: ["count"] },
+        outputs: { type: "object" },
+      },
+      {},
+      { count: "wrong" },
+      undefined,
+    ],
+    [
+      "invalid output schema",
+      { inputs: { type: "object" }, outputs: { type: "not-a-json-schema-type" }, with: {}, returns: {} },
+      {},
+      undefined,
+      {},
+    ],
+    [
+      "invalid returned value",
+      {
+        inputs: { type: "object" },
+        outputs: { type: "object", properties: { count: { type: "integer" } }, required: ["count"] },
+        with: {},
+        returns: { count: "${inputs.value}" },
+      },
+      { value: "not-an-integer" },
+      undefined,
+      undefined,
+    ],
+    [
+      "malformed return expression",
+      { inputs: { type: "object" }, outputs: { type: "object" }, with: {}, returns: { value: "${inputs.value + 1}" } },
+      { value: 1 },
+      undefined,
+      undefined,
+    ],
+    [
+      "unsupported binding expression",
+      {
+        inputs: { type: "object", properties: { value: { type: "string" } }, required: ["value"] },
+        outputs: { type: "object" },
+        with: { value: "prefix-${inputs.value}" },
+        returns: {},
+      },
+      { value: "x" },
+      undefined,
+      undefined,
+    ],
+  ])("fails closed for %s", async (_label, fn, callerInputs, withInputs, returns) => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {}),
+      saveStepAttempt: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+      isRecipeVersionRevoked: vi.fn(async () => false),
+    };
+    const pinnedFn = { ...fn, ...(returns !== undefined ? { returns } : {}) };
+    await processJob({
+      workerId: "nested-validation",
+      job: {
+        id: 128,
+        workflow_id: "nested-validation",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "nested-validation",
+        payload: JSON.stringify({ inputs: callerInputs }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
+      config: { storagePath: "/tmp/nested-validation", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
+      workflow: {
+        id: "nested-validation",
+        name: "Nested validation",
+        on: { provider: "generic" },
+        steps: [{ id: "invoke", call: "team/recipe@1#main", with: withInputs ?? fn.with }],
+        _pinnedReferences: [{ namespace: "team", slug: "recipe", version: 1, function: "main" }],
+        _pinnedRecipeFunctions: { "team/recipe@1#main": { ...pinnedFn, steps: [{ id: "noop", eval: "true" }] } },
+      },
+    } as Processable);
+    expect(queue.completeJob.mock.calls[0][1]).toBe("failed");
+    expect(queue.completeJob.mock.calls[0][2].steps[0].status).toBe("failed");
+  });
+
+  it.each([
+    ["non-writeOnly input", { ordinary: "${secrets.token}" }, { token: "caller-secret" }],
+    ["unmapped caller secret", { password: "${secrets.missing}" }, { token: "caller-secret" }],
+  ])("rejects nested secret mapping failure: %s", async (_label, secretsMap, suppliedSecrets) => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {}),
+      saveStepAttempt: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+      isRecipeVersionRevoked: vi.fn(async () => false),
+    };
+    await processJob({
+      workerId: "nested-secret",
+      job: {
+        id: 129,
+        workflow_id: "nested-secret",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "nested-secret",
+        payload: JSON.stringify({ inputs: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => suppliedSecrets, redactText: (text: string) => text },
+      config: { storagePath: "/tmp/nested-secret", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
+      workflow: {
+        id: "nested-secret",
+        name: "Nested secret",
+        on: { provider: "generic" },
+        steps: [{ id: "invoke", call: "team/recipe@1#main", with: {}, secrets: secretsMap }],
+        _pinnedReferences: [{ namespace: "team", slug: "recipe", version: 1, function: "main" }],
+        _pinnedRecipeFunctions: {
+          "team/recipe@1#main": {
+            inputs: {
+              type: "object",
+              properties: { ordinary: { type: "string" }, password: { type: "string", writeOnly: true } },
+            },
+            outputs: { type: "object" },
+            steps: [],
+          },
+        },
+      },
+    } as Processable);
+    expect(queue.completeJob.mock.calls[0][1]).toBe("failed");
+    expect(JSON.stringify(queue.completeJob.mock.calls[0][2])).not.toContain("caller-secret");
+  });
+
+  it("retries a failed nested call under parent policy with distinct nested attempts and redacted persistence", async () => {
+    const secret = "nested-private-value";
+    const reports: WorkflowExecutionReport[] = [];
+    const logs: string[] = [];
+    const attempts: any[] = [];
+    const queue = {
+      saveReport: vi.fn(async (_id, report: WorkflowExecutionReport) => reports.push(structuredClone(report))),
+      saveStepLog: vi.fn(async (_id, _step, content: string) => logs.push(content)),
+      saveStepAttemptStart: vi.fn(async () => {}),
+      saveStepAttempt: vi.fn(async (record: any) => attempts.push(record)),
+      completeJob: vi.fn(async (_id, _status, report: WorkflowExecutionReport) =>
+        reports.push(structuredClone(report)),
+      ),
+      isCancelled: vi.fn(async () => false),
+      isRecipeVersionRevoked: vi.fn(async () => false),
+    };
+    let executions = 0;
+    const driver = {
+      execute: vi.fn(() => ({
+        done: Promise.resolve({ exitCode: ++executions === 1 ? 1 : 0, durationMs: 1 }),
+        cancel: vi.fn(),
+        logFilePath: "/etc/hosts",
+      })),
+      readLog: vi.fn(async () => `diagnostic ${secret}`),
+    };
+    await processJob({
+      workerId: "nested-retry",
+      job: {
+        id: 130,
+        workflow_id: "nested-retry",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "nested-retry",
+        payload: JSON.stringify({ inputs: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({ TOKEN: secret }), redactText: (text: string) => text.split(secret).join("****") },
+      config: { storagePath: "/tmp/nested-retry", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver,
+      workflow: {
+        id: "nested-retry",
+        name: "Nested retry",
+        on: { provider: "generic" },
+        retries: 1,
+        steps: [{ id: "invoke", call: "team/recipe@1#main", with: {}, secrets: { password: "${secrets.TOKEN}" } }],
+        _pinnedReferences: [{ namespace: "team", slug: "recipe", version: 1, function: "main" }],
+        _pinnedRecipeFunctions: {
+          "team/recipe@1#main": {
+            inputs: {
+              type: "object",
+              properties: { password: { type: "string", writeOnly: true } },
+              required: ["password"],
+            },
+            outputs: { type: "object" },
+            steps: [{ id: "effect", run: "emit diagnostic" }],
+          },
+        },
+      },
+    } as Processable);
+    expect(queue.isRecipeVersionRevoked).toHaveBeenCalledWith("team", "recipe", 1);
+    expect(driver.execute).toHaveBeenCalledTimes(2);
+    expect(
+      attempts
+        .filter(({ stepId }) => stepId.includes("/effect"))
+        .map(({ stepId, attempt, status }) => [stepId, attempt, status]),
+    ).toEqual([
+      ["invoke#attempt-1/effect", 1, "failed"],
+      ["invoke#attempt-2/effect", 1, "success"],
+    ]);
+    const final = queue.completeJob.mock.calls[0][2] as WorkflowExecutionReport;
+    expect(queue.completeJob.mock.calls[0][1]).toBe("success");
+    expect(final.steps.map(({ id }) => id)).toContain("invoke#attempt-1/effect");
+    expect(final.steps.map(({ id }) => id)).toContain("invoke#attempt-2/effect");
+    expect(JSON.stringify({ reports, logs, attempts, final })).not.toContain(secret);
+    expect(logs).toHaveLength(2);
+    expect(logs.every((log) => log.includes("****"))).toBe(true);
   });
 });

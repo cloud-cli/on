@@ -21,6 +21,7 @@ function makeServer(allowed = true, job: any = { id: 7 }) {
       ),
       getStepAttemptsForTeam: vi.fn(async () => [
         { step_id: "build", attempt: 1, status: "failed", log_content: "redacted" },
+        { step_id: "test", attempt: 1, status: "interrupted_or_unknown", lifecycle_status: "started", log_content: "" },
       ]),
     },
     currentSecrets: vi.fn(async () => ({})),
@@ -44,7 +45,10 @@ describe("GET /api/v1/jobs/:id/step-attempts", () => {
     expect(server.requireWorkspaceCapability).toHaveBeenCalledWith(expect.anything(), expect.anything(), "runs.logs");
     expect(server.queue.getJobForTeam).toHaveBeenCalledWith("team-a", "7");
     expect(server.queue.getStepAttemptsForTeam).toHaveBeenCalledWith("team-a", "7");
-    expect(JSON.parse(res.end.mock.calls[0][0])).toMatchObject({ jobId: "7", attempts: [{ step_id: "build" }] });
+    expect(JSON.parse(res.end.mock.calls[0][0])).toMatchObject({
+      jobId: "7",
+      attempts: [{ step_id: "build" }, { step_id: "test", status: "interrupted_or_unknown" }],
+    });
 
     const denied = await request(makeServer(false));
     expect(denied.writeHead).toHaveBeenCalledWith(403, expect.any(Object));

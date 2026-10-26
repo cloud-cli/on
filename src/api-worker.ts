@@ -254,6 +254,12 @@ function createLeaseQueue(api: RunnerApi, lease: RunnerLease, job: JobRecord): W
     async saveStepLog(jobId: string | number, stepId: string, content: string) {
       await api.log(lease, jobId, stepId, content);
     },
+    async saveStepAttemptStart(start) {
+      await api.stepAttemptStart(lease, start);
+    },
+    async saveStepAttempt(attempt) {
+      await api.stepAttemptCompletion(lease, attempt);
+    },
     async saveStoredFiles(
       kind: "artifact" | "cache",
       ownerKey: string,
@@ -276,6 +282,9 @@ function createLeaseQueue(api: RunnerApi, lease: RunnerLease, job: JobRecord): W
         cancelled = true;
       }
       return cancelled;
+    },
+    async isRecipeVersionRevoked(namespace, slug, version) {
+      return api.checkRecipeVersionRevoked(lease, namespace, slug, version);
     },
     async dispatch(jobId, stepId, target, inputs) {
       return api.dispatch(lease, jobId, stepId, target, inputs);

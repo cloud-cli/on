@@ -139,7 +139,11 @@ export interface WorkflowStep {
   run?: string;
   eval?: string;
   dispatch?: string;
+  /** Exact immutable recipe-function target for a nested recipe call. */
+  call?: string;
   with?: unknown;
+  /** Explicit parent-workspace secret mappings for a nested function call. */
+  secrets?: Record<string, string>;
   image?: string;
   volumes?: string[];
   dockerArgs?: string[];
@@ -183,6 +187,23 @@ export interface WorkflowDefinition {
   /** Selected exported function and its output contract for immutable recipe revisions. */
   _recipeFunction?: string;
   _recipeOutputs?: Record<string, unknown>;
+  /** Exact transitive recipe-function dependencies referenced by this revision. */
+  _pinnedReferences?: Array<{
+    namespace: string;
+    slug: string;
+    version: number;
+    function: string;
+  }>;
+  /** Immutable transitive function definitions captured from exact published versions. */
+  _pinnedRecipeFunctions?: Record<
+    string,
+    {
+      inputs: Record<string, unknown>;
+      outputs: Record<string, unknown>;
+      returns?: Record<string, string>;
+      steps: WorkflowStep[];
+    }
+  >;
   /** Time triggers stored alongside webhook triggers in DB-authored workflows. */
   schedule?: ScheduleTrigger[];
   solar?: ScheduleTrigger[];
@@ -300,12 +321,22 @@ export interface Processable {
   config: RunnerConfig;
   driver: ExecutionDriver;
   workflow?: WorkflowDefinition;
+  /** Runtime-only recursion guard for inline pinned recipe calls. */
+  nestedCallDepth?: number;
+  /** Names of write-only inputs that must not be read by nested bindings. */
+  writeOnlyInputNames?: string[];
 }
 
 export interface WorkerExecutionQueue {
   saveReport(jobId: string | number, report: WorkflowExecutionReport): Promise<void>;
   completeJob(jobId: string | number, status: JobStatus, report: WorkflowExecutionReport): Promise<void>;
   saveStepLog(jobId: string | number, stepId: string, content: string): Promise<void>;
+  saveStepAttemptStart(start: {
+    jobId: string | number;
+    stepId: string;
+    attempt: number;
+    startedAt: string;
+  }): Promise<void>;
   saveStepAttempt?(attempt: {
     jobId: string | number;
     stepId: string;
@@ -325,6 +356,7 @@ export interface WorkerExecutionQueue {
   ): Promise<void>;
   getStoredFiles(kind: "artifact" | "cache", ownerKey: string): Promise<Array<{ path: string; content: string }>>;
   isCancelled(jobId: string | number): Promise<boolean>;
+  isRecipeVersionRevoked(namespace: string, slug: string, version: number): Promise<boolean>;
   dispatch?(jobId: string | number, stepId: string, target: string, inputs: Record<string, unknown>): Promise<unknown>;
 }
 

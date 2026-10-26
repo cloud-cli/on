@@ -113,6 +113,7 @@ export function isExemptFromGlobalOidcAuth(pathname: string, method: string): bo
     "/workspace-path.mjs",
     "/app-header.mjs",
     "/app-router.mjs",
+    "/channels-ui.mjs",
     "/dashboard.mjs",
     "/run.mjs",
     "/settings-ui.mjs",

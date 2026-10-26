@@ -7,12 +7,14 @@ import { dashboardTemplate, generateDashboardHtml, toDashboardJobs } from "../ui
 import { EventBroker } from "./events.js";
 import { DomainEventDeliveryRepository } from "./domain-event-delivery-repository.js";
 import { DomainEventRepository } from "./domain-event-repository.js";
+import { WorkflowRunAdmissionRepository } from "./workflow-run-admission-repository.js";
 import { DomainEventDispatcher } from "./domain-event-dispatcher.js";
 import { ChannelRepository } from "./channel-repository.js";
 import { GitHubPreprocessor } from "./preprocessors/github.js";
 import { IncomingEventRepository } from "./incoming-event-repository.js";
 import { getAppIcon, serviceWorker, webManifest } from "../ui/pwa.js";
 import { QueueManager } from "./queue.js";
+import { AgentWorkflowGrantRepository } from "./agent-workflow-grant-repository.js";
 import { buildRunView, renderRunHtml } from "../ui/run-view.js";
 import { SafeExpressionEvaluator } from "./safe-eval.js";
 import { expandMatrix, resolveMatrixTags } from "./parser/matrix-expander.js";
@@ -98,6 +100,15 @@ function isBoundedDomainEventData(value: unknown): value is Record<string, unkno
   }
 }
 
+function canonicalJson(value: unknown): string | undefined {
+  return JSON.stringify(value, (_key, nested) => {
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      return Object.fromEntries(Object.entries(nested).sort(([left], [right]) => left.localeCompare(right)));
+    }
+    return nested;
+  });
+}
+
 function isSafeChannelBody(value: unknown): boolean {
   const forbidden =
     /(?:pass(?:word|phrase|code)?|token|secret|auth(?:orization)?|credential|api[-_]?key|private[-_]?key|bearer|cookie|session[-_]?id)/i;
@@ -159,6 +170,7 @@ function internalApiPath(pathname: string, method: string): string {
   if (
     pathname.startsWith("/api/v1/runner/") ||
     pathname.startsWith("/api/v1/runners") ||
+    pathname === "/api/v1/agent-workflow-grants" ||
     pathname === "/api/v1/runner-enrollments" ||
     pathname === "/api/v1/domain-events" ||
     pathname.startsWith("/api/v1/domain-events/") ||
@@ -176,6 +188,7 @@ import apiClientSource from "../ui/api-client.mjs?raw";
 import appShellSetup from "../ui/app-shell.mjs?raw";
 import appHeaderSetup from "../ui/app-header.mjs?raw";
 import appRouterSetup from "../ui/app-router.mjs?raw";
+import channelsSetup from "../ui/channels-ui.mjs?raw";
 import dashboardSetup from "../ui/dashboard.mjs?raw";
 import runSetup from "../ui/run.mjs?raw";
 import settingsSetup from "../ui/settings-ui.mjs?raw";
@@ -222,15 +235,18 @@ export class WebhookServer {
   private oidc?: OidcClient;
   private oidcUsers = new OidcUserRepository();
   private userPreferences = new UserPreferencesRepository();
+  private agentWorkflowGrantRepository = new AgentWorkflowGrantRepository();
   private teams = new TeamRepository();
   private workspaceWebhooks = new WorkspaceWebhookRepository(this.secretRepository);
   private incomingEvents = new IncomingEventRepository(this.secretRepository);
   private domainEventRepository = new DomainEventRepository();
+  private workflowRunAdmissions = new WorkflowRunAdmissionRepository();
   private domainEventDeliveryRepository = new DomainEventDeliveryRepository();
   private channels = new ChannelRepository();
   private domainEventDispatcher: DomainEventDispatcher;
   private domainEventDeliveryTimer?: NodeJS.Timeout;
   private processingDomainEvents = false;
+  private workflowRunRecoveryCursor: number | null = null;
   private events = new EventBroker();
   private runners = new RunnerRegistry();
   private workflowsLoaded: Promise<void>;
@@ -322,7 +338,10 @@ export class WebhookServer {
           );
           return;
         }
-        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.writeHead(500, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
         res.end(JSON.stringify({ error: "Internal server error" }));
       });
     });
@@ -349,7 +368,10 @@ export class WebhookServer {
       url.pathname.startsWith("/restart/") ||
       url.pathname === "/admin/reload-secrets"
     ) {
-      res.writeHead(404, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(404, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(JSON.stringify({ error: "Use the versioned API route under /api/v1" }));
     }
     if (externalPath === "/teams-landing.mjs") {
@@ -357,7 +379,10 @@ export class WebhookServer {
       return res.end();
     }
     if (externalPath === "/" && (req.method === "GET" || req.method === "HEAD")) {
-      res.writeHead(302, { Location: `/ui/runs${url.search}`, "Cache-Control": "no-store" });
+      res.writeHead(302, {
+        Location: `/ui/runs${url.search}`,
+        "Cache-Control": "no-store",
+      });
       return res.end();
     }
     const isVersionedApiPath = externalPath === "/api/v1" || externalPath.startsWith("/api/v1/");
@@ -392,7 +417,10 @@ export class WebhookServer {
           status: 503,
           title: "Sign-in is unavailable",
           message: "Authentication is temporarily unavailable. Please try again in a little while.",
-          action: { label: "Try signing in", href: "/auth/login?url=%2Fui%2Fruns" },
+          action: {
+            label: "Try signing in",
+            href: "/auth/login?url=%2Fui%2Fruns",
+          },
         });
       }
 
@@ -405,7 +433,10 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/manifest.webmanifest") {
-      res.writeHead(200, { "Cache-Control": "public, max-age=3600", "Content-Type": "application/manifest+json" });
+      res.writeHead(200, {
+        "Cache-Control": "public, max-age=3600",
+        "Content-Type": "application/manifest+json",
+      });
       return res.end(webManifest);
     }
 
@@ -418,22 +449,34 @@ export class WebhookServer {
     }
 
     if (req.method === "GET" && url.pathname === "/on.css") {
-      res.writeHead(200, { "Cache-Control": "public, max-age=3600", "Content-Type": "text/css" });
+      res.writeHead(200, {
+        "Cache-Control": "public, max-age=3600",
+        "Content-Type": "text/css",
+      });
       return res.end(fs.readFileSync("./dist/on.css", "utf8"));
     }
 
     if (req.method === "GET" && url.pathname === "/timezone-format.mjs") {
-      res.writeHead(200, { "Cache-Control": "public, max-age=3600", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "public, max-age=3600",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(timezoneFormatSource);
     }
 
     if (req.method === "GET" && url.pathname === "/preferences.mjs") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(preferencesSource);
     }
 
     if (req.method === "GET" && url.pathname === "/workspace-path.mjs") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(workspacePathSource);
     }
 
@@ -462,51 +505,94 @@ export class WebhookServer {
       return this.handleOidcToken(req, res);
     }
     if (req.method === "GET" && url.pathname === "/api-client.mjs") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(apiClientSource);
     }
     if (req.method === "GET" && url.pathname === "/app-shell.mjs") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(appShellSetup);
     }
     if (req.method === "GET" && url.pathname === "/app-header.mjs") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(appHeaderSetup);
     }
     if (req.method === "GET" && url.pathname === "/app-router.mjs") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(appRouterSetup);
     }
+    if (req.method === "GET" && url.pathname === "/channels-ui.mjs") {
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
+      return res.end(channelsSetup);
+    }
     if (req.method === "GET" && (url.pathname === "/dashboard.mjs" || url.pathname === "/pages/dashboard.mjs")) {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(dashboardSetup);
     }
     if (req.method === "GET" && (url.pathname === "/run.mjs" || url.pathname === "/pages/run.mjs")) {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(runSetup);
     }
     if (req.method === "GET" && (url.pathname === "/settings-ui.mjs" || url.pathname === "/pages/settings-ui.mjs")) {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(settingsSetup);
     }
     if (req.method === "GET" && url.pathname === "/operations-ui.mjs") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(operationsSetup);
     }
     if (req.method === "GET" && url.pathname === "/team-settings-ui.mjs") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(teamSettingsSetup);
     }
     if (req.method === "GET" && url.pathname === "/teams-landing.mjs") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(teamsLandingSetup);
     }
     if (req.method === "GET" && (url.pathname === "/workflows-ui.mjs" || url.pathname === "/pages/workflows-ui.mjs")) {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(workflowsSetup);
     }
     if (req.method === "GET" && url.pathname === "/pages/recipes-ui.mjs") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(recipesSetup);
     }
     if (req.method === "GET" && url.pathname === "/pages/incoming-events.html") {
@@ -516,21 +602,33 @@ export class WebhookServer {
       return this.renderPageComponent(res, "page-incoming-events", incomingEventsTemplate);
     }
     if (req.method === "GET" && url.pathname === "/pages/incoming-events-ui.mjs") {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(incomingEventsSetup);
     }
     if (req.method === "GET" && ["/pages/recipe-insertion.mjs", "/recipe-insertion.mjs"].includes(url.pathname)) {
-      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
       return res.end(recipeInsertionSetup);
     }
 
     if (req.method === "GET" && url.pathname === "/app-header.html") {
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
       return res.end(appHeaderTemplate);
     }
 
     if (req.method === "GET" && url.pathname === "/app-router.html") {
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
       return res.end(appRouterTemplate);
     }
 
@@ -546,14 +644,20 @@ export class WebhookServer {
 
     if (req.method === "GET" && url.pathname === "/help") {
       if (url.searchParams.get("embed") === "1") {
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
         return res.end(renderHelpHtml(true));
       }
       return this.renderAppShell(res);
     }
 
     if (req.method === "GET" && url.pathname === "/api/v1") {
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(JSON.stringify(openApiSpec));
     }
 
@@ -582,7 +686,10 @@ export class WebhookServer {
       }
       const workers = await this.queue.listWorkerPresence();
       const runnerNames = new Map((await this.runners.list()).map((runner) => [runner.id, runner.name]));
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(
         JSON.stringify({
           workers: workers.map((worker) => ({
@@ -593,6 +700,121 @@ export class WebhookServer {
       );
     }
 
+    if (url.pathname === "/api/v1/agent-workflow-grants" && req.method === "POST") {
+      const authorized = await this.authorizer.workspace(req, res, "workflows.edit");
+      if (!authorized) {
+        return;
+      }
+      const body = await this.readJson(req, res);
+      if (!body || typeof body.agentPrincipalId !== "string" || typeof body.workflowId !== "string") {
+        if (!res.headersSent) {
+          res.writeHead(400, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          res.end(
+            JSON.stringify({
+              error: "agentPrincipalId and workflowId are required",
+            }),
+          );
+        }
+        return;
+      }
+      if (body.teamId !== undefined && body.teamId !== authorized.teamId) {
+        res.writeHead(404, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(JSON.stringify({ error: "Workspace not found" }));
+        return;
+      }
+      const principal = await this.principals.principal(body.agentPrincipalId);
+      const membership = await this.principals.membership(authorized.teamId, body.agentPrincipalId);
+      if (!principal || principal.kind !== "agent" || principal.disabled || !membership) {
+        res.writeHead(404, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(
+          JSON.stringify({
+            error: "Agent principal is not a member of this workspace",
+          }),
+        );
+        return;
+      }
+      const workflow = await this.workflows.getForTeam(authorized.teamId, body.workflowId);
+      if (!workflow) {
+        res.writeHead(404, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(JSON.stringify({ error: "Workflow not found in your team" }));
+        return;
+      }
+      await this.agentWorkflowGrantRepository.grant(
+        authorized.teamId,
+        body.agentPrincipalId,
+        body.workflowId,
+        authorized.principal.subject,
+      );
+      res.writeHead(201, { "Content-Type": "application/json; charset=utf-8" });
+      return res.end(
+        JSON.stringify({
+          teamId: authorized.teamId,
+          agentPrincipalId: body.agentPrincipalId,
+          workflowId: body.workflowId,
+          grantedBy: authorized.principal.subject,
+        }),
+      );
+    }
+    if (url.pathname === "/api/v1/agent-workflow-grants" && req.method === "GET") {
+      const authorized = await this.authorizer.workspace(req, res, "workflows.view");
+      if (!authorized) {
+        return;
+      }
+      const teamId = authorized.teamId;
+      const agentPrincipalId = url.searchParams.get("agentPrincipalId");
+      const grants = await this.agentWorkflowGrantRepository.list(
+        teamId,
+        agentPrincipalId ? agentPrincipalId : undefined,
+      );
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ grants }));
+    }
+    if (url.pathname === "/api/v1/agent-workflow-grants" && req.method === "DELETE") {
+      const authorized = await this.authorizer.workspace(req, res, "workflows.edit");
+      if (!authorized) {
+        return;
+      }
+      const body = await this.readJson(req, res);
+      if (!body || typeof body.agentPrincipalId !== "string" || typeof body.workflowId !== "string") {
+        if (!res.headersSent) {
+          res.writeHead(400, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          res.end(
+            JSON.stringify({
+              error: "agentPrincipalId and workflowId are required",
+            }),
+          );
+        }
+        return;
+      }
+      if (body.teamId !== undefined && body.teamId !== authorized.teamId) {
+        res.writeHead(404, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(JSON.stringify({ error: "Workspace not found" }));
+        return;
+      }
+      const workflow = await this.workflows.getForTeam(authorized.teamId, body.workflowId);
+      if (!workflow) {
+        res.writeHead(404, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(JSON.stringify({ error: "Workflow not found in your team" }));
+        return;
+      }
+      await this.agentWorkflowGrantRepository.revoke(authorized.teamId, body.agentPrincipalId, body.workflowId);
+      res.writeHead(204, { "Content-Type": "application/json; charset=utf-8" });
+      return res.end();
+    }
     if (url.pathname === "/api/v1/runner-enrollments" && req.method === "POST") {
       const context = await this.authorizer.authenticated(req, res);
       if (!context) {
@@ -619,7 +841,10 @@ export class WebhookServer {
       try {
         const enrollment = await this.runners.createEnrollment(body.scope, teamId, context.principal.subject);
         res
-          .writeHead(201, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .writeHead(201, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
           .end(JSON.stringify(enrollment));
       } catch (error: any) {
         res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
@@ -638,16 +863,29 @@ export class WebhookServer {
         const enrolled = await this.runners.redeemEnrollment(body.code, body.name, String(body.runtime || "unknown"));
         if (!enrolled) {
           res
-            .writeHead(400, { "Cache-Control": "no-store", "Content-Type": "application/json" })
-            .end(JSON.stringify({ error: "Enrollment code is invalid, expired, or already used" }));
+            .writeHead(400, {
+              "Cache-Control": "no-store",
+              "Content-Type": "application/json",
+            })
+            .end(
+              JSON.stringify({
+                error: "Enrollment code is invalid, expired, or already used",
+              }),
+            );
           return;
         }
         res
-          .writeHead(201, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .writeHead(201, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
           .end(JSON.stringify(enrolled));
       } catch (error: any) {
         res
-          .writeHead(400, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .writeHead(400, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
           .end(JSON.stringify({ error: error.message }));
       }
       return;
@@ -657,7 +895,10 @@ export class WebhookServer {
         return;
       }
       res
-        .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+        .writeHead(200, {
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json",
+        })
         .end(JSON.stringify({ runners: await this.runners.list() }));
       return;
     }
@@ -682,13 +923,26 @@ export class WebhookServer {
       }
       if (!update) {
         res
-          .writeHead(409, { "Cache-Control": "no-store", "Content-Type": "application/json" })
-          .end(JSON.stringify({ error: "Runner unavailable, busy, or another update is active" }));
+          .writeHead(409, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
+          .end(
+            JSON.stringify({
+              error: "Runner unavailable, busy, or another update is active",
+            }),
+          );
         return;
       }
-      this.events.publishRunner(update.runnerId, "runner.update", { updateId: update.id, version: update.version });
+      this.events.publishRunner(update.runnerId, "runner.update", {
+        updateId: update.id,
+        version: update.version,
+      });
       res
-        .writeHead(202, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+        .writeHead(202, {
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json",
+        })
         .end(JSON.stringify(update));
       return;
     }
@@ -699,7 +953,10 @@ export class WebhookServer {
         return;
       }
       res
-        .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+        .writeHead(200, {
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json",
+        })
         .end(JSON.stringify(await this.runners.listForTeam(teamId)));
       return;
     }
@@ -729,7 +986,11 @@ export class WebhookServer {
         }
         const fencedLeases = await this.queue.revokeRunnerLeasesForTeam(runnerId, teamId);
         for (const lease of fencedLeases) {
-          this.events.publish("lease.cancelled", { jobId: lease.jobId, leaseId: lease.leaseId, teamId });
+          this.events.publish("lease.cancelled", {
+            jobId: lease.jobId,
+            leaseId: lease.leaseId,
+            teamId,
+          });
         }
         this.events.closeRunnerStreams(runnerId);
       }
@@ -744,7 +1005,10 @@ export class WebhookServer {
       const body = await this.readJson(req, res);
       if (!body || typeof body.name !== "string") {
         res
-          .writeHead(400, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .writeHead(400, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
           .end(JSON.stringify({ error: "Runner name is required" }));
         return;
       }
@@ -753,20 +1017,31 @@ export class WebhookServer {
         renamed = await this.runners.rename(decodeURIComponent(revokeRunnerMatch[1]), body.name);
       } catch (error) {
         res
-          .writeHead(400, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .writeHead(400, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
           .end(JSON.stringify({ error: (error as Error).message }));
         return;
       }
       if (!renamed) {
         res
-          .writeHead(404, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+          .writeHead(404, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
           .end(JSON.stringify({ error: "Runner not found" }));
         return;
       }
       res
-        .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+        .writeHead(200, {
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json",
+        })
         .end(
-          JSON.stringify({ runner: (await this.runners.list()).find((runner) => runner.id === revokeRunnerMatch[1]) }),
+          JSON.stringify({
+            runner: (await this.runners.list()).find((runner) => runner.id === revokeRunnerMatch[1]),
+          }),
         );
       return;
     }
@@ -779,7 +1054,11 @@ export class WebhookServer {
       if (revoked) {
         const fencedLeases = await this.queue.revokeRunnerLeases(runnerId);
         for (const lease of fencedLeases) {
-          this.events.publish("lease.cancelled", { jobId: lease.jobId, leaseId: lease.leaseId, teamId: lease.teamId });
+          this.events.publish("lease.cancelled", {
+            jobId: lease.jobId,
+            leaseId: lease.leaseId,
+            teamId: lease.teamId,
+          });
         }
         this.events.closeRunnerStreams(runnerId);
       }
@@ -805,8 +1084,15 @@ export class WebhookServer {
         return;
       }
       res
-        .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
-        .end(JSON.stringify({ update: await this.runners.currentUpdate(principal.runnerId) }));
+        .writeHead(200, {
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json",
+        })
+        .end(
+          JSON.stringify({
+            update: await this.runners.currentUpdate(principal.runnerId),
+          }),
+        );
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/v1/runner/update/status") {
@@ -867,17 +1153,35 @@ export class WebhookServer {
       if (!workflow) {
         await this.queue.releaseJob(job.id);
         res
-          .writeHead(500, { "Cache-Control": "no-store", "Content-Type": "application/json" })
-          .end(JSON.stringify({ error: "Claimed workflow revision is unavailable" }));
+          .writeHead(500, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
+          .end(
+            JSON.stringify({
+              error: "Claimed workflow revision is unavailable",
+            }),
+          );
         return;
       }
       res
-        .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
-        .end(JSON.stringify({ leaseId, leaseToken, expiresInSeconds: 90, job, workflow }));
+        .writeHead(200, {
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json",
+        })
+        .end(
+          JSON.stringify({
+            leaseId,
+            leaseToken,
+            expiresInSeconds: 90,
+            job,
+            workflow,
+          }),
+        );
       return;
     }
     const runnerLeaseMatch = url.pathname.match(
-      /^\/api\/v1\/runner\/leases\/([^/]+)(?:\/(renew|workflow|secrets|report|logs|files|complete|release|dispatch))?$/,
+      /^\/api\/v1\/runner\/leases\/([^/]+)(?:\/(renew|workflow|secrets|report|logs|attempt-start|attempt-completion|files|complete|release|dispatch|recipe-version-revocation))?$/,
     );
     if (runnerLeaseMatch) {
       const [, leaseId, action] = runnerLeaseMatch;
@@ -890,18 +1194,72 @@ export class WebhookServer {
       const job = await this.queue.getLeasedJob(leaseId, principal.runnerId, leaseTokenHash);
       if (!job) {
         res
-          .writeHead(409, { "Cache-Control": "no-store", "Content-Type": "application/json" })
-          .end(JSON.stringify({ error: "Lease is expired, revoked, or not assigned to this runner" }));
+          .writeHead(409, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
+          .end(
+            JSON.stringify({
+              error: "Lease is expired, revoked, or not assigned to this runner",
+            }),
+          );
         return;
       }
       if (req.method === "GET" && !action) {
         res
-          .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
-          .end(JSON.stringify({ leaseId, jobId: job.id, status: job.status, expiresAt: job.lease_expires_at }));
+          .writeHead(200, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
+          .end(
+            JSON.stringify({
+              leaseId,
+              jobId: job.id,
+              status: job.status,
+              expiresAt: job.lease_expires_at,
+            }),
+          );
         return;
       }
       if (job.lease_completed && !(req.method === "POST" && action === "complete")) {
         res.writeHead(409, { "Cache-Control": "no-store" }).end();
+        return;
+      }
+      if (req.method === "GET" && action === "recipe-version-revocation") {
+        const namespace = url.searchParams.get("namespace");
+        const slug = url.searchParams.get("slug");
+        const versionText = url.searchParams.get("version");
+        const version = versionText !== null && /^(?:[1-9]\d*)$/.test(versionText) ? Number(versionText) : NaN;
+        if (
+          job.status !== "running" ||
+          [...url.searchParams.keys()].some((key) => !["namespace", "slug", "version"].includes(key)) ||
+          url.searchParams.getAll("namespace").length !== 1 ||
+          url.searchParams.getAll("slug").length !== 1 ||
+          url.searchParams.getAll("version").length !== 1 ||
+          !namespace ||
+          !/^[a-z0-9][a-z0-9-]{0,62}$/.test(namespace) ||
+          !slug ||
+          !/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug) ||
+          !Number.isSafeInteger(version) ||
+          version < 1
+        ) {
+          res
+            .writeHead(job.status === "running" ? 400 : 409, {
+              "Cache-Control": "no-store",
+            })
+            .end();
+          return;
+        }
+        res
+          .writeHead(200, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
+          .end(
+            JSON.stringify({
+              revoked: await this.queue.isRecipeVersionRevoked(namespace, slug, version),
+            }),
+          );
         return;
       }
       if (req.method === "POST" && action === "dispatch") {
@@ -912,7 +1270,10 @@ export class WebhookServer {
         try {
           const dispatched = await this.dispatchFromLease(job, body);
           res
-            .writeHead(202, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+            .writeHead(202, {
+              "Cache-Control": "no-store",
+              "Content-Type": "application/json",
+            })
             .end(JSON.stringify(dispatched));
         } catch (error: any) {
           const status = error.status || 400;
@@ -931,8 +1292,17 @@ export class WebhookServer {
           return;
         }
         res
-          .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
-          .end(JSON.stringify({ workflowId: job.workflow_id, revision: job.workflow_revision, definition: workflow }));
+          .writeHead(200, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
+          .end(
+            JSON.stringify({
+              workflowId: job.workflow_id,
+              revision: job.workflow_revision,
+              definition: workflow,
+            }),
+          );
         return;
       }
       if (req.method === "GET" && action === "secrets") {
@@ -945,8 +1315,15 @@ export class WebhookServer {
           return;
         }
         res
-          .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
-          .end(JSON.stringify({ secrets: await this.secretRepository.getAllForJob(job.team_id) }));
+          .writeHead(200, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json",
+          })
+          .end(
+            JSON.stringify({
+              secrets: await this.secretRepository.getAllForJob(job.team_id),
+            }),
+          );
         return;
       }
       if (req.method === "POST" && action === "renew") {
@@ -988,6 +1365,42 @@ export class WebhookServer {
         res.writeHead(saved ? 204 : 409, { "Cache-Control": "no-store" }).end();
         return;
       }
+      if (req.method === "POST" && (action === "attempt-start" || action === "attempt-completion")) {
+        const body = await this.readJson(req, res);
+        if (
+          !body ||
+          body.jobId !== job.id ||
+          typeof body.stepId !== "string" ||
+          body.stepId.length > 200 ||
+          !Number.isSafeInteger(body.attempt) ||
+          body.attempt < 1
+        ) {
+          res
+            .writeHead(400, { "Content-Type": "application/json" })
+            .end(JSON.stringify({ error: "Invalid step attempt" }));
+          return;
+        }
+        const saved =
+          action === "attempt-start"
+            ? typeof body.startedAt === "string" &&
+              (await this.queue.saveStepAttemptStartForRunner(
+                job.id,
+                principal.runnerId,
+                leaseId,
+                leaseTokenHash,
+                body,
+              ))
+            : typeof body.startedAt === "string" &&
+              typeof body.completedAt === "string" &&
+              ["success", "failed", "cancelled", "skipped"].includes(body.status) &&
+              Number.isSafeInteger(body.durationMs) &&
+              body.durationMs >= 0 &&
+              typeof body.logContent === "string" &&
+              body.logContent.length <= 65536 &&
+              (await this.queue.saveStepAttemptForRunner(principal.runnerId, leaseId, leaseTokenHash, body));
+        res.writeHead(saved ? 204 : 409, { "Cache-Control": "no-store" }).end();
+        return;
+      }
       if (req.method === "POST" && action === "files") {
         const body = await this.readJson(req, res);
         if (!body || (body.kind !== "artifact" && body.kind !== "cache") || job.status !== "running") {
@@ -1012,7 +1425,10 @@ export class WebhookServer {
             leaseTokenHash,
           );
           res
-            .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json" })
+            .writeHead(200, {
+              "Cache-Control": "no-store",
+              "Content-Type": "application/json",
+            })
             .end(JSON.stringify({ files }));
           return;
         }
@@ -1073,7 +1489,10 @@ export class WebhookServer {
           body.report,
         );
         if (saved) {
-          this.events.publish("jobs.changed", { jobId: job.id, teamId: job.team_id });
+          this.events.publish("jobs.changed", {
+            jobId: job.id,
+            teamId: job.team_id,
+          });
         }
         res.writeHead(saved ? 204 : 409, { "Cache-Control": "no-store" }).end();
         return;
@@ -1206,7 +1625,10 @@ export class WebhookServer {
         return;
       }
       const meUrl = this.oidc?.providerUrl ? new URL("/me", this.oidc.providerUrl).toString() : null;
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(
         JSON.stringify({
           user: {
@@ -1268,8 +1690,15 @@ sessionStorage.removeItem('runner-pending-team-invite');
       if (!context) {
         return;
       }
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-      return res.end(JSON.stringify({ timezone: await this.userPreferences.getTimezone(context.principal.subject) }));
+      res.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
+      return res.end(
+        JSON.stringify({
+          timezone: await this.userPreferences.getTimezone(context.principal.subject),
+        }),
+      );
     }
 
     if (url.pathname === "/api/preferences" && req.method === "PUT") {
@@ -1283,17 +1712,24 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       const timezone = typeof body.timezone === "string" ? body.timezone.trim() : "";
       if (!timezone || timezone.length > 100) {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(400, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         return res.end(JSON.stringify({ error: "timezone must be a valid IANA timezone" }));
       }
       try {
         new Intl.DateTimeFormat("en-US", { timeZone: timezone });
       } catch {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(400, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         return res.end(JSON.stringify({ error: "timezone must be a valid IANA timezone" }));
       }
       await this.userPreferences.setTimezone(context.principal.subject, timezone);
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(JSON.stringify({ timezone }));
     }
 
@@ -1302,7 +1738,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return;
       }
       await this.workflowsLoaded;
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(JSON.stringify({ users: await this.oidcUsers.list() }));
     }
 
@@ -1317,23 +1756,31 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return;
       }
       if (body.role !== "user" && body.role !== "admin") {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(400, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         return res.end(JSON.stringify({ error: 'role must be either "user" or "admin"' }));
       }
       let subject: string;
       try {
         subject = decodeURIComponent(userRoleMatch[1]);
       } catch {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(400, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         return res.end(JSON.stringify({ error: "Invalid user subject" }));
       }
       const result = await this.oidcUsers.setRole(subject, body.role);
       if (result === "not-found") {
-        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(404, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         return res.end(JSON.stringify({ error: "User not found" }));
       }
       if (result === "last-admin") {
-        res.writeHead(409, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(409, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         return res.end(JSON.stringify({ error: "Cannot demote the last administrator" }));
       }
       this.oidc?.setRoleForUser(subject, body.role);
@@ -1344,7 +1791,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
         detail: { role: body.role },
       });
       const user = (await this.oidcUsers.list()).find((entry) => entry.id === subject);
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(JSON.stringify({ user }));
     }
 
@@ -1352,7 +1802,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       if (!(await this.requirePlatformCapability(req, res, "platform.users.view"))) {
         return;
       }
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(JSON.stringify({ workspaces: await this.principals.allWorkspaces() }));
     }
 
@@ -1378,19 +1831,31 @@ sessionStorage.removeItem('runner-pending-team-invite');
       const limit = limitParam === null ? DASHBOARD_PAGE_SIZE : Number(limitParam);
 
       if (afterId !== undefined && (!Number.isSafeInteger(afterId) || afterId < 0)) {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(400, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         return res.end(JSON.stringify({ error: "afterId must be a non-negative integer" }));
       }
       if (beforeId !== undefined && (!Number.isSafeInteger(beforeId) || beforeId < 1)) {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(400, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         return res.end(JSON.stringify({ error: "beforeId must be a positive integer" }));
       }
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_DASHBOARD_PAGE_SIZE) {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-        return res.end(JSON.stringify({ error: `limit must be an integer from 1 to ${MAX_DASHBOARD_PAGE_SIZE}` }));
+        res.writeHead(400, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        return res.end(
+          JSON.stringify({
+            error: `limit must be an integer from 1 to ${MAX_DASHBOARD_PAGE_SIZE}`,
+          }),
+        );
       }
       if (filter && filter.length > 200) {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(400, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         return res.end(JSON.stringify({ error: "filter must be at most 200 characters" }));
       }
 
@@ -1407,14 +1872,18 @@ sessionStorage.removeItem('runner-pending-team-invite');
       const body = await this.readJson(req, res);
       if (!body || typeof body.enabled !== "boolean") {
         if (!res.headersSent) {
-          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.writeHead(400, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
           res.end(JSON.stringify({ error: "enabled must be a boolean" }));
         }
         return;
       }
       const updated = await this.workflows.setEnabledForTeam(authorized.teamId, workflowEnabledMatch[1], body.enabled);
       if (!updated) {
-        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(404, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         res.end(JSON.stringify({ error: "Workflow not found" }));
         return;
       }
@@ -1436,7 +1905,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
       const body = await this.readJson(req, res);
       if (!body || typeof body.targetWorkspaceId !== "string" || !body.targetWorkspaceId.trim()) {
         if (!res.headersSent) {
-          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.writeHead(400, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
           res.end(JSON.stringify({ error: "targetWorkspaceId is required" }));
         }
         return;
@@ -1452,8 +1923,14 @@ sessionStorage.removeItem('runner-pending-team-invite');
         workflowTransferMatch[1],
       );
       if (!moved) {
-        res.writeHead(409, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ error: "Only an unexecuted draft can be moved between workspaces" }));
+        res.writeHead(409, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(
+          JSON.stringify({
+            error: "Only an unexecuted draft can be moved between workspaces",
+          }),
+        );
         return;
       }
       await this.principals.recordAudit({
@@ -1486,13 +1963,18 @@ sessionStorage.removeItem('runner-pending-team-invite');
             url.searchParams.get("activeOnly") === "true"
               ? await this.workflows.listActiveForTeam(teamId)
               : await this.workflows.listForTeam(teamId);
-          res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+          res.writeHead(200, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json; charset=utf-8",
+          });
           return res.end(JSON.stringify({ workflows }));
         }
         const revisionParam = url.searchParams.get("revision");
         const revision = revisionParam === null ? undefined : Number(revisionParam);
         if (revisionParam !== null && (!Number.isSafeInteger(revision) || (revision as number) < 1)) {
-          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.writeHead(400, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
           return res.end(JSON.stringify({ error: "revision must be a positive integer" }));
         }
         const owned = await this.workflows.getForTeam(teamId, workflowId);
@@ -1503,10 +1985,15 @@ sessionStorage.removeItem('runner-pending-team-invite');
               ? await this.workflows.getRevisionSnapshot(workflowId, revision)
               : null;
         if (!workflow) {
-          res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+          res.writeHead(404, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
           return res.end(JSON.stringify({ error: "Workflow not found" }));
         }
-        res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(200, {
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json; charset=utf-8",
+        });
         return res.end(JSON.stringify(workflow));
       }
       if (workflowId && req.method === "PUT") {
@@ -1518,7 +2005,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
         if (!body || typeof body.sourceYaml !== "string") {
           if (!res.headersSent) {
             res
-              .writeHead(400, { "Content-Type": "application/json; charset=utf-8" })
+              .writeHead(400, {
+                "Content-Type": "application/json; charset=utf-8",
+              })
               .end(JSON.stringify({ error: "sourceYaml is required" }));
           }
           return;
@@ -1530,10 +2019,15 @@ sessionStorage.removeItem('runner-pending-team-invite');
             body.sourceYaml,
             body.enabled !== false,
           );
-          res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+          res.writeHead(200, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json; charset=utf-8",
+          });
           return res.end(JSON.stringify(workflow));
         } catch (error: any) {
-          res.writeHead(422, { "Content-Type": "application/json; charset=utf-8" });
+          res.writeHead(422, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
           return res.end(JSON.stringify({ error: error.message }));
         }
       }
@@ -1543,7 +2037,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
           return;
         }
         if (!(await this.workflows.deleteForTeam(teamId, workflowId))) {
-          res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+          res.writeHead(404, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
           return res.end(JSON.stringify({ error: "Workflow not found" }));
         }
         return res.writeHead(204).end();
@@ -1578,7 +2074,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
       if (this.isWorker(req)) {
         return this.events.subscribe(req, res, undefined, true);
       }
-      const teamId = (await this.requireWorkspaceCapability(req, res, "runs.view"))?.teamId;
+      const requestedTeamId = url.searchParams.get("teamId") || undefined;
+      const teamId = (await this.requireWorkspaceCapability(req, res, "runs.view", requestedTeamId))?.teamId;
       if (!teamId) {
         return;
       }
@@ -1667,6 +2164,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
     }
     if (url.pathname === "/api/channels" && req.method === "POST") {
       return this.handleChannelCreate(req, res);
+    }
+    const channelEvents = url.pathname.match(/^\/api\/channels\/([^/]+)\/events$/);
+    if (channelEvents && req.method === "GET") {
+      return this.handleChannelEvents(req, res, decodeURIComponent(channelEvents[1]));
     }
     const channelMessages = url.pathname.match(/^\/api\/channels\/([^/]+)\/messages$/);
     if (channelMessages && req.method === "GET") {
@@ -1758,15 +2259,22 @@ sessionStorage.removeItem('runner-pending-team-invite');
         });
         const deliveryCount = await this.domainEventDeliveryRepository.fanout(teamId, event.id);
         res
-          .writeHead(202, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" })
+          .writeHead(202, {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json; charset=utf-8",
+          })
           .end(JSON.stringify({ eventId: event.id, deliveryCount }));
       } catch (error) {
         const conflict = error instanceof Error && error.message.includes("idempotency key conflicts");
-        res.writeHead(conflict ? 409 : 500, { "Content-Type": "application/json; charset=utf-8" }).end(
-          JSON.stringify({
-            error: conflict ? "Idempotency key already used for different event data" : "Event could not be accepted",
-          }),
-        );
+        res
+          .writeHead(conflict ? 409 : 500, {
+            "Content-Type": "application/json; charset=utf-8",
+          })
+          .end(
+            JSON.stringify({
+              error: conflict ? "Idempotency key already used for different event data" : "Event could not be accepted",
+            }),
+          );
       }
       return;
     }
@@ -1828,9 +2336,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
 
       const requestedRevision = body.workflowRevision ?? workflow.revision;
       if (requestedRevision !== workflow.revision) {
-        res
-          .writeHead(403, { "Content-Type": "application/json" })
-          .end(JSON.stringify({ error: "Requested revision does not match active revision" }));
+        res.writeHead(403, { "Content-Type": "application/json" }).end(
+          JSON.stringify({
+            error: "Requested revision does not match active revision",
+          }),
+        );
         return;
       }
 
@@ -1861,23 +2371,28 @@ sessionStorage.removeItem('runner-pending-team-invite');
         authorized.teamId,
         eventDeliveriesMatch[1],
       );
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" }).end(
-        JSON.stringify(
-          deliveries.map(
-            ({ id, eventId, subscriptionId, status, attemptCount, jobIds, lastError, createdAt, updatedAt }) => ({
-              id,
-              eventId,
-              subscriptionId,
-              status,
-              attemptCount,
-              jobIds,
-              lastError,
-              createdAt,
-              updatedAt,
-            }),
+      res
+        .writeHead(200, {
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json; charset=utf-8",
+        })
+        .end(
+          JSON.stringify(
+            deliveries.map(
+              ({ id, eventId, subscriptionId, status, attemptCount, jobIds, lastError, createdAt, updatedAt }) => ({
+                id,
+                eventId,
+                subscriptionId,
+                status,
+                attemptCount,
+                jobIds,
+                lastError,
+                createdAt,
+                updatedAt,
+              }),
+            ),
           ),
-        ),
-      );
+        );
       return;
     }
     const retryEventDeliveryMatch = url.pathname.match(
@@ -1893,12 +2408,17 @@ sessionStorage.removeItem('runner-pending-team-invite');
         retryEventDeliveryMatch[2],
       );
       if (!delivery || delivery.eventId !== retryEventDeliveryMatch[1]) {
-        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(404, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         res.end(JSON.stringify({ error: "Failed event delivery not found" }));
         return;
       }
       res
-        .writeHead(202, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" })
+        .writeHead(202, {
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json; charset=utf-8",
+        })
         .end(JSON.stringify({ deliveryId: delivery.id, status: delivery.status }));
       return;
     }
@@ -2059,7 +2579,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
       if (!isValid) {
         validationStatus = "invalid";
         res.writeHead(401, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Invalid HMAC signature or authentication failed" }));
+        res.end(
+          JSON.stringify({
+            error: "Invalid HMAC signature or authentication failed",
+          }),
+        );
         return;
       }
 
@@ -2069,10 +2593,15 @@ sessionStorage.removeItem('runner-pending-team-invite');
       if (provider === "github") {
         const github = this.preprocessors.get(provider) as
           | (WebhookPreprocessor & {
-              toDomainEvent?: (eventHeaders: Record<string, string>, eventInputs: Record<string, any>) => any;
+              toDomainEvent?: (
+                eventHeaders: Record<string, string>,
+                eventInputs: Record<string, any>,
+                receivedAt: string,
+              ) => any;
             })
           | undefined;
-        const domainEvent = github?.toDomainEvent?.(headers, inputs);
+        const receivedAt = await this.incomingEvents.receivedAtForTeam(teamId, incomingEventId);
+        const domainEvent = github?.toDomainEvent?.(headers, inputs, receivedAt || "");
         if (domainEvent) {
           const published = await this.domainEventRepository.publish(teamId, domainEvent);
           await this.domainEventDeliveryRepository.fanout(teamId, published.id);
@@ -2094,8 +2623,17 @@ sessionStorage.removeItem('runner-pending-team-invite');
         jobs,
       );
 
-      res.writeHead(202, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-      res.end(JSON.stringify({ message: "OK", eventId: incomingEventId, queuedJobs: jobs.length }));
+      res.writeHead(202, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      });
+      res.end(
+        JSON.stringify({
+          message: "OK",
+          eventId: incomingEventId,
+          queuedJobs: jobs.length,
+        }),
+      );
     } catch (err: any) {
       console.error("❌ Webhook Ingress Error:", err);
       if (incomingEventId) {
@@ -2112,7 +2650,12 @@ sessionStorage.removeItem('runner-pending-team-invite');
           .catch((recordError) => console.error("❌ Could not update incoming event status:", recordError));
       }
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Internal Ingress Error", details: err.message }));
+      res.end(
+        JSON.stringify({
+          error: "Internal Ingress Error",
+          details: err.message,
+        }),
+      );
     }
   }
 
@@ -2217,10 +2760,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
   }
 
   private async handleWorkflowRun(req: http.IncomingMessage, res: http.ServerResponse, workflowId: string) {
-    const teamId = (await this.requireWorkspaceCapability(req, res, "runs.dispatch"))?.teamId;
-    if (!teamId) {
+    const access = await this.requireWorkspaceCapability(req, res, "runs.dispatch");
+    if (!access) {
       return;
     }
+    const { teamId } = access;
     const body = await this.readJson(req, res);
     if (body === null && res.headersSent) {
       return;
@@ -2232,10 +2776,20 @@ sessionStorage.removeItem('runner-pending-team-invite');
 
     await this.workflowsLoaded;
     const owned = await this.workflows.getForTeam(teamId, workflowId);
-    const latest = owned ? await this.workflows.latestRevision(workflowId) : null;
-    if (!latest) {
+    if (!owned) {
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Workflow not found" }));
+    }
+    if (
+      access.principal.kind === "agent" &&
+      !(await this.agentWorkflowGrantRepository.has(teamId, access.principal.subject, workflowId))
+    ) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          error: "Agent is not granted access to this workflow",
+        }),
+      );
     }
 
     const suppliedInputs = body?.inputs;
@@ -2246,25 +2800,256 @@ sessionStorage.removeItem('runner-pending-team-invite');
       res.writeHead(400, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "inputs must be an object" }));
     }
-    const inputs = { ...(suppliedInputs || {}), trigger: { type: "manual", source: "editor" } };
-    const jobs: number[] = [];
-    for (const variant of expandMatrix(latest.definition)) {
-      const requiredTags = await resolveMatrixTags(variant.tags, variant.matrixContext, inputs);
-      const jobId = await this.queue.enqueue(
-        workflowId,
-        latest.revision,
-        { inputs, matrix: variant.matrixContext },
-        requiredTags,
-        "",
+    const requestKey = req.headers["idempotency-key"];
+    if (
+      requestKey !== undefined &&
+      (typeof requestKey !== "string" || requestKey.length < 1 || requestKey.length > 200)
+    ) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          error: "Idempotency-Key must be between 1 and 200 characters",
+        }),
       );
-      if (jobId) {
-        jobs.push(jobId);
+    }
+    const idempotencyKey = typeof requestKey === "string" ? requestKey : crypto.randomUUID();
+    const inputs = {
+      ...(suppliedInputs || {}),
+      trigger: { type: "manual", source: "api" },
+    };
+    let serializedInputs: string;
+    let canonicalInputs: string | undefined;
+    try {
+      serializedInputs = JSON.stringify(inputs);
+      canonicalInputs = canonicalJson(inputs);
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "inputs must be JSON serializable" }));
+    }
+    if (canonicalInputs === undefined) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "inputs must be JSON serializable" }));
+    }
+    const eventKey = `workflow-run:${workflowId}:${idempotencyKey}`;
+    let previous = await this.domainEventRepository.getByIdempotencyKey<{
+      workflowId: string;
+      revision: number;
+      inputsCiphertext: string;
+    }>(teamId, eventKey);
+    const sameRequest = (event: typeof previous): boolean => {
+      if (
+        !event ||
+        event.type !== "workflow.run.requested" ||
+        event.source !== "api/workflows/run" ||
+        event.data.workflowId !== workflowId
+      ) {
+        return false;
       }
-      this.events.publish("jobs.available", { tags: requiredTags, teamId });
+      try {
+        const originalInputs = JSON.parse(this.secretRepository.decryptValue(event.data.inputsCiphertext));
+        return canonicalJson(originalInputs) === canonicalInputs;
+      } catch {
+        return false;
+      }
+    };
+    if (previous && !sameRequest(previous)) {
+      res.writeHead(409, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          error: "Idempotency-Key was already used for a different request",
+        }),
+      );
+    }
+    const latest = previous ? null : await this.workflows.latestRevision(workflowId);
+    if (!previous && !latest) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Workflow not found" }));
+    }
+    let revision = previous?.data.revision ?? latest!.revision;
+    let definition = await this.workflows.getRevision(workflowId, revision);
+    if (!definition) {
+      res.writeHead(previous ? 409 : 404, {
+        "Content-Type": "application/json",
+      });
+      return res.end(JSON.stringify({ error: "Pinned workflow revision is unavailable" }));
+    }
+    let acceptedInputs: Record<string, unknown>;
+    try {
+      acceptedInputs = previous
+        ? JSON.parse(this.secretRepository.decryptValue(previous.data.inputsCiphertext))
+        : inputs;
+    } catch {
+      res.writeHead(409, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          error: "Persisted workflow request inputs are unavailable",
+        }),
+      );
+    }
+    const resolveVariants = async (
+      workflowDefinition: NonNullable<typeof definition>,
+      workflowInputs: typeof acceptedInputs,
+    ) => {
+      const variants = expandMatrix(workflowDefinition);
+      const planned: Array<{
+        index: number;
+        variant: (typeof variants)[number];
+        requiredTags: string[];
+      }> = [];
+      for (const [index, variant] of variants.entries()) {
+        const requiredTags = await resolveMatrixTags(variant.tags, variant.matrixContext, workflowInputs);
+        planned.push({ index, variant, requiredTags });
+      }
+      return planned;
+    };
+    let plannedVariants;
+    try {
+      plannedVariants = await resolveVariants(definition, acceptedInputs);
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Workflow inputs could not be admitted" }));
     }
 
+    if (!previous) {
+      try {
+        previous = await this.domainEventRepository.publish(teamId, {
+          type: "workflow.run.requested",
+          schemaVersion: 1,
+          source: "api/workflows/run",
+          occurredAt: new Date().toISOString(),
+          correlationId: null,
+          causationId: null,
+          idempotencyKey: eventKey,
+          data: {
+            workflowId,
+            revision,
+            inputsCiphertext: this.secretRepository.encryptValue(serializedInputs),
+          },
+        });
+      } catch {
+        // A concurrent retry may have won publication with a different nonce/time;
+        // the stable key plus canonical input digest determines the same request.
+        const raced = await this.domainEventRepository.getByIdempotencyKey<{
+          workflowId: string;
+          revision: number;
+          inputsCiphertext: string;
+        }>(teamId, eventKey);
+        if (!raced) {
+          throw new Error("Workflow run request could not be recorded");
+        }
+        if (!sameRequest(raced)) {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          return res.end(
+            JSON.stringify({
+              error: "Idempotency-Key was already used for a different request",
+            }),
+          );
+        }
+        previous = raced;
+        revision = raced.data.revision;
+        definition = await this.workflows.getRevision(workflowId, revision);
+        if (!definition) {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          return res.end(
+            JSON.stringify({
+              error: "Pinned workflow revision is unavailable",
+            }),
+          );
+        }
+        try {
+          acceptedInputs = JSON.parse(this.secretRepository.decryptValue(raced.data.inputsCiphertext));
+        } catch {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          return res.end(
+            JSON.stringify({
+              error: "Persisted workflow request inputs are unavailable",
+            }),
+          );
+        }
+        try {
+          plannedVariants = await resolveVariants(definition, acceptedInputs);
+        } catch {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          return res.end(
+            JSON.stringify({
+              error: "Pinned workflow request could not be recovered",
+            }),
+          );
+        }
+      }
+    }
+    const event = previous;
+    if (!event) {
+      throw new Error("Workflow request event was not durably recorded");
+    }
+    const jobs: number[] = [];
+    const admissionStatus: "pending" = "pending";
+
     res.writeHead(202, { "Content-Type": "application/json; charset=utf-8" });
-    return res.end(JSON.stringify({ workflowId, revision: latest.revision, jobs }));
+    return res.end(
+      JSON.stringify({
+        workflowId,
+        revision,
+        eventId: event.id,
+        jobs,
+        idempotencyKey,
+        admissionStatus,
+        accepted: true,
+      }),
+    );
+  }
+
+  /**
+   * Recover from a server crash scenario where workflow run admissions
+   * may have been partially processed.
+   *
+   * This method:
+   * 1. Reclaims any expired claimed leases back to 'pending' status
+   * 2. Claims available pending variants using the stable key (event_id, variant_index)
+   * 3. Ensures no duplicate processing thanks to the primary key constraint
+   * 4. Returns recovered variants for re-processing by the worker
+   *
+   * The "stable key" guarantee: since workflow_run_admissions uses PRIMARY KEY (event_id, variant_index),
+   * the same variant cannot be claimed twice. If a variant was already claimed before the crash
+   * and its lease has expired, it will be reclaimed and claimed by recovery. If it was not claimed,
+   * it will be claimed now. Either way, no duplicate processing occurs.
+   */
+  async recoverCrash(): Promise<
+    Array<{
+      eventId: string;
+      teamId: string;
+      workflowId: string;
+      revision: number;
+      index: number;
+    }>
+  > {
+    // Step 1: Reclaim expired leases first
+    await this.workflowRunAdmissions.reclaimExpired();
+
+    // Step 2: Claim all available pending variants exactly once.
+    const recovered: Array<{
+      eventId: string;
+      teamId: string;
+      workflowId: string;
+      revision: number;
+      index: number;
+    }> = [];
+
+    while (true) {
+      const claim = await this.workflowRunAdmissions.claimNext(30_000);
+      if (!claim) {
+        break;
+      }
+      recovered.push({
+        eventId: claim.eventId,
+        teamId: claim.teamId,
+        workflowId: claim.workflowId,
+        revision: claim.revision,
+        index: claim.index,
+      });
+    }
+
+    return recovered;
   }
 
   private async handleJobWait(
@@ -2295,7 +3080,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       job: toDashboardJobs([job])[0],
       terminal: ["success", "failed", "cancelled"].includes(job.status),
     };
-    res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+    res.writeHead(200, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
     return res.end(JSON.stringify(this.redactStructured(payload, await this.currentSecrets(teamId))));
   }
 
@@ -2309,7 +3097,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
       return res.end(JSON.stringify({ error: "Job not found" }));
     }
-    res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+    res.writeHead(200, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
     return res.end(
       JSON.stringify({
         id: Number(job.id),
@@ -2321,10 +3112,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
   }
 
   private async handleStepAttempts(req: http.IncomingMessage, jobId: string, res: http.ServerResponse) {
-    const teamId = (await this.requireWorkspaceCapability(req, res, "runs.logs"))?.teamId;
-    if (!teamId) {
+    const access = await this.requireWorkspaceCapability(req, res, "runs.logs");
+    if (!access) {
       return;
     }
+    const { teamId } = access;
     const job = await this.queue.getJobForTeam(teamId, jobId);
     if (!job) {
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
@@ -2332,15 +3124,20 @@ sessionStorage.removeItem('runner-pending-team-invite');
     }
     const attempts = await this.queue.getStepAttemptsForTeam(teamId, jobId);
     const safe = this.redactStructured(attempts, await this.currentSecrets(teamId));
-    res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+    res.writeHead(200, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
     return res.end(JSON.stringify({ jobId: String(job.id), attempts: safe }));
   }
 
   private async handleDiagnostics(req: http.IncomingMessage, res: http.ServerResponse, jobId: string) {
-    const teamId = (await this.requireWorkspaceCapability(req, res, "runs.logs"))?.teamId;
-    if (!teamId) {
+    const access = await this.requireWorkspaceCapability(req, res, "runs.logs");
+    if (!access) {
       return;
     }
+    const { teamId } = access;
+    const canViewInputs = access.capabilities.includes("runs.inputs");
     const job = await this.queue.getJobForTeam(teamId, jobId);
     if (!job) {
       res.writeHead(404, { "Content-Type": "application/json" });
@@ -2354,7 +3151,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
     const safeReport = this.redactStructured(report || {}, secrets);
     const safeLogs = this.redactStructured(logs, secrets);
     const failedIndex = report?.steps?.findIndex((step) => step.status === "failed") ?? -1;
-    res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+    res.writeHead(200, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
     return res.end(
       JSON.stringify({
         jobId: String(job.id),
@@ -2364,7 +3164,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
           sourceYaml: snapshot?.sourceYaml ? this.redact(snapshot.sourceYaml, secrets) : undefined,
         },
         status: job.status,
-        inputs: safeReport.inputs || {},
+        inputs: canViewInputs ? safeReport.inputs || {} : undefined,
         failedStep: failedIndex >= 0 ? safeReport.steps[failedIndex] : null,
         steps: failedIndex >= 0 ? safeReport.steps.slice(0, failedIndex + 1) : safeReport.steps || [],
         logs: safeLogs,
@@ -2447,7 +3247,13 @@ sessionStorage.removeItem('runner-pending-team-invite');
       const safeHeaders = Object.fromEntries(
         Object.entries(headers).filter(([name]) => safeHeaderNames.has(name.toLowerCase())),
       );
-      const inputs = { ...body, body, raw: body, headers: safeHeaders, request: { body, headers: safeHeaders } };
+      const inputs = {
+        ...body,
+        body,
+        raw: body,
+        headers: safeHeaders,
+        request: { body, headers: safeHeaders },
+      };
       return { isValid, inputs, secretValues: dbSecrets };
     } catch {
       return { isValid: false, inputs: null, secretValues: dbSecrets };
@@ -2585,7 +3391,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       const workspaces = isAdmin
         ? await this.teams.listAll()
         : await this.principals.workspaceListFor(context.principal.subject);
-      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      });
       res.end(JSON.stringify({ [workspaceApi ? "workspaces" : "teams"]: workspaces }));
       return;
     }
@@ -2610,14 +3419,25 @@ sessionStorage.removeItem('runner-pending-team-invite');
           target: team.id,
           teamId: team.id,
         });
-        res.writeHead(201, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(
-          JSON.stringify({
-            [workspaceApi ? "workspace" : "team"]: { id: team.id, name: team.name, role: "admin" },
-            ...(!workspaceApi
-              ? { webhookPath: `/api/v1/webhooks/team/${encodeURIComponent(team.webhookToken)}/{provider}` }
-              : {}),
-          }),
-        );
+        res
+          .writeHead(201, {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+          })
+          .end(
+            JSON.stringify({
+              [workspaceApi ? "workspace" : "team"]: {
+                id: team.id,
+                name: team.name,
+                role: "admin",
+              },
+              ...(!workspaceApi
+                ? {
+                    webhookPath: `/api/v1/webhooks/team/${encodeURIComponent(team.webhookToken)}/{provider}`,
+                  }
+                : {}),
+            }),
+          );
       } catch (error: any) {
         res.writeHead(422, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
       }
@@ -2667,7 +3487,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
           target: teamId,
           teamId,
         });
-        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        });
         res.end(JSON.stringify({ workspace: updated }));
       } catch (error: any) {
         res.writeHead(422, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error.message }));
@@ -2682,7 +3505,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       if (!authorized) {
         return;
       }
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       res.end(
         JSON.stringify({
           workspace: { id: teamId, role: authorized.role },
@@ -2707,7 +3533,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       const limit = Number(url.searchParams.get("limit") || 50);
       const events = await this.incomingEvents.listForTeam(teamId, limit, url.searchParams.get("before") || undefined);
-      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
       res.end(JSON.stringify({ events }));
       return;
     }
@@ -2720,7 +3549,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       const eventId = incomingEvent[2];
       const event = await this.incomingEvents.getForTeam(teamId, eventId);
       if (!event) {
-        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.writeHead(404, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
         res.end(JSON.stringify({ error: "Incoming event not found" }));
         return;
       }
@@ -2731,7 +3563,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
         teamId,
       });
       const { inputs: _inputs, ...detail } = event;
-      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
       res.end(JSON.stringify({ event: detail }));
       return;
     }
@@ -2744,13 +3579,23 @@ sessionStorage.removeItem('runner-pending-team-invite');
       const eventId = incomingEvent[2];
       const event = await this.incomingEvents.getForTeam(teamId, eventId);
       if (!event) {
-        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.writeHead(404, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
         res.end(JSON.stringify({ error: "Incoming event not found" }));
         return;
       }
       if (event.validationStatus !== "valid" || event.inputs === null) {
-        res.writeHead(409, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(JSON.stringify({ error: "Only signature-validated events can be retriggered" }));
+        res.writeHead(409, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
+        res.end(
+          JSON.stringify({
+            error: "Only signature-validated events can be retriggered",
+          }),
+        );
         return;
       }
       const replayId = await this.incomingEvents.createReplay(teamId, eventId, authorized.principal.subject);
@@ -2773,11 +3618,17 @@ sessionStorage.removeItem('runner-pending-team-invite');
             detail: { replayId, queuedJobs: jobs.length },
           })
           .catch((error) => console.error("Could not audit incoming event replay:", error));
-        res.writeHead(202, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.writeHead(202, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
         res.end(JSON.stringify({ eventId, replayId, queuedJobs: jobs.length, jobs }));
       } catch (error: any) {
         await this.incomingEvents.finishReplay(teamId, replayId, "failed", [], "Could not match event to workflows");
-        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.writeHead(500, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
         res.end(JSON.stringify({ error: "Could not retrigger incoming event" }));
       }
       return;
@@ -2793,8 +3644,15 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return;
       }
       if (req.method === "GET") {
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(JSON.stringify({ webhooks: await this.workspaceWebhooks.list(teamId) }));
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
+        res.end(
+          JSON.stringify({
+            webhooks: await this.workspaceWebhooks.list(teamId),
+          }),
+        );
         return;
       }
       const body = await this.readJson(req, res);
@@ -2813,16 +3671,25 @@ sessionStorage.removeItem('runner-pending-team-invite');
           teamId,
           detail: { provider: created.provider },
         });
-        res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.writeHead(201, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
         res.end(
           JSON.stringify({
-            webhook: { id: created.id, provider: created.provider, createdAt: created.createdAt },
+            webhook: {
+              id: created.id,
+              provider: created.provider,
+              createdAt: created.createdAt,
+            },
             url: `/api/v1/webhooks/workspace/${encodeURIComponent(created.token)}`,
             signingSecret: created.signingSecret,
           }),
         );
       } catch (error: any) {
-        res.writeHead(422, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(422, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         res.end(JSON.stringify({ error: error.message }));
       }
       return;
@@ -2860,7 +3727,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
       const body = await this.readJson(req, res);
       if (!body || !isWorkspaceRole(body.role)) {
         if (!res.headersSent) {
-          res.writeHead(400).end(JSON.stringify({ error: "role must be viewer, collaborator, or admin" }));
+          res.writeHead(400).end(
+            JSON.stringify({
+              error: "role must be viewer, collaborator, or admin",
+            }),
+          );
         }
         return;
       }
@@ -2891,9 +3762,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       const result = await this.principals.removeMember(teamId, subject, authorized.principal.subject);
       if (result === "admin") {
-        res
-          .writeHead(409, { "Content-Type": "application/json" })
-          .end(JSON.stringify({ error: "A workspace must retain at least one admin" }));
+        res.writeHead(409, { "Content-Type": "application/json" }).end(
+          JSON.stringify({
+            error: "A workspace must retain at least one admin",
+          }),
+        );
         return;
       }
       res.writeHead(result === "removed" ? 204 : 404).end();
@@ -2905,13 +3778,18 @@ sessionStorage.removeItem('runner-pending-team-invite');
       if (!authorized) {
         return;
       }
-      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(
-        JSON.stringify({
-          members: (await this.principals.listMembers(teamId)).map((member) =>
-            memberViewForCaller(member, authorized.capabilities.includes("members.manage")),
-          ),
-        }),
-      );
+      res
+        .writeHead(200, {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        })
+        .end(
+          JSON.stringify({
+            members: (await this.principals.listMembers(teamId)).map((member) =>
+              memberViewForCaller(member, authorized.capabilities.includes("members.manage")),
+            ),
+          }),
+        );
       return;
     }
     if (members && req.method === "POST") {
@@ -2949,7 +3827,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
         try {
           const record = await this.teams.createSubjectInvitation(teamId, body.subject, authorized.principal.subject);
           res
-            .writeHead(201, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+            .writeHead(201, {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-store",
+            })
             .end(JSON.stringify({ expiresAt: record.expiresAt }));
         } catch (error: any) {
           res.writeHead(error.message === "Workspace member already exists" ? 409 : 422, {
@@ -2964,12 +3845,17 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       try {
         const record = await this.teams.createInvitation(teamId, body.email, authorized.principal.subject);
-        res.writeHead(201, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(
-          JSON.stringify({
-            link: `/ui/teams/accept#token=${encodeURIComponent(record.token)}`,
-            expiresAt: record.expiresAt,
-          }),
-        );
+        res
+          .writeHead(201, {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+          })
+          .end(
+            JSON.stringify({
+              link: `/ui/teams/accept#token=${encodeURIComponent(record.token)}`,
+              expiresAt: record.expiresAt,
+            }),
+          );
       } catch (e: any) {
         res.writeHead(422).end(JSON.stringify({ error: e.message }));
       }
@@ -2987,8 +3873,15 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return;
       }
       res
-        .writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" })
-        .end(JSON.stringify({ webhookPath: `/api/v1/webhooks/team/${encodeURIComponent(token)}/{provider}` }));
+        .writeHead(200, {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        })
+        .end(
+          JSON.stringify({
+            webhookPath: `/api/v1/webhooks/team/${encodeURIComponent(token)}/{provider}`,
+          }),
+        );
       return;
     }
     if ((url.pathname === "/api/teams/accept" || url.pathname === "/api/workspaces/accept") && req.method === "POST") {
@@ -3004,7 +3897,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       const result = await this.teams.acceptInvitation(body.token, human.principal.subject, email);
       res
-        .writeHead(result === "accepted" ? 200 : 404, { "Content-Type": "application/json" })
+        .writeHead(result === "accepted" ? 200 : 404, {
+          "Content-Type": "application/json",
+        })
         .end(JSON.stringify({ result }));
       return;
     }
@@ -3054,14 +3949,19 @@ sessionStorage.removeItem('runner-pending-team-invite');
       });
     }
     try {
-      res.writeHead(302, { Location: await this.oidc.loginUrl(this.oidcRedirectUri(req), sanitizedReturnTo) });
+      res.writeHead(302, {
+        Location: await this.oidc.loginUrl(this.oidcRedirectUri(req), sanitizedReturnTo),
+      });
       return res.end();
     } catch (error: any) {
       return this.sendHtmlError(res, {
         status: 503,
         title: "Couldn't start sign-in",
         message: "The authentication service couldn't be reached. Please try again shortly.",
-        action: { label: "Try again", href: `/auth/login?url=${encodeURIComponent(sanitizedReturnTo)}` },
+        action: {
+          label: "Try again",
+          href: `/auth/login?url=${encodeURIComponent(sanitizedReturnTo)}`,
+        },
         secondaryAction: { label: "Back", href: "/ui/runs" },
       });
     }
@@ -3081,7 +3981,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
         status: 401,
         title: "Sign-in wasn't completed",
         message: "You cancelled sign-in or the identity provider couldn't authenticate you. You can safely try again.",
-        action: { label: "Try signing in again", href: "/auth/login?url=%2Fui%2Fruns" },
+        action: {
+          label: "Try signing in again",
+          href: "/auth/login?url=%2Fui%2Fruns",
+        },
         secondaryAction: { label: "Back", href: "/ui/runs" },
       });
     }
@@ -3092,7 +3995,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
         status: 400,
         title: "Sign-in link is incomplete",
         message: "The identity provider returned an incomplete response. Please start sign-in again.",
-        action: { label: "Try signing in again", href: "/auth/login?url=%2Fui%2Fruns" },
+        action: {
+          label: "Try signing in again",
+          href: "/auth/login?url=%2Fui%2Fruns",
+        },
         secondaryAction: { label: "Back", href: "/ui/runs" },
       });
     }
@@ -3117,7 +4023,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
         title: "Couldn't complete sign-in",
         message:
           "We couldn't verify your identity with the sign-in provider. Please try again. If the problem continues, contact your administrator.",
-        action: { label: "Try signing in again", href: "/auth/login?url=%2Fui%2Fruns" },
+        action: {
+          label: "Try signing in again",
+          href: "/auth/login?url=%2Fui%2Fruns",
+        },
         secondaryAction: { label: "Back", href: "/ui/runs" },
       });
     }
@@ -3142,7 +4051,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
   private async handleOidcSession(req: http.IncomingMessage, res: http.ServerResponse) {
     const sessionUser = this.oidc?.userFromCookie(req.headers.cookie);
     if (!sessionUser) {
-      res.writeHead(401, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(401, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(
         JSON.stringify({
           configured: Boolean(this.oidc?.enabled),
@@ -3154,7 +4066,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
     }
     const principal = await this.principals.principal(sessionUser.id);
     if (!principal || principal.disabled) {
-      res.writeHead(401, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(401, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(
         JSON.stringify({
           configured: Boolean(this.oidc?.enabled),
@@ -3164,7 +4079,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
         }),
       );
     }
-    res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+    res.writeHead(200, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
     return res.end(
       JSON.stringify({
         configured: Boolean(this.oidc?.enabled),
@@ -3189,16 +4107,29 @@ sessionStorage.removeItem('runner-pending-team-invite');
     try {
       token = await this.oidc?.accessTokenFromCookie(req.headers.cookie);
     } catch {
-      res.writeHead(503, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(503, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(JSON.stringify({ error: "Token refresh unavailable" }));
     }
     if (!token) {
-      res.writeHead(401, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(401, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(JSON.stringify({ error: "Authentication required" }));
     }
-    res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+    res.writeHead(200, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
     return res.end(
-      JSON.stringify({ access_token: token.accessToken, token_type: "Bearer", expires_at: token.expiresAt }),
+      JSON.stringify({
+        access_token: token.accessToken,
+        token_type: "Bearer",
+        expires_at: token.expiresAt,
+      }),
     );
   }
 
@@ -3401,7 +4332,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return;
     }
     await this.workflowsLoaded;
-    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
     res.end(JSON.stringify({ recipes: await this.recipes.list() }));
   }
 
@@ -3418,11 +4352,22 @@ sessionStorage.removeItem('runner-pending-team-invite');
     }
     try {
       const recipe = parseRecipe(body.sourceYaml);
-      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
       res.end(JSON.stringify({ valid: true, inputs: recipe.inputs }));
     } catch (error) {
-      res.writeHead(422, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-      res.end(JSON.stringify({ valid: false, error: error instanceof Error ? error.message : String(error) }));
+      res.writeHead(422, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      res.end(
+        JSON.stringify({
+          valid: false,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
     }
   }
 
@@ -3441,7 +4386,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (!recipe) {
       return res.writeHead(404).end(JSON.stringify({ error: "Recipe not found" }));
     }
-    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
     res.end(JSON.stringify(recipe));
   }
 
@@ -3477,7 +4425,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
         context.principal.subject,
         body.sourceYaml,
       );
-      res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.writeHead(201, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
       res.end(JSON.stringify(recipe));
     } catch (error) {
       deny(res, 422, error instanceof Error ? error.message : "Recipe could not be published");
@@ -3524,7 +4475,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (!auth) {
       return;
     }
-    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
     res.end(
       JSON.stringify({
         channels: await this.channels.listChannels(auth.teamId),
@@ -3553,7 +4507,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return;
     }
     const channel = await this.channels.createChannel(auth.teamId, body.name.trim());
-    res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.writeHead(201, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
     res.end(JSON.stringify({ channel, teamId: auth.teamId }));
   }
 
@@ -3576,7 +4533,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return deny(res, 400, "Invalid after cursor");
     }
     const messages = await this.channels.listMessages(auth.teamId, channelId, limit, after);
-    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
     res.end(
       JSON.stringify({
         messages,
@@ -3586,6 +4546,40 @@ sessionStorage.removeItem('runner-pending-team-invite');
         next: messages.length === limit ? messages[messages.length - 1].id : null,
       }),
     );
+  }
+
+  private async handleChannelEvents(req: http.IncomingMessage, res: http.ServerResponse, channelId: string) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.view");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getChannel(auth.teamId, channelId))) {
+      return deny(res, 404, "Channel not found");
+    }
+    const url = new URL(req.url || "/", "http://localhost");
+    const rawLimit = url.searchParams.get("limit");
+    const limit = rawLimit === null ? 50 : Number(rawLimit);
+    const cursorParam = url.searchParams.get("cursor");
+    const cursor = cursorParam === null ? undefined : cursorParam;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return deny(res, 400, "limit must be an integer from 1 to 100");
+    }
+    if (cursor && cursor.length > 512) {
+      return deny(res, 400, "Invalid event cursor");
+    }
+    try {
+      const page = await this.domainEventRepository.listChannelEvents(auth.teamId, channelId, limit, cursor);
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      res.end(JSON.stringify({ ...page, teamId: auth.teamId, channelId, limit }));
+    } catch (error) {
+      if (error instanceof Error && error.message === "Invalid event cursor") {
+        return deny(res, 400, "Invalid event cursor");
+      }
+      throw error;
+    }
   }
 
   private async handleChannelMessageAppend(req: http.IncomingMessage, res: http.ServerResponse, channelId: string) {
@@ -3614,7 +4608,15 @@ sessionStorage.removeItem('runner-pending-team-invite');
       author: auth.principal.subject,
       body: body.body,
     });
-    res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    this.events.publish("channel.message", {
+      teamId: auth.teamId,
+      channelId,
+      messageId: message.id,
+    });
+    res.writeHead(201, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
     res.end(JSON.stringify({ message, teamId: auth.teamId, channelId }));
   }
 
@@ -3704,7 +4706,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return;
     }
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ secrets: await this.secretRepository.namesForTeam(teamId) }));
+    res.end(
+      JSON.stringify({
+        secrets: await this.secretRepository.namesForTeam(teamId),
+      }),
+    );
   }
 
   private async handleSecretSave(req: http.IncomingMessage, res: http.ServerResponse, name: string) {
@@ -3754,8 +4760,15 @@ sessionStorage.removeItem('runner-pending-team-invite');
       res.writeHead(409).end();
       return;
     }
-    res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ secrets: await this.secretRepository.getAllForJob(job.team_id) }));
+    res.writeHead(200, {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    res.end(
+      JSON.stringify({
+        secrets: await this.secretRepository.getAllForJob(job.team_id),
+      }),
+    );
   }
 
   /**
@@ -3814,7 +4827,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       res.writeHead(404, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ error: "Push notifications are not configured" }));
     }
-    res.writeHead(200, { "Cache-Control": "public, max-age=3600", "Content-Type": "application/json" });
+    res.writeHead(200, {
+      "Cache-Control": "public, max-age=3600",
+      "Content-Type": "application/json",
+    });
     res.end(JSON.stringify({ publicKey: this.push.publicKey }));
   }
 
@@ -3822,10 +4838,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (!(await this.authorizer.human(req, res))) {
       return;
     }
-    const teamId = (await this.requireWorkspaceCapability(req, res, "runs.view"))?.teamId;
-    if (!teamId) {
+    const access = await this.requireWorkspaceCapability(req, res, "runs.view");
+    if (!access) {
       return;
     }
+    const { teamId } = access;
     const body = await this.readJson(req, res);
     if (!body) {
       return;
@@ -3881,7 +4898,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
   }
 
   private renderAppShell(res: http.ServerResponse) {
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+    res.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
     return res.end(appShellTemplate);
   }
 
@@ -3903,7 +4923,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
         content = source.slice(start, end);
       }
     }
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+    res.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
     return res.end(`<template component="${name}">${components}${styles}${content}</template>`);
   }
 
@@ -3916,9 +4939,13 @@ sessionStorage.removeItem('runner-pending-team-invite');
     filter?: string,
     workflowId?: string,
   ) {
-    const teamId = (await this.requireWorkspaceCapability(req, res, "runs.view"))?.teamId;
-    if (!teamId) {
+    const access = await this.requireWorkspaceCapability(req, res, "runs.view");
+    if (!access) {
       return;
+    }
+    const { teamId } = access;
+    if (filter && !access.capabilities.includes("runs.inputs")) {
+      return deny(res, 403, "Input filtering requires runs.inputs capability");
     }
     let rows;
     try {
@@ -3964,7 +4991,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
 
     if (!job) {
       if (format === "json") {
-        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(404, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         return res.end(JSON.stringify({ error: "Run not found" }));
       }
       return this.sendHtmlError(res, {
@@ -4002,7 +5031,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
       : undefined;
 
     if (format === "json") {
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+      res.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json; charset=utf-8",
+      });
       return res.end(JSON.stringify(report));
     }
 
@@ -4028,7 +5060,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
       (body.inputs !== undefined && (!body.inputs || typeof body.inputs !== "object" || Array.isArray(body.inputs)))
     ) {
       if (!res.headersSent) {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(400, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
         res.end(JSON.stringify({ error: "Restart inputs must be a JSON object" }));
       }
       return;
@@ -4105,7 +5139,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
     const snapshot = await this.workflows.getRevisionSnapshot(job.workflow_id, job.workflow_revision);
     if (!snapshot || !failedStepId) {
       res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ error: "A failed step and workflow revision are required" }));
+      return res.end(
+        JSON.stringify({
+          error: "A failed step and workflow revision are required",
+        }),
+      );
     }
     const secretValues = await this.currentSecrets(teamId);
     const messages = buildAiHelpMessages(
@@ -4170,9 +5208,18 @@ sessionStorage.removeItem('runner-pending-team-invite');
         content:
           "You are an expert workflow author. Return only a complete replacement workflow YAML document, without Markdown fences or explanations. Preserve valid existing behavior unless the user explicitly asks to change it.",
       },
-      { role: "user", content: `The complete workflow syntax documentation is:\n\n${workflowDocs}` },
-      { role: "user", content: `The current workflow YAML is:\n\n${sourceYaml || "(empty editor)"}` },
-      { role: "user", content: `Apply this requested change and return the complete replacement YAML:\n\n${request}` },
+      {
+        role: "user",
+        content: `The complete workflow syntax documentation is:\n\n${workflowDocs}`,
+      },
+      {
+        role: "user",
+        content: `The current workflow YAML is:\n\n${sourceYaml || "(empty editor)"}`,
+      },
+      {
+        role: "user",
+        content: `Apply this requested change and return the complete replacement YAML:\n\n${request}`,
+      },
     ]);
     try {
       res.writeHead(200, {
@@ -4214,7 +5261,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
 
     this.events.publish("jobs.changed", { jobId: Number(jobId), teamId });
     if (job.lease_id) {
-      this.events.publish("lease.cancelled", { jobId: Number(jobId), leaseId: job.lease_id, teamId });
+      this.events.publish("lease.cancelled", {
+        jobId: Number(jobId),
+        leaseId: job.lease_id,
+        teamId,
+      });
     }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ id: Number(jobId), status: "cancelled" }));
@@ -4283,6 +5334,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     }
     this.processingDomainEvents = true;
     try {
+      await this.recoverWorkflowRunRequests();
       await this.domainEventDeliveryRepository.reconcileFanout();
       for (let count = 0; count < 25; count += 1) {
         const delivery = await this.domainEventDeliveryRepository.claimNextAny();
@@ -4295,6 +5347,248 @@ sessionStorage.removeItem('runner-pending-team-invite');
       console.error("Domain event delivery poll failed");
     } finally {
       this.processingDomainEvents = false;
+    }
+  }
+
+  private async recoverWorkflowRunRequests(): Promise<void> {
+    // Bound work per poll, while retaining a cursor between polls so old terminal
+    // requests cannot permanently hide newer pending requests.
+    const pageLimit = 10;
+    let cursor = this.workflowRunRecoveryCursor;
+    for (let page = 0; page < pageLimit; page += 1) {
+      let requests;
+      try {
+        requests = await this.domainEventRepository.listWorkflowRunRequests<{
+          workflowId: string;
+          revision: number;
+          inputsCiphertext: string;
+        }>(100, 0, cursor ?? undefined);
+      } catch {
+        return;
+      }
+      if (requests.length === 0) {
+        this.workflowRunRecoveryCursor = null;
+        return;
+      }
+      for (const event of requests) {
+        try {
+          if (await this.workflowRunAdmissions.isPlanTerminal(event.id, [-1])) {
+            continue;
+          }
+          const { workflowId, revision, inputsCiphertext } = event.data;
+          const definitionForCompleteness =
+            typeof workflowId === "string" && Number.isInteger(revision)
+              ? await this.workflows.getRevision(workflowId, revision)
+              : null;
+          if (definitionForCompleteness) {
+            const expectedCount = expandMatrix(definitionForCompleteness).length;
+            if (
+              await this.workflowRunAdmissions.isPlanTerminal(
+                event.id,
+                Array.from({ length: expectedCount }, (_, index) => index),
+              )
+            ) {
+              continue;
+            }
+          }
+          if (
+            event.type !== "workflow.run.requested" ||
+            event.source !== "api/workflows/run" ||
+            typeof workflowId !== "string" ||
+            !Number.isInteger(revision) ||
+            typeof inputsCiphertext !== "string"
+          ) {
+            await this.workflowRunAdmissions.persistTerminal(
+              {
+                eventId: event.id,
+                teamId: event.teamId,
+                workflowId: typeof workflowId === "string" ? workflowId : "invalid-request",
+                revision: Number.isInteger(revision) ? revision : 0,
+                index: -1,
+                matrix: {},
+                tags: [],
+              },
+              "failed",
+              "invalid_request",
+            );
+            continue;
+          }
+          const definition = await this.workflows.getRevision(workflowId, revision);
+          if (!definition) {
+            await this.workflowRunAdmissions.persistTerminal(
+              {
+                eventId: event.id,
+                teamId: event.teamId,
+                workflowId,
+                revision,
+                index: -1,
+                matrix: {},
+                tags: [],
+              },
+              "failed",
+              "revision_unavailable",
+            );
+            continue;
+          }
+          let inputs: unknown;
+          try {
+            inputs = JSON.parse(this.secretRepository.decryptValue(inputsCiphertext));
+          } catch {
+            await this.workflowRunAdmissions.persistTerminal(
+              {
+                eventId: event.id,
+                teamId: event.teamId,
+                workflowId,
+                revision,
+                index: -1,
+                matrix: {},
+                tags: [],
+              },
+              "failed",
+              "invalid_inputs",
+            );
+            continue;
+          }
+          if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) {
+            await this.workflowRunAdmissions.persistTerminal(
+              {
+                eventId: event.id,
+                teamId: event.teamId,
+                workflowId,
+                revision,
+                index: -1,
+                matrix: {},
+                tags: [],
+              },
+              "failed",
+              "invalid_inputs",
+            );
+            continue;
+          }
+          const planned: Array<{
+            eventId: string;
+            teamId: string;
+            workflowId: string;
+            revision: number;
+            index: number;
+            matrix: Record<string, any>;
+            tags: string[];
+          }> = [];
+          try {
+            for (const [matrixIndex, variant] of expandMatrix(definition).entries()) {
+              const requiredTags = await resolveMatrixTags(variant.tags, variant.matrixContext, inputs);
+              planned.push({
+                eventId: event.id,
+                teamId: event.teamId,
+                workflowId,
+                revision,
+                index: matrixIndex,
+                matrix: variant.matrixContext,
+                tags: requiredTags,
+              });
+            }
+          } catch {
+            try {
+              await this.workflowRunAdmissions.persistTerminal(
+                {
+                  eventId: event.id,
+                  teamId: event.teamId,
+                  workflowId,
+                  revision,
+                  index: -1,
+                  matrix: {},
+                  tags: [],
+                },
+                "failed",
+                "invalid_matrix",
+              );
+            } catch {
+              // Retry if persisting the terminal validation result fails.
+            }
+            continue;
+          }
+          if (planned.length) {
+            await this.workflowRunAdmissions.persistPlan(planned);
+          } else {
+            await this.workflowRunAdmissions.persistTerminal(
+              {
+                eventId: event.id,
+                teamId: event.teamId,
+                workflowId,
+                revision,
+                index: -2,
+                matrix: {},
+                tags: [],
+              },
+              "admitted",
+            );
+          }
+        } catch {
+          // Database, registry, and persistence failures remain retryable; do not
+          // turn transient infrastructure errors into terminal admission failures.
+        }
+      }
+      for (let count = 0; count < 100; count += 1) {
+        const claim = await this.workflowRunAdmissions.claimNext();
+        if (!claim) {
+          break;
+        }
+        if (claim.index === -2) {
+          await this.workflowRunAdmissions.finish(claim, "admitted");
+          continue;
+        }
+        try {
+          const event = await this.domainEventRepository.getForTeam<{
+            workflowId: string;
+            revision: number;
+            inputsCiphertext: string;
+          }>(claim.teamId, claim.eventId);
+          if (!event || event.type !== "workflow.run.requested" || event.source !== "api/workflows/run") {
+            await this.workflowRunAdmissions.finish(claim, "failed", undefined, "request_unavailable");
+            continue;
+          }
+          const inputs = JSON.parse(this.secretRepository.decryptValue(event.data.inputsCiphertext));
+          const jobId = await this.queue.enqueueDispatch(
+            claim.workflowId,
+            claim.revision,
+            {
+              inputs,
+              matrix: claim.matrix as Record<string, string | number | boolean>,
+            },
+            claim.tags,
+            claim.teamId,
+            claim.eventId,
+            `workflow-run:${claim.eventId}:${claim.index}`,
+            {
+              eventId: claim.eventId,
+              variantIndex: claim.index,
+              leaseToken: claim.token,
+            },
+          );
+          if (!jobId) {
+            await this.workflowRunAdmissions.finish(claim, "failed", undefined, "dispatch_ineligible");
+            continue;
+          }
+          const finished = await this.workflowRunAdmissions.finish(claim, "admitted", jobId);
+          if (!finished) {
+            continue;
+          }
+          this.events.publish("jobs.available", {
+            tags: claim.tags,
+            teamId: claim.teamId,
+          });
+        } catch {
+          await this.workflowRunAdmissions.finish(claim, "pending");
+          // The retry schedule delays transient failures so other variants progress.
+        }
+      }
+      const last = requests.at(-1)!;
+      cursor = last.sequence;
+      this.workflowRunRecoveryCursor = cursor;
+      if (requests.length < 100) {
+        this.workflowRunRecoveryCursor = null;
+        return;
+      }
     }
   }
 }
