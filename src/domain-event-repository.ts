@@ -51,6 +51,7 @@ export type DomainEventLinks = {
 export type WorkflowInvocationView = {
   id: string;
   teamId: string;
+  requestEventId: string;
   workflowId: string;
   revision: number;
   recordedAt: string;
@@ -72,10 +73,13 @@ export class DomainEventRepository {
     const event = await db.get(
       `SELECT id, team_id, recorded_at,
               CASE WHEN json_valid(data_json) THEN json_extract(data_json, '$.workflowId') END AS workflow_id,
-              CASE WHEN json_valid(data_json) THEN json_extract(data_json, '$.revision') END AS revision
+              CASE WHEN json_valid(data_json) THEN json_extract(data_json, '$.revision') END AS revision,
+              CASE WHEN json_valid(data_json) THEN json_extract(data_json, '$.invocationId') END AS invocation_id
          FROM domain_events
-        WHERE team_id = ? AND id = ? AND type = 'workflow.run.requested'`,
-      [teamId, invocationId],
+        WHERE team_id = ? AND type = 'workflow.run.requested'
+          AND (id = ? OR CASE WHEN json_valid(data_json) THEN json_extract(data_json, '$.invocationId') END = ?)
+        ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END LIMIT 1`,
+      [teamId, invocationId, invocationId, invocationId],
     );
     const revision = Number(event?.revision);
     if (!event || typeof event.workflow_id !== "string" || !Number.isInteger(revision) || revision < 1) {
@@ -86,11 +90,12 @@ export class DomainEventRepository {
          FROM workflow_run_admissions a
         WHERE a.team_id = ? AND a.event_id = ?
         ORDER BY a.variant_index`,
-      [teamId, invocationId],
+      [teamId, event.id],
     );
     return {
-      id: String(event.id),
+      id: String(event.invocation_id || event.id),
       teamId: String(event.team_id),
+      requestEventId: String(event.id),
       workflowId: event.workflow_id,
       revision,
       recordedAt: String(event.recorded_at),
@@ -155,7 +160,12 @@ export class DomainEventRepository {
         const runs = await db.all(
           `SELECT DISTINCT CAST(COALESCE(j.value, a.job_id) AS TEXT) AS id
            FROM domain_event_deliveries d
-           LEFT JOIN workflow_run_admissions a ON a.event_id = d.invocation_id AND a.team_id = d.team_id
+           LEFT JOIN domain_events invocation_event
+             ON invocation_event.team_id = d.team_id AND invocation_event.type = 'workflow.run.requested'
+            AND (invocation_event.id = d.invocation_id OR
+                 (json_valid(invocation_event.data_json) AND
+                  json_extract(invocation_event.data_json, '$.invocationId') = d.invocation_id))
+           LEFT JOIN workflow_run_admissions a ON a.event_id = invocation_event.id AND a.team_id = d.team_id
            LEFT JOIN json_each(CASE WHEN json_valid(d.job_ids_json) THEN d.job_ids_json ELSE '[]' END) j
           WHERE d.team_id = ? AND d.event_id = ? AND d.status = 'admitted'
             AND (j.value IS NOT NULL OR a.job_id IS NOT NULL)

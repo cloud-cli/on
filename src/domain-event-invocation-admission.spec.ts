@@ -38,7 +38,8 @@ describe("external-event workflow invocation admission", () => {
     const { server, domainEventRepository, secretRepository } = makeServer();
     const result = await (WebhookServer.prototype as any).admitDomainEventInvocation.call(server, request);
 
-    expect(result).toEqual({ eventId: "invocation-event", invocationId: "invocation-event" });
+    expect(result.eventId).toBe("invocation-event");
+    expect(result.invocationId).not.toBe(result.eventId);
     expect(domainEventRepository.publish).toHaveBeenCalledWith(
       "team-a",
       expect.objectContaining({
@@ -50,6 +51,7 @@ describe("external-event workflow invocation admission", () => {
         data: expect.objectContaining({
           workflowId: "build",
           revision: 3,
+          invocationId: result.invocationId,
           sourceEventId: "source-event",
           deliveryId: "delivery-1",
           inputsCiphertext: expect.stringMatching(/^ciphertext:/),
@@ -69,6 +71,7 @@ describe("external-event workflow invocation admission", () => {
       data: {
         workflowId: "build",
         revision: 3,
+        invocationId: "stable-invocation",
         inputsCiphertext: `ciphertext:${JSON.stringify(request.inputs)}`,
       },
     };
@@ -76,7 +79,7 @@ describe("external-event workflow invocation admission", () => {
 
     await expect((WebhookServer.prototype as any).admitDomainEventInvocation.call(server, request)).resolves.toEqual({
       eventId: "original-invocation",
-      invocationId: "original-invocation",
+      invocationId: "stable-invocation",
     });
     expect(domainEventRepository.publish).not.toHaveBeenCalled();
   });

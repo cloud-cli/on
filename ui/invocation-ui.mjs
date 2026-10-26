@@ -40,6 +40,7 @@ export function mountInvocation(root) {
       }
       const fields = [
         ["Invocation ID", data.id],
+        ["Request event", data.requestEventId],
         ["Workflow", `${data.workflowId} @ revision ${data.revision}`],
         ["Requested", data.recordedAt],
       ];

@@ -121,6 +121,7 @@ describe("POST /api/v1/domain-events", () => {
     vi.spyOn(server.domainEventRepository, "getWorkflowInvocationForTeam").mockResolvedValue({
       id: "invocation-1",
       teamId: "workspace-a",
+      requestEventId: "request-event-1",
       workflowId: "deploy",
       revision: 3,
       recordedAt: "2026-01-01T00:00:00.000Z",

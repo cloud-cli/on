@@ -71,12 +71,7 @@ describe("current IAM route authorization", () => {
       workflowRunAdmissions: { claimNext: vi.fn(), finish: vi.fn() },
       domainEventRepository: {
         getByIdempotencyKey: vi.fn(async () => null),
-        publish: vi.fn(async () => ({
-          id: "event-1",
-          type: "workflow.run.requested",
-          source: "api/workflows/run",
-          data: { workflowId: "workflow-1", revision: 1, inputsCiphertext: "cipher" },
-        })),
+        publish: vi.fn(async (_teamId: string, event: any) => ({ id: "event-1", ...event })),
       },
       secretRepository: {
         encryptValue: vi.fn((value: string) => value),
@@ -92,6 +87,8 @@ describe("current IAM route authorization", () => {
       expect(server.queue.enqueueDispatch).not.toHaveBeenCalled();
       expect(server.domainEventRepository.publish).toHaveBeenCalledOnce();
       expect(JSON.parse(res.end.mock.calls[0][0])).toMatchObject({
+        eventId: "event-1",
+        invocationId: expect.any(String),
         accepted: true,
         admissionStatus: "pending",
         jobs: [],
@@ -104,6 +101,7 @@ describe("current IAM route authorization", () => {
       expect(server.domainEventRepository.publish).toHaveBeenCalledOnce();
       expect(JSON.parse(retryResponse.end.mock.calls[0][0])).toMatchObject({
         eventId: "event-1",
+        invocationId: JSON.parse(res.end.mock.calls[0][0]).invocationId,
         accepted: true,
         admissionStatus: "pending",
         jobs: [],

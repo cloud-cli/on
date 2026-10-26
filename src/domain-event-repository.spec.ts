@@ -104,6 +104,7 @@ describe("DomainEventRepository", () => {
       recorded_at: "2026-01-01T00:00:00.000Z",
       workflow_id: "deploy",
       revision: 4,
+      invocation_id: "invocation-1",
     });
     database.all.mockResolvedValueOnce([
       {
@@ -123,6 +124,7 @@ describe("DomainEventRepository", () => {
     await expect(repository.getWorkflowInvocationForTeam("team-a", "invocation-1")).resolves.toEqual({
       id: "invocation-1",
       teamId: "team-a",
+      requestEventId: "invocation-1",
       workflowId: "deploy",
       revision: 4,
       recordedAt: "2026-01-01T00:00:00.000Z",
@@ -131,8 +133,8 @@ describe("DomainEventRepository", () => {
         { variantIndex: 1, admissionStatus: "failed", errorCode: "invalid_input", runId: null },
       ],
     });
-    expect(database.get.mock.calls[0][0]).toContain("team_id = ? AND id = ? AND type = 'workflow.run.requested'");
-    expect(database.get.mock.calls[0][1]).toEqual(["team-a", "invocation-1"]);
+    expect(database.get.mock.calls[0][0]).toContain("team_id = ? AND type = 'workflow.run.requested'");
+    expect(database.get.mock.calls[0][1]).toEqual(["team-a", "invocation-1", "invocation-1", "invocation-1"]);
     expect(database.all.mock.calls[0][0]).not.toContain("inputsCiphertext");
 
     database.get.mockResolvedValueOnce(null);

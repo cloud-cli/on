@@ -2919,8 +2919,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
     let previous = await this.domainEventRepository.getByIdempotencyKey<{
       workflowId: string;
       revision: number;
+      invocationId?: string;
       inputsCiphertext: string;
     }>(teamId, eventKey);
+    let invocationId = previous?.data.invocationId || previous?.id || crypto.randomUUID();
     const sameRequest = (event: typeof previous): boolean => {
       if (
         !event ||
@@ -2976,7 +2978,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
       workflowInputs: typeof acceptedInputs,
     ) => {
       const variants = await planWorkflowInvocation({
-        invocationId: previous?.id || eventKey,
+        invocationId,
         teamId,
         workflowId,
         revision,
@@ -3011,6 +3013,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
           data: {
             workflowId,
             revision,
+            invocationId,
             inputsCiphertext: this.secretRepository.encryptValue(serializedInputs),
           },
         });
@@ -3020,6 +3023,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         const raced = await this.domainEventRepository.getByIdempotencyKey<{
           workflowId: string;
           revision: number;
+          invocationId?: string;
           inputsCiphertext: string;
         }>(teamId, eventKey);
         if (!raced) {
@@ -3034,6 +3038,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
           );
         }
         previous = raced;
+        invocationId = raced.data.invocationId || raced.id;
         revision = raced.data.revision;
         definition = await this.workflows.getRevision(workflowId, revision);
         if (!definition) {
@@ -3079,6 +3084,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         workflowId,
         revision,
         eventId: event.id,
+        invocationId,
         jobs,
         idempotencyKey,
         admissionStatus,
@@ -3121,14 +3127,16 @@ sessionStorage.removeItem('runner-pending-team-invite');
     const existing = await this.domainEventRepository.getByIdempotencyKey<{
       workflowId: string;
       revision: number;
+      invocationId?: string;
       inputsCiphertext: string;
     }>(request.teamId, idempotencyKey);
     if (existing) {
       if (!matchesRequest(existing)) {
         throw new Error("Workflow invocation idempotency key conflicts");
       }
-      return { eventId: existing.id, invocationId: existing.id };
+      return { eventId: existing.id, invocationId: existing.data.invocationId || existing.id };
     }
+    const invocationId = crypto.randomUUID();
     try {
       const event = await this.domainEventRepository.publish(request.teamId, {
         type: "workflow.run.requested",
@@ -3141,6 +3149,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         data: {
           workflowId: request.workflowId,
           revision: request.revision,
+          invocationId,
           inputsCiphertext: this.secretRepository.encryptValue(JSON.stringify(request.inputs)),
           sourceEventId: request.source.eventId,
           deliveryId: request.context.deliveryId,
@@ -3149,11 +3158,12 @@ sessionStorage.removeItem('runner-pending-team-invite');
       if (!matchesRequest(event)) {
         throw new Error("Workflow invocation idempotency key conflicts");
       }
-      return { eventId: event.id, invocationId: event.id };
+      return { eventId: event.id, invocationId };
     } catch (error) {
       const raced = await this.domainEventRepository.getByIdempotencyKey<{
         workflowId: string;
         revision: number;
+        invocationId?: string;
         inputsCiphertext: string;
       }>(request.teamId, idempotencyKey);
       if (!raced) {
@@ -3162,7 +3172,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
       if (!matchesRequest(raced)) {
         throw new Error("Workflow invocation idempotency key conflicts");
       }
-      return { eventId: raced.id, invocationId: raced.id };
+      return { eventId: raced.id, invocationId: raced.data.invocationId || raced.id };
     }
   }
 
@@ -5783,7 +5793,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
           let planned: Awaited<ReturnType<typeof planWorkflowInvocation>>;
           try {
             planned = await planWorkflowInvocation({
-              invocationId: event.id,
+              invocationId: event.data.invocationId || event.id,
               teamId: event.teamId,
               workflowId,
               revision,
