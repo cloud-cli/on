@@ -11,7 +11,34 @@ export type WorkflowRunVariant = {
   tags: string[];
 };
 
+export type WorkflowRunAdmissionStatus = "pending" | "claimed" | "admitted" | "failed";
+
+export type WorkflowRunAdmissionLookup = {
+  status: WorkflowRunAdmissionStatus;
+  jobId: number | null;
+  errorCode: string | null;
+  leaseToken: string | null;
+  leaseUntil: string | null;
+};
+
 export class WorkflowRunAdmissionRepository {
+  async get(eventId: string, variantIndex: number): Promise<WorkflowRunAdmissionLookup | null> {
+    const row = await db.get(
+      `SELECT status, job_id, error_code, lease_token, lease_until
+       FROM workflow_run_admissions WHERE event_id = ? AND variant_index = ?`,
+      [eventId, variantIndex],
+    );
+    return row
+      ? {
+          status: row.status,
+          jobId: row.job_id === null || row.job_id === undefined ? null : Number(row.job_id),
+          errorCode: row.error_code ?? null,
+          leaseToken: row.lease_token ?? null,
+          leaseUntil: row.lease_until ?? null,
+        }
+      : null;
+  }
+
   async persistTerminal(
     variant: WorkflowRunVariant,
     status: "admitted" | "failed",
@@ -157,17 +184,40 @@ export class WorkflowRunAdmissionRepository {
    * - Atomic lock via status update and lease token
    */
   async claimNext(leaseMs = 30_000): Promise<(WorkflowRunVariant & { token: string }) | null> {
+    return this.claim(undefined, undefined, leaseMs);
+  }
+
+  async claimVariant(
+    eventId: string,
+    variantIndex: number,
+    leaseMs = 30_000,
+  ): Promise<(WorkflowRunVariant & { token: string }) | null> {
+    return this.claim(eventId, variantIndex, leaseMs);
+  }
+
+  private async claim(
+    eventId: string | undefined,
+    variantIndex: number | undefined,
+    leaseMs: number,
+  ): Promise<(WorkflowRunVariant & { token: string }) | null> {
     const token = crypto.randomUUID();
     const until = new Date(Date.now() + Math.max(1, leaseMs)).toISOString().replace("T", " ").replace("Z", "");
+    const targeted = eventId !== undefined && variantIndex !== undefined;
+    const criteria = targeted ? "event_id = ? AND variant_index = ? AND " : "";
+    const params: unknown[] = [token, until];
+    if (targeted) {
+      params.push(eventId, variantIndex);
+    }
+    params.push(new Date().toISOString(), new Date().toISOString());
     const row = await db.get(
       `UPDATE workflow_run_admissions SET status = 'claimed', lease_token = ?, lease_until = ?, updated_at = CURRENT_TIMESTAMP
        WHERE rowid = (SELECT rowid FROM workflow_run_admissions
-           WHERE ((status = 'pending' AND (retry_after IS NULL OR julianday(retry_after) <= julianday(?)))
-               OR (status = 'claimed' AND julianday(lease_until) <= julianday(?)))
-             AND EXISTS (SELECT 1 FROM workflow_run_admission_plans p WHERE p.event_id = workflow_run_admissions.event_id)
-          ORDER BY CASE WHEN status = 'claimed' THEN 0 ELSE 1 END, COALESCE(retry_after, updated_at), updated_at, event_id, variant_index LIMIT 1)
-       RETURNING *`,
-      [token, until, new Date().toISOString(), new Date().toISOString()],
+           WHERE ${criteria}((status = 'pending' AND (retry_after IS NULL OR julianday(retry_after) <= julianday(?)))
+                OR (status = 'claimed' AND julianday(lease_until) <= julianday(?)))
+              AND EXISTS (SELECT 1 FROM workflow_run_admission_plans p WHERE p.event_id = workflow_run_admissions.event_id)
+           ${targeted ? "" : "ORDER BY CASE WHEN status = 'claimed' THEN 0 ELSE 1 END, COALESCE(retry_after, updated_at), updated_at, event_id, variant_index"} LIMIT 1)
+        RETURNING *`,
+      params,
     );
     return row
       ? {

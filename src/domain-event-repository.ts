@@ -329,7 +329,7 @@ export class DomainEventRepository {
   ): Promise<WorkflowRunRequest<T>[]> {
     const boundedLimit = Math.max(1, Math.min(500, Math.floor(limit)));
     const whereBase = `FROM domain_events WHERE type = 'workflow.run.requested'
-      AND (source = 'api/workflows/run' OR source LIKE 'domain-event-delivery/%')`;
+      AND (source = 'api/workflows/run' OR source LIKE 'domain-event-delivery/%' OR source = 'runner/workflow-dispatch')`;
     if (cursorSequence != null) {
       const rows = await db.all(
         `SELECT sequence, id, team_id, type, schema_version, source, occurred_at, recorded_at,

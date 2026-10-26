@@ -100,6 +100,83 @@ describe("WorkflowRunAdmissionRepository", () => {
     expect(database.run.mock.calls[0][0]).toContain("lease_token = ?");
   });
 
+  it("looks up terminal admission state and lease fields", async () => {
+    database.get.mockResolvedValue({
+      status: "failed",
+      job_id: 42,
+      error_code: "invalid_inputs",
+    });
+    await expect(repository.get("evt", 3)).resolves.toEqual({
+      status: "failed",
+      jobId: 42,
+      errorCode: "invalid_inputs",
+      leaseToken: null,
+      leaseUntil: null,
+    });
+    expect(database.get.mock.calls[0][0]).toContain("WHERE event_id = ? AND variant_index = ?");
+    expect(database.get.mock.calls[0][1]).toEqual(["evt", 3]);
+  });
+
+  it("target-claims only planned pending variants and does not double-claim a live lease", async () => {
+    database.get
+      .mockResolvedValueOnce({
+        event_id: "evt",
+        team_id: "team",
+        workflow_id: "wf",
+        revision: 1,
+        variant_index: 2,
+        matrix_json: "{}",
+        tags_json: "[]",
+      })
+      .mockResolvedValueOnce(null);
+    const claim = await repository.claimVariant("evt", 2);
+    expect(claim?.index).toBe(2);
+    expect(database.get.mock.calls[0][0]).toContain("status = 'pending'");
+    expect(database.get.mock.calls[0][0]).toContain("julianday(lease_until)");
+    expect(database.get.mock.calls[0][0]).toContain("workflow_run_admission_plans");
+    expect(database.get.mock.calls[0][1]).toEqual([
+      claim?.token,
+      expect.any(String),
+      "evt",
+      2,
+      expect.any(String),
+      expect.any(String),
+    ]);
+    await expect(repository.claimVariant("evt", 2)).resolves.toBeNull();
+  });
+
+  it("reclaims an expired targeted lease with a fresh fencing token", async () => {
+    database.get
+      .mockResolvedValueOnce({
+        event_id: "evt",
+        team_id: "team",
+        workflow_id: "wf",
+        revision: 1,
+        variant_index: 0,
+        matrix_json: "{}",
+        tags_json: "[]",
+      })
+      .mockResolvedValueOnce({
+        event_id: "evt",
+        team_id: "team",
+        workflow_id: "wf",
+        revision: 1,
+        variant_index: 0,
+        matrix_json: "{}",
+        tags_json: "[]",
+      });
+    const first = await repository.claimVariant("evt", 0, 1);
+    const second = await repository.claimVariant("evt", 0);
+    expect(second?.token).not.toBe(first?.token);
+    expect(database.get.mock.calls[1][0]).toContain("julianday(lease_until) <= julianday(?)");
+  });
+
+  it("does not target-claim before the plan marker exists", async () => {
+    database.get.mockResolvedValue(null);
+    await expect(repository.claimVariant("evt", 4)).resolves.toBeNull();
+    expect(database.get.mock.calls[0][0]).toContain("EXISTS (SELECT 1 FROM workflow_run_admission_plans");
+  });
+
   it("recovers a partial plan insertion on retry and verifies completeness", async () => {
     const variants = [0, 1].map((index) => ({
       eventId: "evt-plan",
@@ -367,6 +444,7 @@ describe("Workflow request recovery", () => {
         queue: { enqueueDispatch: vi.fn(async () => 501) },
       },
     });
+    (server as any).processWorkflowRunAdmission = WebhookServer.prototype.processWorkflowRunAdmission;
 
     await (WebhookServer.prototype as any).recoverWorkflowRunRequests.call(server);
 

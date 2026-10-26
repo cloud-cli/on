@@ -7,7 +7,7 @@ import { dashboardTemplate, generateDashboardHtml, toDashboardJobs } from "../ui
 import { EventBroker } from "./events.js";
 import { DomainEventDeliveryRepository } from "./domain-event-delivery-repository.js";
 import { DomainEventRepository } from "./domain-event-repository.js";
-import { WorkflowRunAdmissionRepository } from "./workflow-run-admission-repository.js";
+import { WorkflowRunAdmissionRepository, type WorkflowRunVariant } from "./workflow-run-admission-repository.js";
 import { DomainEventDispatcher, type DomainEventInvocationRequest } from "./domain-event-dispatcher.js";
 import { planWorkflowInvocation } from "./workflow-invocation-admission.js";
 import { ChannelRepository } from "./channel-repository.js";
@@ -2818,33 +2818,179 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (Number(depth?.depth || 0) >= 5) {
       fail(400, "Dispatch depth limit exceeded");
     }
-    const candidates = await this.workflows.publishedForTeam(job.team_id);
-    const matches = candidates.filter(
-      ({ workflowId, definition }) =>
-        workflowId === body.target || definition.id === body.target || definition.name === body.target,
-    );
-    if (matches.length !== 1) {
-      fail(
-        matches.length ? 409 : 404,
-        matches.length ? "Workflow target name is ambiguous" : "Workflow not found in workspace",
+    const canonicalInputs = canonicalJson(body.inputs);
+    if (!canonicalInputs) {
+      fail(400, "Dispatch inputs must be JSON serializable");
+    }
+    const dispatchKey = `dispatch:${job.id}:${body.stepId}`;
+    const idempotencyKey = `workflow-dispatch:${job.id}:${body.stepId}`;
+    const matchesRequest = (
+      event: {
+        id: string;
+        type: string;
+        source: string;
+        data: {
+          workflowId: string;
+          revision: number;
+          invocationId?: string;
+          target: string;
+          parentJobId: number;
+          stepId: string;
+          inputsCiphertext: string;
+        };
+      } | null,
+    ): boolean => {
+      if (
+        !event ||
+        event.type !== "workflow.run.requested" ||
+        event.source !== "runner/workflow-dispatch" ||
+        event.data.target !== body.target ||
+        Number(event.data.parentJobId) !== Number(job.id) ||
+        event.data.stepId !== body.stepId
+      ) {
+        return false;
+      }
+      try {
+        const previousInputs = JSON.parse(this.secretRepository.decryptValue(event.data.inputsCiphertext));
+        return canonicalJson(previousInputs) === canonicalInputs;
+      } catch {
+        return false;
+      }
+    };
+    let event = await this.domainEventRepository.getByIdempotencyKey<{
+      workflowId: string;
+      revision: number;
+      invocationId?: string;
+      target: string;
+      parentJobId: number;
+      stepId: string;
+      dispatchKey: string;
+      inputsCiphertext: string;
+    }>(job.team_id, idempotencyKey);
+    let definition: any;
+    let workflowId: string;
+    let revision: number;
+    let invocationId: string;
+    if (event) {
+      if (!matchesRequest(event)) {
+        fail(409, "Dispatch step was already used for a different request");
+      }
+      workflowId = event.data.workflowId;
+      revision = event.data.revision;
+      invocationId = event.data.invocationId || event.id;
+      definition = await this.workflows.getRevision(workflowId, revision);
+      if (!definition) {
+        fail(409, "Pinned workflow revision is unavailable");
+      }
+    } else {
+      const candidates = await this.workflows.publishedForTeam(job.team_id);
+      const matches = candidates.filter(
+        ({ workflowId, definition }) =>
+          workflowId === body.target || definition.id === body.target || definition.name === body.target,
       );
+      if (matches.length !== 1) {
+        fail(
+          matches.length ? 409 : 404,
+          matches.length ? "Workflow target name is ambiguous" : "Workflow not found in workspace",
+        );
+      }
+      ({ workflowId, definition, revision } = matches[0]);
+      invocationId = crypto.randomUUID();
+      try {
+        event = await this.domainEventRepository.publish(job.team_id, {
+          type: "workflow.run.requested",
+          schemaVersion: 1,
+          source: "runner/workflow-dispatch",
+          occurredAt: new Date().toISOString(),
+          correlationId: null,
+          causationId: null,
+          idempotencyKey,
+          data: {
+            workflowId,
+            revision,
+            invocationId,
+            target: body.target,
+            parentJobId: job.id,
+            stepId: body.stepId,
+            dispatchKey,
+            inputsCiphertext: this.secretRepository.encryptValue(JSON.stringify(body.inputs)),
+          },
+        });
+        if (!matchesRequest(event)) {
+          fail(409, "Dispatch step was already used for a different request");
+        }
+      } catch {
+        event = await this.domainEventRepository.getByIdempotencyKey(job.team_id, idempotencyKey);
+        if (!event) {
+          fail(503, "Workflow dispatch request could not be durably recorded");
+        }
+        if (!matchesRequest(event as typeof event)) {
+          fail(409, "Dispatch step was already used for a different request");
+        }
+        workflowId = event!.data.workflowId;
+        revision = event!.data.revision;
+        invocationId = event!.data.invocationId || event!.id;
+        definition = await this.workflows.getRevision(workflowId, revision);
+        if (!definition) {
+          fail(409, "Pinned workflow revision is unavailable");
+        }
+      }
     }
-    const { workflowId, definition, revision } = matches[0];
-    const tags = await resolveMatrixTags(definition.tags, {}, body.inputs);
-    const downstreamId = await this.queue.enqueueDispatch(
-      workflowId,
-      revision,
-      { inputs: body.inputs },
-      tags,
-      job.team_id,
-      job.id,
-      `dispatch:${job.id}:${body.stepId}`,
+
+    let planned: Awaited<ReturnType<typeof planWorkflowInvocation>> | null = null;
+    try {
+      planned = await planWorkflowInvocation({
+        invocationId,
+        teamId: job.team_id,
+        workflowId,
+        revision,
+        workflow: definition,
+        inputs: body.inputs,
+        idempotencyKeyPrefix: dispatchKey,
+      });
+    } catch {
+      await this.workflowRunAdmissions.persistTerminal(
+        { eventId: event!.id, teamId: job.team_id, workflowId, revision, index: -1, matrix: {}, tags: [] },
+        "failed",
+        "invalid_matrix",
+        "rejected",
+      );
+      fail(400, "Workflow dispatch inputs could not be admitted");
+    }
+    if (!planned) {
+      fail(400, "Workflow dispatch inputs could not be admitted");
+    }
+    const invocationPlan = planned!;
+    if (!invocationPlan.length) {
+      await this.workflowRunAdmissions.persistTerminal(
+        { eventId: event!.id, teamId: job.team_id, workflowId, revision, index: -2, matrix: {}, tags: [] },
+        "admitted",
+      );
+      fail(409, "Workflow dispatch produced no runnable variants");
+    }
+    await this.workflowRunAdmissions.persistPlan(
+      invocationPlan.map((variant) => ({
+        eventId: event!.id,
+        teamId: variant.teamId,
+        workflowId: variant.workflowId,
+        revision: variant.revision,
+        index: variant.index,
+        matrix: variant.matrix,
+        tags: variant.requiredTags,
+      })),
     );
-    if (!downstreamId) {
-      fail(404, "Workflow target is not workspace-owned");
+    const jobIds: number[] = [];
+    for (const variant of invocationPlan) {
+      const result = await this.admitDispatchVariant(event!, variant.index, 30_000);
+      if (result.status === "pending") {
+        return fail(503, "Workflow dispatch admission is still pending; retry the same step");
+      }
+      if (result.status !== "admitted") {
+        return fail(409, "Workflow dispatch admission failed");
+      }
+      jobIds.push(result.jobId);
     }
-    this.events.publish("jobs.available", { tags, teamId: job.team_id });
-    return { jobId: downstreamId, workflowId, parentId: job.id };
+    return { jobId: jobIds[0], jobIds, invocationId, workflowId, parentId: job.id };
   }
 
   private async handleWorkflowRun(req: http.IncomingMessage, res: http.ServerResponse, workflowId: string) {
@@ -5740,6 +5886,109 @@ sessionStorage.removeItem('runner-pending-team-invite');
     }
   }
 
+  private async processWorkflowRunAdmission(claim: WorkflowRunVariant & { token: string }): Promise<void> {
+    if (claim.index === -2) {
+      await this.workflowRunAdmissions.finish(claim, "admitted");
+      return;
+    }
+    try {
+      const event = await this.domainEventRepository.getForTeam<{
+        workflowId: string;
+        revision: number;
+        inputsCiphertext: string;
+        parentJobId?: number;
+        dispatchKey?: string;
+      }>(claim.teamId, claim.eventId);
+      const internalDispatch = event?.source === "runner/workflow-dispatch";
+      if (
+        !event ||
+        event.type !== "workflow.run.requested" ||
+        event.data.workflowId !== claim.workflowId ||
+        Number(event.data.revision) !== claim.revision ||
+        (event.source !== "api/workflows/run" &&
+          !event.source.startsWith("domain-event-delivery/") &&
+          !internalDispatch)
+      ) {
+        await this.workflowRunAdmissions.finish(claim, "failed", undefined, "request_unavailable");
+        return;
+      }
+      const inputs = JSON.parse(this.secretRepository.decryptValue(event.data.inputsCiphertext));
+      let parentId: string | number | null = claim.eventId;
+      if (internalDispatch) {
+        const internalParentId = event.data.parentJobId;
+        if (!Number.isSafeInteger(internalParentId) || !event.data.dispatchKey) {
+          await this.workflowRunAdmissions.finish(claim, "failed", undefined, "invalid_dispatch_context");
+          return;
+        }
+        parentId = internalParentId!;
+      }
+      const dispatchKey = internalDispatch
+        ? claim.index === 0
+          ? event.data.dispatchKey!
+          : `${event.data.dispatchKey}:${claim.index}`
+        : `workflow-run:${claim.eventId}:${claim.index}`;
+      const jobId = await this.queue.enqueueDispatch(
+        claim.workflowId,
+        claim.revision,
+        {
+          inputs,
+          matrix: claim.matrix as Record<string, string | number | boolean>,
+        },
+        claim.tags,
+        claim.teamId,
+        parentId,
+        dispatchKey,
+        {
+          eventId: claim.eventId,
+          variantIndex: claim.index,
+          leaseToken: claim.token,
+        },
+      );
+      if (!jobId) {
+        await this.workflowRunAdmissions.finish(claim, "failed", undefined, "dispatch_ineligible");
+        return;
+      }
+      const finished = await this.workflowRunAdmissions.finish(claim, "admitted", jobId);
+      if (finished) {
+        this.events.publish("jobs.available", { tags: claim.tags, teamId: claim.teamId });
+      }
+    } catch {
+      await this.workflowRunAdmissions.finish(claim, "pending");
+      // Retryable storage/queue errors keep the admission recoverable.
+    }
+  }
+
+  private async admitDispatchVariant(
+    event: { id: string; teamId: string },
+    variantIndex: number,
+    timeoutMs: number,
+  ): Promise<{ status: "admitted"; jobId: number } | { status: "failed" } | { status: "pending" }> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const current = await this.workflowRunAdmissions.get(event.id, variantIndex);
+      if (current?.status === "admitted" && current.jobId !== null) {
+        return { status: "admitted", jobId: current.jobId };
+      }
+      if (current?.status === "failed") {
+        return { status: "failed" };
+      }
+      const claim = await this.workflowRunAdmissions.claimVariant(event.id, variantIndex);
+      if (claim) {
+        await this.processWorkflowRunAdmission(claim);
+        continue;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const final = await this.workflowRunAdmissions.get(event.id, variantIndex);
+    if (final?.status === "admitted" && final.jobId !== null) {
+      return { status: "admitted", jobId: final.jobId };
+    }
+    if (final?.status === "failed") {
+      return { status: "failed" };
+    }
+    return { status: "pending" };
+  }
+
   private async recoverWorkflowRunRequests(): Promise<void> {
     // Bound work per poll, while retaining a cursor between polls so old terminal
     // requests cannot permanently hide newer pending requests.
@@ -5783,7 +6032,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
           }
           if (
             event.type !== "workflow.run.requested" ||
-            (event.source !== "api/workflows/run" && !event.source.startsWith("domain-event-delivery/")) ||
+            (event.source !== "api/workflows/run" &&
+              !event.source.startsWith("domain-event-delivery/") &&
+              event.source !== "runner/workflow-dispatch") ||
             typeof workflowId !== "string" ||
             !Number.isInteger(revision) ||
             typeof inputsCiphertext !== "string"
@@ -5922,58 +6173,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         if (!claim) {
           break;
         }
-        if (claim.index === -2) {
-          await this.workflowRunAdmissions.finish(claim, "admitted");
-          continue;
-        }
-        try {
-          const event = await this.domainEventRepository.getForTeam<{
-            workflowId: string;
-            revision: number;
-            inputsCiphertext: string;
-          }>(claim.teamId, claim.eventId);
-          if (
-            !event ||
-            event.type !== "workflow.run.requested" ||
-            (event.source !== "api/workflows/run" && !event.source.startsWith("domain-event-delivery/"))
-          ) {
-            await this.workflowRunAdmissions.finish(claim, "failed", undefined, "request_unavailable");
-            continue;
-          }
-          const inputs = JSON.parse(this.secretRepository.decryptValue(event.data.inputsCiphertext));
-          const jobId = await this.queue.enqueueDispatch(
-            claim.workflowId,
-            claim.revision,
-            {
-              inputs,
-              matrix: claim.matrix as Record<string, string | number | boolean>,
-            },
-            claim.tags,
-            claim.teamId,
-            claim.eventId,
-            `workflow-run:${claim.eventId}:${claim.index}`,
-            {
-              eventId: claim.eventId,
-              variantIndex: claim.index,
-              leaseToken: claim.token,
-            },
-          );
-          if (!jobId) {
-            await this.workflowRunAdmissions.finish(claim, "failed", undefined, "dispatch_ineligible");
-            continue;
-          }
-          const finished = await this.workflowRunAdmissions.finish(claim, "admitted", jobId);
-          if (!finished) {
-            continue;
-          }
-          this.events.publish("jobs.available", {
-            tags: claim.tags,
-            teamId: claim.teamId,
-          });
-        } catch {
-          await this.workflowRunAdmissions.finish(claim, "pending");
-          // The retry schedule delays transient failures so other variants progress.
-        }
+        await this.processWorkflowRunAdmission(claim);
       }
       const last = requests.at(-1)!;
       cursor = last.sequence;
