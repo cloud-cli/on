@@ -66,28 +66,30 @@
             <template for="team of teams"
               ><li>
                 <div
-                  class="relative flex min-h-14 items-center gap-3 border-b border-app-border px-2 py-2 last:border-b-0 sm:px-4"
+                  class="flex min-h-14 items-center gap-3 border-b border-app-border px-2 py-2 last:border-b-0 sm:px-4"
                 >
                   <a
                     attr-href="'/ui/workspaces/' + encodeURIComponent(team.id) + '/runs'"
-                    attr-aria-label="'Open ' + team.name + ' recent runs'"
-                    class="absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-app-primary"
-                  ></a>
-                  <div class="pointer-events-none min-w-0 flex-1">
-                    <a
-                      attr-href="'/ui/workspaces/' + encodeURIComponent(team.id) + '/settings'"
-                      class="relative z-10 inline-flex max-w-full items-center gap-2 truncate text-lg font-semibold text-app-foreground hover:text-app-primary sm:text-xl"
-                    >
-                      {{ team.name }}
-                      <span
-                        if="team.role === 'admin'"
-                        class="h-2 w-2 rounded-full bg-orange-500"
-                        role="img"
-                        aria-label="Workspace admin"
-                        title="Workspace admin"
-                      ></span>
-                    </a>
-                  </div>
+                    class="inline-flex min-w-0 flex-1 items-center gap-2 rounded-lg text-lg font-semibold text-app-foreground outline-none hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary sm:text-xl"
+                  >
+                    <span class="truncate">{{ team.name }}</span>
+                    <span
+                      if="team.role === 'admin'"
+                      class="h-2 w-2 shrink-0 rounded-full bg-orange-500"
+                      role="img"
+                      aria-label="Workspace admin"
+                      title="Workspace admin"
+                    ></span>
+                    <span class="sr-only">Open workspace</span>
+                  </a>
+                  <a
+                    attr-href="'/ui/workspaces/' + encodeURIComponent(team.id) + '/settings'"
+                    attr-aria-label="'Edit settings for ' + team.name"
+                    attr-title="'Workspace settings for ' + team.name"
+                    class="grid size-10 shrink-0 place-items-center rounded-lg text-app-secondary outline-none hover:bg-app-panel hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary"
+                  >
+                    <lucide-icon icon="settings-2" size="18" aria-hidden="true"></lucide-icon>
+                  </a>
                 </div></li
             ></template>
           </ul>

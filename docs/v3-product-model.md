@@ -9,8 +9,8 @@ the product terminology.
 ## People, access, and ownership
 
 - **User** is an authenticated participant and may be a human or an agent.
-  Every user has a unique mention name, written `@<name>`. Human/agent is the
-  user kind; it is not an access role.
+  Every user has a globally unique mention name, written `@<name>`. Human/agent
+  is the user kind; it is not an access role.
 - **Workspace** is the organizational and authorization boundary. Users own or
   work in workspaces. A user's workspace role is `viewer`, `collaborator`, or
   `admin`; permissions are evaluated for the workspace being accessed.
@@ -39,7 +39,22 @@ the product terminology.
   have multiple matrix variants or run attempts; these identities must remain
   inspectable and distinct.
 
-## Streams, events, and conversation
+## Navigation, Streams, events, and conversation
+
+The navigation hierarchy is:
+
+```text
+Workspace > Streams > Stream > Thread
+```
+
+A user switches the entire workspace context from a persistent left rail of
+tab-like workspace buttons, each represented by its project's avatar. A
+workspace is the top-level company/project space, not a stream. Within the
+selected workspace, the `#<name>` sidenav lists Streams. Selecting a Stream
+opens its live work view; selecting a Thread opens the smallest conversational
+unit of work. A top-bar search and a global `Cmd+K` dialog provide quick
+navigation/switching across workspaces, Streams, and Threads. Search visibility
+must not bypass workspace authorization.
 
 - **Stream** is a workspace-owned, real-time view of work. A workspace can
   contain multiple streams. A stream presents an ordered/reconcilable feed of
@@ -49,18 +64,19 @@ the product terminology.
   Events can represent normalized external signals, workflow/run lifecycle
   facts, or other domain occurrences. A stream may present an event, but the
   event's durable identity and delivery state are separate from its card.
-- **Thread** is a conversation unit within a stream where users, agents, and
-  automations can post and collaborate. Mentions use `@<name>`. A thread is one
-  kind of stream content, not a synonym for a stream or for an event.
+- **Thread** is the smallest conversational unit of work within a Stream, where
+  users, agents, and automations can post and collaborate. Mentions use the
+  globally unique `@<name>`. A Thread is not a synonym for a Stream or event.
 - **Live card** is a UI projection of an entity such as a webhook receipt,
   invocation, or running job. Cards update as their underlying durable state
   changes; they are not independent sources of truth.
 
 The intended workspace experience places live events, cards, threads, and runs
-in its streams. Workflows are discoverable in a workspace side navigation and
-can be edited within the workspace experience. The terms `channel` and
-`channels` in current implementation paths are legacy naming until an explicit
-compatibility/migration decision replaces them.
+in Streams. Workflows are discoverable in a workspace sidenav and can be edited
+within the workspace experience. Workspace settings remain a first-class,
+explicit action. The terms `channel` and `channels` in current implementation
+paths are legacy naming until an explicit compatibility/migration decision
+replaces them.
 
 ## Related entities to keep distinct
 
@@ -74,20 +90,20 @@ be collapsed into a user, stream, event, invocation, or run.
 
 ## Open decisions
 
-1. Is the mention name globally unique, or unique within a workspace? How are
-   renames, reserved names, and mention ambiguity handled?
+1. How are globally unique mention names normalized, reserved, and renamed?
+   What happens to historical mentions after a rename?
 2. Are `viewer`, `collaborator`, and `admin` strictly workspace-membership
    roles (recommended), or is there also a platform-wide role? Can one user
    hold different roles in different workspaces?
 3. Can agents be invited/owned like human users, and what identity lifecycle,
    revocation, and audit fields distinguish them?
-4. Are streams configured resources with their own memberships/retention, or
-   views scoped to workspace membership? Can one event/run appear in multiple
-   streams without duplicating execution?
-5. Can a thread span streams or belong to exactly one stream? What are the
-   author, edit/delete, reply, and retention rules for thread posts?
-6. Does every workspace start with a default stream, and can a stream contain
-   multiple threads as well as unthreaded event/run cards?
+4. Are Streams configured resources with their own memberships/retention, or
+   scoped to workspace membership? Can one event/run appear in multiple
+   Streams without duplicating execution?
+5. Can a Thread span Streams, or does it belong to exactly one? What are the
+   author, edit/delete, reply, and retention rules for posts?
+6. Does every workspace start with a default Stream, and can a Stream contain
+   multiple Threads as well as unthreaded event/run cards?
 7. Which administrator actions are required for runner enrollment, shared
    runner grants, secret access, and agent workflow tools? These should be
    explicit capabilities, not inferred from labels or mentionability.

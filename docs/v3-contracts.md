@@ -11,7 +11,8 @@ For current product vocabulary—including the distinction between a workspace,
 Stream, Thread, event, invocation, and run—see
 [`v3-product-model.md`](./v3-product-model.md). This terminology supersedes
 "channel" as the product-level name; existing channel tables/routes remain
-compatibility details until a reviewed migration decision.
+compatibility details until a reviewed migration decision. User mention names
+are globally unique.
 
 Status labels distinguish choices made here from work that depends on
 infrastructure not yet selected or delivered:

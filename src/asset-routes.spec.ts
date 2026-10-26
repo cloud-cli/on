@@ -45,10 +45,11 @@ describe("canonical setup-script asset routes", () => {
   it("uses full-width workspace rows with settings links and admin indicators", () => {
     expect(workspaceTemplate).toContain('class="mt-2 grid grid-cols-1"');
     expect(workspaceTemplate).toContain("min-h-14 items-center gap-3 border-b border-app-border px-2 py-2");
-    expect(workspaceTemplate).toContain("'Open ' + team.name + ' recent runs'");
+    expect(workspaceTemplate).toContain("'/ui/workspaces/' + encodeURIComponent(team.id) + '/runs'");
     expect(workspaceTemplate).toContain("if=\"team.role === 'admin'\"");
-    expect(workspaceTemplate).toContain('class="h-2 w-2 rounded-full bg-orange-500"');
-    expect(workspaceTemplate).not.toContain("'Edit ' + team.name + ' settings'");
+    expect(workspaceTemplate).toContain('class="h-2 w-2 shrink-0 rounded-full bg-orange-500"');
+    expect(workspaceTemplate).toContain("'Edit settings for ' + team.name");
+    expect(workspaceTemplate).toContain('icon="settings-2"');
     expect(workspaceTemplate).not.toContain("sm:grid-cols-2");
   });
 
