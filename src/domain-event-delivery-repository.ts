@@ -49,6 +49,14 @@ export class DomainEventDeliveryRepository {
     return rows.map((row: any) => this.parseDelivery(row));
   }
 
+  async getFanoutOutcome(teamId: string, eventId: string): Promise<EventFanoutOutcome | null> {
+    const row = await db.get(
+      "SELECT status, delivery_count FROM domain_event_fanout_outcomes WHERE team_id = ? AND event_id = ?",
+      [teamId, eventId],
+    );
+    return row ? { status: row.status, deliveryCount: Number(row.delivery_count) } : null;
+  }
+
   async retryFailed(teamId: string, deliveryId: string): Promise<EventDelivery | null> {
     const row = await db.get(
       `UPDATE domain_event_deliveries

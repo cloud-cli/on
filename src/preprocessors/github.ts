@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type { PreprocessedWebhook, WebhookPreprocessor, WorkflowTrigger } from "../types.js";
+import { createGitPushEvent } from "./git-push-event.js";
 
 function matchesGlob(value: string, pattern: string): boolean {
   const expression = pattern.replace(/[|\\{}()[\]^$+?.]/g, "\\$&").replace(/\*/g, ".*");
@@ -90,30 +91,18 @@ export class GitHubPreprocessor implements WebhookPreprocessor {
     if (inputs.event !== "push" || !inputs.commit_sha || !inputs.full_name) {
       return null;
     }
-    const deliveryId = headers["x-github-delivery"];
-    const occurredAt = inputs.raw?.head_commit?.timestamp;
-    const parsedOccurredAt = typeof occurredAt === "string" ? Date.parse(occurredAt) : Number.NaN;
-    const parsedReceivedAt = Date.parse(receivedAt);
-    if (!Number.isFinite(parsedReceivedAt)) {
-      return null;
-    }
-    return {
-      type: "git.push",
-      schemaVersion: 1,
-      source: "connector/github",
-      occurredAt: Number.isFinite(parsedOccurredAt) ? new Date(parsedOccurredAt).toISOString() : receivedAt,
-      correlationId: null,
-      causationId: deliveryId || null,
-      idempotencyKey: deliveryId ? `github:delivery:${deliveryId}` : null,
-      data: {
-        repository: inputs.full_name,
-        owner: inputs.owner,
-        name: inputs.repo,
-        ref: inputs.raw?.ref || "",
-        commit: inputs.commit_sha,
-        operation: inputs.raw?.deleted ? "delete" : "push",
-      },
-    };
+    return createGitPushEvent({
+      provider: "github",
+      deliveryId: headers["x-github-delivery"],
+      occurredAt: inputs.raw?.head_commit?.timestamp,
+      receivedAt,
+      repository: inputs.full_name,
+      owner: inputs.owner,
+      name: inputs.repo,
+      ref: inputs.raw?.ref || "",
+      commit: inputs.commit_sha,
+      deleted: inputs.raw?.deleted,
+    });
   }
 
   filter(inputs: Record<string, any>, trigger: GithubWorkflowTrigger): PreprocessedWebhook {

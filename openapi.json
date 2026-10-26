@@ -2060,6 +2060,26 @@
         }
       }
     },
+    "/api/v1/domain-events/{eventId}/fanout-outcome": {
+      "get": {
+        "tags": ["events"],
+        "summary": "Inspect a durable event fanout outcome",
+        "description": "Returns matched, repeat, or unmatched fanout status within the authenticated workspace. Event payload data is not returned.",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Durable workspace-scoped fanout result" },
+          "404": { "description": "Outcome not found in workspace" }
+        }
+      }
+    },
     "/api/v1/domain-events/{eventId}/deliveries/{deliveryId}/retry": {
       "post": {
         "tags": ["events"],
@@ -2649,6 +2669,7 @@
       "post": {
         "tags": ["webhooks"],
         "summary": "Receive a provider webhook",
+        "description": "GitHub and Gitea push providers verify provider-specific HMAC signatures and publish the same normalized git.push event contract; provider provenance and delivery idempotency remain distinct.",
         "security": [],
         "parameters": [
           {

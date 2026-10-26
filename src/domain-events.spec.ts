@@ -77,7 +77,7 @@ describe("POST /api/v1/domain-events", () => {
   it("publishes in the authenticated workspace and returns only event metadata", async () => {
     const server = makeServer();
     vi.spyOn(server.domainEventRepository, "publish").mockResolvedValue({ id: "evt-1" } as any);
-    vi.spyOn(server.domainEventDeliveryRepository, "fanout").mockResolvedValue(2);
+    vi.spyOn(server.domainEventDeliveryRepository, "fanout").mockResolvedValue({ status: "matched", deliveryCount: 2 });
     const res = await request(server, "POST", "/api/v1/domain-events", {
       type: "order.created",
       source: "orders",
@@ -95,8 +95,19 @@ describe("POST /api/v1/domain-events", () => {
     expect(server.domainEventDeliveryRepository.fanout).toHaveBeenCalledWith("workspace-a", "evt-1");
     expect(res.writeHead).toHaveBeenCalledWith(202, expect.any(Object));
     const body = JSON.parse(res.end.mock.calls[0][0]);
-    expect(body).toEqual({ eventId: "evt-1", deliveryCount: 2 });
+    expect(body).toEqual({ eventId: "evt-1", deliveryCount: 2, fanoutStatus: "matched" });
     expect(JSON.stringify(body)).not.toContain("orderId");
+  });
+
+  it("inspects durable workspace-scoped fanout outcomes without revealing event data", async () => {
+    const server = makeServer();
+    vi.spyOn(server.domainEventDeliveryRepository, "getFanoutOutcome").mockResolvedValue({
+      status: "unmatched",
+      deliveryCount: 0,
+    });
+    const res = await request(server, "GET", "/api/v1/domain-events/evt-1/fanout-outcome");
+    expect(server.domainEventDeliveryRepository.getFanoutOutcome).toHaveBeenCalledWith("workspace-a", "evt-1");
+    expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({ eventId: "evt-1", status: "unmatched", deliveryCount: 0 });
   });
 
   it("returns conflict for an idempotency key reused with different data", async () => {

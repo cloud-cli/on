@@ -49,6 +49,10 @@ describe("domain event delivery recovery in SQLite", () => {
         job_ids_json TEXT DEFAULT '[]', invocation_id TEXT, last_error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(team_id, event_id, subscription_id)
       );
+      CREATE TABLE domain_event_fanout_outcomes (
+        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(team_id, event_id)
+      );
       INSERT INTO domain_events VALUES
         ('admit-event', 'team', 1, 'dispatch'), ('filtered-event', 'team', 2, 'dispatch'),
         ('missing-event', 'team', 3, 'dispatch'), ('retry-event', 'team', 4, 'dispatch'),
@@ -94,12 +98,12 @@ describe("domain event delivery recovery in SQLite", () => {
       },
     });
 
-    expect(await repository.fanout("team", "admit-event")).toBe(4);
-    expect(await repository.fanout("team", "admit-event")).toBe(4);
-    expect(await repository.fanout("team", "filtered-event")).toBe(4);
-    expect(await repository.fanout("team", "missing-event")).toBe(4);
-    expect(await repository.fanout("team", "retry-event")).toBe(4);
-    expect(await repository.fanout("team", "unmatched-event")).toBe(0);
+    expect(await repository.fanout("team", "admit-event")).toEqual({ status: "matched", deliveryCount: 4 });
+    expect(await repository.fanout("team", "admit-event")).toEqual({ status: "repeat", deliveryCount: 4 });
+    expect(await repository.fanout("team", "filtered-event")).toEqual({ status: "matched", deliveryCount: 4 });
+    expect(await repository.fanout("team", "missing-event")).toEqual({ status: "matched", deliveryCount: 4 });
+    expect(await repository.fanout("team", "retry-event")).toEqual({ status: "matched", deliveryCount: 4 });
+    expect(await repository.fanout("team", "unmatched-event")).toEqual({ status: "unmatched", deliveryCount: 0 });
 
     for (let index = 0; index < 16; index += 1) {
       const claimed = await repository.claimNext("team");
@@ -135,8 +139,9 @@ describe("domain event delivery recovery in SQLite", () => {
     });
     expect(await reopened.listForEvent("team", "admit-event")).toHaveLength(4);
     expect(await reopened.listForEvent("team", "unmatched-event")).toHaveLength(0);
-    // Duplicate fanout is represented by the unchanged delivery count; unmatched events have no rows,
-    // and admission records admission only, not successful workflow execution. No extra statuses exist.
+    expect(await reopened.getFanoutOutcome("team", "admit-event")).toEqual({ status: "repeat", deliveryCount: 4 });
+    expect(await reopened.getFanoutOutcome("team", "unmatched-event")).toEqual({ status: "unmatched", deliveryCount: 0 });
+    // Admission records admission only, not successful workflow execution.
     expect(
       (await reopened.listForEvent("team", "admit-event")).filter((delivery) => delivery.status === "admitted"),
     ).toHaveLength(1);
@@ -159,13 +164,17 @@ describe("domain event delivery recovery in SQLite", () => {
         job_ids_json TEXT DEFAULT '[]', invocation_id TEXT, last_error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(team_id, event_id, subscription_id)
       );
+      CREATE TABLE domain_event_fanout_outcomes (
+        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(team_id, event_id)
+      );
       CREATE TABLE admissions (key TEXT PRIMARY KEY, job_id INTEGER);
       INSERT INTO domain_events VALUES ('event', 'team', 1, 'changed');
       INSERT INTO domain_event_subscriptions(id, team_id, workflow_id, workflow_revision, event_type)
         VALUES ('sub-a', 'team', 'wf-a', 1, 'changed'), ('sub-b', 'team', 'wf-b', 1, 'changed');
     `);
     const repository = new DomainEventDeliveryRepository();
-    expect(await repository.fanout("team", "event")).toBe(2);
+    expect(await repository.fanout("team", "event")).toEqual({ status: "matched", deliveryCount: 2 });
     const initial = await repository.listForEvent("team", "event");
     const [a, b] = initial.sort((left, right) => left.id.localeCompare(right.id));
     const claimA = await repository.claimNext("team");
@@ -223,7 +232,7 @@ describe("domain event delivery recovery in SQLite", () => {
     await dispatcher.process(reclaimed!);
     // Simulate a lost completion acknowledgement: the same claimed delivery is dispatched again.
     await dispatcher.process(reclaimed!);
-    expect(await restarted.fanout("team", "event")).toBe(2);
+    expect(await restarted.fanout("team", "event")).toEqual({ status: "repeat", deliveryCount: 2 });
     const final = await restarted.listForEvent("team", "event");
     expect(final.find((delivery) => delivery.id === a.id)).toMatchObject({
       status: "filtered",

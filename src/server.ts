@@ -12,6 +12,7 @@ import { DomainEventDispatcher, type DomainEventInvocationRequest } from "./doma
 import { planWorkflowInvocation } from "./workflow-invocation-admission.js";
 import { ChannelRepository } from "./channel-repository.js";
 import { GitHubPreprocessor } from "./preprocessors/github.js";
+import { GiteaPreprocessor } from "./preprocessors/gitea.js";
 import { IncomingEventRepository } from "./incoming-event-repository.js";
 import { getAppIcon, serviceWorker, webManifest } from "../ui/pwa.js";
 import { QueueManager } from "./queue.js";
@@ -313,6 +314,7 @@ export class WebhookServer {
     });
 
     this.registerPreprocessor(new GitHubPreprocessor());
+    this.registerPreprocessor(new GiteaPreprocessor());
     this.server = http.createServer((req, res) => {
       const requestId = startHttpRequestLog(req, res);
       void this.handleRequest(req, res).catch((error: unknown) => {
@@ -2450,6 +2452,24 @@ sessionStorage.removeItem('runner-pending-team-invite');
         );
       return;
     }
+    const eventFanoutOutcomeMatch = url.pathname.match(/^\/api\/v1\/domain-events\/([a-zA-Z0-9-]+)\/fanout-outcome$/);
+    if (req.method === "GET" && eventFanoutOutcomeMatch) {
+      const authorized = await this.authorizer.workspace(req, res, "webhooks.view");
+      if (!authorized) {
+        return;
+      }
+      const outcome = await this.domainEventDeliveryRepository.getFanoutOutcome(
+        authorized.teamId,
+        eventFanoutOutcomeMatch[1],
+      );
+      if (!outcome) {
+        return deny(res, 404, "Event fanout outcome not found");
+      }
+      res
+        .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" })
+        .end(JSON.stringify({ eventId: eventFanoutOutcomeMatch[1], ...outcome }));
+      return;
+    }
     const retryEventDeliveryMatch = url.pathname.match(
       /^\/api\/v1\/domain-events\/([a-zA-Z0-9-]+)\/deliveries\/([a-zA-Z0-9-]+)\/retry$/,
     );
@@ -2645,8 +2665,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
       validationStatus = "valid";
       normalizedInputs = inputs;
       incomingEventId = await this.incomingEvents.capture(teamId, provider, headers, rawBuffer);
-      if (provider === "github") {
-        const github = this.preprocessors.get(provider) as
+      const connector = this.preprocessors.get(provider) as
           | (WebhookPreprocessor & {
               toDomainEvent?: (
                 eventHeaders: Record<string, string>,
@@ -2655,8 +2674,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
               ) => any;
             })
           | undefined;
+      if (connector?.toDomainEvent) {
         const receivedAt = await this.incomingEvents.receivedAtForTeam(teamId, incomingEventId);
-        const domainEvent = github?.toDomainEvent?.(headers, inputs, receivedAt || "");
+        const domainEvent = connector.toDomainEvent(headers, inputs, receivedAt || "");
         if (domainEvent) {
           const published = await this.domainEventRepository.publish(teamId, domainEvent);
           await this.domainEventDeliveryRepository.fanout(teamId, published.id);
