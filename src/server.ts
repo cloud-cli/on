@@ -2896,8 +2896,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       ({ workflowId, definition, revision } = matches[0]);
       invocationId = crypto.randomUUID();
+      let published;
       try {
-        event = await this.domainEventRepository.publish(job.team_id, {
+        published = await this.domainEventRepository.publish(job.team_id, {
           type: "workflow.run.requested",
           schemaVersion: 1,
           source: "runner/workflow-dispatch",
@@ -2916,9 +2917,6 @@ sessionStorage.removeItem('runner-pending-team-invite');
             inputsCiphertext: this.secretRepository.encryptValue(JSON.stringify(body.inputs)),
           },
         });
-        if (!matchesRequest(event)) {
-          fail(409, "Dispatch step was already used for a different request");
-        }
       } catch {
         event = await this.domainEventRepository.getByIdempotencyKey(job.team_id, idempotencyKey);
         if (!event) {
@@ -2935,50 +2933,104 @@ sessionStorage.removeItem('runner-pending-team-invite');
           fail(409, "Pinned workflow revision is unavailable");
         }
       }
+      if (published) {
+        event = published;
+        if (!matchesRequest(event)) {
+          fail(409, "Dispatch step was already used for a different request");
+        }
+      }
     }
 
-    let planned: Awaited<ReturnType<typeof planWorkflowInvocation>> | null = null;
-    try {
-      planned = await planWorkflowInvocation({
-        invocationId,
-        teamId: job.team_id,
-        workflowId,
-        revision,
-        workflow: definition,
-        inputs: body.inputs,
-        idempotencyKeyPrefix: dispatchKey,
-      });
-    } catch {
-      await this.workflowRunAdmissions.persistTerminal(
-        { eventId: event!.id, teamId: job.team_id, workflowId, revision, index: -1, matrix: {}, tags: [] },
-        "failed",
-        "invalid_matrix",
-        "rejected",
-      );
+    const rejected = await this.workflowRunAdmissions.get(event!.id, -1);
+    if (rejected?.status === "failed") {
       fail(400, "Workflow dispatch inputs could not be admitted");
     }
-    if (!planned) {
-      fail(400, "Workflow dispatch inputs could not be admitted");
+    const emptyPlan = await this.workflowRunAdmissions.get(event!.id, -2);
+    if (emptyPlan?.status === "admitted") {
+      return { jobId: null, jobIds: [], invocationId, workflowId, parentId: job.id, admissionStatus: "admitted" };
     }
-    const invocationPlan = planned!;
-    if (!invocationPlan.length) {
-      await this.workflowRunAdmissions.persistTerminal(
-        { eventId: event!.id, teamId: job.team_id, workflowId, revision, index: -2, matrix: {}, tags: [] },
-        "admitted",
-      );
-      fail(409, "Workflow dispatch produced no runnable variants");
-    }
-    await this.workflowRunAdmissions.persistPlan(
-      invocationPlan.map((variant) => ({
-        eventId: event!.id,
+
+    const storedPlan = await this.workflowRunAdmissions.getPlan(event!.id);
+    let invocationPlan: Array<{
+      teamId: string;
+      workflowId: string;
+      revision: number;
+      index: number;
+      matrix: Record<string, unknown>;
+      requiredTags: string[];
+    }>;
+    if (storedPlan) {
+      invocationPlan = storedPlan.map((variant) => ({
         teamId: variant.teamId,
         workflowId: variant.workflowId,
         revision: variant.revision,
         index: variant.index,
         matrix: variant.matrix,
-        tags: variant.requiredTags,
-      })),
-    );
+        requiredTags: variant.tags,
+      }));
+    } else {
+      let planned: Awaited<ReturnType<typeof planWorkflowInvocation>> | null = null;
+      try {
+        planned = await planWorkflowInvocation({
+          invocationId,
+          teamId: job.team_id,
+          workflowId,
+          revision,
+          workflow: definition,
+          inputs: body.inputs,
+          idempotencyKeyPrefix: dispatchKey,
+        });
+      } catch {
+        await this.workflowRunAdmissions.persistTerminal(
+          { eventId: event!.id, teamId: job.team_id, workflowId, revision, index: -1, matrix: {}, tags: [] },
+          "failed",
+          "invalid_matrix",
+          "rejected",
+        );
+        fail(400, "Workflow dispatch inputs could not be admitted");
+      }
+      if (!planned) {
+        return fail(400, "Workflow dispatch inputs could not be admitted");
+      }
+      invocationPlan = planned.map((variant) => ({
+        teamId: variant.teamId,
+        workflowId: variant.workflowId,
+        revision: variant.revision,
+        index: variant.index,
+        matrix: variant.matrix,
+        requiredTags: variant.requiredTags,
+      }));
+      if (!invocationPlan.length) {
+        await this.workflowRunAdmissions.persistTerminal(
+          { eventId: event!.id, teamId: job.team_id, workflowId, revision, index: -2, matrix: {}, tags: [] },
+          "admitted",
+        );
+        return { jobId: null, jobIds: [], invocationId, workflowId, parentId: job.id, admissionStatus: "admitted" };
+      }
+      await this.workflowRunAdmissions.persistPlan(
+        invocationPlan.map((variant) => ({
+          eventId: event!.id,
+          teamId: variant.teamId,
+          workflowId: variant.workflowId,
+          revision: variant.revision,
+          index: variant.index,
+          matrix: variant.matrix,
+          tags: variant.requiredTags,
+        })),
+      );
+      const confirmedPlan = await this.workflowRunAdmissions.getPlan(event!.id);
+      if (!confirmedPlan) {
+        return fail(503, "Workflow dispatch plan is not durable yet; retry the same step");
+      }
+      invocationPlan = confirmedPlan.map((variant) => ({
+        teamId: variant.teamId,
+        workflowId: variant.workflowId,
+        revision: variant.revision,
+        index: variant.index,
+        matrix: variant.matrix,
+        requiredTags: variant.tags,
+      }));
+    }
     const jobIds: number[] = [];
     for (const variant of invocationPlan) {
       const result = await this.admitDispatchVariant(event!, variant.index, 30_000);
@@ -2990,7 +3042,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       jobIds.push(result.jobId);
     }
-    return { jobId: jobIds[0], jobIds, invocationId, workflowId, parentId: job.id };
+    return { jobId: jobIds[0], jobIds, invocationId, workflowId, parentId: job.id, admissionStatus: "admitted" };
   }
 
   private async handleWorkflowRun(req: http.IncomingMessage, res: http.ServerResponse, workflowId: string) {

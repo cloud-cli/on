@@ -118,6 +118,7 @@ describe("workflow-run admission plan SQLite integration", () => {
     const claims = [await repository.claimNext(), await repository.claimNext()];
     expect(claims.map((claim) => claim?.index).sort()).toEqual([0, 1]);
     expect(claims.map((claim) => claim?.matrix.axis).sort()).toEqual(["one", "two"]);
+    await expect(repository.getPlan("evt-plan")).resolves.toEqual(variants);
     await expect(repository.claimNext()).resolves.toBeNull();
   });
 

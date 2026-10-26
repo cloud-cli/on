@@ -4,9 +4,10 @@ import { WebhookServer } from "./server.js";
 const database = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("./db-client.js", () => ({ default: database }));
 
-function makeServer(options: { existingEvent?: any; matrix?: Record<string, unknown> } = {}) {
+function makeServer(options: { existingEvent?: any; existingPlan?: any[]; matrix?: Record<string, unknown> } = {}) {
   const events = new Map<string, any>();
   const admissions = new Map<number, any>();
+  let plan = options.existingPlan || null;
   const domainEventRepository = {
     getByIdempotencyKey: vi.fn(
       async (_teamId: string, key: string) => options.existingEvent || events.get(key) || null,
@@ -38,7 +39,10 @@ function makeServer(options: { existingEvent?: any; matrix?: Record<string, unkn
     persistTerminal: vi.fn(async (variant: any, status: string, errorCode?: string) => {
       admissions.set(variant.index, { status, errorCode, jobId: null });
     }),
-    persistPlan: vi.fn(async () => {}),
+    persistPlan: vi.fn(async (variants: any[]) => {
+      plan = variants;
+    }),
+    getPlan: vi.fn(async () => plan),
     get: vi.fn(async (_eventId: string, index: number) => admissions.get(index) || { status: "pending", jobId: null }),
     claimVariant: vi.fn(async (eventId: string, index: number) => {
       const current = admissions.get(index);
@@ -147,14 +151,22 @@ describe("durable internal workflow dispatch", () => {
     const first = makeServer();
     const initial = await (WebhookServer.prototype as any).dispatchFromLease.call(first.server, job, request);
     const existingEvent = [...first.events.values()][0];
-    first.workflowRunAdmissions.get.mockResolvedValue({ status: "admitted", jobId: 101 });
-    const retryServer = makeServer({ existingEvent });
-    retryServer.workflowRunAdmissions.get.mockResolvedValue({ status: "admitted", jobId: 101 });
-
+    const persistedPlan = first.workflowRunAdmissions.persistPlan.mock.calls[0][0];
+    const retryServer = makeServer({ existingEvent, existingPlan: persistedPlan, matrix: { node: [99] } });
     const retry = await (WebhookServer.prototype as any).dispatchFromLease.call(retryServer.server, job, request);
     expect(retry.jobId).toBe(initial.jobId);
     expect(retry.invocationId).toBe(initial.invocationId);
     expect(retryServer.domainEventRepository.publish).not.toHaveBeenCalled();
+    expect(retryServer.queue.enqueueDispatch).toHaveBeenCalledWith(
+      "workflow-1",
+      4,
+      { inputs: { source: "main" }, matrix: { node: 18 } },
+      [],
+      "team-a",
+      77,
+      "dispatch:77:build-child",
+      expect.objectContaining({ eventId: "dispatch-request-1", variantIndex: 0, leaseToken: "claim-0" }),
+    );
 
     await expect(
       (WebhookServer.prototype as any).dispatchFromLease.call(retryServer.server, job, {
@@ -162,5 +174,24 @@ describe("durable internal workflow dispatch", () => {
         inputs: { source: "release" },
       }),
     ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("returns an accepted empty matrix result instead of conflicting with its terminal record", async () => {
+    const { server, workflowRunAdmissions, queue } = makeServer({ matrix: { node: [] } });
+
+    const result = await (WebhookServer.prototype as any).dispatchFromLease.call(server, job, request);
+
+    expect(result).toMatchObject({
+      jobId: null,
+      jobIds: [],
+      workflowId: "workflow-1",
+      parentId: 77,
+      admissionStatus: "admitted",
+    });
+    expect(workflowRunAdmissions.persistTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({ index: -2 }),
+      "admitted",
+    );
+    expect(queue.enqueueDispatch).not.toHaveBeenCalled();
   });
 });

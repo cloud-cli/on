@@ -23,6 +23,38 @@ export type WorkflowRunAdmissionLookup = {
 };
 
 export class WorkflowRunAdmissionRepository {
+  async getPlan(eventId: string): Promise<WorkflowRunVariant[] | null> {
+    const marker = await db.get(
+      `SELECT variant_count, plan_hash FROM workflow_run_admission_plans WHERE event_id = ?`,
+      [eventId],
+    );
+    if (!marker) {
+      return null;
+    }
+    const rows = await db.all(
+      `SELECT event_id, team_id, workflow_id, revision, variant_index, matrix_json, tags_json
+         FROM workflow_run_admissions WHERE event_id = ? ORDER BY variant_index`,
+      [eventId],
+    );
+    const variants: WorkflowRunVariant[] = rows.map((row: any) => ({
+      eventId: row.event_id,
+      teamId: row.team_id,
+      workflowId: row.workflow_id,
+      revision: Number(row.revision),
+      index: Number(row.variant_index),
+      matrix: JSON.parse(row.matrix_json),
+      tags: JSON.parse(row.tags_json),
+    }));
+    const planHash = crypto
+      .createHash("sha256")
+      .update(variants.map((variant) => JSON.stringify(variant)).join("\n"))
+      .digest("hex");
+    if (variants.length !== Number(marker.variant_count) || planHash !== marker.plan_hash) {
+      throw new Error("Persisted workflow run admission plan is incomplete or corrupt");
+    }
+    return variants;
+  }
+
   async get(eventId: string, variantIndex: number): Promise<WorkflowRunAdmissionLookup | null> {
     const row = await db.get(
       `SELECT status, admission_outcome, job_id, error_code, lease_token, lease_until
