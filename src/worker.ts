@@ -19,6 +19,7 @@ import {
   ContextualizedProcessable,
   JobExecutionContext,
   JobRecord,
+  RecipeCallInstanceReport,
   FinalJobStatus,
   WorkerExecutionQueue,
 } from "./types.js";
@@ -813,13 +814,26 @@ async function executeSingleStep(params: {
 
   if ("call" in step) {
     const started = Date.now();
+    const callTarget = typeof step.call === "string" ? step.call : "";
+    const callMatch = callTarget.match(
+      /^([a-z0-9][a-z0-9-]{0,62})\/([a-z0-9][a-z0-9-]{0,62})@([1-9][0-9]*)#([A-Za-z_][A-Za-z0-9_]*)$/,
+    );
+    const callPath = `${step.id}#attempt-${params.attempt}`;
+    const callInstance: RecipeCallInstanceReport = {
+      callId: `${params.jobId}:${callPath}`,
+      parentCallId: params.processable.parentCallId,
+      callSiteId: step.id!,
+      target: callTarget,
+      functionName: callMatch?.[4] || "",
+      status: "running",
+      stepIds: [] as string[],
+      inputs: {},
+      outputs: {},
+      durationMs: 0,
+    };
+    (params.executionReport.callInstances ||= []).push(callInstance);
     try {
-      const match =
-        typeof step.call === "string"
-          ? step.call.match(
-              /^([a-z0-9][a-z0-9-]{0,62})\/([a-z0-9][a-z0-9-]{0,62})@([1-9][0-9]*)#([A-Za-z_][A-Za-z0-9_]*)$/,
-            )
-          : null;
+      const match = callMatch;
       if (!match) {
         throw new Error("Nested recipe call must use an exact pinned target");
       }
@@ -895,12 +909,19 @@ async function executeSingleStep(params: {
       }
       validateRecipeInputs(fn.inputs, resolvedInputs, "with");
 
-      const callPath = `${step.id}#attempt-${params.attempt}`;
       const nestedSteps = fn.steps.map((nested, index) => ({
         ...nested,
         id: `${callPath}/${nested.id || `step-${index}`}`,
         name: `${step.name}/${nested.name || nested.id || `step-${index}`}`,
       }));
+      callInstance.stepIds = nestedSteps.map(({ id }) => id!);
+      const inputSnapshot = createStepAttemptSnapshot({
+        inputs: resolvedInputs,
+        priorSteps: {},
+        outputs: {},
+        writeOnlyInputNames: Object.keys(scopedSecrets),
+      });
+      callInstance.inputs = inputSnapshot.status === "captured" ? inputSnapshot.inputs || {} : {};
       const nestedContext: JobExecutionContext = {
         ...stepExecutionContext,
         inputs: ordinary as Record<string, unknown>,
@@ -913,6 +934,7 @@ async function executeSingleStep(params: {
           steps: nestedSteps,
           executionContext: nestedContext,
           nestedCallDepth: (params.processable.nestedCallDepth || 0) + 1,
+          parentCallId: callInstance.callId,
           writeOnlyInputNames: Object.entries((fn.inputs as any)?.properties || {})
             .filter(([, schema]) => (schema as { writeOnly?: boolean }).writeOnly === true)
             .map(([name]) => name),
@@ -942,6 +964,13 @@ async function executeSingleStep(params: {
         outputs[name] = await SafeExpressionEvaluator.evaluateExpression(runtimePath, nestedContext);
       }
       validateRecipeInputs(fn.outputs, outputs, "outputs");
+      const outputSnapshot = createStepAttemptSnapshot({ inputs: {}, priorSteps: {}, outputs });
+      callInstance.outputs =
+        outputSnapshot.status === "captured" && outputSnapshot.outputs && typeof outputSnapshot.outputs === "object"
+          ? (outputSnapshot.outputs as Record<string, unknown>)
+          : {};
+      callInstance.status = "success";
+      callInstance.durationMs = Date.now() - started;
       executionContext.steps[step.id!] = {
         status: "success",
         exitCode: 0,
@@ -962,6 +991,9 @@ async function executeSingleStep(params: {
         },
       };
     } catch (error) {
+      callInstance.status = "failed";
+      callInstance.durationMs = Date.now() - started;
+      callInstance.error = error instanceof Error ? error.message : String(error);
       return {
         failed: true,
         cancelled: false,
@@ -972,7 +1004,7 @@ async function executeSingleStep(params: {
           status: "failed",
           durationMs: Date.now() - started,
           exitCode: 1,
-          error: error instanceof Error ? error.message : String(error),
+          error: callInstance.error,
           outputs: {},
           logContent: "",
         },
@@ -1460,6 +1492,7 @@ function buildExecutionReport(
     inputs,
     environment,
     steps: stepReports,
+    callInstances: [],
     artifacts: [],
     rerunToken: JSON.stringify({ jobId: job.id, payload }),
   };

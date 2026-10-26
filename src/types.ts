@@ -297,6 +297,20 @@ export interface StepReport {
   logContent: string;
 }
 
+export interface RecipeCallInstanceReport {
+  callId: string;
+  parentCallId?: string;
+  callSiteId: string;
+  target: string;
+  functionName: string;
+  status: "running" | "success" | "failed";
+  stepIds: string[];
+  inputs?: Record<string, unknown>;
+  outputs?: Record<string, unknown>;
+  error?: string;
+  durationMs: number;
+}
+
 export interface WorkflowExecutionReport {
   jobId: string;
   parentId: string;
@@ -308,6 +322,8 @@ export interface WorkflowExecutionReport {
   inputs: Record<string, any>; // Sanitized trigger inputs
   environment: Record<string, string>; // Exported workflow environment
   steps: StepReport[];
+  /** Independently inspectable nested recipe calls; legacy step reports remain intact. */
+  callInstances?: RecipeCallInstanceReport[];
   artifacts: string[]; // List of generated artifact paths
   rerunToken: string; // Opaque token/state snapshot to re-run
 }
@@ -323,6 +339,8 @@ export interface Processable {
   workflow?: WorkflowDefinition;
   /** Runtime-only recursion guard for inline pinned recipe calls. */
   nestedCallDepth?: number;
+  /** Runtime-only identity of the containing inline recipe call. */
+  parentCallId?: string;
   /** Names of write-only inputs that must not be read by nested bindings. */
   writeOnlyInputNames?: string[];
 }

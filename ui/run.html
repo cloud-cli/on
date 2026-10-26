@@ -271,6 +271,21 @@
             </template>
           </nav>
           <div class-hidden="detailTab !== 'logs'">
+            <section class="mb-4 space-y-2" aria-label="Nested recipe calls" class-hidden="!callInstances.length">
+              <h2 class="text-sm font-semibold text-app-foreground">Nested recipe calls</h2>
+              <details class="rounded-lg border border-app-border bg-app-panel p-3" for="call of callInstances">
+                <summary class="cursor-pointer text-sm font-medium">{{ call.target }} · {{ upper(call.status) }}</summary>
+                <p class="mt-1 text-xs text-app-secondary">{{ call.functionName }} · {{ call.callId }}</p>
+                <p class="mt-2 text-sm" class-hidden="!call.error || !report.canViewLogs">{{ call.error }}</p>
+                <pre class="mt-2 overflow-auto text-xs" class-hidden="!report.canViewInputs">{{ JSON.stringify(call.inputs || {}, null, 2) }}</pre>
+                <pre class="mt-2 overflow-auto text-xs" class-hidden="!report.canViewLogs">{{ JSON.stringify(call.outputs || {}, null, 2) }}</pre>
+                <div class="mt-2 space-y-1">
+                  <button class="block w-full rounded px-2 py-1 text-left text-sm hover:bg-app-background" for="step of call.childSteps" on-click="selectStep(step.index)">
+                    ↳ {{ step.name || step.id }} · {{ upper(step.status) }}
+                  </button>
+                </div>
+              </details>
+            </section>
             <div class="grid gap-0 lg:grid-cols-[226px_minmax(0,1fr)]">
               <aside class="steps-panel border-app-border bg-app-panel p-4 lg:border-r" aria-label="Execution steps">
                 <div

@@ -85,6 +85,12 @@ export default function setup() {
       isSelected: Number(selectedStep.value) === Number(index),
     })),
   );
+  const callInstances = computed(() =>
+    (report.value.callInstances || []).map((call) => ({
+      ...call,
+      childSteps: steps.value.filter((step) => (call.stepIds || []).includes(step.id)),
+    })),
+  );
   const attemptsForStep = (step) => stepAttempts.value.filter((attempt) => String(attempt.step_id) === String(step.id));
   const loadStepAttempts = async (id = report.value.jobId) => {
     if (
@@ -625,6 +631,7 @@ export default function setup() {
     downloadArtifact,
     stepLog,
     steps,
+    callInstances,
     selectedStepReport,
     detailTabs,
     askAi,

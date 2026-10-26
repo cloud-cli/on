@@ -29,6 +29,19 @@ export interface RunView {
   finishedAt?: string;
   inputs: Record<string, unknown>;
   steps: StepReport[];
+  callInstances?: Array<{
+    callId: string;
+    parentCallId?: string;
+    callSiteId: string;
+    target: string;
+    functionName: string;
+    status: "running" | "success" | "failed";
+    stepIds: string[];
+    inputs?: Record<string, unknown>;
+    outputs?: Record<string, unknown>;
+    error?: string;
+    durationMs: number;
+  }>;
   artifacts: string[];
   canViewLogs: boolean;
   canViewInputs: boolean;
@@ -98,6 +111,17 @@ export function buildRunView(
             : redact(savedLog || step.logContent || ""),
       };
     }),
+    callInstances: Array.isArray(report.callInstances)
+      ? report.callInstances.map((call) => ({
+          ...call,
+          target: redact(call.target),
+          functionName: redact(call.functionName),
+          stepIds: Array.isArray(call.stepIds) ? call.stepIds.map(String) : [],
+          inputs: canViewInputs ? (sanitizeValue(call.inputs || {}, redact) as Record<string, unknown>) : undefined,
+          outputs: canViewLogs ? (sanitizeValue(call.outputs || {}, redact) as Record<string, unknown>) : {},
+          error: canViewLogs && call.error ? redact(call.error) : undefined,
+        }))
+      : undefined,
     artifacts: canViewArtifacts ? (report.artifacts || []).map(redact) : [],
     canViewLogs,
     canViewInputs,

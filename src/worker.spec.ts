@@ -92,7 +92,7 @@ describe("incremental workflow reports", () => {
             id: "nested-call",
             call: "team/recipe@1#main",
             with: { message: "hello" },
-            secrets: { password: "${secrets.token}" },
+            secrets: { password: "${secrets.token}", opaque: "${secrets.token}" },
           },
           {
             id: "second-call",
@@ -107,7 +107,11 @@ describe("incremental workflow reports", () => {
           "team/recipe@1#main": {
             inputs: {
               type: "object",
-              properties: { message: { type: "string" }, password: { type: "string", writeOnly: true } },
+              properties: {
+                message: { type: "string" },
+                password: { type: "string", writeOnly: true },
+                opaque: { type: "string", writeOnly: true },
+              },
               required: ["message", "password"],
               additionalProperties: false,
             },
@@ -154,6 +158,24 @@ describe("incremental workflow reports", () => {
       id: "second-call#attempt-1/main",
       status: "success",
     });
+    expect(queue.completeJob.mock.calls[0][2].callInstances).toEqual([
+      expect.objectContaining({
+        callId: "125:nested-call#attempt-1",
+        callSiteId: "nested-call",
+        target: "team/recipe@1#main",
+        functionName: "main",
+        status: "success",
+        stepIds: ["nested-call#attempt-1/secret-check", "nested-call#attempt-1/main"],
+        inputs: { message: "hello" },
+        outputs: { message: "hello" },
+      }),
+      expect.objectContaining({
+        callId: "125:second-call#attempt-1",
+        callSiteId: "second-call",
+        status: "success",
+        inputs: { message: "second" },
+      }),
+    ]);
     expect(JSON.stringify(queue.completeJob.mock.calls[0][2])).not.toContain("secret-value");
     expect(queue.saveStepAttemptStart).toHaveBeenCalledWith(
       expect.objectContaining({ stepId: "nested-call#attempt-1/main" }),
@@ -1008,6 +1030,22 @@ describe("incremental workflow reports", () => {
     expect(queue.completeJob.mock.calls[0][1]).toBe("success");
     expect(final.steps.map(({ id }) => id)).toContain("invoke#attempt-1/effect");
     expect(final.steps.map(({ id }) => id)).toContain("invoke#attempt-2/effect");
+    expect(
+      final.callInstances?.map(({ callId, status, stepIds, inputs }) => ({ callId, status, stepIds, inputs })),
+    ).toEqual([
+      {
+        callId: "130:invoke#attempt-1",
+        status: "failed",
+        stepIds: ["invoke#attempt-1/effect"],
+        inputs: {},
+      },
+      {
+        callId: "130:invoke#attempt-2",
+        status: "success",
+        stepIds: ["invoke#attempt-2/effect"],
+        inputs: {},
+      },
+    ]);
     expect(JSON.stringify({ reports, logs, attempts, final })).not.toContain(secret);
     expect(attempts.every(({ snapshotJson }) => typeof snapshotJson === "string")).toBe(true);
     expect(JSON.stringify(attempts.map(({ snapshotJson }) => JSON.parse(snapshotJson)))).not.toContain("password");

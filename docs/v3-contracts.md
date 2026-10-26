@@ -219,6 +219,13 @@ coordinates, and immutable attempt number. They must not be represented as
 independent workflow jobs or confuse a nested function call with an addressed
 workflow request. Loops are not supported in this initial slice.
 
+The worker report's additive `callInstances` collection records each call's
+job-scoped call ID, parent call ID when nested, call-site ID, exact target and
+function, attempt status, child step IDs, bounded input/output snapshots, and
+duration/error. Existing flattened step reports and step-attempt records remain
+unchanged. Run inspection links each call instance to its child steps and
+applies the existing input and log capabilities before exposing snapshots.
+
 The first implementation must add compatibility tests showing that legacy
 top-level `inputs`/`steps` remain the `main` function at the same published
 integer version, and that old queued references do not resolve to a newer

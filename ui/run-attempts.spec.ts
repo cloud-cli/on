@@ -240,4 +240,31 @@ describe("run detail step attempts", () => {
     expect(copied[0]).toContain("Attempt 1 (failed):");
     expect(copied[0]).toContain("Attempt 2 (success):");
   });
+
+  it("links nested call instances to their flattened child step reports", async () => {
+    mocks.fetch.mockImplementation(async (url: string) =>
+      url.includes("step-attempts")
+        ? response({ attempts: [] })
+        : response({
+            jobId: "42",
+            canViewLogs: true,
+            canViewInputs: true,
+            callInstances: [
+              {
+                callId: "42:invoke#attempt-1",
+                target: "team/build@2#main",
+                functionName: "main",
+                status: "success",
+                stepIds: ["invoke#attempt-1/compile"],
+              },
+            ],
+            steps: [{ id: "invoke#attempt-1/compile", name: "Compile", status: "success" }],
+          }),
+    );
+    const vm = setup();
+    mocks.init?.();
+
+    await vi.waitFor(() => expect(vm.callInstances.value).toHaveLength(1));
+    expect(vm.callInstances.value[0].childSteps.map((step: any) => step.id)).toEqual(["invoke#attempt-1/compile"]);
+  });
 });

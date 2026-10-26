@@ -127,6 +127,45 @@ describe("run view", () => {
     expect(runView.steps[0].logContent).toBe("");
   });
 
+  it("projects nested call records with separate input and output permissions", () => {
+    const storedReport = report("success");
+    storedReport.callInstances = [
+      {
+        callId: "42:deploy-call#attempt-1",
+        callSiteId: "deploy-call",
+        target: "team/build@2#main",
+        functionName: "main",
+        status: "success",
+        stepIds: ["deploy-call#attempt-1/compile"],
+        inputs: { message: "contains top-secret", password: "top-secret" },
+        outputs: { artifact: "bundle.tar", token: "top-secret" },
+        durationMs: 10,
+      },
+    ];
+    const source = {
+      id: 42,
+      workflow_id: "deploy",
+      status: "success",
+      payload: JSON.stringify({ workflowId: "deploy", inputs: {}, steps: [] }),
+      report: JSON.stringify(storedReport),
+    } as any;
+    const redact = (value: string) => value.replaceAll("top-secret", "****");
+    const inputOnly = buildRunView(source, {}, redact, [], false, undefined, undefined, { inputs: true, logs: false });
+    expect(inputOnly.callInstances?.[0]).toMatchObject({
+      callId: "42:deploy-call#attempt-1",
+      target: "team/build@2#main",
+      inputs: { message: "contains ****" },
+      outputs: {},
+    });
+
+    const logsOnly = buildRunView(source, {}, redact, [], true, undefined, undefined, { inputs: false, logs: true });
+    expect(logsOnly.callInstances?.[0]).toMatchObject({
+      inputs: undefined,
+      outputs: { artifact: "bundle.tar" },
+    });
+    expect(JSON.stringify(logsOnly.callInstances)).not.toContain("top-secret");
+  });
+
   it("omits logs from unauthenticated views", () => {
     const storedReport = report("success");
     storedReport.steps[0].logContent = "private report log";
