@@ -155,7 +155,7 @@ describe("workflow-run admission plan SQLite integration", () => {
     await expect(repository.claimNext()).resolves.toBeNull();
   });
 
-  it("retains terminal admission decisions and accepted job linkage after SQLite reopen", async () => {
+  it("retains accepted, rejected, filtered, and failed outcomes across reopen without reclaiming terminals", async () => {
     const rejected = {
       eventId: "evt-rejected",
       teamId: "team-1",
@@ -166,10 +166,16 @@ describe("workflow-run admission plan SQLite integration", () => {
       tags: [],
     };
     await repository.persistTerminal(rejected, "failed", "invalid_inputs", "rejected");
+    const filtered = { ...rejected, eventId: "evt-filtered", index: -2 };
+    await repository.persistTerminal(filtered, "admitted", undefined, "filtered");
     await repository.persistPlan(plan("evt-accepted", ["one"]));
     const claim = await repository.claimVariant("evt-accepted", 0);
     expect(claim).not.toBeNull();
     expect(await repository.finish(claim!, "admitted", 123)).toBe(true);
+    await repository.persistPlan(plan("evt-failed", ["one"]));
+    const failedClaim = await repository.claimVariant("evt-failed", 0);
+    expect(failedClaim).not.toBeNull();
+    expect(await repository.finish(failedClaim!, "failed", undefined, "dispatch_failed")).toBe(true);
 
     connection.close();
     connection = new DatabaseSync(path.join(directory, "admissions.sqlite"));
@@ -180,11 +186,29 @@ describe("workflow-run admission plan SQLite integration", () => {
       errorCode: "invalid_inputs",
       jobId: null,
     });
+    await expect(repository.get("evt-filtered", -2)).resolves.toMatchObject({
+      status: "admitted",
+      admissionOutcome: "filtered",
+      jobId: null,
+    });
     await expect(repository.get("evt-accepted", 0)).resolves.toMatchObject({
       status: "admitted",
       admissionOutcome: "accepted",
       jobId: 123,
     });
+    await expect(repository.get("evt-failed", 0)).resolves.toMatchObject({
+      status: "failed",
+      admissionOutcome: null,
+      errorCode: "dispatch_failed",
+      jobId: null,
+    });
+    await expect(repository.getPlan("evt-accepted")).resolves.toEqual(plan("evt-accepted", ["one"]));
+    await expect(repository.getPlan("evt-failed")).resolves.toEqual(plan("evt-failed", ["one"]));
+    await expect(repository.isPlanTerminal("evt-accepted", [0])).resolves.toBe(true);
+    await expect(repository.isPlanTerminal("evt-failed", [0])).resolves.toBe(true);
     await expect(repository.claimVariant("evt-accepted", 0)).resolves.toBeNull();
+    await expect(repository.claimVariant("evt-failed", 0)).resolves.toBeNull();
+    await expect(repository.claimVariant("evt-rejected", -1)).resolves.toBeNull();
+    await expect(repository.claimVariant("evt-filtered", -2)).resolves.toBeNull();
   });
 });
