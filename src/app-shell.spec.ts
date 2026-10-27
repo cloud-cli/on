@@ -50,7 +50,7 @@ describe("On application shell", () => {
     expect(html).not.toContain("overflow-hidden bg-app-background");
     expect(html).toContain('href="/ui/settings"');
     expect(html).toContain('aria-label="Open preferences"');
-    expect(html).toContain('class="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-sm');
+    expect(html).toContain('class="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg');
     expect(html).toContain('class="mt-auto flex w-full flex-col items-center gap-2 pt-3"');
     expect(html).not.toContain("user.name || user.email");
     expect(html).not.toContain("{{ user.email }}");
@@ -62,6 +62,8 @@ describe("On application shell", () => {
     expect(html).toContain("isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'");
     expect(shellSetup).toContain('setAuthPreference("theme", nextTheme)');
     expect(shellSetup).toContain('themeMedia.addEventListener("change", syncSystemTheme)');
+    expect(shellSetup).toContain("requestAnimationFrame(() => {");
+    expect(shellSetup).toContain('document.querySelector("[data-quick-switch-search]")?.focus()');
     expect(html).toContain('<template if="user.photo || user.picture"');
     expect(html).toContain('attr-src="user.photo || user.picture"');
     expect(html).not.toContain("user.photo || user.picture || null");
@@ -136,7 +138,7 @@ describe("On application shell", () => {
     expect(html).toContain('aria-label="Switch workspace"');
     expect(html).toContain('attr-data-workspace-switch="team.id"');
     expect(html).toContain("{{ channel.name }}");
-    expect(html).toMatch(/Messages\s+are not yet modeled as Threads/);
+    expect(html).not.toContain("Messages are not yet modeled as Threads");
   });
 
   it("keeps the workflow link current on workspace workflow routes with trailing slashes", () => {
@@ -178,6 +180,7 @@ describe("On application shell", () => {
   it("frames main content in an inset rounded panel on every viewport edge", () => {
     expect(html).toContain("bg-app-background p-2 sm:p-3 md:col-start-3 md:row-start-1 md:p-4");
     expect(html).toContain("max-h-full min-h-0 min-w-0 overflow-y-auto overscroll-y-auto rounded-2xl bg-app-card");
+    expect(html).toContain("grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)]");
     expect(html).toContain("h-dvh grid grid-rows-[auto_minmax(0,1fr)]");
     expect(html).toContain("max-h-[40dvh] min-w-0 flex-col items-stretch gap-2 overflow-y-auto");
     expect(html).not.toMatch(/<body[^>]*overflow-hidden/);

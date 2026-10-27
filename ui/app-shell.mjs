@@ -198,8 +198,13 @@ export default function setup() {
   const openQuickSwitch = () => {
     quickSwitchOpen.value = true;
     requestAnimationFrame(() => {
-      filterQuickSwitch();
-      document.querySelector("[data-quick-switch-search]")?.focus();
+      requestAnimationFrame(() => {
+        if (!quickSwitchOpen.value) {
+          return;
+        }
+        filterQuickSwitch();
+        document.querySelector("[data-quick-switch-search]")?.focus();
+      });
     });
   };
   const closeQuickSwitch = () => {

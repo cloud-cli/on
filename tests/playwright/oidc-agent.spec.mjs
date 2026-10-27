@@ -492,7 +492,7 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     stage = "profile-button-visible";
     await expect(profileButton).toBeVisible();
     stage = "profile-button-shape";
-    await expect(profileButton).toHaveClass(/rounded-sm/);
+    await expect(profileButton).toHaveClass(/rounded-lg/);
     stage = "theme-toggle-visible";
     await expect(
       page.locator(
@@ -504,8 +504,9 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     await expect(workspaceNamePopover).toBeVisible();
     await expect(workspaceNamePopover).toHaveText("OIDC Browser Fixture");
     stage = "quick-switch-template-rendering";
-    await page.locator("[data-quick-switch-open]").click();
+    await page.keyboard.press("Control+k");
     const quickSwitchSearch = page.locator("[data-quick-switch-search]");
+    await expect(quickSwitchSearch).toBeFocused();
     await quickSwitchSearch.fill("OIDC Browser Fixture");
     await expect(page.getByRole("option").first()).toContainText("OIDC Browser Fixture");
     await page.screenshot({ path: "/tmp/opencode/oidc-quick-switch-desktop.png", fullPage: true });
@@ -525,12 +526,40 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     expect(mobileGeometry.rail.x).toBeLessThan(mobileGeometry.navigation.x);
     expect(mobileGeometry.navigation.y).toBeLessThan(mobileGeometry.content.y);
     expect(mobileGeometry.rail.width).toBeCloseTo(64, 0);
-    stage = "sidebar-layout-narrow-overflow";
+    stage = "sidebar-layout-reference-width-619";
+    await page.setViewportSize({ width: 619, height: 844 });
     await page.keyboard.press("Escape");
     await expect(page.locator("[data-quick-switch-overlay]")).toHaveCount(0);
+    const referenceGeometry = await page.evaluate(() => ({
+      viewport: innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      contentWidth: document.querySelector("#main-content").getBoundingClientRect().width,
+    }));
+    expect(referenceGeometry.documentWidth).toBeLessThanOrEqual(referenceGeometry.viewport);
+    expect(referenceGeometry.contentWidth).toBeGreaterThan(200);
+    await page.screenshot({ path: "/tmp/opencode/oidc-sidebar-619.png", fullPage: true });
+    stage = "sidebar-layout-narrow-overflow";
     await page.setViewportSize({ width: 320, height: 720 });
     const narrowGeometry = await page.evaluate(() => {
       const sidebar = document.querySelector("#primary-sidebar");
+      const overflowingSection = document.querySelector("#main-content")?.firstElementChild;
+      const layoutChain = [];
+      for (let node = overflowingSection; node && layoutChain.length < 8; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        layoutChain.push({
+          tag: node.tagName,
+          id: node.id,
+          className: String(node.className),
+          x: Math.round(rect.x),
+          width: Math.round(rect.width),
+          scrollWidth: node.scrollWidth,
+          display: style.display,
+          minWidth: style.minWidth,
+          maxWidth: style.maxWidth,
+          gridColumns: style.gridTemplateColumns,
+        });
+      }
       const overflows = [...document.querySelectorAll("body *")]
         .map((element) => {
           const rect = element.getBoundingClientRect();
@@ -549,11 +578,12 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
         documentWidth: document.documentElement.scrollWidth,
         sidebarWidth: sidebar.clientWidth,
         sidebarScrollWidth: sidebar.scrollWidth,
+        layoutChain,
         overflows,
       };
     });
     await page.screenshot({ path: "/tmp/opencode/oidc-quick-switch-narrow.png", fullPage: true });
-    stage = `sidebar-layout-narrow-overflow-${narrowGeometry.viewport}-${narrowGeometry.documentWidth}-${JSON.stringify(narrowGeometry.overflows)}`;
+    stage = `sidebar-layout-narrow-overflow-${narrowGeometry.viewport}-${narrowGeometry.documentWidth}-${JSON.stringify(narrowGeometry.layoutChain)}-${JSON.stringify(narrowGeometry.overflows)}`;
     expect(narrowGeometry.documentWidth).toBeLessThanOrEqual(narrowGeometry.viewport);
     expect(narrowGeometry.sidebarScrollWidth).toBeLessThanOrEqual(narrowGeometry.sidebarWidth);
     await page.setViewportSize({ width: 390, height: 844 });
