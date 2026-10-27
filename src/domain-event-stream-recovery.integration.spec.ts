@@ -13,11 +13,27 @@ vi.mock("./db-client.js", () => {
       all: async (sql: string, values: unknown[] = []) => testDb.database!.prepare(sql).all(...(values as any[])),
       get: async (sql: string, values: unknown[] = []) => testDb.database!.prepare(sql).get(...(values as any[])),
       run: async (sql: string, values: unknown[] = []) => execute(sql, values),
+      transaction: async (statements: Array<{ s: string; d: unknown[] }>) => {
+        testDb.database!.exec("BEGIN IMMEDIATE");
+        try {
+          for (const statement of statements) {
+            testDb.database!.prepare(statement.s).run(...(statement.d as any[]));
+          }
+          testDb.database!.exec("COMMIT");
+        } catch (error) {
+          testDb.database!.exec("ROLLBACK");
+          throw error;
+        }
+      },
     },
   };
 });
 
 import { DomainEventRepository } from "./domain-event-repository.js";
+import { WebhookServer } from "./server.js";
+import { WorkflowRunAdmissionRepository } from "./workflow-run-admission-repository.js";
+
+const response = () => ({ writeHead: vi.fn().mockReturnThis(), end: vi.fn(), headersSent: false }) as any;
 
 afterEach(() => {
   testDb.database?.close();
@@ -119,5 +135,137 @@ describe("persisted Stream event reconciliation", () => {
     await expect(afterRestart.listChannelEvents("team-b", "stream-a", 10, firstPage.nextCursor!)).rejects.toThrow(
       "Invalid event cursor",
     );
+  });
+
+  it("links an authorized Agent invocation to an admitted job through the scoped projection", async () => {
+    temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "agent-invocation-result-"));
+    testDb.database = new DatabaseSync(path.join(temporaryDirectory, "agent.sqlite"));
+    testDb.database.exec(`
+      CREATE TABLE domain_events (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL, team_id TEXT NOT NULL,
+        type TEXT NOT NULL, schema_version INTEGER NOT NULL, source TEXT NOT NULL,
+        occurred_at TEXT NOT NULL, recorded_at TEXT NOT NULL, correlation_id TEXT, causation_id TEXT,
+        idempotency_key TEXT, data_json TEXT NOT NULL, UNIQUE(team_id, id), UNIQUE(team_id, idempotency_key)
+      );
+      CREATE TABLE workflow_run_admissions (
+        event_id TEXT NOT NULL, team_id TEXT NOT NULL, workflow_id TEXT NOT NULL, revision INTEGER NOT NULL,
+        variant_index INTEGER NOT NULL, matrix_json TEXT NOT NULL, tags_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending', admission_outcome TEXT, job_id INTEGER, error_code TEXT,
+        lease_token TEXT, lease_until TEXT, retry_after TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (event_id, variant_index)
+      );
+      CREATE TABLE workflow_run_admission_plans (
+        event_id TEXT PRIMARY KEY, variant_count INTEGER NOT NULL, plan_hash TEXT NOT NULL
+      );
+      CREATE TABLE jobs (id INTEGER PRIMARY KEY, team_id TEXT NOT NULL, status TEXT NOT NULL);
+    `);
+
+    let workspaceId = "team-a";
+    let granted = true;
+    const domainEventRepository = new DomainEventRepository();
+    const workflowRunAdmissions = new WorkflowRunAdmissionRepository();
+    const server = {
+      requireWorkspaceCapability: vi.fn(async (_req: unknown, _res: unknown, _capability: string) => ({
+        teamId: workspaceId,
+        principal: { kind: "agent", subject: "agent-1" },
+        capabilities: ["runs.dispatch", "runs.view"],
+      })),
+      readJson: vi.fn(async () => ({ inputs: { privateValue: "do-not-return" } })),
+      workflowsLoaded: Promise.resolve(),
+      workflows: {
+        getForTeam: vi.fn(async () => ({ id: "workflow-1" })),
+        latestRevision: vi.fn(async () => ({ revision: 1 })),
+        getRevision: vi.fn(async () => ({ id: "workflow-1", tags: [], steps: [] })),
+      },
+      agentWorkflowGrantRepository: { has: vi.fn(async () => granted) },
+      domainEventRepository,
+      workflowRunAdmissions,
+      queue: { enqueueDispatch: vi.fn(async () => 42) },
+      events: { publish: vi.fn() },
+      secretRepository: {
+        encryptValue: (value: string) => `cipher:${value}`,
+        decryptValue: (value: string) => value.replace(/^cipher:/, ""),
+      },
+    };
+    const request = { method: "POST", headers: { "idempotency-key": "agent-run-1" } } as any;
+    const acceptedResponse = response();
+    await (WebhookServer.prototype as any).handleWorkflowRun.call(server, request, acceptedResponse, "workflow-1");
+    const accepted = JSON.parse(acceptedResponse.end.mock.calls[0][0]);
+    expect(acceptedResponse.writeHead).toHaveBeenCalledWith(202, expect.any(Object));
+    expect(accepted).toMatchObject({ accepted: true, admissionStatus: "pending", workflowId: "workflow-1" });
+    expect(accepted.invocationId).toBeTruthy();
+
+    const retryResponse = response();
+    await (WebhookServer.prototype as any).handleWorkflowRun.call(server, request, retryResponse, "workflow-1");
+    expect(JSON.parse(retryResponse.end.mock.calls[0][0])).toMatchObject({
+      eventId: accepted.eventId,
+      invocationId: accepted.invocationId,
+    });
+    expect(testDb.database.prepare("SELECT COUNT(*) AS count FROM domain_events").get()?.count).toBe(1);
+
+    await workflowRunAdmissions.persistPlan([
+      {
+        eventId: accepted.eventId,
+        teamId: "team-a",
+        workflowId: "workflow-1",
+        revision: 1,
+        index: 0,
+        matrix: {},
+        tags: [],
+      },
+    ]);
+    const claim = await workflowRunAdmissions.claimVariant(accepted.eventId, 0);
+    expect(claim).not.toBeNull();
+    (server as any).processWorkflowRunAdmission = WebhookServer.prototype.processWorkflowRunAdmission;
+    await (WebhookServer.prototype as any).processWorkflowRunAdmission.call(server, claim);
+    expect(server.queue.enqueueDispatch).toHaveBeenCalledWith(
+      "workflow-1",
+      1,
+      { inputs: { privateValue: "do-not-return", trigger: { type: "manual", source: "api" } }, matrix: {} },
+      [],
+      "team-a",
+      accepted.eventId,
+      `workflow-run:${accepted.eventId}:0`,
+      expect.objectContaining({ eventId: accepted.eventId, variantIndex: 0 }),
+    );
+    // Queue admission is exercised above; this terminal job row represents the
+    // worker result fixture, so this test verifies correlation, not execution.
+    testDb.database.prepare("INSERT INTO jobs (id, team_id, status) VALUES (?, ?, ?)").run(42, "team-a", "success");
+
+    const resultResponse = response();
+    await (WebhookServer.prototype as any).handleWorkflowInvocationGet.call(
+      server,
+      { method: "GET" },
+      resultResponse,
+      accepted.invocationId,
+    );
+    expect(resultResponse.writeHead).toHaveBeenCalledWith(200, expect.any(Object));
+    const invocation = JSON.parse(resultResponse.end.mock.calls[0][0]);
+    expect(invocation).toMatchObject({
+      id: accepted.invocationId,
+      requestEventId: accepted.eventId,
+      teamId: "team-a",
+      variants: [{ admissionStatus: "admitted", admissionOutcome: "accepted", runId: "42" }],
+    });
+    expect(JSON.stringify(invocation)).not.toContain("do-not-return");
+    expect(JSON.stringify(invocation)).not.toContain("cipher:");
+    expect(testDb.database.prepare("SELECT status FROM jobs WHERE id = ?").get(42)?.status).toBe("success");
+
+    workspaceId = "team-b";
+    const isolatedResponse = response();
+    await (WebhookServer.prototype as any).handleWorkflowInvocationGet.call(
+      server,
+      { method: "GET" },
+      isolatedResponse,
+      accepted.invocationId,
+    );
+    expect(isolatedResponse.writeHead).toHaveBeenCalledWith(404, expect.any(Object));
+
+    granted = false;
+    const deniedResponse = response();
+    await (WebhookServer.prototype as any).handleWorkflowRun.call(server, request, deniedResponse, "workflow-1");
+    expect(deniedResponse.writeHead).toHaveBeenCalledWith(403, expect.any(Object));
+    expect(server.agentWorkflowGrantRepository.has).toHaveBeenCalledWith("team-b", "agent-1", "workflow-1");
+    expect(testDb.database.prepare("SELECT COUNT(*) AS count FROM domain_events").get()?.count).toBe(1);
   });
 });
