@@ -50,6 +50,11 @@ const routes = [
   },
   { pattern: "/workspaces/:workspaceId/channels", page: "channels", component: "page-channels" },
   {
+    pattern: "/workspaces/:workspaceId/channels/:channelId",
+    page: "channels",
+    component: "page-channels",
+  },
+  {
     pattern: "/workspaces/:workspaceId/runs",
     page: "dashboard",
     component: "page-dashboard",

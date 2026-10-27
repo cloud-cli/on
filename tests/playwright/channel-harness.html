@@ -36,7 +36,15 @@
     <main id="channels"></main>
     <script type="module">
       import { mountChannels } from "/ui/channels-ui.mjs";
-      mountChannels(document.querySelector("#channels"));
+      const params = new URLSearchParams(location.search);
+      const root = document.querySelector("#channels");
+      root.routeParams = {
+        page: "channels",
+        teamId: params.get("workspace") || "",
+        workspaceId: params.get("workspace") || "",
+        channelId: params.get("channel") || "",
+      };
+      mountChannels(root, root.routeParams);
     </script>
   </body>
 </html>

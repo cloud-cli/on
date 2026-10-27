@@ -187,6 +187,71 @@ for (const viewport of [
   });
 }
 
+test("workspace channel deep link restores the selected transcript", async ({ page }) => {
+  const requests = [];
+  await page.addInitScript(() => {
+    window.EventSource = class extends EventTarget {
+      close() {}
+    };
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    requests.push({ url: url.pathname, team: request.headers()["x-team-id"] });
+    let body = {};
+    if (url.pathname === "/api/v1/auth/token") {
+      body = { access_token: "local-test-token", expires_at: Date.now() + 600_000 };
+    } else if (url.pathname === "/api/v1/channels") {
+      body = {
+        canEdit: false,
+        channels: [
+          { id: "wanted", name: "Wanted" },
+          { id: "other", name: "Other" },
+        ],
+      };
+    } else if (url.pathname.endsWith("/threads")) {
+      body = { threads: [] };
+    } else if (url.pathname.endsWith("/messages")) {
+      body = { messages: [{ id: "m1", body: { text: "Deep-linked transcript" } }], next: null };
+    }
+    await route.fulfill({ json: body });
+  });
+
+  await page.goto("/tests/playwright/channel-harness.html?workspace=team-a&channel=wanted");
+  await expect(page.getByRole("heading", { name: "Wanted" })).toBeVisible();
+  await expect(page.getByText("Deep-linked transcript")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Wanted" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/\/ui\/workspaces\/team-a\/channels\/wanted$/);
+  expect(requests.filter(({ url }) => url.endsWith("/messages")).every(({ team }) => team === "team-a")).toBe(true);
+});
+
+test("channel deep links fail closed when the channel is absent from the authorized workspace", async ({ page }) => {
+  const messageRequests = [];
+  await page.addInitScript(() => {
+    window.EventSource = class extends EventTarget {
+      close() {}
+    };
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    let body = {};
+    if (url.pathname === "/api/v1/auth/token") {
+      body = { access_token: "local-test-token", expires_at: Date.now() + 600_000 };
+    } else if (url.pathname === "/api/v1/channels") {
+      body = { canEdit: false, channels: [{ id: "authorized", name: "Authorized channel" }] };
+    } else if (url.pathname.endsWith("/messages")) {
+      messageRequests.push(url.pathname);
+      body = { messages: [{ id: "private", body: { text: "Must not be shown" } }], next: null };
+    }
+    await route.fulfill({ json: body });
+  });
+
+  await page.goto("/tests/playwright/channel-harness.html?workspace=team-a&channel=other-workspace-channel");
+  await expect(page.getByText("This channel is unavailable in the selected workspace.")).toBeVisible();
+  await expect(page.getByText("Must not be shown")).toHaveCount(0);
+  expect(messageRequests).toEqual([]);
+});
+
 test("channel reconnect reconciles missed messages across pages without rerunning work", async ({ page }) => {
   const messages = Array.from({ length: 50 }, (_, index) => ({
     id: `m${String(index + 1).padStart(3, "0")}`,

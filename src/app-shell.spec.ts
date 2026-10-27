@@ -18,7 +18,7 @@ describe("On application shell", () => {
   });
 
   it("provides responsive, accessible navigation around the mounted router", () => {
-    expect(shellSetup).toContain('import "@app/api-client.mjs"');
+    expect(shellSetup).toContain('import { apiFetch } from "@app/api-client.mjs"');
     expect(shellSetup).toContain('page === "channels" ? "channels"');
     expect(shellSetup).toContain('page === "workflows" ? "workflows"');
     expect(shellSetup).toContain('addEventListener("runner-route-changed", syncSection)');
@@ -104,6 +104,11 @@ describe("On application shell", () => {
     expect(html).toContain('<template if="selectedWorkspaceId === team.id"');
     expect(html).toContain("workspacePath(team.id, 'runs')");
     expect(html).toContain("workspacePath(team.id, 'workflows')");
+    expect(html).toContain('for="channel of workspaceChannels"');
+    expect(html).toContain("workspacePath(team.id, 'channels') + '/' + encodeURIComponent(channel.id)");
+    expect(shellSetup).toContain('apiFetch("/api/v1/channels"');
+    expect(shellSetup).toContain('"X-Team-ID": workspaceId');
+    expect(shellSetup).toContain("channelsStatus");
     expect(html).toContain("on-click=\"selectWorkspace(team.id, 'runs')\"");
     expect(shellSetup).toContain('const selectedWorkspaceId = ref("")');
     expect(shellSetup).toContain("selectedWorkspaceId.value = decodeURIComponent(workspaceRoute[1])");
@@ -117,7 +122,7 @@ describe("On application shell", () => {
     expect(html).toContain("selectedWorkspaceId === team.id");
     expect(html).toContain('aria-label="Switch workspace"');
     expect(html).toContain('attr-data-workspace-switch="team.id"');
-    expect(html).toContain(">Streams</a");
+    expect(html).toContain("{{ channel.name }}</a");
     expect(html).toContain("Messages are not yet modeled as Threads");
   });
 

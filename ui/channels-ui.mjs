@@ -12,7 +12,9 @@ const element = (tag, text, className) => {
 };
 
 export function mountChannels(root, routeParams = root.routeParams || {}) {
-  const routedWorkspaceId = routeParams.workspaceId || "";
+  const routedWorkspaceId =
+    routeParams.workspaceId || routeParams.teamId || localStorage.getItem("runner-team-id") || "";
+  let routedChannelId = routeParams.channelId || "";
   root.className = "mx-auto w-full max-w-6xl space-y-5 py-6";
   root.setAttribute("aria-labelledby", "channels-title");
   const heading = element("h1", "Streams", "text-2xl font-semibold");
@@ -511,6 +513,12 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     eventStatus.textContent = "";
     eventHistory.open = false;
     selected = channel;
+    routedChannelId = channel.id;
+    const target = `/ui/workspaces/${encodeURIComponent(routedWorkspaceId)}/channels/${encodeURIComponent(channel.id)}`;
+    if (routedWorkspaceId && window.location.pathname !== target) {
+      history.pushState(null, "", target);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
     selectedThread = null;
     cursor = null;
     latestMessageId = null;
@@ -619,6 +627,31 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       );
       if (!channels.length) {
         status.textContent = "No channels yet. Create one to start a conversation.";
+      } else if (routedChannelId) {
+        const routedChannel = channels.find((channel) => channel.id === routedChannelId);
+        if (routedChannel) {
+          await select(routedChannel);
+          return;
+        } else {
+          selectionGeneration += 1;
+          eventGeneration += 1;
+          eventRequest = null;
+          selected = null;
+          selectedThread = null;
+          routedChannelId = "";
+          title.textContent = "Select a channel";
+          transcript.replaceChildren();
+          threadList.replaceChildren();
+          more.hidden = true;
+          refresh.hidden = true;
+          composer.hidden = true;
+          threadForm.hidden = true;
+          eventHistory.hidden = true;
+          eventList.replaceChildren();
+          eventStatus.textContent = "";
+          status.setAttribute("role", "alert");
+          status.textContent = "This channel is unavailable in the selected workspace.";
+        }
       } else if (!selected) {
         status.textContent = "Choose a channel to view its transcript.";
       }
@@ -630,6 +663,27 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       status.setAttribute("role", "alert");
     }
   };
+  const syncRoutedChannel = () => {
+    const params = root.routeParams || {};
+    if (params.page !== "channels" || params.teamId !== routedWorkspaceId) {
+      return;
+    }
+    const nextChannelId = params.channelId || "";
+    if (nextChannelId === routedChannelId) {
+      return;
+    }
+    routedChannelId = nextChannelId;
+    if (!nextChannelId) {
+      selected = null;
+      title.textContent = "Select a channel";
+      transcript.replaceChildren();
+      threadList.replaceChildren();
+      return;
+    }
+    const button = [...channelsList.querySelectorAll("button")].find((item) => item.dataset.id === nextChannelId);
+    button?.click();
+  };
+  window.addEventListener("runner-route-changed", syncRoutedChannel);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     create.disabled = true;
@@ -638,6 +692,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
         method: "POST",
         body: JSON.stringify({ name: name.value.trim() }),
       });
+      window.dispatchEvent(new Event("runner-channels-updated"));
       name.value = "";
       await refreshChannels();
       if (data.channel) {
@@ -767,6 +822,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       return;
     }
     disposed = true;
+    window.removeEventListener("runner-route-changed", syncRoutedChannel);
     if (pollTimer) {
       clearTimeout(pollTimer);
       pollTimer = null;

@@ -1,5 +1,5 @@
 import { onDestroy, onInit, ref } from "@li3/web";
-import "@app/api-client.mjs";
+import { apiFetch } from "@app/api-client.mjs";
 import { applyThemePreference, getAuthPreference, setAuthPreference } from "@app/preferences.mjs";
 
 export default function setup() {
@@ -10,6 +10,10 @@ export default function setup() {
   const userInitial = ref("U");
   const teams = ref([]);
   const selectedWorkspaceId = ref("");
+  const selectedChannelId = ref("");
+  const workspaceChannels = ref([]);
+  const channelsStatus = ref("Loading channels…");
+  let channelsRequestId = 0;
   const quickSwitchOpen = ref(false);
   const quickSwitchItems = ref([]);
   const themePreference = ref("system");
@@ -43,9 +47,10 @@ export default function setup() {
 
   const syncSection = () => {
     const path = window.location.pathname.replace(/^\/ui/, "");
-    const workspaceRoute = path.match(/^\/workspaces\/([^/]+)\/(workflows|runs|channels)(?:\/events)?$/);
+    const workspaceRoute = path.match(/^\/workspaces\/([^/]+)\/(workflows|runs|channels)(?:\/([^/]+))?(?:\/events)?$/);
     if (workspaceRoute) {
       selectedWorkspaceId.value = decodeURIComponent(workspaceRoute[1]);
+      selectedChannelId.value = workspaceRoute[2] === "channels" ? decodeURIComponent(workspaceRoute[3] || "") : "";
       activeSection.value = `workspace-${workspaceRoute[2] === "channels" ? "channels" : workspaceRoute[2] === "workflows" ? "workflows" : "runs"}`;
     } else if (
       path === "/settings" ||
@@ -59,6 +64,36 @@ export default function setup() {
     } else {
       activeSection.value = "workspaces";
     }
+    void loadWorkspaceChannels();
+  };
+
+  const loadWorkspaceChannels = async () => {
+    const requestId = ++channelsRequestId;
+    const workspaceId = selectedWorkspaceId.value;
+    workspaceChannels.value = [];
+    if (!workspaceId) {
+      channelsStatus.value = "Select a workspace to view its channels.";
+      return;
+    }
+    channelsStatus.value = "Loading channels…";
+    try {
+      const response = await apiFetch("/api/v1/channels", {
+        headers: { accept: "application/json", "X-Team-ID": workspaceId },
+      });
+      if (!response.ok) {
+        throw new Error(`Unable to load channels (${response.status}).`);
+      }
+      const result = await response.json();
+      if (requestId !== channelsRequestId || workspaceId !== selectedWorkspaceId.value) {
+        return;
+      }
+      workspaceChannels.value = result.channels || [];
+      channelsStatus.value = workspaceChannels.value.length ? "" : "No channels in this workspace yet.";
+    } catch (error) {
+      if (requestId === channelsRequestId) {
+        channelsStatus.value = error.message || "Unable to load channels.";
+      }
+    }
   };
 
   const setActive = (section) => {
@@ -67,6 +102,7 @@ export default function setup() {
   const selectWorkspace = (teamId, page = "runs") => {
     selectedWorkspaceId.value = teamId;
     activeSection.value = `workspace-${page === "channels" ? "channels" : page === "workflows" ? "workflows" : "runs"}`;
+    void loadWorkspaceChannels();
   };
   const workspaceInitial = (name) =>
     String(name || "W")
@@ -233,6 +269,7 @@ export default function setup() {
       })
       .catch((error) => console.error("Unable to load the signed-in profile", error));
     window.addEventListener("runner-teams-updated", loadTeams);
+    window.addEventListener("runner-channels-updated", loadWorkspaceChannels);
   });
 
   onDestroy(() => {
@@ -240,6 +277,7 @@ export default function setup() {
     window.removeEventListener("runner-route-changed", syncSection);
     window.removeEventListener("runner-team-changed", syncWorkspace);
     window.removeEventListener("runner-teams-updated", loadTeams);
+    window.removeEventListener("runner-channels-updated", loadWorkspaceChannels);
     themeMedia.removeEventListener("change", syncSystemTheme);
     document.removeEventListener("keydown", handleSkipKeydown);
     document.removeEventListener("keydown", handleGlobalQuickSwitch);
@@ -253,6 +291,9 @@ export default function setup() {
     oidcProviderUrl,
     teams,
     selectedWorkspaceId,
+    selectedChannelId,
+    workspaceChannels,
+    channelsStatus,
     isDarkTheme,
     setActive,
     selectWorkspace,

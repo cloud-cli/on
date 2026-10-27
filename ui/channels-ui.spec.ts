@@ -3,6 +3,7 @@ import source from "./channels-ui.mjs?raw";
 import router from "./app-router.mjs?raw";
 import routes from "./route-table.mjs?raw";
 import shell from "./app-shell.html?raw";
+import { matchRoute } from "./route-table.mjs";
 
 describe("channels UI", () => {
   it("uses cursor pagination and the authenticated API client for scoped channel APIs", () => {
@@ -12,7 +13,17 @@ describe("channels UI", () => {
     expect(router).toContain("matchRoute(window.location.href)");
     expect(routes).toContain('pattern: "/channels"');
     expect(routes).toContain('pattern: "/workspaces/:workspaceId/channels"');
-    expect(source).toContain('const routedWorkspaceId = routeParams.workspaceId || ""');
+    expect(matchRoute("http://localhost/ui/workspaces/team-a/channels/channel-a")).toMatchObject({
+      page: "channels",
+      teamId: "team-a",
+      params: { workspaceId: "team-a", channelId: "channel-a" },
+    });
+    expect(matchRoute("http://localhost/ui/workspaces/team-a/channels")).toMatchObject({
+      page: "channels",
+      teamId: "team-a",
+    });
+    expect(matchRoute("http://localhost/ui/workspaces/team-a/channels/channel-a").teamId).not.toBe("team-b");
+    expect(source).toContain('routeParams.workspaceId || routeParams.teamId || localStorage.getItem("runner-team-id")');
     expect(source).toContain('"X-Team-ID": routedWorkspaceId');
     expect(source).toContain("selectionGeneration");
     expect(source).toContain("You're up to date.");
@@ -29,14 +40,19 @@ describe("channels UI", () => {
     expect(source).toContain("/invocations/${encodeURIComponent(invocationId)}");
     expect(source).toContain("notification.channelId === selected.id");
     expect(source).toContain("drawMessages(messages, true)");
+    expect(source).toContain("This channel is unavailable in the selected workspace.");
+    expect(source).toContain("runner-route-changed");
+    expect(source).toContain('history.pushState(null, "", target)');
   });
 
   it("renders message JSON as text and exposes an accessible composer and navigation", () => {
     expect(source).toContain('"Message body"');
     expect(source).toContain("JSON message body");
     expect(source).toContain("JSON.stringify(message.body, null, 2)");
-    expect(shell).toContain("Streams</a");
+    expect(shell).toContain("{{ channel.name }}</a");
     expect(shell).toContain("activeSection === 'workspace-channels'");
+    expect(shell).toContain('for="channel of workspaceChannels"');
+    expect(shell).toContain("attr-aria-current=\"selectedChannelId === channel.id ? 'page' : null\"");
   });
 
   it("keeps Threads distinct from Stream history and uses scoped Thread message endpoints", () => {

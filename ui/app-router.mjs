@@ -173,6 +173,12 @@ export default function () {
             activeTransientPage = component;
             outlet.value.append(component);
           }
+        } else {
+          component.routeParams = Object.freeze({
+            page: current.page,
+            teamId: current.teamId || "",
+            ...(current.params || {}),
+          });
         }
         for (const page of mountedPages.values()) {
           page.hidden = page !== component;
