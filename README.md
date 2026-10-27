@@ -158,7 +158,8 @@ steps:
       COMMIT_SHA: ${inputs.commit_sha}
     run: |
       git clone --depth 1 "$CLONE_URL" .
-      git checkout "$COMMIT_SHA"
+      git fetch --depth 1 origin "$COMMIT_SHA"
+      git checkout --detach "$COMMIT_SHA"
 
   - id: install-and-build
     name: Install Dependencies & Build

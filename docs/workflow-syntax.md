@@ -59,7 +59,8 @@ steps:
       commit_sha: ${inputs.commit_sha}
     run: |
       git clone --depth 1 "$clone_url" .
-      git checkout "$commit_sha"
+      git fetch --depth 1 origin "$commit_sha"
+      git checkout --detach "$commit_sha"
 
   - id: test
     name: Test
