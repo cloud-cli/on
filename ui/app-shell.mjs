@@ -12,7 +12,7 @@ export default function setup() {
   const teams = ref([]);
   const selectedWorkspaceId = ref("");
   const quickSwitchOpen = ref(false);
-  let quickSwitchItems = [];
+  const quickSwitchItems = ref([]);
   const themePreference = ref("system");
   const themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
   const isDarkTheme = ref(
@@ -123,11 +123,7 @@ export default function setup() {
     navigateShell(workspacePath(teamId, page));
     closeMobileMenu();
   };
-  const renderQuickSwitch = (query = "") => {
-    const results = document.querySelector("[data-quick-switch-results]");
-    if (!results) {
-      return;
-    }
+  const filterQuickSwitch = (query = "") => {
     const normalized = query.trim().toLocaleLowerCase();
     const items = [];
     for (const team of teams.value) {
@@ -149,39 +145,14 @@ export default function setup() {
       { label: "Settings", type: "Route", path: "/ui/settings" },
       { label: "Workspaces", type: "Route", path: "/ui/workspaces" },
     );
-    quickSwitchItems = items.filter((item) => `${item.label} ${item.type}`.toLocaleLowerCase().includes(normalized));
-    results.replaceChildren(
-      ...quickSwitchItems.map((item, index) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.role = "option";
-        button.dataset.quickSwitchIndex = String(index);
-        button.className =
-          "flex min-h-11 w-full items-center justify-between rounded-lg px-3 text-left text-sm hover:bg-app-panel focus-visible:ring-2 focus-visible:ring-app-primary";
-        const name = document.createElement("span");
-        name.textContent = item.label;
-        const kind = document.createElement("span");
-        kind.className = "text-xs text-app-secondary";
-        kind.textContent = item.type;
-        button.append(name, kind);
-        button.addEventListener("click", () => {
-          closeQuickSwitch();
-          navigateShell(item.path);
-        });
-        return button;
-      }),
-    );
-    if (!quickSwitchItems.length) {
-      const empty = document.createElement("p");
-      empty.className = "px-3 py-4 text-sm text-app-secondary";
-      empty.textContent = "No matching destinations.";
-      results.append(empty);
-    }
+    quickSwitchItems.value = items
+      .filter((item) => `${item.label} ${item.type}`.toLocaleLowerCase().includes(normalized))
+      .map((item, index) => ({ ...item, index }));
   };
   const openQuickSwitch = () => {
     quickSwitchOpen.value = true;
     requestAnimationFrame(() => {
-      renderQuickSwitch();
+      filterQuickSwitch();
       document.querySelector("[data-quick-switch-search]")?.focus();
     });
   };
@@ -192,7 +163,10 @@ export default function setup() {
     quickSwitchOpen.value = false;
     requestAnimationFrame(() => document.querySelector("[data-quick-switch-open]")?.focus());
   };
-  const filterQuickSwitch = (query) => renderQuickSwitch(query);
+  const selectQuickSwitchItem = (item) => {
+    closeQuickSwitch();
+    navigateShell(item.path);
+  };
   const stopQuickSwitchClick = (event) => event.stopPropagation();
   const handleGlobalQuickSwitch = (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -217,11 +191,11 @@ export default function setup() {
       quickSwitchOpen.value &&
       event.key === "Enter" &&
       event.target.matches?.("[data-quick-switch-search]") &&
-      quickSwitchItems[0]
+      quickSwitchItems.value[0]
     ) {
       event.preventDefault();
       closeQuickSwitch();
-      navigateShell(quickSwitchItems[0].path);
+      navigateShell(quickSwitchItems.value[0].path);
     } else if (quickSwitchOpen.value && event.key === "Tab") {
       const search = document.querySelector("[data-quick-switch-search]");
       const focusable = [search, ...document.querySelectorAll("[data-quick-switch-results] button")].filter(Boolean);
@@ -383,9 +357,11 @@ export default function setup() {
     switchWorkspace,
     workspaceInitial,
     quickSwitchOpen,
+    quickSwitchItems,
     openQuickSwitch,
     closeQuickSwitch,
     filterQuickSwitch,
+    selectQuickSwitchItem,
     stopQuickSwitchClick,
     workspacePath,
     openPreferences,

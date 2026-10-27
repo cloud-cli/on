@@ -230,7 +230,23 @@
                   role="group"
                   aria-label="Navigation results"
                   class="mt-3 max-h-[55vh] space-y-1 overflow-y-auto"
-                ></div>
+                >
+                  <template for="item of quickSwitchItems"
+                    ><button
+                      type="button"
+                      role="option"
+                      attr-data-quick-switch-index="item.index"
+                      class="flex min-h-11 w-full items-center justify-between rounded-lg px-3 text-left text-sm hover:bg-app-panel focus-visible:ring-2 focus-visible:ring-app-primary"
+                      on-click="selectQuickSwitchItem(item)"
+                    >
+                      <span>{{ item.label }}</span>
+                      <span class="text-xs text-app-secondary">{{ item.type }}</span>
+                    </button></template
+                  >
+                  <template if="quickSwitchItems.length === 0"
+                    ><p class="px-3 py-4 text-sm text-app-secondary">No matching destinations.</p></template
+                  >
+                </div>
                 <p class="mt-3 text-xs text-app-secondary">Use ↑ and ↓ to move, Enter to open, Esc to close.</p>
               </section>
             </div></template

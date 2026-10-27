@@ -127,6 +127,17 @@ describe("On application shell", () => {
     expect(shellSetup).toContain('event.key.toLowerCase() === "k"');
     expect(shellSetup).toContain('type: label === "channels" ? "Stream" : label');
     expect(shellSetup).toContain('label: "Settings", type: "Route"');
+    expect(shellSetup).toContain("const quickSwitchItems = ref([])");
+    expect(html).toContain('<template for="item of quickSwitchItems"');
+    expect(html).toContain("{{ item.label }}");
+    expect(html).toContain("{{ item.type }}");
+    expect(html).toContain('attr-data-quick-switch-index="item.index"');
+    expect(html).toContain('on-click="selectQuickSwitchItem(item)"');
+    expect(html).toContain('if="quickSwitchItems.length === 0"');
+    expect(shellSetup).not.toContain("renderQuickSwitch");
+    expect(shellSetup).not.toContain("replaceChildren");
+    expect(shellSetup).not.toContain("createElement");
+    expect(shellSetup).not.toContain("textContent");
     expect(shellSetup).toContain('event.key === "ArrowDown" || event.key === "ArrowUp"');
     expect(shellSetup).toContain('event.key === "Enter"');
     expect(shellSetup).toContain('event.key === "Escape"');
