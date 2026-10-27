@@ -115,8 +115,9 @@ describe("On application shell", () => {
     expect(html).toContain("workspacePath(team.id, 'workflows')");
     expect(html).toContain('for="channel of workspaceChannels"');
     expect(html).toContain("workspacePath(team.id, 'channels') + '/' + encodeURIComponent(channel.id)");
-    expect(shellSetup).toContain('apiFetch("/api/v1/channels"');
+    expect(shellSetup).toContain('apiFetch("/api/v1/streams"');
     expect(shellSetup).toContain('"X-Team-ID": workspaceId');
+    expect(shellSetup).toContain("result.streams || []");
     expect(shellSetup).toContain("channelsStatus");
     expect(shellSetup).toContain("channelsEmpty.value = workspaceChannels.value.length === 0");
     expect(html).toContain('if="channelsEmpty"');
@@ -148,7 +149,7 @@ describe("On application shell", () => {
     );
     expect(html).toContain("attr-aria-current=\"activeSection === 'workspace-workflows' ? 'page' : null\"");
     expect(html).toContain("text-xs font-semibold text-app-secondary");
-    expect(html).toContain(">Channels</span");
+    expect(html).toContain(">Streams</span");
   });
 
   it("uses the completed URL route as the source of truth for workspace shell navigation", () => {

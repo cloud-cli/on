@@ -84,27 +84,27 @@ export default function setup() {
     workspaceChannels.value = [];
     channelsEmpty.value = false;
     if (!workspaceId) {
-      channelsStatus.value = "Select a workspace to view its channels.";
+      channelsStatus.value = "Select a workspace to view its Streams.";
       return;
     }
-    channelsStatus.value = "Loading channels…";
+    channelsStatus.value = "Loading Streams…";
     try {
-      const response = await apiFetch("/api/v1/channels", {
+      const response = await apiFetch("/api/v1/streams", {
         headers: { accept: "application/json", "X-Team-ID": workspaceId },
       });
       if (!response.ok) {
-        throw new Error(`Unable to load channels (${response.status}).`);
+        throw new Error(`Unable to load Streams (${response.status}).`);
       }
       const result = await response.json();
       if (requestId !== channelsRequestId || workspaceId !== selectedWorkspaceId.value) {
         return;
       }
-      workspaceChannels.value = result.channels || [];
+      workspaceChannels.value = result.streams || [];
       channelsEmpty.value = workspaceChannels.value.length === 0;
       channelsStatus.value = "";
     } catch (error) {
       if (requestId === channelsRequestId) {
-        channelsStatus.value = error.message || "Unable to load channels.";
+        channelsStatus.value = error.message || "Unable to load Streams.";
       }
     }
   };
