@@ -29,6 +29,10 @@ vi.mock("./db-client.js", () => {
         database = new DatabaseSync(":memory:");
         failOutcomeMarker = false;
       },
+      dispose: () => {
+        database.close();
+        failOutcomeMarker = false;
+      },
     },
   };
 });
@@ -73,7 +77,7 @@ const appliedVersions = [
 ];
 
 describe("workflow run admission outcome migration recovery", () => {
-  afterEach(() => hooks.reset());
+afterEach(() => hooks.dispose());
 
   it("recovers when the 036 marker write fails after schema and backfill changes", async () => {
     database().exec(`CREATE TABLE schema_migrations (version TEXT PRIMARY KEY);
@@ -84,6 +88,10 @@ describe("workflow run admission outcome migration recovery", () => {
         lease_token TEXT, lease_until TEXT, job_id INTEGER, error_code TEXT, updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         retry_after TEXT, PRIMARY KEY(event_id, variant_index)
       );`);
+    database().exec(`CREATE INDEX workflow_run_admissions_pending
+      ON workflow_run_admissions(status, lease_until, event_id, variant_index);
+      CREATE INDEX workflow_run_admissions_retry
+      ON workflow_run_admissions(status, retry_after, updated_at, event_id, variant_index);`);
     const marker = database().prepare("INSERT INTO schema_migrations(version) VALUES (?)");
     for (const version of appliedVersions) {marker.run(version);}
     database().exec(`INSERT INTO workflow_run_admissions
