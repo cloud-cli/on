@@ -2095,7 +2095,43 @@
           }
         ],
         "responses": {
-          "200": { "description": "Workspace-scoped normalized fanout and delivery outcomes" },
+          "200": {
+            "description": "Workspace-scoped normalized fanout and delivery outcomes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["eventId", "fanout", "repeatSemantics", "deliveries"],
+                  "properties": {
+                    "eventId": { "type": "string" },
+                    "fanout": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": ["matched", "repeat", "unmatched", null]
+                    },
+                    "repeatSemantics": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": ["idempotent-repeat", null]
+                    },
+                    "deliveries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["status"],
+                        "properties": {
+                          "status": {
+                            "type": "string",
+                            "enum": ["pending", "in-progress", "accepted", "filtered", "failed"]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
           "403": { "description": "Missing webhooks.view capability" },
           "404": { "description": "Outcome not found in workspace" }
         }

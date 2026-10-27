@@ -104,6 +104,21 @@ describe("OpenAPI specification", () => {
     });
   });
 
+  it("documents normalized event outcome projection states", () => {
+    const projection = spec.paths["/api/v1/domain-events/{eventId}/outcome-projection"].get;
+    expect(projection.security).toEqual([{ oidcSessionCookie: [] }, { bearerAuth: [] }, { oidcAdminBearer: [] }]);
+    const schema = projection.responses["200"].content["application/json"].schema;
+    expect(schema.required).toEqual(["eventId", "fanout", "repeatSemantics", "deliveries"]);
+    expect(schema.properties.fanout.enum).toEqual(["matched", "repeat", "unmatched", null]);
+    expect(schema.properties.deliveries.items.properties.status.enum).toEqual([
+      "pending",
+      "in-progress",
+      "accepted",
+      "filtered",
+      "failed",
+    ]);
+  });
+
   it("documents scoped workflow access and OIDC-session secret settings", () => {
     expect(spec.components.securitySchemes.oidcSessionCookie).toEqual({
       type: "apiKey",
