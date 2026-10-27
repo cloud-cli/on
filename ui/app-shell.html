@@ -20,16 +20,10 @@
       }
     </script>
     <link rel="component" href="/assets/app-router.html" />
-    <link
-      rel="component"
-      href="https://sodium.static.apphor.de/lucide-icon.html"
-    />
+    <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
     <title>on: · Runs</title>
   </head>
-  <body
-    data-teamless="checking"
-    class="min-h-dvh bg-app-background font-sans text-app-foreground"
-  >
+  <body data-teamless="checking" class="min-h-dvh bg-app-background font-sans text-app-foreground">
     <template app>
       <a
         href="#main-content"
@@ -52,31 +46,38 @@
             aria-label="on: home"
             class="mb-1 grid size-10 place-items-center rounded-lg text-app-foreground no-underline focus-visible:ring-2 focus-visible:ring-app-primary"
           >
-            <span
-              class="flex h-[30px] w-[27px] -skew-y-[13deg] flex-col justify-center gap-[4px]"
-              aria-hidden="true"
+            <span class="flex h-[30px] w-[27px] -skew-y-[13deg] flex-col justify-center gap-[4px]" aria-hidden="true"
               ><i class="block h-[5px] w-[27px] rounded-[2px] bg-[#547d42]"></i
               ><i class="block h-[5px] w-5 rounded-[2px] bg-[#547d42]"></i
               ><i class="block h-[5px] w-[13px] rounded-[2px] bg-[#547d42]"></i
             ></span>
           </a>
-          <div
-            role="group"
-            aria-label="Switch workspace"
-            class="flex flex-col items-center gap-2"
-          >
+          <div role="group" aria-label="Switch workspace" class="flex flex-col items-center gap-2">
             <template for="team of teams"
               ><button
                 type="button"
                 attr-aria-label="'Switch to ' + team.name"
                 attr-aria-pressed="selectedWorkspaceId === team.id ? 'true' : 'false'"
-                attr-title="team.name"
+                attr-aria-describedby="'workspace-name-' + team.id"
+                on-pointerenter="showWorkspacePopover(team.name, $event.currentTarget)"
+                on-pointerleave="hideWorkspacePopover($event.currentTarget)"
+                on-focus="showWorkspacePopover(team.name, $event.currentTarget)"
+                on-blur="hideWorkspacePopover($event.currentTarget)"
                 on-click="switchWorkspace(team.id)"
                 class="grid size-10 shrink-0 place-items-center rounded-xl border border-app-border bg-app-card font-semibold text-app-primary outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-app-primary aria-pressed:border-app-primary aria-pressed:ring-2 aria-pressed:ring-app-primary"
                 attr-data-workspace-switch="team.id"
               >
                 {{ workspaceInitial(team.name) }}
-              </button></template
+              </button>
+              <div
+                popover="manual"
+                attr-data-workspace-popover="team.id"
+                attr-id="'workspace-name-' + team.id"
+                role="tooltip"
+                class="pointer-events-none fixed inset-auto z-50 m-0 max-w-[calc(100vw-5rem)] rounded-md border-0 bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-lg"
+              >
+                {{ team.name }}
+              </div></template
             >
           </div>
           <template if="userAuthenticated"
@@ -88,11 +89,7 @@
                 attr-title="isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'"
                 class="grid size-10 shrink-0 place-items-center rounded-sm border border-app-border bg-app-card text-app-foreground outline-none transition hover:bg-white/70 focus-visible:ring-2 focus-visible:ring-app-primary"
               >
-                <lucide-icon
-                  bind-icon="isDarkTheme ? 'sun' : 'moon'"
-                  size="19"
-                  aria-hidden="true"
-                ></lucide-icon>
+                <lucide-icon bind-icon="isDarkTheme ? 'sun' : 'moon'" size="19" aria-hidden="true"></lucide-icon>
               </button>
               <a
                 href="/ui/settings"
@@ -107,9 +104,7 @@
                     alt=""
                     class="absolute inset-0 size-full object-cover"
                 /></template>
-                <span
-                  aria-hidden="true"
-                  attr-class="(user.photo || user.picture) ? 'hidden' : ''"
+                <span aria-hidden="true" attr-class="(user.photo || user.picture) ? 'hidden' : ''"
                   >{{ userInitial }}</span
                 >
               </a>
@@ -147,16 +142,14 @@
           >
             <template for="team of teams"
               ><template if="selectedWorkspaceId === team.id"
-                ><span
-                  class="hidden truncate px-3 py-2 text-sm font-semibold text-app-foreground md:block"
+                ><span class="hidden truncate px-3 py-2 text-sm font-semibold text-app-foreground md:block"
                   >{{ team.name }}</span
                 ><a
                   attr-href="workspacePath(team.id, 'workflows')"
                   on-click="selectWorkspace(team.id, 'workflows')"
                   class="flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-app-primary md:px-3"
                   attr-aria-current="activeSection === 'workspace-workflows' ? 'page' : null"
-                  ><lucide-icon icon="workflow" size="15"></lucide-icon
-                  >Workflows</a
+                  ><lucide-icon icon="workflow" size="15"></lucide-icon>Workflows</a
                 >
                 <a
                   attr-href="workspacePath(team.id, 'runs')"
@@ -165,18 +158,14 @@
                   attr-aria-current="activeSection === 'workspace-runs' ? 'page' : null"
                   ><lucide-icon icon="activity" size="15"></lucide-icon>Runs</a
                 >
-                <span
-                  class="mt-3 px-3 pb-1 text-xs font-semibold text-app-secondary"
-                  >Channels</span
-                >
+                <span class="mt-3 px-3 pb-1 text-xs font-semibold text-app-secondary">Channels</span>
                 <template for="channel of workspaceChannels"
                   ><a
                     attr-href="workspacePath(team.id, 'channels') + '/' + encodeURIComponent(channel.id)"
                     class="flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-app-primary md:px-3"
                     attr-aria-current="selectedChannelId === channel.id ? 'page' : null"
                     attr-title="channel.name"
-                    ><lucide-icon icon="messages-square" size="15"></lucide-icon
-                    >{{ channel.name }}</a
+                    ><lucide-icon icon="messages-square" size="15"></lucide-icon>{{ channel.name }}</a
                   ></template
                 >
                 <template if="channelsEmpty"
@@ -186,12 +175,7 @@
                     >Create your first Stream</a
                   ></template
                 ><template if="channelsStatus"
-                  ><p
-                    role="status"
-                    class="px-3 py-2 text-xs text-app-secondary"
-                  >
-                    {{ channelsStatus }}
-                  </p></template
+                  ><p role="status" class="px-3 py-2 text-xs text-app-secondary">{{ channelsStatus }}</p></template
                 ></template
               ></template
             >
@@ -203,9 +187,7 @@
           <section
             class="min-h-[calc(100dvh-1rem)] min-w-0 rounded-2xl bg-app-card sm:min-h-[calc(100dvh-1.5rem)] md:min-h-[calc(100dvh-2rem)]"
           >
-            <header
-              class="flex items-center gap-2 px-4 pt-4 sm:gap-4 sm:px-6 lg:px-8"
-            >
+            <header class="flex items-center gap-2 px-4 pt-4 sm:gap-4 sm:px-6 lg:px-8">
               <button
                 type="button"
                 data-quick-switch-open
@@ -214,10 +196,7 @@
                 aria-keyshortcuts="Meta+K Control+K"
               >
                 <span class="truncate">Search workspaces, streams, routes…</span
-                ><kbd
-                  class="float-right ml-2 rounded border border-app-border px-1.5 text-xs"
-                  >⌘K</kbd
-                >
+                ><kbd class="float-right ml-2 rounded border border-app-border px-1.5 text-xs">⌘K</kbd>
               </button>
             </header>
             <template if="quickSwitchOpen"
@@ -233,14 +212,8 @@
                   class="mx-auto w-full max-w-xl rounded-xl border border-app-border bg-app-card p-4 shadow-2xl"
                   on-click="stopQuickSwitchClick(event)"
                 >
-                  <h2
-                    id="quick-switch-title"
-                    class="mb-3 text-lg font-semibold"
-                  >
-                    Quick switch
-                  </h2>
-                  <label class="sr-only" for="quick-switch-search"
-                    >Search workspaces, streams, and routes</label
+                  <h2 id="quick-switch-title" class="mb-3 text-lg font-semibold">Quick switch</h2>
+                  <label class="sr-only" for="quick-switch-search">Search workspaces, streams, and routes</label
                   ><input
                     id="quick-switch-search"
                     data-quick-switch-search
@@ -265,36 +238,25 @@
                         on-click="selectQuickSwitchItem(item)"
                       >
                         <span>{{ item.label }}</span>
-                        <span class="text-xs text-app-secondary"
-                          >{{ item.type }}</span
-                        >
+                        <span class="text-xs text-app-secondary">{{ item.type }}</span>
                       </button></template
                     >
                     <template if="quickSwitchItems.length === 0"
-                      ><p class="px-3 py-4 text-sm text-app-secondary">
-                        No matching destinations.
-                      </p></template
+                      ><p class="px-3 py-4 text-sm text-app-secondary">No matching destinations.</p></template
                     >
                   </div>
-                  <p class="mt-3 text-xs text-app-secondary">
-                    Use ↑ and ↓ to move, Enter to open, Esc to close.
-                  </p>
+                  <p class="mt-3 text-xs text-app-secondary">Use ↑ and ↓ to move, Enter to open, Esc to close.</p>
                 </section>
               </div></template
             >
-            <div
-              id="main-content"
-              tabindex="-1"
-              class="min-h-full min-w-0 p-4 sm:p-6 lg:p-8"
-            >
+            <div id="main-content" tabindex="-1" class="min-h-full min-w-0 p-4 sm:p-6 lg:p-8">
               <template if="activeSection === 'workspace-channels'"
                 ><p
                   class="mb-4 rounded-lg border border-app-border bg-app-card px-4 py-3 text-sm text-app-secondary"
                   role="note"
                 >
-                  Streams currently use the legacy Channels experience. Messages
-                  are not yet modeled as Threads; thread-level selection is not
-                  available.
+                  Streams currently use the legacy Channels experience. Messages are not yet modeled as Threads;
+                  thread-level selection is not available.
                 </p></template
               >
               <app-router></app-router>

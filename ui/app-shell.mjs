@@ -112,6 +112,36 @@ export default function setup() {
       .trim()
       .slice(0, 1)
       .toUpperCase();
+  let activeWorkspacePopover;
+  const showWorkspacePopover = (_name, button) => {
+    const popover = button?.parentElement?.querySelector("[data-workspace-popover]");
+    if (!popover) {
+      return;
+    }
+    if (
+      activeWorkspacePopover &&
+      activeWorkspacePopover !== popover &&
+      activeWorkspacePopover.matches(":popover-open")
+    ) {
+      activeWorkspacePopover.hidePopover();
+    }
+    const rect = button.getBoundingClientRect();
+    if (!popover.matches(":popover-open")) {
+      popover.showPopover();
+    }
+    popover.style.left = `${rect.right + 8}px`;
+    popover.style.top = `${rect.top + (rect.height - popover.offsetHeight) / 2}px`;
+    activeWorkspacePopover = popover;
+  };
+  const hideWorkspacePopover = (button) => {
+    if (button?.matches(":hover, :focus")) {
+      return;
+    }
+    if (activeWorkspacePopover?.matches(":popover-open")) {
+      activeWorkspacePopover.hidePopover();
+    }
+    activeWorkspacePopover = null;
+  };
   const navigateShell = (path) => {
     history.pushState(null, "", path);
     window.dispatchEvent(new PopStateEvent("popstate"));
