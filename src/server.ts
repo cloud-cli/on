@@ -189,6 +189,8 @@ function internalApiPath(pathname: string, method: string): string {
   if (
     pathname.startsWith("/api/v1/runner/") ||
     pathname.startsWith("/api/v1/runners") ||
+    pathname === "/api/v1/streams" ||
+    pathname.startsWith("/api/v1/streams/") ||
     pathname.startsWith("/api/v1/workflow-invocations/") ||
     pathname === "/api/v1/agent-workflow-grants" ||
     pathname === "/api/v1/runner-enrollments" ||

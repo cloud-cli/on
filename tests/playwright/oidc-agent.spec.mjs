@@ -363,6 +363,66 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     expect(workspaces.workspaces.some((workspace) => workspace.id === workspaceId)).toBe(true);
     expect(workspaces.workspaces.some((workspace) => workspace.id === foreignWorkspaceId)).toBe(false);
 
+    stage = "canonical-stream-thread-api";
+    const streamsUrl = `${appOrigin}/api/v1/streams`;
+    const workspaceHeaders = { "X-Team-ID": workspaceId, Origin: appOrigin };
+    stage = "canonical-stream-list-status";
+    let streamList = await page.request.get(streamsUrl, { headers: workspaceHeaders });
+    expect(streamList.status()).toBe(200);
+    stage = "canonical-stream-list-empty";
+    expect((await streamList.json()).streams).toEqual([]);
+    stage = "canonical-stream-create";
+    const streamCreate = await page.request.post(streamsUrl, {
+      headers: workspaceHeaders,
+      data: { name: "Synthetic browser stream" },
+    });
+    expect(streamCreate.status()).toBe(201);
+    const { stream } = await streamCreate.json();
+    stage = "canonical-stream-contract";
+    expect(stream).toMatchObject({ workspaceId, name: "Synthetic browser stream" });
+    const threadUrl = `${streamsUrl}/${encodeURIComponent(stream.id)}/threads`;
+    stage = "canonical-thread-create";
+    const threadCreate = await page.request.post(threadUrl, {
+      headers: workspaceHeaders,
+      data: { title: "Synthetic discussion" },
+    });
+    expect(threadCreate.status()).toBe(201);
+    const { thread } = await threadCreate.json();
+    stage = "canonical-thread-contract";
+    expect(thread).toMatchObject({ workspaceId, streamId: stream.id, title: "Synthetic discussion" });
+    const messagesUrl = `${threadUrl}/${encodeURIComponent(thread.id)}/messages`;
+    stage = "canonical-message-append";
+    for (const text of ["First synthetic message", "Second synthetic message"]) {
+      const appended = await page.request.post(messagesUrl, { headers: workspaceHeaders, data: { body: { text } } });
+      expect(appended.status()).toBe(201);
+    }
+    stage = "canonical-message-page-one";
+    const firstPage = await page.request.get(`${messagesUrl}?limit=1`, { headers: workspaceHeaders });
+    expect(firstPage.status()).toBe(200);
+    const pageOne = await firstPage.json();
+    expect(pageOne.messages).toHaveLength(1);
+    expect(pageOne.messages[0].body).toEqual({ text: "First synthetic message" });
+    expect(pageOne.next).toBe(pageOne.messages[0].id);
+    stage = "canonical-message-page-two";
+    const secondPage = await page.request.get(`${messagesUrl}?limit=1&after=${encodeURIComponent(pageOne.next)}`, {
+      headers: workspaceHeaders,
+    });
+    expect((await secondPage.json()).messages[0].body).toEqual({ text: "Second synthetic message" });
+    stage = "canonical-stream-persisted";
+    streamList = await page.request.get(streamsUrl, { headers: workspaceHeaders });
+    expect((await streamList.json()).streams.map(({ id }) => id)).toContain(stream.id);
+    stage = "canonical-thread-persisted";
+    await page.reload();
+    const persistedThreads = await page.request.get(threadUrl, { headers: workspaceHeaders });
+    expect((await persistedThreads.json()).threads.map(({ id }) => id)).toContain(thread.id);
+    const foreignStreamThreads = await page.request.get(`${streamsUrl}/${encodeURIComponent(stream.id)}/threads`, {
+      headers: { "X-Team-ID": foreignWorkspaceId },
+    });
+    expect([403, 404]).toContain(foreignStreamThreads.status());
+    stage = "canonical-message-foreign-workspace";
+    const foreignMessages = await page.request.get(messagesUrl, { headers: { "X-Team-ID": foreignWorkspaceId } });
+    expect([403, 404]).toContain(foreignMessages.status());
+
     stage = "permission-denial";
     const forbiddenMutation = await page.request.post(`${appOrigin}/api/v1/workspaces/${workspaceId}/invitations`, {
       data: { subject: "unauthorized-fixture-subject" },
