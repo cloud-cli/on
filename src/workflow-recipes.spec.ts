@@ -194,6 +194,77 @@ describe("workflow recipe pinning", () => {
     });
   });
 
+  it("pins legacy nested recipe rows as main with their exact contracts and body", async () => {
+    const root = recipeRow();
+    root.functions_json = JSON.stringify({
+      main: {
+        inputs: JSON.parse(root.inputs_json),
+        outputs: { type: "object" },
+        steps: [{ id: "legacy-call", call: "other/legacy@7#main", with: {} }],
+      },
+    });
+    const legacy = {
+      ...recipeRow(),
+      namespace: "other",
+      slug: "legacy",
+      version: 7,
+      inputs_json: JSON.stringify({ type: "object", properties: { name: { type: "string" } } }),
+      steps_json: JSON.stringify([{ id: "legacy-body", run: "echo ${inputs.name}" }]),
+      functions_json: null,
+    };
+    database.get.mockImplementation(async (sql: string, values: string[]) => {
+      if (sql.includes("recipe_versions")) {
+        return values[0] === "tools" ? root : legacy;
+      }
+      if (sql.includes("COALESCE(MAX(revision)")) {
+        return { revision: 0 };
+      }
+      if (sql.includes("SELECT team_id FROM workflows")) {
+        return { team_id: "team-a" };
+      }
+      return null;
+    });
+    database.all.mockResolvedValue([]);
+
+    await new WorkflowRepository().saveDraftForTeam("team-a", "deploy-flow", source());
+    const revisionInsert = database.transaction.mock.calls[0][0][1];
+    const snapshot = JSON.parse(revisionInsert.d[3] as string);
+    expect(snapshot._pinnedReferences).toEqual([{ namespace: "other", slug: "legacy", version: 7, function: "main" }]);
+    expect(snapshot._pinnedRecipeFunctions).toEqual({
+      "other/legacy@7#main": {
+        inputs: JSON.parse(legacy.inputs_json),
+        outputs: { type: "object" },
+        steps: JSON.parse(legacy.steps_json),
+      },
+    });
+
+    legacy.steps_json = JSON.stringify([{ run: "changed after save" }]);
+    expect(snapshot._pinnedRecipeFunctions["other/legacy@7#main"].steps).toEqual([
+      { id: "legacy-body", run: "echo ${inputs.name}" },
+    ]);
+  });
+
+  it("does not resolve a missing nested exact version to a newer recipe", async () => {
+    const root = recipeRow();
+    root.functions_json = JSON.stringify({
+      main: {
+        inputs: JSON.parse(root.inputs_json),
+        outputs: { type: "object" },
+        steps: [{ call: "other/legacy@7#main", with: {} }],
+      },
+    });
+    database.get.mockImplementation(async (sql: string, values: string[]) => {
+      if (sql.includes("recipe_versions")) {
+        return values[0] === "tools" ? root : null;
+      }
+      return null;
+    });
+
+    await expect(new WorkflowRepository().validateForSave(source())).rejects.toThrow(
+      "Nested recipe version not found: other/legacy@7",
+    );
+  });
+
   it("validates nested call bindings and preserves the exact output contract", async () => {
     const root = recipeRow();
     root.functions_json = JSON.stringify({
