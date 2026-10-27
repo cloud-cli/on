@@ -23,7 +23,9 @@ describe("channels UI", () => {
       teamId: "team-a",
     });
     expect(matchRoute("http://localhost/ui/workspaces/team-a/channels/channel-a").teamId).not.toBe("team-b");
-    expect(source).toContain('routeParams.workspaceId || routeParams.teamId || localStorage.getItem("runner-team-id")');
+    expect(source).toMatch(
+      /routeParams\.workspaceId\s*\|\|\s*routeParams\.teamId\s*\|\|\s*localStorage\.getItem\("runner-team-id"\)/,
+    );
     expect(source).toContain('"X-Team-ID": routedWorkspaceId');
     expect(source).toContain("selectionGeneration");
     expect(source).toContain("You're up to date.");

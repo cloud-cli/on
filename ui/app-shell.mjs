@@ -13,6 +13,7 @@ export default function setup() {
   const selectedChannelId = ref("");
   const workspaceChannels = ref([]);
   const channelsStatus = ref("Loading channels…");
+  const channelsEmpty = ref(false);
   let channelsRequestId = 0;
   const quickSwitchOpen = ref(false);
   const quickSwitchItems = ref([]);
@@ -46,7 +47,7 @@ export default function setup() {
   };
 
   const syncSection = () => {
-    const path = window.location.pathname.replace(/^\/ui/, "");
+    const path = window.location.pathname.replace(/^\/ui/, "").replace(/\/+$/, "") || "/";
     const workspaceRoute = path.match(/^\/workspaces\/([^/]+)\/(workflows|runs|channels)(?:\/([^/]+))?(?:\/events)?$/);
     if (workspaceRoute) {
       selectedWorkspaceId.value = decodeURIComponent(workspaceRoute[1]);
@@ -71,6 +72,7 @@ export default function setup() {
     const requestId = ++channelsRequestId;
     const workspaceId = selectedWorkspaceId.value;
     workspaceChannels.value = [];
+    channelsEmpty.value = false;
     if (!workspaceId) {
       channelsStatus.value = "Select a workspace to view its channels.";
       return;
@@ -88,7 +90,8 @@ export default function setup() {
         return;
       }
       workspaceChannels.value = result.channels || [];
-      channelsStatus.value = workspaceChannels.value.length ? "" : "No channels in this workspace yet.";
+      channelsEmpty.value = workspaceChannels.value.length === 0;
+      channelsStatus.value = "";
     } catch (error) {
       if (requestId === channelsRequestId) {
         channelsStatus.value = error.message || "Unable to load channels.";
@@ -294,6 +297,7 @@ export default function setup() {
     selectedChannelId,
     workspaceChannels,
     channelsStatus,
+    channelsEmpty,
     isDarkTheme,
     setActive,
     selectWorkspace,

@@ -39,13 +39,82 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
   form.append(name, create);
   const channelsList = element("ul", undefined, "space-y-1");
   channelsList.setAttribute("aria-label", "Available Streams");
-  sidebar.append(form, channelsList);
+  sidebar.append(channelsList);
   const conversation = element(
     "section",
     undefined,
     "min-w-0 space-y-4 rounded-xl border border-app-border bg-app-card p-4",
   );
   conversation.setAttribute("aria-label", "Channel transcript");
+  const emptyState = element(
+    "section",
+    undefined,
+    "flex min-h-[calc(100dvh-8rem)] flex-col items-center justify-center px-4 py-12 text-center",
+  );
+  emptyState.setAttribute("aria-labelledby", "channels-empty-title");
+  emptyState.hidden = true;
+  const illustration = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  illustration.setAttribute("viewBox", "0 0 160 120");
+  illustration.setAttribute("role", "img");
+  illustration.setAttribute("aria-label", "A new conversation waiting to begin");
+  illustration.classList.add("mb-6", "h-32", "w-40");
+  const art = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  art.setAttribute("fill", "none");
+  art.setAttribute("stroke", "currentColor");
+  art.setAttribute("stroke-linecap", "round");
+  art.setAttribute("stroke-linejoin", "round");
+  art.setAttribute("stroke-width", "4");
+  const artShapes = [
+    [
+      "rect",
+      {
+        x: "20",
+        y: "20",
+        width: "120",
+        height: "78",
+        rx: "16",
+        class: "text-app-border",
+      },
+    ],
+    ["path", { d: "M48 48h64M48 66h40M58 98l-12 12v-12", class: "text-app-primary" }],
+    ["circle", { cx: "112", cy: "84", r: "18", class: "text-app-primary" }],
+    ["path", { d: "M112 76v16M104 84h16", class: "text-app-primary" }],
+  ];
+  for (const [tag, attributes] of artShapes) {
+    const shape = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const [attribute, value] of Object.entries(attributes)) {
+      shape.setAttribute(attribute, value);
+    }
+    art.append(shape);
+  }
+  illustration.append(art);
+  const emptyTitle = element("h2", "Start your first Stream", "text-2xl font-semibold");
+  emptyTitle.id = "channels-empty-title";
+  const emptyCopy = element(
+    "p",
+    "Create a Stream to bring conversations and updates for this workspace together.",
+    "mt-3 max-w-md text-app-secondary",
+  );
+  const emptyAction = element(
+    "button",
+    "Create your first Stream",
+    "mt-6 min-h-11 rounded-lg bg-app-primary px-5 py-3 font-semibold text-white focus-visible:ring-2 focus-visible:ring-app-primary",
+  );
+  emptyAction.type = "button";
+  const noPermission = element(
+    "p",
+    "You don’t have permission to create Streams in this workspace. Ask a workspace administrator for access.",
+    "mt-5 max-w-md text-sm text-app-secondary",
+  );
+  noPermission.hidden = true;
+  form.hidden = true;
+  const cancelCreate = element("button", "Cancel", "rounded-lg border border-app-border px-4 py-2 text-sm");
+  cancelCreate.type = "button";
+  cancelCreate.hidden = true;
+  const createError = element("p", undefined, "text-sm text-red-700");
+  createError.setAttribute("role", "alert");
+  createError.hidden = true;
+  emptyState.append(illustration, emptyTitle, emptyCopy, emptyAction, noPermission, form, cancelCreate, createError);
   const title = element("h2", "Select a channel", "min-w-0 break-all text-lg font-semibold");
   const eventHistory = document.createElement("details");
   eventHistory.className = "min-w-0 rounded-lg border border-app-border p-3";
@@ -157,9 +226,9 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
   );
   composer.append(help, payload, send);
   composer.hidden = true;
-  conversation.append(title, threadsSection, eventHistory, status, transcript, more, refresh, composer);
+  conversation.append(emptyState, title, threadsSection, eventHistory, status, transcript, more, refresh, composer);
   layout.append(sidebar, conversation);
-  root.replaceChildren(heading, layout);
+  root.replaceChildren(heading, emptyState, layout);
 
   let selected = null;
   let selectedThread = null;
@@ -603,9 +672,28 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     try {
       const data = await request("/api/v1/channels");
       canEdit = data.canEdit !== false;
-      form.hidden = !canEdit;
+      form.hidden = !canEdit || !(data.channels || []).length;
       composer.hidden = !canEdit || !selected;
       const channels = data.channels || [];
+      if (channels.length) {
+        sidebar.insertBefore(form, channelsList);
+      } else {
+        emptyState.insertBefore(form, cancelCreate);
+      }
+      emptyState.hidden = channels.length > 0;
+      layout.hidden = channels.length === 0;
+      heading.hidden = channels.length === 0;
+      title.hidden = !channels.length;
+      threadsSection.hidden = !channels.length;
+      eventHistory.hidden = !channels.length;
+      status.hidden = false;
+      transcript.hidden = !channels.length;
+      more.hidden = !channels.length;
+      refresh.hidden = !channels.length;
+      composer.hidden = !channels.length || !canEdit;
+      emptyAction.hidden = !canEdit;
+      noPermission.hidden = canEdit;
+      emptyAction.disabled = !canEdit;
       channelsList.replaceChildren(
         ...channels.map((channel) => {
           const li = document.createElement("li");
@@ -626,7 +714,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
         }),
       );
       if (!channels.length) {
-        status.textContent = "No channels yet. Create one to start a conversation.";
+        status.textContent = "";
       } else if (routedChannelId) {
         const routedChannel = channels.find((channel) => channel.id === routedChannelId);
         if (routedChannel) {
@@ -659,10 +747,29 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
         await select(channels.find((channel) => channel.id === selected.id) || channels[0]);
       }
     } catch (error) {
+      emptyState.hidden = true;
+      layout.hidden = false;
       status.textContent = error.message || "Unable to load channels.";
       status.setAttribute("role", "alert");
     }
   };
+  emptyAction.addEventListener("click", () => {
+    emptyAction.hidden = true;
+    emptyCopy.hidden = true;
+    createError.hidden = true;
+    form.hidden = false;
+    cancelCreate.hidden = false;
+    name.focus();
+  });
+  cancelCreate.addEventListener("click", () => {
+    form.reset();
+    form.hidden = true;
+    cancelCreate.hidden = true;
+    createError.hidden = true;
+    emptyAction.hidden = !canEdit;
+    emptyCopy.hidden = false;
+    emptyAction.focus();
+  });
   const syncRoutedChannel = () => {
     const params = root.routeParams || {};
     if (params.page !== "channels" || params.teamId !== routedWorkspaceId) {
@@ -686,6 +793,9 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
   window.addEventListener("runner-route-changed", syncRoutedChannel);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (!canEdit || !name.reportValidity()) {
+      return;
+    }
     create.disabled = true;
     try {
       const data = await request("/api/v1/channels", {
@@ -694,13 +804,14 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       });
       window.dispatchEvent(new Event("runner-channels-updated"));
       name.value = "";
+      form.hidden = true;
       await refreshChannels();
       if (data.channel) {
         await select(data.channel);
       }
     } catch (error) {
-      status.textContent = error.message || "Unable to create channel.";
-      status.setAttribute("role", "alert");
+      createError.textContent = error.message || "Unable to create channel.";
+      createError.hidden = false;
     } finally {
       create.disabled = false;
     }

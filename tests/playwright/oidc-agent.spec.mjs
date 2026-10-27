@@ -393,8 +393,15 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     expect(desktopGeometry.rail.width).toBeCloseTo(64, 0);
     expect(desktopGeometry.navigation.width).toBeCloseTo(224, 0);
     stage = "authenticated-shell-profile";
-    await expect(page.locator('a[aria-label^="Open preferences for "]')).toHaveCount(1);
-    await page.addStyleTag({ content: 'a[aria-label^="Open preferences for"] { visibility: hidden !important; }' });
+    const profileButton = page.getByRole("link", { name: "Open preferences" });
+    await expect(profileButton).toBeVisible();
+    await expect(profileButton).toHaveClass(/rounded-sm/);
+    await expect(
+      page.locator(
+        "[data-workspace-rail] button[aria-label^='Switch to light mode'], [data-workspace-rail] button[aria-label^='Switch to dark mode']",
+      ),
+    ).toBeVisible();
+    await expect(page.locator("[data-workspace-rail]")).not.toContainText("OIDC Browser Fixture");
     stage = "quick-switch-template-rendering";
     await page.locator("[data-quick-switch-open]").click();
     const quickSwitchSearch = page.locator("[data-quick-switch-search]");

@@ -4,30 +4,50 @@ import { WebhookServer } from "./server.js";
 import shellSetup from "../ui/app-shell.mjs?raw";
 import preferencesSetup from "../ui/preferences.mjs?raw";
 
-const html = readFileSync(new URL("../ui/app-shell.html", import.meta.url), "utf8");
+const html = readFileSync(
+  new URL("../ui/app-shell.html", import.meta.url),
+  "utf8",
+);
+const styles = readFileSync(
+  new URL("../ui/index.css", import.meta.url),
+  "utf8",
+);
 
 describe("On application shell", () => {
   it("uses compact vertical spacing on every page main", () => {
     for (const directory of ["ui", "src"]) {
-      const files = readdirSync(new URL(`../${directory}/`, import.meta.url)).filter((file) => file.endsWith(".html"));
+      const files = readdirSync(
+        new URL(`../${directory}/`, import.meta.url),
+      ).filter((file) => file.endsWith(".html"));
       for (const file of files) {
-        const source = readFileSync(new URL(`../${directory}/${file}`, import.meta.url), "utf8");
-        expect(source, `${directory}/${file}`).not.toMatch(/<main\b[^>]*\bpy-6\b/);
+        const source = readFileSync(
+          new URL(`../${directory}/${file}`, import.meta.url),
+          "utf8",
+        );
+        expect(source, `${directory}/${file}`).not.toMatch(
+          /<main\b[^>]*\bpy-6\b/,
+        );
       }
     }
   });
 
   it("provides responsive, accessible navigation around the mounted router", () => {
-    expect(shellSetup).toContain('import { apiFetch } from "@app/api-client.mjs"');
+    expect(shellSetup).toContain(
+      'import { apiFetch } from "@app/api-client.mjs"',
+    );
     expect(shellSetup).toContain('page === "channels" ? "channels"');
     expect(shellSetup).toContain('page === "workflows" ? "workflows"');
-    expect(shellSetup).toContain('addEventListener("runner-route-changed", syncSection)');
+    expect(shellSetup).toContain(
+      'addEventListener("runner-route-changed", syncSection)',
+    );
     expect(html).toContain('"@app/": "/assets/"');
     expect(html).toContain('"yaml": "https://esm.sh/yaml@2.9.0"');
     expect(html).toContain('aria-label="Primary navigation"');
     expect(html).toContain("data-workspace-rail");
     expect(html).toContain('aria-label="Workspace switcher"');
-    expect(html).toContain("aria-pressed=\"selectedWorkspaceId === team.id ? 'true' : 'false'\"");
+    expect(html).toContain(
+      "aria-pressed=\"selectedWorkspaceId === team.id ? 'true' : 'false'\"",
+    );
     expect(html).not.toContain('href="/ui/runs"');
     expect(html).toContain('href="/ui/recipes"');
     expect(html).not.toContain('href="/ui/workflows"');
@@ -48,21 +68,31 @@ describe("On application shell", () => {
     expect(html).not.toContain("overscroll-y-contain");
     expect(html).not.toContain("overflow-hidden bg-app-background");
     expect(html).toContain('href="/ui/settings"');
-    expect(html).toContain("Open preferences for ");
-    expect(html).toContain("max-w-[calc(100vw-4rem)]");
-    expect(html).toContain("max-w-[calc(100vw-7rem)]");
-    expect(html).toContain('class="hidden min-w-0 max-w-[calc(100vw-7rem)] flex-col');
-    expect(html).toContain("sm:flex sm:max-w-none");
-    expect(html).toContain('class="truncate text-sm font-semibold leading-tight"');
-    expect(html).toContain('class="truncate text-[10px] leading-tight text-app-secondary"');
+    expect(html).toContain('aria-label="Open preferences"');
+    expect(html).toContain(
+      'class="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-sm',
+    );
+    expect(html).toContain(
+      'class="mt-auto flex w-full flex-col items-center gap-2 pt-3"',
+    );
+    expect(html).not.toContain("user.name || user.email");
+    expect(html).not.toContain("{{ user.email }}");
     expect(html).toContain('on-click="toggleTheme()"');
-    expect(html).toContain('class="flex items-center gap-2 px-4 pt-4 sm:gap-4 sm:px-6 lg:px-8"');
-    expect(html).toContain('class="ml-auto flex shrink-0 items-center gap-2 sm:gap-4"');
+    expect(html).toContain(
+      'class="flex items-center gap-2 px-4 pt-4 sm:gap-4 sm:px-6 lg:px-8"',
+    );
+    expect(html).not.toContain(
+      'class="ml-auto flex shrink-0 items-center gap-2 sm:gap-4"',
+    );
     expect(html).toContain("md:h-dvh md:w-56");
     expect(html).toContain("isDarkTheme ? 'sun' : 'moon'");
-    expect(html).toContain("isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'");
+    expect(html).toContain(
+      "isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'",
+    );
     expect(shellSetup).toContain('setAuthPreference("theme", nextTheme)');
-    expect(shellSetup).toContain('themeMedia.addEventListener("change", syncSystemTheme)');
+    expect(shellSetup).toContain(
+      'themeMedia.addEventListener("change", syncSystemTheme)',
+    );
     expect(html).toContain('<template if="user.photo || user.picture"');
     expect(html).toContain('attr-src="user.photo || user.picture"');
     expect(html).not.toContain("user.photo || user.picture || null");
@@ -76,18 +106,18 @@ describe("On application shell", () => {
     expect(html).toContain('aria-label="Global navigation"');
     expect(html).toContain('aria-label="Workspace navigation"');
     expect(html).toContain('class="col-start-2 row-start-1');
-    expect(html).toContain("md:col-start-3 md:row-start-1 md:rounded-tl-xl");
+    expect(html).toContain("md:col-start-3 md:row-start-1 md:p-4");
     expect(html).not.toContain("data-mobile-menu-button");
     expect(html).not.toContain("data-workspace-nav-item");
     expect(html).not.toContain("data-workspace-submenu");
-    expect(html).not.toContain("mt-auto");
+    expect(html).toContain("mt-auto");
   });
 
   it("loads the signed-in profile from the session endpoint without inventing a user", () => {
     expect(shellSetup).toContain('fetch("/api/v1/auth/session"');
     expect(shellSetup).toContain("session?.authenticated || !session.user");
-    expect(html).toContain("user.name || user.email");
-    expect(html).toContain("{{ user.email }}");
+    expect(html).not.toContain("user.name || user.email");
+    expect(html).not.toContain("{{ user.email }}");
     expect(html).not.toContain('target="_blank"');
     expect(html).not.toContain("oidcProviderUrl");
     expect(html).toContain('if="userAuthenticated"');
@@ -105,25 +135,79 @@ describe("On application shell", () => {
     expect(html).toContain("workspacePath(team.id, 'runs')");
     expect(html).toContain("workspacePath(team.id, 'workflows')");
     expect(html).toContain('for="channel of workspaceChannels"');
-    expect(html).toContain("workspacePath(team.id, 'channels') + '/' + encodeURIComponent(channel.id)");
+    expect(html).toContain(
+      "workspacePath(team.id, 'channels') + '/' + encodeURIComponent(channel.id)",
+    );
     expect(shellSetup).toContain('apiFetch("/api/v1/channels"');
     expect(shellSetup).toContain('"X-Team-ID": workspaceId');
     expect(shellSetup).toContain("channelsStatus");
+    expect(shellSetup).toContain(
+      "channelsEmpty.value = workspaceChannels.value.length === 0",
+    );
+    expect(html).toContain('if="channelsEmpty"');
+    expect(html).toContain("Create your first Stream</a");
+    expect(html).toContain("attr-href=\"workspacePath(team.id, 'channels')\"");
+    expect(html).toContain('if="channelsStatus"');
+    expect(shellSetup).not.toContain("No channels in this workspace yet.");
     expect(html).toContain("on-click=\"selectWorkspace(team.id, 'runs')\"");
     expect(shellSetup).toContain('const selectedWorkspaceId = ref("")');
-    expect(shellSetup).toContain("selectedWorkspaceId.value = decodeURIComponent(workspaceRoute[1])");
-    expect(shellSetup).toContain("teams.value.some((team) => team.id === storedWorkspaceId)");
-    expect(shellSetup).toContain('selectedWorkspaceId.value = event.detail?.teamId || ""');
+    expect(shellSetup).toContain(
+      "selectedWorkspaceId.value = decodeURIComponent(workspaceRoute[1])",
+    );
+    expect(shellSetup).toContain(
+      "teams.value.some((team) => team.id === storedWorkspaceId)",
+    );
+    expect(shellSetup).toContain(
+      'selectedWorkspaceId.value = event.detail?.teamId || ""',
+    );
     expect(shellSetup).toContain('fetch("/api/v1/workspaces"');
-    expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
+    expect(shellSetup).toContain(
+      'addEventListener("runner-teams-updated", loadTeams)',
+    );
     expect(shellSetup).toContain('path.startsWith("/workspaces/")');
     expect(shellSetup).not.toContain("syncWorkspaceNavigation");
-    expect(html).toContain("flex min-w-0 items-center gap-1 md:mt-1 md:flex-col");
+    expect(html).toContain(
+      "flex min-w-0 items-center gap-1 md:mt-1 md:flex-col",
+    );
     expect(html).toContain("selectedWorkspaceId === team.id");
     expect(html).toContain('aria-label="Switch workspace"');
     expect(html).toContain('attr-data-workspace-switch="team.id"');
-    expect(html).toContain("{{ channel.name }}</a");
-    expect(html).toContain("Messages are not yet modeled as Threads");
+    expect(html).toContain("{{ channel.name }}");
+    expect(html).toMatch(/Messages\s+are not yet modeled as Threads/);
+  });
+
+  it("keeps the workflow link current on workspace workflow routes with trailing slashes", () => {
+    expect(shellSetup).toContain(
+      '.replace(/^\\/ui/, "").replace(/\\/+$/, "") || "/"',
+    );
+    expect(shellSetup).toContain(
+      'activeSection.value = `workspace-${workspaceRoute[2] === "channels" ? "channels" : workspaceRoute[2] === "workflows" ? "workflows" : "runs"}`',
+    );
+    expect(html).toContain(
+      "attr-aria-current=\"activeSection === 'workspace-workflows' ? 'page' : null\"",
+    );
+    expect(html).toContain("text-xs font-semibold text-app-secondary");
+    expect(html).toContain(">Channels</span");
+  });
+
+  it("frames main content in an inset rounded panel on every viewport edge", () => {
+    expect(html).toContain(
+      "bg-app-background p-2 sm:p-3 md:col-start-3 md:row-start-1 md:p-4",
+    );
+    expect(html).toContain("min-w-0 rounded-2xl bg-app-card");
+    expect(html).not.toContain("md:rounded-tl-xl");
+    expect(html).not.toContain("md:border-r");
+  });
+
+  it("keeps the sidebar unfilled and reserves the former shade for hover states", () => {
+    expect(html).not.toContain("bg-app-sidebar");
+    expect(html).not.toContain("bg-app-hover");
+    expect(styles).toContain("--color-app-hover: #e9eee6");
+    expect(styles).toContain("--color-app-hover: #111a14");
+    expect(styles).not.toContain("--color-app-sidebar");
+    expect(
+      readFileSync(new URL("../ui/workflows-ui.html", import.meta.url), "utf8"),
+    ).toContain("hover:bg-app-hover");
   });
 
   it("supports accessible keyboard quick navigation across known workspaces and routes", () => {
@@ -133,7 +217,9 @@ describe("On application shell", () => {
     expect(html).toContain("data-quick-switch-search");
     expect(shellSetup).toContain("(event.metaKey || event.ctrlKey)");
     expect(shellSetup).toContain('event.key.toLowerCase() === "k"');
-    expect(shellSetup).toContain('type: label === "channels" ? "Stream" : label');
+    expect(shellSetup).toContain(
+      'type: label === "channels" ? "Stream" : label',
+    );
     expect(shellSetup).toContain('label: "Settings", type: "Route"');
     expect(shellSetup).toContain("const quickSwitchItems = ref([])");
     expect(html).toContain('<template for="item of quickSwitchItems"');
@@ -146,28 +232,42 @@ describe("On application shell", () => {
     expect(shellSetup).not.toContain("replaceChildren");
     expect(shellSetup).not.toContain("createElement");
     expect(shellSetup).not.toContain("textContent");
-    expect(shellSetup).toContain('event.key === "ArrowDown" || event.key === "ArrowUp"');
+    expect(shellSetup).toContain(
+      'event.key === "ArrowDown" || event.key === "ArrowUp"',
+    );
     expect(shellSetup).toContain('event.key === "Enter"');
     expect(shellSetup).toContain('event.key === "Escape"');
-    expect(shellSetup).toContain('removeEventListener("keydown", handleGlobalQuickSwitch)');
+    expect(shellSetup).toContain(
+      'removeEventListener("keydown", handleGlobalQuickSwitch)',
+    );
   });
 
   it("handles Enter and Space on the skip link without triggering browser navigation", () => {
     expect(shellSetup).toContain('["Enter", " "].includes(event.key)');
     expect(shellSetup).toContain("event.preventDefault()");
     expect(shellSetup).toContain('getElementById("main-content")');
-    expect(shellSetup).toContain('addEventListener("keydown", handleSkipKeydown)');
-    expect(shellSetup).toContain('removeEventListener("keydown", handleSkipKeydown)');
+    expect(shellSetup).toContain(
+      'addEventListener("keydown", handleSkipKeydown)',
+    );
+    expect(shellSetup).toContain(
+      'removeEventListener("keydown", handleSkipKeydown)',
+    );
   });
 
   it("serves the shell setup module referenced by the app shell", async () => {
-    expect(html).toContain('<script setup src="/assets/app-shell.mjs"></script>');
+    expect(html).toContain(
+      '<script setup src="/assets/app-shell.mjs"></script>',
+    );
     expect(shellSetup).toContain('from "@app/preferences.mjs"');
     const response = { writeHead: vi.fn().mockReturnThis(), end: vi.fn() };
 
     await (WebhookServer.prototype as any).handleRequest.call(
       {},
-      { method: "GET", url: "/assets/app-shell.mjs", headers: { host: "app.test" } },
+      {
+        method: "GET",
+        url: "/assets/app-shell.mjs",
+        headers: { host: "app.test" },
+      },
       response,
     );
 
@@ -183,7 +283,11 @@ describe("On application shell", () => {
 
     await (WebhookServer.prototype as any).handleRequest.call(
       {},
-      { method: "GET", url: "/assets/preferences.mjs", headers: { host: "app.test" } },
+      {
+        method: "GET",
+        url: "/assets/preferences.mjs",
+        headers: { host: "app.test" },
+      },
       response,
     );
 

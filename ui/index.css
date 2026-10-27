@@ -15,7 +15,7 @@
   --color-error: #b54138;
   --color-info: #4a66a0;
   --color-app-background: #eef2ec;
-  --color-app-sidebar: #e9eee6;
+  --color-app-hover: #e9eee6;
   --color-app-panel: #fafbf8;
   --color-app-subtle: #fafbf8;
   --color-app-foreground: #1c201e;
@@ -58,7 +58,7 @@
   --color-error: #f0a49a;
   --color-info: #afc8ed;
   --color-app-background: #0f1712;
-  --color-app-sidebar: #111a14;
+  --color-app-hover: #111a14;
   --color-app-panel: #1a241e;
   --color-app-subtle: #1a241e;
   --color-app-foreground: #edf2ee;
@@ -106,7 +106,7 @@
     --color-error: #f0a49a;
     --color-info: #afc8ed;
     --color-app-background: #0f1712;
-    --color-app-sidebar: #111a14;
+    --color-app-hover: #111a14;
     --color-app-panel: #1a241e;
     --color-app-subtle: #1a241e;
     --color-app-foreground: #edf2ee;

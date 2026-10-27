@@ -87,7 +87,7 @@
                   <a
                     attr-href="routedWorkspaceId ? '/ui/workspaces/' + encodeURIComponent(routedWorkspaceId) + '/workflows/' + workflow.id : '/ui/workflows/' + workflow.id + '?workspaceId=' + encodeURIComponent(workflow.workspaceId)"
                     attr-aria-label="'Edit ' + workflow.name"
-                    class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-app-secondary outline-none hover:bg-app-sidebar hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary/40"
+                    class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-app-secondary outline-none hover:bg-app-hover hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary/40"
                   >
                     <span class="sr-only">Edit {{ workflow.name }}</span>
                     <lucide-icon icon="pencil" size="16" aria-hidden="true"></lucide-icon>
@@ -112,7 +112,7 @@
             <div class="border-b border-app-border px-4 pb-3 pt-3 sm:px-5">
               <a
                 attr-href="routedWorkspaceId ? '/ui/workspaces/' + encodeURIComponent(routedWorkspaceId) + '/workflows' : '/ui/workflows'"
-                class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-app-secondary outline-none transition hover:bg-app-sidebar hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary/40"
+                class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-app-secondary outline-none transition hover:bg-app-hover hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary/40"
               >
                 <lucide-icon icon="arrow-left" size="14"></lucide-icon>
                 Back to workflows
@@ -242,7 +242,7 @@
                 <button
                   type="button"
                   on-click="openRecipePicker()"
-                  class="rounded-lg border border-app-border px-3 py-2 text-sm font-medium text-app-primary hover:bg-app-sidebar"
+                  class="rounded-lg border border-app-border px-3 py-2 text-sm font-medium text-app-primary hover:bg-app-hover"
                 >
                   Insert recipe
                 </button>
@@ -447,7 +447,7 @@
                   type="button"
                   on-click="closeAiHelp()"
                   aria-label="Close AI help"
-                  class="rounded-lg p-2 text-app-secondary hover:bg-app-sidebar"
+                  class="rounded-lg p-2 text-app-secondary hover:bg-app-hover"
                 >
                   <lucide-icon icon="x" size="17"></lucide-icon>
                 </button>
@@ -477,7 +477,7 @@
                 <button
                   type="button"
                   on-click="closeAiHelp()"
-                  class="rounded-lg border border-app-border px-3 py-2 text-sm text-app-secondary hover:bg-app-sidebar"
+                  class="rounded-lg border border-app-border px-3 py-2 text-sm text-app-secondary hover:bg-app-hover"
                 >
                   Cancel</button
                 ><template if="aiDiffHtml"
@@ -526,7 +526,7 @@
                   type="button"
                   on-click="closeRevisionDialog()"
                   aria-label="Close revision dialog"
-                  class="rounded-lg p-2 text-app-secondary outline-none hover:bg-app-sidebar hover:text-white focus-visible:ring-2 focus-visible:ring-app-primary/40"
+                  class="rounded-lg p-2 text-app-secondary outline-none hover:bg-app-hover hover:text-white focus-visible:ring-2 focus-visible:ring-app-primary/40"
                 >
                   <lucide-icon icon="x" size="17"></lucide-icon>
                 </button>
@@ -543,7 +543,7 @@
                   type="button"
                   on-click="navigateRevision(-1)"
                   bind-disabled="revisionLoading || revisionNumber <= 1"
-                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-border px-3 py-2 text-sm text-app-foreground outline-none hover:bg-app-sidebar focus-visible:ring-2 focus-visible:ring-app-primary/40 disabled:opacity-40"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-border px-3 py-2 text-sm text-app-foreground outline-none hover:bg-app-hover focus-visible:ring-2 focus-visible:ring-app-primary/40 disabled:opacity-40"
                 >
                   <lucide-icon icon="chevron-left" size="16"></lucide-icon>Previous
                 </button>
@@ -551,7 +551,7 @@
                   type="button"
                   on-click="navigateRevision(1)"
                   bind-disabled="revisionLoading || revisionNumber >= revision"
-                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-border px-3 py-2 text-sm text-app-foreground outline-none hover:bg-app-sidebar focus-visible:ring-2 focus-visible:ring-app-primary/40 disabled:opacity-40"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-border px-3 py-2 text-sm text-app-foreground outline-none hover:bg-app-hover focus-visible:ring-2 focus-visible:ring-app-primary/40 disabled:opacity-40"
                 >
                   Next<lucide-icon icon="chevron-right" size="16"></lucide-icon>
                 </button>
@@ -651,7 +651,7 @@
                     attr-aria-label="'Edit secret ' + name"
                   >
                     <span
-                      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-app-sidebar text-app-secondary group-hover:text-app-primary"
+                      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-app-hover text-app-secondary group-hover:text-app-primary"
                       ><lucide-icon icon="key-round" size="15"></lucide-icon
                     ></span>
                     <span class="min-w-0 flex-1 truncate font-mono text-sm text-app-foreground">{{ name }}</span>

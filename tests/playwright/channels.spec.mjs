@@ -2,6 +2,116 @@ import { expect, test } from "@playwright/test";
 
 for (const viewport of [
   { name: "desktop", width: 1280, height: 900 },
+  { name: "mobile", width: 320, height: 844 },
+]) {
+  test(`first Stream empty state creates a channel (${viewport.name})`, async ({ page }, testInfo) => {
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+    let channels = [];
+    let createBody;
+    await page.addInitScript(() => {
+      window.EventSource = class extends EventTarget {
+        close() {}
+      };
+    });
+    await page.route("**/api/v1/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.pathname === "/api/v1/auth/token") {
+        await route.fulfill({
+          json: {
+            access_token: "local-test-token",
+            expires_at: Date.now() + 600000,
+          },
+        });
+      } else if (url.pathname === "/api/v1/channels" && request.method() === "GET") {
+        await route.fulfill({ json: { canEdit: true, channels } });
+      } else if (url.pathname === "/api/v1/channels" && request.method() === "POST") {
+        createBody = JSON.parse(request.postData());
+        channels = [{ id: "first-channel", name: createBody.name }];
+        await route.fulfill({ json: { channel: channels[0] } });
+      } else if (url.pathname.endsWith("/threads")) {
+        await route.fulfill({ json: { threads: [] } });
+      } else if (url.pathname.endsWith("/messages")) {
+        await route.fulfill({ json: { messages: [], next: null } });
+      } else {
+        await route.fulfill({ status: 404, json: { error: "Not found" } });
+      }
+    });
+    await page.goto("/tests/playwright/channel-harness.html?workspace=team-empty");
+    await expect(page.getByRole("heading", { name: "Start your first Stream" })).toBeVisible();
+    await expect(page.locator("[aria-label='Streams']")).toBeHidden();
+    await expect(page.locator("[aria-label='Channel transcript']")).toBeHidden();
+    await expect(page.locator("[aria-labelledby='channels-empty-title']")).toHaveClass(/min-h-\[calc\(100dvh-8rem\)\]/);
+    await expect(page.locator("svg[role=img]")).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath("channel-empty-state.png"),
+      fullPage: true,
+    });
+    const start = page.getByRole("button", {
+      name: "Create your first Stream",
+    });
+    await start.click();
+    await expect(page.getByLabel("New Stream name")).toBeFocused();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(start).toBeVisible();
+    await expect(start).toBeFocused();
+    await start.click();
+    await expect(page.getByLabel("New Stream name")).toBeFocused();
+    const name = "A new team space";
+    await page.getByLabel("New Stream name").fill(name);
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await expect(page.getByRole("heading", { name })).toBeVisible();
+    await expect(page.getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByLabel("New Stream name")).toBeVisible();
+    expect(createBody).toEqual({ name });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
+test("first Stream empty state explains missing permission and displays creation errors", async ({ page }) => {
+  let canEdit = false;
+  await page.addInitScript(() => {
+    window.EventSource = class extends EventTarget {
+      close() {}
+    };
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/auth/token") {
+      await route.fulfill({
+        json: {
+          access_token: "local-test-token",
+          expires_at: Date.now() + 600000,
+        },
+      });
+    } else if (url.pathname === "/api/v1/channels" && request.method() === "GET") {
+      await route.fulfill({ json: { canEdit, channels: [] } });
+    } else if (url.pathname === "/api/v1/channels" && request.method() === "POST") {
+      await route.fulfill({
+        status: 403,
+        json: { error: "Channel creation denied" },
+      });
+    } else {
+      await route.fulfill({ status: 404, json: { error: "Not found" } });
+    }
+  });
+  await page.goto("/tests/playwright/channel-harness.html");
+  await expect(page.getByText(/don’t have permission to create Streams/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create your first Stream" })).toBeHidden();
+  canEdit = true;
+  await page.reload();
+  await page.getByRole("button", { name: "Create your first Stream" }).click();
+  await page.getByLabel("New Stream name").fill("Denied");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Channel creation denied");
+});
+
+for (const viewport of [
+  { name: "desktop", width: 1280, height: 900 },
   { name: "mobile", width: 390, height: 844 },
 ]) {
   test(`channel conversation flow (${viewport.name})`, async ({ page }, testInfo) => {
@@ -66,7 +176,12 @@ for (const viewport of [
           data = { messages: threadMessages };
         } else {
           const body = JSON.parse(request.postData());
-          const message = { id: "thread-message-1", author: "You", body: body.body, createdAt: "2026-01-01T00:02:00Z" };
+          const message = {
+            id: "thread-message-1",
+            author: "You",
+            body: body.body,
+            createdAt: "2026-01-01T00:02:00Z",
+          };
           threadMessages = [...threadMessages, message];
           data = { message };
         }
@@ -200,7 +315,10 @@ test("workspace channel deep link restores the selected transcript", async ({ pa
     requests.push({ url: url.pathname, team: request.headers()["x-team-id"] });
     let body = {};
     if (url.pathname === "/api/v1/auth/token") {
-      body = { access_token: "local-test-token", expires_at: Date.now() + 600_000 };
+      body = {
+        access_token: "local-test-token",
+        expires_at: Date.now() + 600_000,
+      };
     } else if (url.pathname === "/api/v1/channels") {
       body = {
         canEdit: false,
@@ -212,7 +330,10 @@ test("workspace channel deep link restores the selected transcript", async ({ pa
     } else if (url.pathname.endsWith("/threads")) {
       body = { threads: [] };
     } else if (url.pathname.endsWith("/messages")) {
-      body = { messages: [{ id: "m1", body: { text: "Deep-linked transcript" } }], next: null };
+      body = {
+        messages: [{ id: "m1", body: { text: "Deep-linked transcript" } }],
+        next: null,
+      };
     }
     await route.fulfill({ json: body });
   });
@@ -236,12 +357,21 @@ test("channel deep links fail closed when the channel is absent from the authori
     const url = new URL(route.request().url());
     let body = {};
     if (url.pathname === "/api/v1/auth/token") {
-      body = { access_token: "local-test-token", expires_at: Date.now() + 600_000 };
+      body = {
+        access_token: "local-test-token",
+        expires_at: Date.now() + 600_000,
+      };
     } else if (url.pathname === "/api/v1/channels") {
-      body = { canEdit: false, channels: [{ id: "authorized", name: "Authorized channel" }] };
+      body = {
+        canEdit: false,
+        channels: [{ id: "authorized", name: "Authorized channel" }],
+      };
     } else if (url.pathname.endsWith("/messages")) {
       messageRequests.push(url.pathname);
-      body = { messages: [{ id: "private", body: { text: "Must not be shown" } }], next: null };
+      body = {
+        messages: [{ id: "private", body: { text: "Must not be shown" } }],
+        next: null,
+      };
     }
     await route.fulfill({ json: body });
   });
@@ -495,9 +625,15 @@ test("Stream event notifications reconcile from the durable cursor without dupli
     const url = new URL(route.request().url());
     let data;
     if (url.pathname === "/api/v1/auth/token") {
-      data = { access_token: "local-test-token", expires_at: Date.now() + 600000 };
+      data = {
+        access_token: "local-test-token",
+        expires_at: Date.now() + 600000,
+      };
     } else if (url.pathname === "/api/v1/channels") {
-      data = { canEdit: false, channels: [{ id: "live-stream", name: "Live" }] };
+      data = {
+        canEdit: false,
+        channels: [{ id: "live-stream", name: "Live" }],
+      };
     } else if (url.pathname.endsWith("/messages")) {
       data = { messages: [], next: null };
     } else if (url.pathname.endsWith("/events")) {
@@ -506,19 +642,34 @@ test("Stream event notifications reconcile from the durable cursor without dupli
       data =
         cursor === "cursor-e1"
           ? {
-              events: [{ id: "event-2", type: "task.updated", data: { status: "done" } }],
+              events: [
+                {
+                  id: "event-2",
+                  type: "task.updated",
+                  data: { status: "done" },
+                },
+              ],
               nextCursor: null,
               resumeCursor: "cursor-e2",
             }
           : {
-              events: [{ id: "event-1", type: "task.created", data: { status: "queued" } }],
+              events: [
+                {
+                  id: "event-1",
+                  type: "task.created",
+                  data: { status: "queued" },
+                },
+              ],
               nextCursor: null,
               resumeCursor: "cursor-e1",
             };
     } else {
       data = {};
     }
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(data),
+    });
   });
   await page.route("**/api/channels/**", async (route) => {
     const url = new URL(route.request().url());
@@ -528,19 +679,37 @@ test("Stream event notifications reconcile from the durable cursor without dupli
       const data =
         cursor === "cursor-e1"
           ? {
-              events: [{ id: "event-2", type: "task.updated", data: { status: "done" } }],
+              events: [
+                {
+                  id: "event-2",
+                  type: "task.updated",
+                  data: { status: "done" },
+                },
+              ],
               nextCursor: null,
               resumeCursor: "cursor-e2",
             }
           : {
-              events: [{ id: "event-1", type: "task.created", data: { status: "queued" } }],
+              events: [
+                {
+                  id: "event-1",
+                  type: "task.created",
+                  data: { status: "queued" },
+                },
+              ],
               nextCursor: null,
               resumeCursor: "cursor-e1",
             };
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(data),
+      });
       return;
     }
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ messages: [], next: null }) });
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ messages: [], next: null }),
+    });
   });
   await page.route("**/api/events**", async (route) => {
     await route.fulfill({ status: 204, body: "" });
@@ -553,7 +722,9 @@ test("Stream event notifications reconcile from the durable cursor without dupli
   const eventSource = await page.evaluateHandle(() => window.__eventSources[0]);
   await eventSource.evaluate((source) => {
     source.dispatchEvent(
-      new MessageEvent("channel.domain-event", { data: JSON.stringify({ channelId: "live-stream" }) }),
+      new MessageEvent("channel.domain-event", {
+        data: JSON.stringify({ channelId: "live-stream" }),
+      }),
     );
   });
   await expect(page.locator('[data-event-id="event-2"]')).toBeVisible();
@@ -594,9 +765,19 @@ test("revoked Stream history access clears saved events and linked runs on live 
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/auth/token") {
-      await route.fulfill({ json: { access_token: "local-test-token", expires_at: Date.now() + 600000 } });
+      await route.fulfill({
+        json: {
+          access_token: "local-test-token",
+          expires_at: Date.now() + 600000,
+        },
+      });
     } else if (url.pathname === "/api/v1/channels") {
-      await route.fulfill({ json: { canEdit: false, channels: [{ id: "revoked", name: "Revoked" }] } });
+      await route.fulfill({
+        json: {
+          canEdit: false,
+          channels: [{ id: "revoked", name: "Revoked" }],
+        },
+      });
     } else if (url.pathname.endsWith("/threads")) {
       await route.fulfill({ json: { threads: [] } });
     } else if (url.pathname.endsWith("/messages")) {
@@ -637,7 +818,9 @@ test("revoked Stream history access clears saved events and linked runs on live 
   denied = true;
   await page.evaluate(() => {
     window.__eventSources[0].dispatchEvent(
-      new MessageEvent("channel.domain-event", { data: JSON.stringify({ channelId: "revoked" }) }),
+      new MessageEvent("channel.domain-event", {
+        data: JSON.stringify({ channelId: "revoked" }),
+      }),
     );
   });
   await expect(page.getByRole("alert")).toContainText("Forbidden");
@@ -645,7 +828,12 @@ test("revoked Stream history access clears saved events and linked runs on live 
   await expect(page.getByRole("link", { name: "Run private-run" })).toHaveCount(0);
   expect(historyRequests).toHaveLength(2);
   expect(errors).toContain("Failed to load resource: the server responded with a status of 403 (Forbidden)");
-  expect(failedResponses).toEqual([{ status: 403, url: expect.stringContaining("/api/channels/revoked/events") }]);
+  expect(failedResponses).toEqual([
+    {
+      status: 403,
+      url: expect.stringContaining("/api/channels/revoked/events"),
+    },
+  ]);
 });
 
 for (const viewport of [
@@ -653,7 +841,10 @@ for (const viewport of [
   { name: "mobile", width: 390, height: 844 },
 ]) {
   test(`invocation view keeps admission and run state distinct (${viewport.name})`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
     await page.addInitScript(() => {
       window.__eventSources = [];
       window.EventSource = class extends EventTarget {
@@ -679,7 +870,10 @@ for (const viewport of [
       const url = new URL(route.request().url());
       let data;
       if (url.pathname === "/api/v1/auth/token") {
-        data = { access_token: "local-test-token", expires_at: Date.now() + 600000 };
+        data = {
+          access_token: "local-test-token",
+          expires_at: Date.now() + 600000,
+        };
       } else if (url.pathname === "/api/v1/workflow-invocations/invocation-1") {
         data = {
           id: "invocation-1",
@@ -700,7 +894,10 @@ for (const viewport of [
         };
       } else if (url.pathname === "/api/v1/runs/42") {
         runStatusRequests.push(route.request().headers()["x-team-id"]);
-        data = { status: runStatusRequests.length === 1 ? "running" : "success", jobId: "42" };
+        data = {
+          status: runStatusRequests.length === 1 ? "running" : "success",
+          jobId: "42",
+        };
       } else {
         await route.fulfill({
           status: 404,
@@ -709,7 +906,10 @@ for (const viewport of [
         });
         return;
       }
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(data),
+      });
     });
 
     await page.goto("/tests/playwright/invocation-harness.html?workspaceId=team-a&invocationId=invocation-1");
@@ -722,13 +922,18 @@ for (const viewport of [
     await expect(page.getByText("Current run status: running")).toBeVisible();
     await page.evaluate(() => {
       window.__eventSources[0].dispatchEvent(
-        new MessageEvent("jobs.changed", { data: JSON.stringify({ teamId: "team-a", jobId: 42 }) }),
+        new MessageEvent("jobs.changed", {
+          data: JSON.stringify({ teamId: "team-a", jobId: 42 }),
+        }),
       );
     });
     await expect(page.getByText("Current run status: success")).toBeVisible();
     expect(runStatusRequests).toEqual(["team-a", "team-a"]);
     expect(errors).toEqual([]);
-    await page.screenshot({ path: testInfo.outputPath(`invocation-${viewport.name}.png`), fullPage: true });
+    await page.screenshot({
+      path: testInfo.outputPath(`invocation-${viewport.name}.png`),
+      fullPage: true,
+    });
   });
 }
 
