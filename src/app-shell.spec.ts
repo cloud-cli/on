@@ -63,7 +63,9 @@ describe("On application shell", () => {
     expect(html).toContain("isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'");
     expect(shellSetup).toContain('setAuthPreference("theme", nextTheme)');
     expect(shellSetup).toContain('themeMedia.addEventListener("change", syncSystemTheme)');
-    expect(html).toContain('attr-src="user.photo || user.picture || null"');
+    expect(html).toContain('<template if="user.photo || user.picture"');
+    expect(html).toContain('attr-src="user.photo || user.picture"');
+    expect(html).not.toContain("user.photo || user.picture || null");
     expect(html).toContain("aria-[current=page]:font-semibold");
     expect(html).not.toContain('<main class="min-h-screen min-w-0');
     expect(html).toContain("<app-router></app-router>");

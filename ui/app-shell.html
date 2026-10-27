@@ -181,12 +181,13 @@
                   <div
                     class="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-app-primary text-sm font-bold text-white"
                   >
-                    <img
-                      attr-src="user.photo || user.picture || null"
-                      referrerpolicy="no-referrer"
-                      alt=""
-                      class="absolute inset-0 size-full object-cover"
-                    />
+                    <template if="user.photo || user.picture"
+                      ><img
+                        attr-src="user.photo || user.picture"
+                        referrerpolicy="no-referrer"
+                        alt=""
+                        class="absolute inset-0 size-full object-cover"
+                    /></template>
                     <span aria-hidden="true" attr-class="(user.photo || user.picture) ? 'hidden' : ''"
                       >{{ userInitial }}</span
                     >
