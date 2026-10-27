@@ -356,7 +356,7 @@
     color: #c8e8a5;
   }
 }
-body[data-teamless]:not([data-teamless="false"]) aside,
+body[data-teamless]:not([data-teamless="false"]) [data-app-layout] > aside,
 body[data-teamless]:not([data-teamless="false"]) nav[aria-label="Mobile navigation"] {
   display: none !important;
 }

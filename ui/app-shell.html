@@ -32,126 +32,104 @@
       >
         Skip to content
       </a>
-      <div data-app-layout class="min-h-dvh md:grid md:grid-cols-[16rem_minmax(0,1fr)]">
-        <template if="mobileMenuOpen"
-          ><button
-            type="button"
-            class="fixed inset-0 z-40 bg-black/45 md:hidden"
-            aria-label="Close navigation menu"
-            on-click="closeMobileMenu()"
-          ></button
-        ></template>
+      <div
+        data-app-layout
+        class="min-h-dvh grid grid-rows-[auto_1fr] grid-cols-[4rem_minmax(0,1fr)] md:grid-rows-1 md:grid-cols-[4rem_14rem_minmax(0,1fr)]"
+      >
         <aside
-          id="primary-sidebar"
-          bind-class="mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'"
-          class="fixed inset-y-0 left-0 z-50 flex h-dvh w-72 -translate-x-full flex-col overflow-y-auto border-r border-app-border bg-app-sidebar px-3 py-5 shadow-xl transition-transform duration-200 md:sticky md:z-auto md:w-auto md:translate-x-0 md:border-0 md:shadow-none"
-          aria-label="Primary navigation"
+          data-workspace-rail
+          aria-label="Workspace switcher"
+          class="row-span-2 flex min-h-dvh w-16 flex-col items-center gap-3 border-r border-app-border bg-app-sidebar px-2 py-4 md:row-span-1 md:sticky md:top-0 md:h-dvh"
         >
           <a
             href="/ui/workspaces"
-            on-click="setActive('workspaces')"
-            class="mb-8 flex items-center gap-3 rounded-lg p-2 text-app-foreground no-underline outline-none focus-visible:ring-2 focus-visible:ring-app-primary"
             aria-label="on: home"
+            class="mb-1 grid size-10 place-items-center rounded-lg text-app-foreground no-underline focus-visible:ring-2 focus-visible:ring-app-primary"
           >
-            <span
-              class="mr-0.5 flex h-[34px] w-[31px] -skew-y-[13deg] flex-col justify-center gap-[5px]"
-              aria-hidden="true"
+            <span class="flex h-[30px] w-[27px] -skew-y-[13deg] flex-col justify-center gap-[4px]" aria-hidden="true"
               ><i class="block h-[5px] w-[27px] rounded-[2px] bg-[#547d42]"></i
               ><i class="block h-[5px] w-5 rounded-[2px] bg-[#547d42]"></i
               ><i class="block h-[5px] w-[13px] rounded-[2px] bg-[#547d42]"></i
             ></span>
-            <span class="text-[33px] font-bold leading-none tracking-[-1.9px] text-app-foreground"
-              >on<span class="text-[#729b5b]">:</span></span
-            >
           </a>
-          <nav class="space-y-1">
+          <div role="group" aria-label="Switch workspace" class="flex flex-col items-center gap-2">
+            <template for="team of teams"
+              ><button
+                type="button"
+                attr-aria-label="'Switch to ' + team.name"
+                attr-aria-pressed="selectedWorkspaceId === team.id ? 'true' : 'false'"
+                attr-title="team.name"
+                on-click="switchWorkspace(team.id)"
+                class="grid size-10 shrink-0 place-items-center rounded-xl border border-app-border bg-app-card font-semibold text-app-primary outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-app-primary aria-pressed:border-app-primary aria-pressed:ring-2 aria-pressed:ring-app-primary"
+                attr-data-workspace-switch="team.id"
+              >
+                {{ workspaceInitial(team.name) }}
+              </button></template
+            >
+          </div>
+        </aside>
+        <aside
+          id="primary-sidebar"
+          class="col-start-2 row-start-1 flex min-w-0 items-center gap-1 overflow-x-auto border-b border-app-border bg-app-sidebar px-2 py-2 md:col-start-2 md:row-span-1 md:flex-col md:items-stretch md:gap-0 md:overflow-y-auto md:border-b-0 md:border-r md:sticky md:top-0 md:h-dvh md:w-56 md:px-3 md:py-5"
+          aria-label="Primary navigation"
+        >
+          <nav
+            aria-label="Global navigation"
+            class="flex shrink-0 items-center gap-1 md:flex-col md:items-stretch md:gap-1"
+          >
             <a
               href="/ui/workspaces"
               on-click="setActive('workspaces')"
               attr-aria-current="activeSection === 'workspaces' ? 'page' : null"
-              class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-app-primary"
+              class="flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-app-primary md:px-3"
               ><lucide-icon icon="users" size="17"></lucide-icon>Workspaces</a
             >
             <a
               href="/ui/recipes"
               on-click="setActive('recipes')"
               attr-aria-current="activeSection === 'recipes' ? 'page' : null"
-              class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-app-primary"
+              class="flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-app-primary md:px-3"
               ><lucide-icon icon="book-open" size="17"></lucide-icon>Recipes</a
             >
           </nav>
-          <div class="my-4 border-t border-app-border"></div>
-          <nav aria-label="Workspace navigation" class="mt-3 space-y-1">
-            <p class="px-3 pt-2 text-[10px] font-semibold uppercase tracking-wider text-app-muted">Workspaces</p>
-            <div role="group" aria-label="Switch workspace" class="flex gap-2 overflow-x-auto py-2 md:flex-col">
-              <template for="team of teams"
-                ><button
-                  type="button"
-                  attr-aria-label="'Switch to ' + team.name"
-                  attr-aria-pressed="selectedWorkspaceId === team.id ? 'true' : 'false'"
-                  attr-title="team.name"
-                  on-click="switchWorkspace(team.id)"
-                  class="grid size-10 shrink-0 place-items-center rounded-xl border border-app-border bg-app-card font-semibold text-app-primary outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-app-primary aria-pressed:border-app-primary"
-                  attr-data-workspace-switch="team.id"
-                >
-                  {{ workspaceInitial(team.name) }}
-                </button></template
-              >
-            </div>
-            <p class="px-3 pt-2 text-[10px] font-semibold uppercase tracking-wider text-app-muted">Streams</p>
+          <div class="hidden border-t border-app-border md:my-4 md:block"></div>
+          <nav
+            aria-label="Workspace navigation"
+            class="flex min-w-0 items-center gap-1 md:mt-1 md:flex-col md:items-stretch md:gap-1"
+          >
             <template for="team of teams"
-              ><div attr-data-workspace-nav-item="team.id">
+              ><template if="selectedWorkspaceId === team.id"
+                ><span class="hidden truncate px-3 py-2 text-sm font-semibold text-app-foreground md:block"
+                  >{{ team.name }}</span
+                ><a
+                  attr-href="workspacePath(team.id, 'workflows')"
+                  on-click="selectWorkspace(team.id, 'workflows')"
+                  class="flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-app-primary md:px-3"
+                  attr-aria-current="activeSection === 'workspace-workflows' ? 'page' : null"
+                  ><lucide-icon icon="workflow" size="15"></lucide-icon>Workflows</a
+                >
                 <a
                   attr-href="workspacePath(team.id, 'runs')"
-                  on-click="selectWorkspace(team.id)"
-                  class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary"
-                  attr-aria-current="selectedWorkspaceId === team.id && activeSection === 'workspace-runs' ? 'page' : null"
-                  >{{ team.name }}</a
+                  on-click="selectWorkspace(team.id, 'runs')"
+                  class="flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-app-primary md:px-3"
+                  attr-aria-current="activeSection === 'workspace-runs' ? 'page' : null"
+                  ><lucide-icon icon="activity" size="15"></lucide-icon>Runs</a
                 >
-                <div
-                  data-workspace-submenu
-                  class-hidden="selectedWorkspaceId !== team.id"
-                  class="ml-5 space-y-1 border-l border-app-border pl-2"
-                >
-                  <a
-                    attr-href="workspacePath(team.id, 'workflows')"
-                    on-click="selectWorkspace(team.id, 'workflows')"
-                    class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:font-semibold aria-[current=page]:text-app-primary"
-                    attr-aria-current="activeSection === 'workspace-workflows' ? 'page' : null"
-                    ><lucide-icon icon="workflow" size="15"></lucide-icon>Workflows</a
-                  >
-                  <a
-                    attr-href="workspacePath(team.id, 'runs')"
-                    on-click="selectWorkspace(team.id, 'runs')"
-                    class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:font-semibold aria-[current=page]:text-app-primary"
-                    attr-aria-current="activeSection === 'workspace-runs' ? 'page' : null"
-                    ><lucide-icon icon="activity" size="15"></lucide-icon>Runs</a
-                  >
-                  <a
-                    attr-href="workspacePath(team.id, 'channels')"
-                    on-click="selectWorkspace(team.id, 'channels')"
-                    class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:font-semibold aria-[current=page]:text-app-primary"
-                    attr-aria-current="activeSection === 'workspace-channels' ? 'page' : null"
-                    ><lucide-icon icon="messages-square" size="15"></lucide-icon>Streams</a
-                  >
-                </div>
-              </div></template
+                <a
+                  attr-href="workspacePath(team.id, 'channels')"
+                  on-click="selectWorkspace(team.id, 'channels')"
+                  class="flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-app-primary md:px-3"
+                  attr-aria-current="activeSection === 'workspace-channels' ? 'page' : null"
+                  ><lucide-icon icon="messages-square" size="15"></lucide-icon>Streams</a
+                ></template
+              ></template
             >
           </nav>
         </aside>
-        <div class="min-h-dvh min-w-0">
+        <div
+          class="col-start-2 row-start-2 min-h-dvh min-w-0 bg-app-card md:col-start-3 md:row-start-1 md:rounded-tl-xl"
+        >
           <header class="flex items-center gap-2 px-4 pt-4 sm:gap-4 sm:px-6 lg:px-8">
-            <button
-              type="button"
-              data-mobile-menu-button
-              class="grid size-10 place-items-center rounded-lg border border-app-border bg-app-card text-app-foreground outline-none focus-visible:ring-2 focus-visible:ring-app-primary md:hidden"
-              aria-label="Open navigation menu"
-              aria-controls="primary-sidebar"
-              attr-aria-expanded="mobileMenuOpen ? 'true' : 'false'"
-              on-click="toggleMobileMenu()"
-            >
-              <lucide-icon icon="menu" size="20" aria-hidden="true"></lucide-icon>
-            </button>
             <button
               type="button"
               data-quick-switch-open

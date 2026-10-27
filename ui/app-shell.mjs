@@ -4,7 +4,6 @@ import { applyThemePreference, getAuthPreference, setAuthPreference } from "@app
 
 export default function setup() {
   const activeSection = ref("workspaces");
-  const mobileMenuOpen = ref(false);
   const user = ref({ name: "", email: "", role: "" });
   const oidcProviderUrl = ref("");
   const userAuthenticated = ref(false);
@@ -27,7 +26,6 @@ export default function setup() {
         const storedWorkspaceId = localStorage.getItem("runner-team-id") || "";
         selectedWorkspaceId.value = teams.value.some((team) => team.id === storedWorkspaceId) ? storedWorkspaceId : "";
       }
-      requestAnimationFrame(syncWorkspaceNavigation);
     } catch (error) {
       console.error("Unable to load teams", error);
     }
@@ -43,36 +41,6 @@ export default function setup() {
     mainContent?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const syncWorkspaceNavigation = () => {
-    const selectedId = selectedWorkspaceId.value;
-    for (const item of document.querySelectorAll("[data-workspace-nav-item]")) {
-      const selected = item.getAttribute("data-workspace-nav-item") === selectedId;
-      const submenu = item.querySelector("[data-workspace-submenu]");
-      submenu?.classList.toggle("hidden", !selected);
-      const [workspaceLink, workflowsLink, runsLink, channelsLink] = item.querySelectorAll("a");
-      if (workspaceLink) {
-        workspaceLink.setAttribute(
-          "aria-current",
-          selected && activeSection.value === "workspace-runs" ? "page" : "null",
-        );
-      }
-      if (workflowsLink) {
-        workflowsLink.setAttribute(
-          "aria-current",
-          selected && activeSection.value === "workspace-workflows" ? "page" : "null",
-        );
-      }
-      if (runsLink) {
-        runsLink.setAttribute("aria-current", selected && activeSection.value === "workspace-runs" ? "page" : "null");
-      }
-      if (channelsLink) {
-        channelsLink.setAttribute(
-          "aria-current",
-          selected && activeSection.value === "workspace-channels" ? "page" : "null",
-        );
-      }
-    }
-  };
   const syncSection = () => {
     const path = window.location.pathname.replace(/^\/ui/, "");
     const workspaceRoute = path.match(/^\/workspaces\/([^/]+)\/(workflows|runs|channels)(?:\/events)?$/);
@@ -91,7 +59,6 @@ export default function setup() {
     } else {
       activeSection.value = "workspaces";
     }
-    syncWorkspaceNavigation();
   };
 
   const setActive = (section) => {
@@ -100,7 +67,6 @@ export default function setup() {
   const selectWorkspace = (teamId, page = "runs") => {
     selectedWorkspaceId.value = teamId;
     activeSection.value = `workspace-${page === "channels" ? "channels" : page === "workflows" ? "workflows" : "runs"}`;
-    syncWorkspaceNavigation();
   };
   const workspaceInitial = (name) =>
     String(name || "W")
@@ -119,9 +85,7 @@ export default function setup() {
           ? "workflows"
           : "runs";
     selectedWorkspaceId.value = teamId;
-    syncWorkspaceNavigation();
     navigateShell(workspacePath(teamId, page));
-    closeMobileMenu();
   };
   const filterQuickSwitch = (query = "") => {
     const normalized = query.trim().toLocaleLowerCase();
@@ -214,57 +178,6 @@ export default function setup() {
     history.pushState(null, "", "/ui/settings");
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
-  const syncMobileMenu = () => {
-    const sidebar = document.getElementById("primary-sidebar");
-    if (sidebar) {
-      sidebar.inert = !mobileMenuOpen.value && window.matchMedia("(max-width: 767px)").matches;
-    }
-  };
-  const toggleMobileMenu = () => {
-    mobileMenuOpen.value = !mobileMenuOpen.value;
-    syncMobileMenu();
-    if (mobileMenuOpen.value) {
-      requestAnimationFrame(() => document.querySelector("#primary-sidebar a")?.focus());
-    } else {
-      document.querySelector("[data-mobile-menu-button]")?.focus();
-    }
-  };
-  const closeMobileMenu = () => {
-    if (!mobileMenuOpen.value) {
-      return;
-    }
-    mobileMenuOpen.value = false;
-    syncMobileMenu();
-    if (window.matchMedia("(max-width: 767px)").matches) {
-      requestAnimationFrame(() => document.querySelector("[data-mobile-menu-button]")?.focus());
-    }
-  };
-  const handleMenuKeydown = (event) => {
-    if (event.key === "Escape" && mobileMenuOpen.value) {
-      event.preventDefault();
-      closeMobileMenu();
-      document.querySelector("[data-mobile-menu-button]")?.focus();
-      return;
-    }
-    if (event.key === "Tab" && mobileMenuOpen.value) {
-      const links = [...(document.getElementById("primary-sidebar")?.querySelectorAll("a") || [])];
-      if (!links.length) {
-        return;
-      }
-      if (event.shiftKey && document.activeElement === links[0]) {
-        event.preventDefault();
-        links.at(-1).focus();
-      } else if (!event.shiftKey && document.activeElement === links.at(-1)) {
-        event.preventDefault();
-        links[0].focus();
-      }
-    }
-  };
-  const handleMenuClick = (event) => {
-    if (event.target.closest?.("#primary-sidebar a")) {
-      closeMobileMenu();
-    }
-  };
   const syncSystemTheme = () => {
     if (themePreference.value === "system") {
       isDarkTheme.value = themeMedia.matches;
@@ -283,7 +196,6 @@ export default function setup() {
   };
   const syncWorkspace = (event) => {
     selectedWorkspaceId.value = event.detail?.teamId || "";
-    syncWorkspaceNavigation();
   };
 
   onInit(() => {
@@ -299,16 +211,11 @@ export default function setup() {
       });
     themeMedia.addEventListener("change", syncSystemTheme);
     syncSection();
-    syncMobileMenu();
     window.addEventListener("popstate", syncSection);
     window.addEventListener("runner-route-changed", syncSection);
-    window.addEventListener("popstate", closeMobileMenu);
-    window.addEventListener("resize", syncMobileMenu);
     window.addEventListener("runner-team-changed", syncWorkspace);
     document.addEventListener("keydown", handleSkipKeydown);
     document.addEventListener("keydown", handleGlobalQuickSwitch);
-    document.addEventListener("keydown", handleMenuKeydown);
-    document.addEventListener("click", handleMenuClick);
     void fetch("/api/v1/auth/session", { credentials: "same-origin", headers: { accept: "application/json" } })
       .then((response) => (response.ok ? response.json() : null))
       .then((session) => {
@@ -331,20 +238,15 @@ export default function setup() {
   onDestroy(() => {
     window.removeEventListener("popstate", syncSection);
     window.removeEventListener("runner-route-changed", syncSection);
-    window.removeEventListener("popstate", closeMobileMenu);
-    window.removeEventListener("resize", syncMobileMenu);
     window.removeEventListener("runner-team-changed", syncWorkspace);
     window.removeEventListener("runner-teams-updated", loadTeams);
     themeMedia.removeEventListener("change", syncSystemTheme);
     document.removeEventListener("keydown", handleSkipKeydown);
     document.removeEventListener("keydown", handleGlobalQuickSwitch);
-    document.removeEventListener("keydown", handleMenuKeydown);
-    document.removeEventListener("click", handleMenuClick);
   });
 
   return {
     activeSection,
-    mobileMenuOpen,
     user,
     userAuthenticated,
     userInitial,
@@ -365,8 +267,6 @@ export default function setup() {
     stopQuickSwitchClick,
     workspacePath,
     openPreferences,
-    toggleMobileMenu,
-    closeMobileMenu,
     toggleTheme,
   };
 }

@@ -25,9 +25,9 @@ describe("On application shell", () => {
     expect(html).toContain('"@app/": "/assets/"');
     expect(html).toContain('"yaml": "https://esm.sh/yaml@2.9.0"');
     expect(html).toContain('aria-label="Primary navigation"');
-    expect(html).toContain("data-mobile-menu-button");
-    expect(html).toContain('aria-controls="primary-sidebar"');
-    expect(html).toContain('aria-label="Close navigation menu"');
+    expect(html).toContain("data-workspace-rail");
+    expect(html).toContain('aria-label="Workspace switcher"');
+    expect(html).toContain("aria-pressed=\"selectedWorkspaceId === team.id ? 'true' : 'false'\"");
     expect(html).not.toContain('href="/ui/runs"');
     expect(html).toContain('href="/ui/recipes"');
     expect(html).not.toContain('href="/ui/workflows"');
@@ -35,16 +35,16 @@ describe("On application shell", () => {
     expect(html.match(/href="\/ui\/workspaces"/g)).toHaveLength(2);
     expect(html).toContain('href="/ui/settings"');
     expect(html).toContain("focus-visible:ring-2");
-    expect(html).toContain('>on<span class="text-[#729b5b]">:</span>');
+    expect(html).toContain('aria-label="on: home"');
     expect(html).toContain("w-[27px] rounded-[2px] bg-[#547d42]");
     expect(html).toContain('href="#main-content"');
     expect(html).toContain("data-skip-to-content");
     expect(html).toContain('id="main-content"');
     expect(html).toContain('tabindex="-1"');
     expect(html).toContain('class="min-h-dvh bg-app-background');
-    expect(html).toContain("min-h-dvh md:grid md:grid-cols-[16rem_minmax(0,1fr)]");
-    expect(html).toContain("fixed inset-y-0 left-0 z-50");
-    expect(html).toContain("md:sticky md:z-auto");
+    expect(html).toContain("grid-cols-[4rem_14rem_minmax(0,1fr)]");
+    expect(html).toContain("md:w-56");
+    expect(html).toContain("md:sticky md:top-0");
     expect(html).not.toContain("overscroll-y-contain");
     expect(html).not.toContain("overflow-hidden bg-app-background");
     expect(html).toContain('href="/ui/settings"');
@@ -58,7 +58,7 @@ describe("On application shell", () => {
     expect(html).toContain('on-click="toggleTheme()"');
     expect(html).toContain('class="flex items-center gap-2 px-4 pt-4 sm:gap-4 sm:px-6 lg:px-8"');
     expect(html).toContain('class="ml-auto flex shrink-0 items-center gap-2 sm:gap-4"');
-    expect(html).toContain("flex h-dvh w-72");
+    expect(html).toContain("md:h-dvh md:w-56");
     expect(html).toContain("isDarkTheme ? 'sun' : 'moon'");
     expect(html).toContain("isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'");
     expect(shellSetup).toContain('setAuthPreference("theme", nextTheme)');
@@ -73,9 +73,13 @@ describe("On application shell", () => {
     expect(html).not.toContain("Engineering");
     expect(html).not.toContain("JD");
     expect(html).not.toContain("min-h-screen border-r border-app-border");
-    expect(html.indexOf("Workspaces</a")).toBeLessThan(html.indexOf(">Streams</p>"));
-    expect(html.indexOf("Recipes</a")).toBeLessThan(html.indexOf(">Streams</p>"));
-    expect(html).toContain("Workspace navigation");
+    expect(html).toContain('aria-label="Global navigation"');
+    expect(html).toContain('aria-label="Workspace navigation"');
+    expect(html).toContain('class="col-start-2 row-start-1');
+    expect(html).toContain("md:col-start-3 md:row-start-1 md:rounded-tl-xl");
+    expect(html).not.toContain("data-mobile-menu-button");
+    expect(html).not.toContain("data-workspace-nav-item");
+    expect(html).not.toContain("data-workspace-submenu");
     expect(html).not.toContain("mt-auto");
   });
 
@@ -89,19 +93,18 @@ describe("On application shell", () => {
     expect(html).toContain('if="userAuthenticated"');
   });
 
-  it("lists workspaces in the sidebar and links each workspace to its settings page", () => {
-    const teamsList = html.indexOf('aria-label="Workspace navigation"');
+  it("keeps workspace switching in the left rail and shows only selected-workspace navigation", () => {
+    const rail = html.indexOf("data-workspace-rail");
+    const navigation = html.indexOf('aria-label="Primary navigation"');
+    const content = html.indexOf('id="main-content"');
 
-    expect(teamsList).toBeGreaterThan(html.indexOf('aria-label="Primary navigation"'));
-    expect(teamsList).toBeLessThan(html.indexOf('id="main-content"'));
-    expect(html).toContain("{{ team.name }}</a");
+    expect(rail).toBeLessThan(navigation);
+    expect(navigation).toBeLessThan(content);
+    expect(html).toContain('attr-data-workspace-switch="team.id"');
+    expect(html).toContain('<template if="selectedWorkspaceId === team.id"');
     expect(html).toContain("workspacePath(team.id, 'runs')");
-    expect(html).toContain('on-click="selectWorkspace(team.id)"');
-    expect(html).toContain('attr-data-workspace-nav-item="team.id"');
-    expect(html).toContain("data-workspace-submenu");
-    expect(html).toContain('class-hidden="selectedWorkspaceId !== team.id"');
-    expect(shellSetup).toContain('submenu?.classList.toggle("hidden", !selected)');
-    expect(shellSetup).toContain("const syncWorkspaceNavigation = () =>");
+    expect(html).toContain("workspacePath(team.id, 'workflows')");
+    expect(html).toContain("on-click=\"selectWorkspace(team.id, 'runs')\"");
     expect(shellSetup).toContain('const selectedWorkspaceId = ref("")');
     expect(shellSetup).toContain("selectedWorkspaceId.value = decodeURIComponent(workspaceRoute[1])");
     expect(shellSetup).toContain("teams.value.some((team) => team.id === storedWorkspaceId)");
@@ -109,13 +112,11 @@ describe("On application shell", () => {
     expect(shellSetup).toContain('fetch("/api/v1/workspaces"');
     expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
     expect(shellSetup).toContain('path.startsWith("/workspaces/")');
-    expect(html).toContain(">Workspaces</p>");
-    expect(html).toContain("px-3 py-2.5 text-sm text-app-secondary");
+    expect(shellSetup).not.toContain("syncWorkspaceNavigation");
+    expect(html).toContain("flex min-w-0 items-center gap-1 md:mt-1 md:flex-col");
     expect(html).toContain("selectedWorkspaceId === team.id");
-    expect(html).toContain("workspacePath(team.id, 'workflows')");
     expect(html).toContain('aria-label="Switch workspace"');
     expect(html).toContain('attr-data-workspace-switch="team.id"');
-    expect(html).toContain('on-click="switchWorkspace(team.id)"');
     expect(html).toContain(">Streams</a");
     expect(html).toContain("Messages are not yet modeled as Threads");
   });

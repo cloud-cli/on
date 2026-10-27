@@ -374,6 +374,24 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     stage = "authenticated-workspace-shell";
     const shellResponse = await page.goto(`${appOrigin}/ui/workspaces/${encodeURIComponent(workspaceId)}/runs`);
     expect(shellResponse?.status()).toBe(200);
+    stage = "sidebar-layout-desktop";
+    await expect(page.locator("[data-workspace-rail]")).toBeVisible();
+    await expect(page.locator("#primary-sidebar")).toBeVisible();
+    const desktopGeometry = await page.evaluate(() => {
+      const rect = (selector) => {
+        const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect();
+        return { x, y, width, height };
+      };
+      return {
+        rail: rect("[data-workspace-rail]"),
+        navigation: rect("#primary-sidebar"),
+        content: rect("#main-content"),
+      };
+    });
+    expect(desktopGeometry.rail.x).toBeLessThan(desktopGeometry.navigation.x);
+    expect(desktopGeometry.navigation.x).toBeLessThan(desktopGeometry.content.x);
+    expect(desktopGeometry.rail.width).toBeCloseTo(64, 0);
+    expect(desktopGeometry.navigation.width).toBeCloseTo(224, 0);
     stage = "authenticated-shell-profile";
     await expect(page.locator('a[aria-label^="Open preferences for "]')).toHaveCount(1);
     await page.addStyleTag({ content: 'a[aria-label^="Open preferences for"] { visibility: hidden !important; }' });
@@ -383,6 +401,26 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     await quickSwitchSearch.fill("OIDC Browser Fixture");
     await expect(page.getByRole("option").first()).toContainText("OIDC Browser Fixture");
     await page.screenshot({ path: "/tmp/opencode/oidc-quick-switch-desktop.png", fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    stage = "sidebar-layout-mobile-geometry";
+    const mobileGeometry = await page.evaluate(() => {
+      const rect = (selector) => {
+        const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect();
+        return { x, y, width, height };
+      };
+      return {
+        rail: rect("[data-workspace-rail]"),
+        navigation: rect("#primary-sidebar"),
+        content: rect("#main-content"),
+      };
+    });
+    expect(mobileGeometry.rail.x).toBeLessThan(mobileGeometry.navigation.x);
+    expect(mobileGeometry.navigation.y).toBeLessThan(mobileGeometry.content.y);
+    expect(mobileGeometry.rail.width).toBeCloseTo(64, 0);
+    stage = "sidebar-layout-narrow-overflow";
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-quick-switch-overlay]")).toHaveCount(0);
+    await page.setViewportSize({ width: 320, height: 720 });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: "/tmp/opencode/oidc-quick-switch-mobile.png", fullPage: true });
     await page.setViewportSize({ width: 1280, height: 900 });
