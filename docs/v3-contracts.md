@@ -392,6 +392,17 @@ forward-fix procedures approved before deployment. Migration tests must cover
 both an existing database and a fresh install, repeat application, and old-data
 interpretability.
 
+The migration runner records a version only after `apply()` succeeds; an
+unmarked migration may therefore have already changed the schema. Keep
+migration operations retry-safe and verify postconditions before relying on a
+marker. There are no automatic down migrations for data-bearing changes: the
+default rollback is an application rollback that leaves additive schema/data
+in place and is permitted only when the older application remains compatible.
+Otherwise deployment requires a separately approved and demonstrated backup,
+restore, and forward-fix procedure. The SQLite characterization tests exercise
+marker-write interruption and retry for migrations 031–035; they do not prove
+production backup/restore or old-binary compatibility.
+
 ### Current-state evidence and gaps
 
 The repository currently has versioned workflow revisions, recipe versions,
@@ -408,8 +419,9 @@ public cursor and explicit unmatched/rejected diagnostics, common invocation
 resources distinct from jobs, transitive function revision locks and stable
 nested call identities, durable checkpoint object storage/retention, and
 effect-aware retry/reconciliation semantics. Compatibility/rollback choices
-above need review and migration compatibility tests before dependent schema or
-runtime changes. No implementation change is made by this document.
+above need review, broader migration compatibility tests, and operational
+rollback evidence before dependent schema or runtime changes. No production
+backup/restore procedure is evidenced here.
 
 Migration 018 intentionally fails before adding the subscription-identity
 unique index if duplicate identities exist. The migration does not auto-merge

@@ -4,18 +4,18 @@ import { runMigrations } from "./migrations.js";
 
 vi.mock("./db-client.js", () => {
   let database = new DatabaseSync(":memory:");
-  let failAdmissionMarkerOnce = false;
+  let failMigrationMarkerVersionOnce: string | null = null;
   const execute = (sql: string, values: unknown[] = []) => database.prepare(sql).run(...(values as any[]));
   const module = {
     all: vi.fn(async (sql: string, values: unknown[] = []) => database.prepare(sql).all(...(values as any[]))),
     get: vi.fn(async (sql: string, values: unknown[] = []) => database.prepare(sql).get(...(values as any[]))),
     run: vi.fn(async (sql: string, values: unknown[] = []) => {
       if (
-        failAdmissionMarkerOnce &&
+        failMigrationMarkerVersionOnce &&
         sql.includes("INSERT INTO schema_migrations") &&
-        values[0] === "023_workflow_run_admission_retry_schedule"
+        values[0] === failMigrationMarkerVersionOnce
       ) {
-        failAdmissionMarkerOnce = false;
+        failMigrationMarkerVersionOnce = null;
         throw new Error("simulated migration marker interruption");
       }
       return execute(sql, values);
@@ -46,10 +46,10 @@ vi.mock("./db-client.js", () => {
         database.close();
         database = new DatabaseSync(":memory:");
         database.exec("PRAGMA foreign_keys = ON");
-        failAdmissionMarkerOnce = false;
+        failMigrationMarkerVersionOnce = null;
       },
-      failNextAdmissionMarker: () => {
-        failAdmissionMarkerOnce = true;
+      failNextMigrationMarker: (version: string) => {
+        failMigrationMarkerVersionOnce = version;
       },
     },
   };
@@ -353,7 +353,7 @@ describe("v3 migrations against SQLite", () => {
 
   it("recovers when migration 023 applied its schema but could not record its version", async () => {
     createPreV3Database(true);
-    dbTestHooks.failNextAdmissionMarker();
+    dbTestHooks.failNextMigrationMarker("023_workflow_run_admission_retry_schedule");
 
     await expect(runMigrations()).rejects.toThrow("simulated migration marker interruption");
     const database = dbTestHooks.currentDatabase() as DatabaseSync;
@@ -384,6 +384,48 @@ describe("v3 migrations against SQLite", () => {
     ).toEqual({ count: 1 });
     expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
+
+  it.each([
+    { version: "031_stream_threads", objectType: "table", objectName: "channel_thread_messages" },
+    { version: "032_step_attempt_snapshots", objectType: "column", objectName: "snapshot_json" },
+    { version: "033_stream_event_bindings", objectType: "index", objectName: "idx_stream_event_bindings_event" },
+    {
+      version: "034_stream_event_binding_integrity",
+      objectType: "trigger",
+      objectName: "stream_event_binding_team_guard",
+    },
+    { version: "035_domain_event_fanout_outcomes", objectType: "table", objectName: "domain_event_fanout_outcomes" },
+  ])(
+    "retries additive migration $version after its schema applied but marker failed",
+    async ({ version, objectType, objectName }) => {
+      createPreV3Database(true);
+      dbTestHooks.failNextMigrationMarker(version);
+
+      await expect(runMigrations()).rejects.toThrow("simulated migration marker interruption");
+      const database = dbTestHooks.currentDatabase() as DatabaseSync;
+      expect(database.prepare("SELECT 1 FROM schema_migrations WHERE version = ?").get(version)).toBeUndefined();
+      if (objectType === "column") {
+        expect(
+          (database.prepare("PRAGMA table_info(step_execution_attempts)").all() as Array<{ name: string }>).some(
+            ({ name }) => name === objectName,
+          ),
+        ).toBe(true);
+      } else {
+        expect(
+          database.prepare("SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?").get(objectType, objectName),
+        ).toBeTruthy();
+      }
+
+      await expect(runMigrations()).resolves.toBeUndefined();
+      await expect(runMigrations()).resolves.toBeUndefined();
+      expect(
+        database.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = ?").get(version),
+      ).toEqual({
+        count: 1,
+      });
+      expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    },
+  );
 
   it("keeps immutable start markers and the start-marker schema across migration reruns", async () => {
     createPreV3Database(true);
