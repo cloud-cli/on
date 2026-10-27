@@ -3811,7 +3811,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Ordered immutable attempts including logs. Snapshot captures may be omitted when oversized and require runs.inputs.",
+            "description": "Ordered immutable attempts including logs. Snapshot captures may be omitted when oversized and require runs.inputs. evidenceAvailability reports captured-evidence status only; it is not a replay-safety guarantee.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3823,7 +3823,20 @@
                     "attempts": {
                       "type": "array",
                       "items": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "evidenceAvailability": {
+                            "type": "object",
+                            "required": ["status", "available"],
+                            "properties": {
+                              "status": {
+                                "type": "string",
+                                "enum": ["available", "omitted", "invalid", "missing", "interrupted"]
+                              },
+                              "available": { "type": "boolean" }
+                            }
+                          }
+                        }
                       }
                     }
                   }
