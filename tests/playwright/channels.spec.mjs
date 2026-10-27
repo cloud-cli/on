@@ -497,6 +497,92 @@ test("Stream event notifications reconcile from the durable cursor without dupli
   expect(await eventSource.evaluate((source) => source.url)).toContain("/api/events");
 });
 
+test("revoked Stream history access clears saved events and linked runs on live refresh", async ({ page }) => {
+  let denied = false;
+  const historyRequests = [];
+  const errors = [];
+  const failedResponses = [];
+  await page.addInitScript(() => {
+    window.__eventSources = [];
+    window.EventSource = class extends EventTarget {
+      constructor(url) {
+        super();
+        this.url = String(url);
+        window.__eventSources.push(this);
+      }
+      close() {
+        this.closed = true;
+      }
+    };
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      errors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("response", (response) => {
+    if (response.status() >= 400 && !response.url().endsWith("/favicon.ico")) {
+      failedResponses.push({ status: response.status(), url: response.url() });
+    }
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/v1/auth/token") {
+      await route.fulfill({ json: { access_token: "local-test-token", expires_at: Date.now() + 600000 } });
+    } else if (url.pathname === "/api/v1/channels") {
+      await route.fulfill({ json: { canEdit: false, channels: [{ id: "revoked", name: "Revoked" }] } });
+    } else if (url.pathname.endsWith("/threads")) {
+      await route.fulfill({ json: { threads: [] } });
+    } else if (url.pathname.endsWith("/messages")) {
+      await route.fulfill({ json: { messages: [], next: null } });
+    } else {
+      await route.fulfill({ status: 404, json: { error: "Not found" } });
+    }
+  });
+  await page.route("**/api/channels/**/events**", async (route) => {
+    historyRequests.push(route.request().url());
+    if (denied) {
+      await route.fulfill({ status: 403, json: { error: "Forbidden" } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        events: [
+          {
+            id: "protected-event",
+            type: "workflow.completed",
+            data: { status: "complete" },
+            links: { runIds: ["private-run"] },
+          },
+        ],
+        nextCursor: null,
+        resumeCursor: "private-cursor",
+      },
+    });
+  });
+  await page.route("**/api/events**", async (route) => route.fulfill({ status: 204, body: "" }));
+
+  await page.goto("/tests/playwright/channel-harness.html");
+  await page.getByRole("button", { name: "Revoked" }).click();
+  await page.getByText("Event history", { exact: true }).click();
+  await expect(page.locator('[data-event-id="protected-event"]')).toBeVisible();
+  await expect(page.getByRole("link", { name: "Run private-run" })).toBeVisible();
+
+  denied = true;
+  await page.evaluate(() => {
+    window.__eventSources[0].dispatchEvent(
+      new MessageEvent("channel.domain-event", { data: JSON.stringify({ channelId: "revoked" }) }),
+    );
+  });
+  await expect(page.getByRole("alert")).toContainText("Forbidden");
+  await expect(page.locator("[data-event-id]")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Run private-run" })).toHaveCount(0);
+  expect(historyRequests).toHaveLength(2);
+  expect(errors).toContain("Failed to load resource: the server responded with a status of 403 (Forbidden)");
+  expect(failedResponses).toEqual([{ status: 403, url: expect.stringContaining("/api/channels/revoked/events") }]);
+});
+
 for (const viewport of [
   { name: "desktop", width: 1280, height: 900 },
   { name: "mobile", width: 390, height: 844 },

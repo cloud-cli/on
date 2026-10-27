@@ -188,7 +188,9 @@ export function mountChannels(root) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(data.error || `Request failed (${response.status})`);
+      const error = new Error(data.error || `Request failed (${response.status})`);
+      error.status = response.status;
+      throw error;
     }
     return data;
   };
@@ -463,6 +465,12 @@ export function mountChannels(root) {
               : "End of saved event history.";
     } catch (error) {
       if (generation === eventGeneration && selected?.id === channelId) {
+        if (error.status === 401 || error.status === 403) {
+          eventList.replaceChildren();
+          eventCursor = null;
+          eventResumeCursor = null;
+          eventMore.hidden = true;
+        }
         eventStatus.setAttribute("role", "alert");
         eventStatus.textContent = error.message || "Unable to load saved events.";
         eventFailedCursor = after;
