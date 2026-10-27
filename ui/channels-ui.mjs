@@ -175,6 +175,13 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
   const threadTranscript = element("ol", undefined, "max-h-[40vh] space-y-2 overflow-auto");
   threadTranscript.setAttribute("aria-label", "Thread messages");
   threadTranscript.hidden = true;
+  const threadMore = element(
+    "button",
+    "Load more thread messages",
+    "rounded-lg border border-app-border px-3 py-2 text-sm",
+  );
+  threadMore.type = "button";
+  threadMore.hidden = true;
   const threadComposer = document.createElement("form");
   threadComposer.className = "space-y-2 border-t border-app-border pt-3";
   threadComposer.hidden = true;
@@ -190,7 +197,15 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     "rounded-lg bg-app-primary px-4 py-2 text-sm font-semibold text-white",
   );
   threadComposer.append(threadPayload, sendThreadMessage);
-  threadsSection.append(threadsHeading, threadStatus, threadList, threadForm, threadTranscript, threadComposer);
+  threadsSection.append(
+    threadsHeading,
+    threadStatus,
+    threadList,
+    threadForm,
+    threadTranscript,
+    threadMore,
+    threadComposer,
+  );
   const status = element("p", "Loading channels…", "text-sm text-app-secondary");
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
@@ -232,6 +247,9 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
 
   let selected = null;
   let selectedThread = null;
+  let threadCursor = null;
+  let threadLatestMessageId = null;
+  let threadRequestGeneration = 0;
   let cursor = null;
   let latestMessageId = null;
   let selectionGeneration = 0;
@@ -346,24 +364,43 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       }
     }
   };
-  const loadThreadMessages = async () => {
+  const loadThreadMessages = async (after = null) => {
     if (!selected || !selectedThread) {
       return;
     }
     const channelId = selected.id;
     const threadId = selectedThread.id;
     const generation = selectionGeneration;
+    const requestGeneration = ++threadRequestGeneration;
+    const query = new URLSearchParams({ limit: "100" });
+    if (after) {
+      query.set("after", after);
+    }
+    threadMore.disabled = true;
     threadStatus.textContent = "Loading thread messages…";
     try {
       const data = await request(
-        `/api/v1/channels/${encodeURIComponent(channelId)}/threads/${encodeURIComponent(threadId)}/messages?limit=100`,
+        `/api/v1/streams/${encodeURIComponent(channelId)}/threads/${encodeURIComponent(threadId)}/messages?${query}`,
       );
-      if (generation !== selectionGeneration || selectedThread?.id !== threadId) {
+      if (
+        generation !== selectionGeneration ||
+        selectedThread?.id !== threadId ||
+        requestGeneration !== threadRequestGeneration
+      ) {
         return;
       }
-      threadTranscript.replaceChildren(
-        ...(data.messages || []).map((message) => {
+      const existingMessages = after
+        ? new Set(
+            [...threadTranscript.querySelectorAll("[data-thread-message-id]")].map(
+              (item) => item.dataset.threadMessageId,
+            ),
+          )
+        : new Set();
+      const messages = (data.messages || [])
+        .filter((message) => !existingMessages.has(message.id))
+        .map((message) => {
           const item = element("li", undefined, "rounded-lg bg-app-panel p-3");
+          item.dataset.threadMessageId = message.id;
           item.append(
             element("p", `${message.author || "Member"} · ${message.createdAt || ""}`, "text-xs text-app-secondary"),
           );
@@ -375,19 +412,38 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
             ),
           );
           return item;
-        }),
-      );
+        });
+      if (after) {
+        threadTranscript.append(...messages);
+      } else {
+        threadTranscript.replaceChildren(...messages);
+      }
+      const renderedMessages = threadTranscript.querySelectorAll("[data-thread-message-id]");
+      threadLatestMessageId = renderedMessages[renderedMessages.length - 1]?.dataset.threadMessageId || null;
+      threadCursor = data.next || null;
+      threadMore.hidden = !threadCursor;
       threadTranscript.hidden = false;
       threadComposer.hidden = !canEdit;
       threadStatus.textContent = data.messages?.length ? "" : "No messages in this thread yet.";
     } catch (error) {
-      if (generation === selectionGeneration && selectedThread?.id === threadId) {
+      if (
+        generation === selectionGeneration &&
+        selectedThread?.id === threadId &&
+        requestGeneration === threadRequestGeneration
+      ) {
         threadStatus.textContent = error.message || "Unable to load thread messages.";
+      }
+    } finally {
+      if (requestGeneration === threadRequestGeneration) {
+        threadMore.disabled = false;
       }
     }
   };
   const selectThread = async (thread) => {
     selectedThread = thread;
+    threadCursor = null;
+    threadLatestMessageId = null;
+    threadMore.hidden = true;
     threadTranscript.replaceChildren();
     threadTranscript.hidden = false;
     for (const button of threadList.querySelectorAll("button")) {
@@ -395,14 +451,22 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     }
     await loadThreadMessages();
   };
+  threadMore.addEventListener("click", () => {
+    if (threadCursor) {
+      void loadThreadMessages(threadCursor);
+    }
+  });
   const loadThreads = async (channel) => {
     selectedThread = null;
+    threadCursor = null;
+    threadLatestMessageId = null;
+    threadMore.hidden = true;
     threadTranscript.replaceChildren();
     threadTranscript.hidden = true;
     threadComposer.hidden = true;
     threadStatus.textContent = "Loading threads…";
     try {
-      const data = await request(`/api/v1/channels/${encodeURIComponent(channel.id)}/threads`);
+      const data = await request(`/api/v1/streams/${encodeURIComponent(channel.id)}/threads`);
       if (selected?.id !== channel.id) {
         return;
       }
@@ -670,11 +734,11 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
   const refreshChannels = async () => {
     status.textContent = "Loading channels…";
     try {
-      const data = await request("/api/v1/channels");
+      const data = await request("/api/v1/streams");
       canEdit = data.canEdit !== false;
-      form.hidden = !canEdit || !(data.channels || []).length;
+      form.hidden = !canEdit || !(data.streams || []).length;
       composer.hidden = !canEdit || !selected;
-      const channels = data.channels || [];
+      const channels = data.streams || [];
       if (channels.length) {
         sidebar.insertBefore(form, channelsList);
       } else {
@@ -798,7 +862,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     }
     create.disabled = true;
     try {
-      const data = await request("/api/v1/channels", {
+      const data = await request("/api/v1/streams", {
         method: "POST",
         body: JSON.stringify({ name: name.value.trim() }),
       });
@@ -806,8 +870,8 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       name.value = "";
       form.hidden = true;
       await refreshChannels();
-      if (data.channel) {
-        await select(data.channel);
+      if (data.stream) {
+        await select(data.stream);
       }
     } catch (error) {
       createError.textContent = error.message || "Unable to create channel.";
@@ -824,7 +888,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     createThreadButton.disabled = true;
     try {
       const channelId = selected.id;
-      const data = await request(`/api/v1/channels/${encodeURIComponent(channelId)}/threads`, {
+      const data = await request(`/api/v1/streams/${encodeURIComponent(channelId)}/threads`, {
         method: "POST",
         body: JSON.stringify({ title: threadTitle.value.trim() }),
       });
@@ -858,14 +922,14 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       const channelId = selected.id;
       const threadId = selectedThread.id;
       await request(
-        `/api/v1/channels/${encodeURIComponent(channelId)}/threads/${encodeURIComponent(threadId)}/messages`,
+        `/api/v1/streams/${encodeURIComponent(channelId)}/threads/${encodeURIComponent(threadId)}/messages`,
         {
           method: "POST",
           body: JSON.stringify({ body }),
         },
       );
       threadPayload.value = "";
-      await loadThreadMessages();
+      await loadThreadMessages(threadLatestMessageId);
       threadStatus.setAttribute("role", "status");
       threadStatus.textContent = "Reply sent.";
     } catch (error) {
@@ -980,7 +1044,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
         notification.channelId === selected.id &&
         notification.threadId === selectedThread.id
       ) {
-        void loadThreadMessages();
+        void loadThreadMessages(threadLatestMessageId);
       }
     });
     channelEvents.addEventListener("channel.domain-event", (event) => {

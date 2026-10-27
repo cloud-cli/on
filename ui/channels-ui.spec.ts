@@ -6,10 +6,18 @@ import shell from "./app-shell.html?raw";
 import { matchRoute } from "./route-table.mjs";
 
 describe("channels UI", () => {
-  it("uses cursor pagination and the authenticated API client for scoped channel APIs", () => {
+  it("uses cursor pagination and the authenticated API client for scoped Stream APIs", () => {
     expect(source).toContain('import { apiFetch } from "@app/api-client.mjs"');
     expect(source).toContain('query.set("after", after)');
-    expect(source).toContain("/api/v1/channels");
+    expect(source).toContain('request("/api/v1/streams")');
+    expect(source).toContain('request("/api/v1/streams", {');
+    expect(source).toContain("const channels = data.streams || []");
+    expect(source).toContain("if (data.stream)");
+    expect(source).toContain("/api/v1/channels/${encodeURIComponent(channelId)}/messages?");
+    expect(source).not.toContain("/api/v1/streams/${encodeURIComponent(channelId)}/messages?");
+    expect(source).toContain('query.set("after", after)');
+    expect(source).toContain('"X-Team-ID": routedWorkspaceId');
+    expect(source).toContain("Request failed (${response.status})");
     expect(router).toContain("matchRoute(window.location.href)");
     expect(routes).toContain('pattern: "/channels"');
     expect(routes).toContain('pattern: "/workspaces/:workspaceId/channels"');
@@ -52,7 +60,7 @@ describe("channels UI", () => {
     expect(source).toContain("JSON message body");
     expect(source).toContain("JSON.stringify(message.body, null, 2)");
     expect(shell).toContain("{{ channel.name }}</a");
-    expect(shell).toContain("activeSection === 'workspace-channels'");
+    expect(shell).toContain("workspacePath(team.id, 'channels')");
     expect(shell).toContain('for="channel of workspaceChannels"');
     expect(shell).toContain("attr-aria-current=\"selectedChannelId === channel.id ? 'page' : null\"");
   });
@@ -60,8 +68,16 @@ describe("channels UI", () => {
   it("keeps Threads distinct from Stream history and uses scoped Thread message endpoints", () => {
     expect(source).toContain('setAttribute("aria-label", "Threads")');
     expect(source).toContain('setAttribute("aria-label", "Stream threads")');
-    expect(source).toContain("/api/v1/channels/${encodeURIComponent(channel.id)}/threads");
-    expect(source).toContain("/threads/${encodeURIComponent(threadId)}/messages");
+    expect(source).toContain("/api/v1/streams/${encodeURIComponent(channel.id)}/threads");
+    expect(source).toContain("/api/v1/streams/${encodeURIComponent(channelId)}/threads");
+    expect(source).toContain(
+      "/api/v1/streams/${encodeURIComponent(channelId)}/threads/${encodeURIComponent(threadId)}/messages",
+    );
+    expect(source).toContain('"Load more thread messages"');
+    expect(source).toContain('new URLSearchParams({ limit: "100" })');
+    expect(source).toContain('query.set("after", after)');
+    expect(source).toContain("threadTranscript.append(...messages)");
+    expect(source).toContain("threadCursor = data.next || null");
     expect(source).toContain('addEventListener("channel.thread.message"');
     expect(source).toContain('setAttribute("aria-label", "Thread messages")');
     expect(source).toContain("New Stream");
@@ -70,6 +86,7 @@ describe("channels UI", () => {
   it("loads saved events lazily with opaque cursor pagination and text-only rendering", () => {
     expect(source).toContain('"Event history"');
     expect(source).toContain("/api/channels/${encodeURIComponent(channelId)}/events?${query}");
+    expect(source).not.toContain("/api/v1/streams/${encodeURIComponent(channelId)}/events");
     expect(source).toContain('query.set("cursor", after)');
     expect(source).toContain("data.nextCursor || null");
     expect(source).toContain("item.textContent = JSON.stringify(entry, null, 2)");

@@ -26,12 +26,12 @@ for (const viewport of [
             expires_at: Date.now() + 600000,
           },
         });
-      } else if (url.pathname === "/api/v1/channels" && request.method() === "GET") {
-        await route.fulfill({ json: { canEdit: true, channels } });
-      } else if (url.pathname === "/api/v1/channels" && request.method() === "POST") {
+      } else if (url.pathname === "/api/v1/streams" && request.method() === "GET") {
+        await route.fulfill({ json: { canEdit: true, streams: channels } });
+      } else if (url.pathname === "/api/v1/streams" && request.method() === "POST") {
         createBody = JSON.parse(request.postData());
         channels = [{ id: "first-channel", name: createBody.name }];
-        await route.fulfill({ json: { channel: channels[0] } });
+        await route.fulfill({ json: { stream: channels[0] } });
       } else if (url.pathname.endsWith("/threads")) {
         await route.fulfill({ json: { threads: [] } });
       } else if (url.pathname.endsWith("/messages")) {
@@ -88,9 +88,9 @@ test("first Stream empty state explains missing permission and displays creation
           expires_at: Date.now() + 600000,
         },
       });
-    } else if (url.pathname === "/api/v1/channels" && request.method() === "GET") {
-      await route.fulfill({ json: { canEdit, channels: [] } });
-    } else if (url.pathname === "/api/v1/channels" && request.method() === "POST") {
+    } else if (url.pathname === "/api/v1/streams" && request.method() === "GET") {
+      await route.fulfill({ json: { canEdit, streams: [] } });
+    } else if (url.pathname === "/api/v1/streams" && request.method() === "POST") {
       await route.fulfill({
         status: 403,
         json: { error: "Channel creation denied" },
@@ -135,7 +135,12 @@ for (const viewport of [
     }));
     const longName = "x".repeat(120);
     let threads = [];
-    let threadMessages = [];
+    let threadMessages = Array.from({ length: 101 }, (_, index) => ({
+      id: `thread-message-${index + 1}`,
+      author: "Local member",
+      createdAt: "2026-01-01T00:00:00Z",
+      body: { text: `Thread message ${index + 1}` },
+    }));
     const requests = [];
     await page.addInitScript(() => {
       window.__eventSources = [];
@@ -164,20 +169,23 @@ for (const viewport of [
           access_token: "local-test-token",
           expires_at: Date.now() + 600_000,
         };
-      } else if (url.pathname === "/api/v1/channels" && request.method() === "GET") {
+      } else if (url.pathname === "/api/v1/streams" && request.method() === "GET") {
         data = {
           canEdit: true,
-          channels: [{ id: "chan-local", name: longName }],
+          streams: [{ id: "chan-local", name: longName }],
         };
       } else if (url.pathname.endsWith("/threads") && request.method() === "GET") {
         data = { threads };
       } else if (url.pathname.includes("/threads/") && url.pathname.endsWith("/messages")) {
         if (request.method() === "GET") {
-          data = { messages: threadMessages };
+          const after = url.searchParams.get("after");
+          const start = after ? threadMessages.findIndex((message) => message.id === after) + 1 : 0;
+          const page = threadMessages.slice(start, start + 100);
+          data = { messages: page, next: page.length === 100 ? page[page.length - 1].id : null };
         } else {
           const body = JSON.parse(request.postData());
           const message = {
-            id: "thread-message-1",
+            id: `thread-message-${threadMessages.length + 1}`,
             author: "You",
             body: body.body,
             createdAt: "2026-01-01T00:02:00Z",
@@ -232,9 +240,18 @@ for (const viewport of [
     await page.getByLabel("New thread title").fill("Investigate incident");
     await page.getByRole("button", { name: "Create thread" }).click();
     await expect(page.getByRole("button", { name: "Investigate incident" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("[data-thread-message-id]")).toHaveCount(100);
+    await page.getByRole("button", { name: "Load more thread messages" }).click();
+    await expect(page.getByText("Thread message 101")).toBeVisible();
+    await expect(page.locator("[data-thread-message-id]")).toHaveCount(101);
     await page.getByLabel("Thread message JSON body").fill('{"text":"Investigating in the Thread"}');
     await page.getByRole("button", { name: "Reply" }).click();
     await expect(page.getByText("Investigating in the Thread")).toBeVisible();
+    expect(
+      requests.some(({ url }) =>
+        url.includes("/api/v1/streams/chan-local/threads/thread-local/messages?limit=100&after=thread-message-100"),
+      ),
+    ).toBe(true);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
     const colors = await page.locator('[data-message-id="m001"] pre').evaluate((node) => ({
@@ -319,10 +336,10 @@ test("workspace channel deep link restores the selected transcript", async ({ pa
         access_token: "local-test-token",
         expires_at: Date.now() + 600_000,
       };
-    } else if (url.pathname === "/api/v1/channels") {
+    } else if (url.pathname === "/api/v1/streams") {
       body = {
         canEdit: false,
-        channels: [
+        streams: [
           { id: "wanted", name: "Wanted" },
           { id: "other", name: "Other" },
         ],
@@ -361,10 +378,10 @@ test("channel deep links fail closed when the channel is absent from the authori
         access_token: "local-test-token",
         expires_at: Date.now() + 600_000,
       };
-    } else if (url.pathname === "/api/v1/channels") {
+    } else if (url.pathname === "/api/v1/streams") {
       body = {
         canEdit: false,
-        channels: [{ id: "authorized", name: "Authorized channel" }],
+        streams: [{ id: "authorized", name: "Authorized channel" }],
       };
     } else if (url.pathname.endsWith("/messages")) {
       messageRequests.push(url.pathname);
@@ -413,10 +430,10 @@ test("channel reconnect reconciles missed messages across pages without rerunnin
         access_token: "local-test-token",
         expires_at: Date.now() + 600_000,
       };
-    } else if (url.pathname === "/api/v1/channels" && request.method() === "GET") {
+    } else if (url.pathname === "/api/v1/streams" && request.method() === "GET") {
       data = {
         canEdit: false,
-        channels: [{ id: "chan-reconnect", name: "Reconnect" }],
+        streams: [{ id: "chan-reconnect", name: "Reconnect" }],
       };
     } else if (url.pathname.endsWith("/messages") && request.method() === "GET") {
       const after = url.searchParams.get("after");
@@ -484,8 +501,8 @@ test("saved event history paginates safely and reloads without message notificat
         access_token: "local-test-token",
         expires_at: Date.now() + 600000,
       };
-    } else if (url.pathname === "/api/v1/channels") {
-      data = { canEdit: false, channels: [{ id: "events", name: "Events" }] };
+    } else if (url.pathname === "/api/v1/streams") {
+      data = { canEdit: false, streams: [{ id: "events", name: "Events" }] };
     } else if (url.pathname.endsWith("/messages")) {
       data = {
         messages: [
@@ -629,10 +646,10 @@ test("Stream event notifications reconcile from the durable cursor without dupli
         access_token: "local-test-token",
         expires_at: Date.now() + 600000,
       };
-    } else if (url.pathname === "/api/v1/channels") {
+    } else if (url.pathname === "/api/v1/streams") {
       data = {
         canEdit: false,
-        channels: [{ id: "live-stream", name: "Live" }],
+        streams: [{ id: "live-stream", name: "Live" }],
       };
     } else if (url.pathname.endsWith("/messages")) {
       data = { messages: [], next: null };
@@ -771,11 +788,11 @@ test("revoked Stream history access clears saved events and linked runs on live 
           expires_at: Date.now() + 600000,
         },
       });
-    } else if (url.pathname === "/api/v1/channels") {
+    } else if (url.pathname === "/api/v1/streams") {
       await route.fulfill({
         json: {
           canEdit: false,
-          channels: [{ id: "revoked", name: "Revoked" }],
+          streams: [{ id: "revoked", name: "Revoked" }],
         },
       });
     } else if (url.pathname.endsWith("/threads")) {
@@ -946,9 +963,9 @@ test("event history can retry initial and later-page failures without losing its
       await route.fulfill({
         json: { access_token: "test", expires_at: Date.now() + 600000 },
       });
-    } else if (url.pathname === "/api/v1/channels") {
+    } else if (url.pathname === "/api/v1/streams") {
       await route.fulfill({
-        json: { canEdit: false, channels: [{ id: "retry", name: "Retry" }] },
+        json: { canEdit: false, streams: [{ id: "retry", name: "Retry" }] },
       });
     } else if (url.pathname.endsWith("/messages")) {
       await route.fulfill({ json: { messages: [], next: null } });
@@ -1030,11 +1047,11 @@ test("delayed event history response from a prior channel never leaks into the s
       await route.fulfill({
         json: { access_token: "test", expires_at: Date.now() + 600000 },
       });
-    } else if (url.pathname === "/api/v1/channels") {
+    } else if (url.pathname === "/api/v1/streams") {
       await route.fulfill({
         json: {
           canEdit: false,
-          channels: [
+          streams: [
             { id: "A", name: "Channel A" },
             { id: "B", name: "Channel B" },
           ],
