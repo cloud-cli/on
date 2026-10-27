@@ -31,6 +31,8 @@ vi.mock("./db-client.js", () => {
 
 import { DomainEventDeliveryRepository } from "./domain-event-delivery-repository.js";
 import { DomainEventDispatcher } from "./domain-event-dispatcher.js";
+import { DomainEventRepository } from "./domain-event-repository.js";
+import { WebhookServer } from "./server.js";
 import { WorkflowRunAdmissionRepository } from "./workflow-run-admission-repository.js";
 import type { DomainEvent } from "./domain-event-repository.js";
 import type { ParsedWorkflow } from "./types.js";
@@ -45,6 +47,156 @@ afterEach(() => {
 });
 
 describe("domain event delivery recovery in SQLite", () => {
+  it("uses durable common admission for a subscription and preserves its event/job link after retry and reopen", async () => {
+    temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "domain-event-common-admission-"));
+    const databasePath = path.join(temporaryDirectory, "test.sqlite");
+    testDb.database = new DatabaseSync(databasePath);
+    testDb.database.exec(`
+      CREATE TABLE domain_events (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL, team_id TEXT NOT NULL,
+        type TEXT NOT NULL, schema_version INTEGER NOT NULL, source TEXT NOT NULL,
+        occurred_at TEXT NOT NULL, recorded_at TEXT NOT NULL, correlation_id TEXT, causation_id TEXT,
+        idempotency_key TEXT, data_json TEXT NOT NULL, UNIQUE(team_id, id), UNIQUE(team_id, idempotency_key)
+      );
+      CREATE TABLE domain_event_subscriptions (
+        id TEXT PRIMARY KEY, team_id TEXT NOT NULL, workflow_id TEXT NOT NULL, workflow_revision INTEGER NOT NULL,
+        event_type TEXT NOT NULL, enabled INTEGER DEFAULT 1, high_water_event_sequence INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE domain_event_deliveries (
+        id TEXT PRIMARY KEY, team_id TEXT, event_id TEXT, subscription_id TEXT,
+        status TEXT DEFAULT 'pending', attempt_count INTEGER DEFAULT 0, lease_until TEXT,
+        job_ids_json TEXT DEFAULT '[]', invocation_id TEXT, last_error TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(team_id, event_id, subscription_id)
+      );
+      CREATE TABLE domain_event_fanout_outcomes (
+        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(team_id, event_id)
+      );
+      CREATE TABLE workflow_run_admissions (
+        event_id TEXT NOT NULL, team_id TEXT NOT NULL, workflow_id TEXT NOT NULL, revision INTEGER NOT NULL,
+        variant_index INTEGER NOT NULL, matrix_json TEXT NOT NULL, tags_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending', admission_outcome TEXT, job_id INTEGER, error_code TEXT,
+        lease_token TEXT, lease_until TEXT, retry_after TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(event_id, variant_index)
+      );
+      CREATE TABLE workflow_run_admission_plans (event_id TEXT PRIMARY KEY, variant_count INTEGER NOT NULL, plan_hash TEXT NOT NULL);
+      INSERT INTO domain_event_subscriptions(id, team_id, workflow_id, workflow_revision, event_type)
+        VALUES ('subscription-1', 'workspace-1', 'workflow-1', 7, 'ticket.created');
+    `);
+
+    const events = new DomainEventRepository();
+    const deliveries = new DomainEventDeliveryRepository();
+    const admissions = new WorkflowRunAdmissionRepository();
+    const sourceEvent = await events.publish("workspace-1", {
+      type: "ticket.created",
+      schemaVersion: 1,
+      source: "test/connector",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      correlationId: null,
+      causationId: null,
+      idempotencyKey: "ticket-1",
+      data: { ticket: 1 },
+    });
+    await deliveries.fanout("workspace-1", sourceEvent.id);
+    const claim = await deliveries.claimNext("workspace-1");
+    expect(claim).not.toBeNull();
+
+    const server: any = {
+      domainEventRepository: events,
+      workflowRunAdmissions: admissions,
+      workflows: {
+        getRevision: vi.fn(async () => ({ name: "workflow-1", tags: [], steps: [] })),
+      },
+      queue: { enqueueDispatch: vi.fn(async () => 71) },
+      events: { publish: vi.fn() },
+      processWorkflowRunAdmission: WebhookServer.prototype.processWorkflowRunAdmission,
+      secretRepository: {
+        encryptValue: (value: string) => `cipher:${value}`,
+        decryptValue: (value: string) => value.replace(/^cipher:/, ""),
+      },
+      workflowRunRecoveryCursor: null,
+    };
+    let admissionError: unknown;
+    const dispatcher = new DomainEventDispatcher({
+      events,
+      subscriptions: deliveries,
+      deliveries,
+      resolveWorkflow: async () => ({ name: "workflow-1", tags: [], steps: [] }) as unknown as ParsedWorkflow,
+      admitInvocation: async (request) => {
+        try {
+          return await (WebhookServer.prototype as any).admitDomainEventInvocation.call(server, request);
+        } catch (error) {
+          admissionError = error;
+          throw error;
+        }
+      },
+    });
+    await dispatcher.process(claim!);
+    const admittedDelivery = (await deliveries.listForEvent("workspace-1", sourceEvent.id))[0];
+    expect(admissionError).toBeUndefined();
+    expect(admittedDelivery.status).toBe("admitted");
+    expect(admittedDelivery.invocationId).toBeTruthy();
+    const eventCountAfterFirstAdmission = testDb.database
+      .prepare("SELECT COUNT(*) AS count FROM domain_events")
+      .get()?.count;
+    await dispatcher.process(claim!);
+    expect(testDb.database.prepare("SELECT COUNT(*) AS count FROM domain_events").get()?.count).toBe(
+      eventCountAfterFirstAdmission,
+    );
+
+    await (WebhookServer.prototype as any).recoverWorkflowRunRequests.call(server);
+    const requestEvent = (await events.listWorkflowRunRequests<any>()).find(
+      (event) => event.data.invocationId === admittedDelivery.invocationId,
+    );
+    expect(requestEvent).toMatchObject({
+      type: "workflow.run.requested",
+      source: `domain-event-delivery/${admittedDelivery.id}`,
+      data: { workflowId: "workflow-1", revision: 7, sourceEventId: sourceEvent.id },
+    });
+    expect(JSON.parse(server.secretRepository.decryptValue(requestEvent!.data.inputsCiphertext))).toMatchObject({
+      data: { ticket: 1 },
+      event: { id: sourceEvent.id, teamId: "workspace-1", type: "ticket.created" },
+    });
+    const admission = await admissions.get(requestEvent!.id, 0);
+    expect(admission).toMatchObject({ status: "admitted", admissionOutcome: "accepted", jobId: 71 });
+    expect(server.queue.enqueueDispatch).toHaveBeenCalledOnce();
+
+    // Re-running recovery over the same durable request is idempotent: terminal admission is not enqueued twice.
+    server.workflowRunRecoveryCursor = null;
+    await (WebhookServer.prototype as any).recoverWorkflowRunRequests.call(server);
+    expect(server.queue.enqueueDispatch).toHaveBeenCalledOnce();
+
+    testDb.database.close();
+    testDb.database = new DatabaseSync(databasePath);
+    const reopenedEvents = new DomainEventRepository();
+    const reopenedDeliveries = new DomainEventDeliveryRepository();
+    const reopenedAdmissions = new WorkflowRunAdmissionRepository();
+    const deliveryAfterRestart = (await reopenedDeliveries.listForEvent("workspace-1", sourceEvent.id))[0];
+    const requestEventAfterRestart = (await reopenedEvents.listWorkflowRunRequests<any>()).find(
+      (event) => event.data.invocationId === deliveryAfterRestart.invocationId,
+    );
+    expect(deliveryAfterRestart).toMatchObject({ status: "admitted", invocationId: requestEvent!.data.invocationId });
+    expect(await reopenedAdmissions.get(requestEventAfterRestart!.id, 0)).toMatchObject({
+      status: "admitted",
+      admissionOutcome: "accepted",
+      jobId: 71,
+    });
+    await expect(
+      reopenedEvents.getWorkflowInvocationForTeam("workspace-1", deliveryAfterRestart.invocationId!),
+    ).resolves.toMatchObject({
+      id: deliveryAfterRestart.invocationId,
+      teamId: "workspace-1",
+      workflowId: "workflow-1",
+      revision: 7,
+      variants: [{ admissionStatus: "admitted", admissionOutcome: "accepted", runId: "71" }],
+    });
+    await expect(
+      reopenedEvents.getWorkflowInvocationForTeam("workspace-2", deliveryAfterRestart.invocationId!),
+    ).resolves.toBeNull();
+  });
+
   it("persists successful subscription admission linked to its invocation request event after reopen", async () => {
     temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "domain-event-admitted-run-"));
     const databasePath = path.join(temporaryDirectory, "test.sqlite");
