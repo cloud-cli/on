@@ -39,6 +39,9 @@ function makeServer(allowed: boolean | string[] = true, job: any = { id: 7 }) {
           lifecycle_status: "started",
           log_content: "",
         },
+        { step_id: "omitted", attempt: 1, status: "success", snapshot_json: '{"version":1,"status":"omitted"}' },
+        { step_id: "invalid", attempt: 1, status: "success", snapshot_json: '{"version":2,"status":"captured"}' },
+        { step_id: "missing", attempt: 1, status: "success", snapshot_json: null },
       ]),
     },
     currentSecrets: vi.fn(async () => ({})),
@@ -68,12 +71,25 @@ describe("GET /api/v1/jobs/:id/step-attempts", () => {
     expect(server.queue.getStepAttemptsForTeam).toHaveBeenCalledWith("team-a", "7");
     expect(JSON.parse(res.end.mock.calls[0][0])).toMatchObject({
       jobId: "7",
-      attempts: [{ step_id: "build" }, { step_id: "test", status: "interrupted_or_unknown" }],
+      attempts: [
+        { step_id: "build" },
+        { step_id: "test", status: "interrupted_or_unknown" },
+        { step_id: "omitted" },
+        { step_id: "invalid" },
+        { step_id: "missing" },
+      ],
     });
     expect(JSON.parse(res.end.mock.calls[0][0]).attempts[0].snapshot).toMatchObject({
       version: 1,
       status: "captured",
     });
+    expect(JSON.parse(res.end.mock.calls[0][0]).attempts.map((attempt) => attempt.evidenceAvailability)).toEqual([
+      { status: "available", available: true },
+      { status: "interrupted", available: false },
+      { status: "omitted", available: false },
+      { status: "invalid", available: false },
+      { status: "missing", available: false },
+    ]);
 
     const denied = await request(makeServer(false));
     expect(denied.writeHead).toHaveBeenCalledWith(403, expect.any(Object));
@@ -84,6 +100,7 @@ describe("GET /api/v1/jobs/:id/step-attempts", () => {
     const attempts = JSON.parse(res.end.mock.calls[0][0]).attempts;
     expect(attempts[0]).not.toHaveProperty("snapshot");
     expect(attempts[0]).not.toHaveProperty("snapshot_json");
+    expect(attempts[0].evidenceAvailability).toEqual({ status: "available", available: true });
   });
 
   it("returns 404 for a missing or foreign job before loading attempts", async () => {

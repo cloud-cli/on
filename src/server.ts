@@ -3561,14 +3561,32 @@ sessionStorage.removeItem('runner-pending-team-invite');
     const canViewInputs = access.capabilities.includes("runs.inputs");
     const safe = this.redactStructured(attempts, await this.currentSecrets(teamId)).map((attempt: any) => {
       const { snapshot_json: snapshotJson, ...visible } = attempt;
-      if (!canViewInputs || typeof snapshotJson !== "string") {
-        return visible;
-      }
+      let evidenceAvailability: "available" | "omitted" | "invalid" | "missing" | "interrupted";
+      let parsedSnapshot: unknown;
       try {
-        return { ...visible, snapshot: JSON.parse(snapshotJson) };
+        parsedSnapshot = typeof snapshotJson === "string" ? JSON.parse(snapshotJson) : undefined;
       } catch {
-        return { ...visible, snapshot: { version: 1, status: "omitted" } };
+        parsedSnapshot = undefined;
       }
+      if (visible.lifecycle_status === "started") {
+        evidenceAvailability = "interrupted";
+      } else if (snapshotJson === undefined || snapshotJson === null) {
+        evidenceAvailability = "missing";
+      } else if (!isValidStepAttemptSnapshot(snapshotJson)) {
+        evidenceAvailability = "invalid";
+      } else if ((parsedSnapshot as any).status === "omitted") {
+        evidenceAvailability = "omitted";
+      } else {
+        evidenceAvailability = "available";
+      }
+      const assessed = {
+        ...visible,
+        evidenceAvailability: { status: evidenceAvailability, available: evidenceAvailability === "available" },
+      };
+      if (!canViewInputs || evidenceAvailability !== "available") {
+        return assessed;
+      }
+      return { ...assessed, snapshot: parsedSnapshot };
     });
     res.writeHead(200, {
       "Cache-Control": "no-store",
