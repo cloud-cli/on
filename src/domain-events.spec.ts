@@ -18,6 +18,9 @@ function makeServer(capabilities = ["webhooks.manage", "webhooks.view", "workflo
     handleWorkflowInvocationGet(req: unknown, res: unknown, invocationId: string) {
       return (WebhookServer.prototype as any).handleWorkflowInvocationGet.call(this, req, res, invocationId);
     },
+    handleJobStatus(req: unknown, jobId: string, res: unknown) {
+      return (WebhookServer.prototype as any).handleJobStatus.call(this, req, jobId, res);
+    },
     authorizer: {
       workspace: vi.fn(async (_req: unknown, res: any, capability: string) => {
         if (capabilities.includes(capability)) {
@@ -30,6 +33,12 @@ function makeServer(capabilities = ["webhooks.manage", "webhooks.view", "workflo
     },
     domainEventRepository: new DomainEventRepository(),
     domainEventDeliveryRepository: new DomainEventDeliveryRepository(),
+    queue: { getJobForTeam: vi.fn(async (_teamId: string, jobId: string) => ({
+      id: Number(jobId),
+      status: "success",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:01:00.000Z",
+    })) },
     workflowsLoaded: Promise.resolve(),
     readJson: vi.fn(async (req: any) => req.body ?? null),
     principals: { recordAudit: vi.fn(async () => {}) },
@@ -145,6 +154,10 @@ describe("POST /api/v1/domain-events", () => {
       variants: [{ runId: "42", admissionStatus: "admitted", admissionOutcome: "accepted" }],
     });
     expect(response.end.mock.calls[0][0]).not.toContain("inputsCiphertext");
+
+    const runStatus = await request(server, "GET", "/api/jobs/42/status");
+    expect(server.queue.getJobForTeam).toHaveBeenCalledWith("workspace-a", "42");
+    expect(JSON.parse(runStatus.end.mock.calls[0][0])).toMatchObject({ id: 42, status: "success" });
 
     const denied = makeServer(["workflows.view"]);
     const deniedLookup = vi.spyOn(denied.domainEventRepository, "getWorkflowInvocationForTeam");
