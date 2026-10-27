@@ -431,7 +431,7 @@ export class QueueManager {
          parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id,
          status, worker_id, report, started_at, finished_at
        )
-       SELECT id, workflow_id, ?, required_tags, concurrency_key, ?, team_id,
+       SELECT jobs.id, workflow_id, ?, required_tags, concurrency_key, ?, team_id,
                'pending', NULL, NULL, NULL, NULL
         FROM jobs JOIN teams ON teams.id = jobs.team_id
          WHERE jobs.id = ? AND teams.deleting_at IS NULL AND NOT EXISTS (
