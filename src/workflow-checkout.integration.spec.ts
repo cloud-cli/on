@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -55,5 +55,48 @@ describe("documented workflow checkout", () => {
 
     expect(git(checkout, "rev-parse", "HEAD")).toBe(requestedCommit);
     expect(readFileSync(join(checkout, "revision.txt"), "utf8")).toBe("requested revision\n");
+  });
+
+  it("does not substitute a lagging mirror's branch head when the requested commit is absent", () => {
+    const workflowSyntax = readFileSync(new URL("../docs/workflow-syntax.md", import.meta.url), "utf8");
+    expect(workflowSyntax).toContain('git fetch --depth 1 origin "$commit_sha"');
+    expect(workflowSyntax).toContain('git checkout --detach "$commit_sha"');
+    tempDirectory = mkdtempSync(join(tmpdir(), "workflow-lagging-mirror-"));
+    const source = join(tempDirectory, "source");
+    const mirror = join(tempDirectory, "mirror.git");
+    const checkout = join(tempDirectory, "checkout");
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+
+    execFileSync("git", ["init", "--quiet", source]);
+    git(source, "config", "user.email", "test@example.invalid");
+    git(source, "config", "user.name", "Workflow checkout test");
+    writeFileSync(join(source, "revision.txt"), "mirror revision\n");
+    git(source, "add", "revision.txt");
+    git(source, "commit", "--quiet", "-m", "mirror revision");
+    execFileSync("git", ["clone", "--quiet", "--bare", source, mirror]);
+
+    writeFileSync(join(source, "revision.txt"), "requested but not mirrored\n");
+    git(source, "commit", "--quiet", "-am", "requested revision");
+    const requestedCommit = git(source, "rev-parse", "HEAD");
+
+    mkdirSync(checkout);
+    const result = spawnSync(
+      "sh",
+      [
+        "-c",
+        'git clone --depth 1 "$clone_url" . >/dev/null 2>&1 && git fetch --depth 1 origin "$commit_sha" && git checkout --detach "$commit_sha"',
+      ],
+      {
+        cwd: checkout,
+        env: { ...process.env, clone_url: `file://${mirror}`, commit_sha: requestedCommit },
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(git(checkout, "rev-parse", "HEAD")).not.toBe(requestedCommit);
+    expect(readFileSync(join(checkout, "revision.txt"), "utf8")).toBe("mirror revision\n");
   });
 });
