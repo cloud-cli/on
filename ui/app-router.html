@@ -1,4 +1,90 @@
 <template component="app-router">
-  <div ref="outlet" aria-live="polite"></div>
+  <template if="transientView === 'loading'">
+    <main
+      class="mx-auto mt-8 max-w-4xl rounded-xl border border-app-border bg-app-card p-8"
+      role="status"
+      aria-live="polite"
+    >
+      <p>{{ statusMessage }}</p>
+    </main>
+  </template>
+
+  <template if="transientView === 'error'">
+    <main class="mx-auto mt-8 max-w-4xl rounded-xl border border-app-border bg-app-card p-8" role="alert">
+      <h1 class="text-xl font-semibold text-app-primary">This page could not load</h1>
+      <p class="mt-2 text-sm text-app-secondary">{{ routeError }}</p>
+      <button
+        class="mt-5 rounded-lg bg-app-primary px-4 py-2 font-medium text-white"
+        type="button"
+        on-click="retryNavigation()"
+      >
+        {{ retryLabel }}
+      </button>
+    </main>
+  </template>
+
+  <template if="transientView === 'not-found'">
+    <main class="mx-auto max-w-4xl p-8">
+      <h1 class="text-xl font-semibold">404 — Page not found</h1>
+      <p class="mt-2 text-sm">
+        The page you are looking for does not exist. <a href="/ui/runs">Go home</a> or <a href="/ui/runs">view runs</a>.
+      </p>
+    </main>
+  </template>
+
+  <template if="transientView === 'onboarding'">
+    <main class="mx-auto mt-16 w-full max-w-lg rounded-2xl border border-app-border bg-white p-8 shadow-sm">
+      <p class="text-sm font-semibold uppercase tracking-wide text-app-primary">Welcome</p>
+      <h1 class="mt-3 text-2xl font-semibold">Create your first workspace</h1>
+      <p class="mt-2 text-sm text-app-secondary">Workspaces keep related workflows, runs, and secrets together.</p>
+      <template if="!workspaceCreationComplete">
+        <form class="mt-6 space-y-4" on-submit="createWorkspace($event)">
+          <label class="block text-sm font-medium" for="first-team-name">Workspace name</label>
+          <input
+            id="first-team-name"
+            name="name"
+            required
+            maxlength="100"
+            autocomplete="organization"
+            class="w-full rounded-lg border border-app-border px-3 py-2"
+            placeholder="Home automation"
+            bind-value="workspaceName"
+          />
+          <template if="onboardingError"
+            ><p class="text-sm text-rose-700" role="alert">{{ onboardingError }}</p></template
+          >
+          <button
+            class="rounded-lg bg-app-primary px-4 py-2 font-semibold text-white"
+            type="submit"
+            bind-disabled="creatingWorkspace"
+          >
+            {{ creatingWorkspace ? 'Creating…' : 'Create workspace' }}
+          </button>
+        </form>
+      </template>
+      <template if="workspaceCreationComplete">
+        <section class="mt-6 space-y-3 text-sm" role="status">
+          <p>Workspace “{{ createdWorkspaceName }}” created successfully.</p>
+          <template if="onboardingError"
+            ><p class="text-sm text-rose-700" role="alert">{{ onboardingError }}</p></template
+          >
+          <template if="createdWebhookPath">
+            <p class="break-all rounded-lg bg-app-sidebar p-3">Webhook endpoint: {{ createdWebhookPath }}</p>
+          </template>
+          <template if="!onboardingError"
+            ><button
+              class="rounded-lg bg-app-primary px-4 py-2 font-semibold text-white"
+              type="button"
+              on-click="continueToWorkspace()"
+            >
+              Continue
+            </button></template
+          >
+        </section>
+      </template>
+    </main>
+  </template>
+
+  <div ref="outlet" aria-live="polite" class-hidden="transientView"></div>
   <script setup src="/assets/app-router.mjs"></script>
 </template>

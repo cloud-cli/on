@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ fetch: vi.fn(), init: undefined as (() => void) | undefined }));
 vi.mock("@li3/web", () => ({
+  getElement: () => ({ routeParams: {} }),
   ref: (value: unknown) => ({ value }),
   computed: (fn: () => unknown) => ({
     get value() {

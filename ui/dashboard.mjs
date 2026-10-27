@@ -1,9 +1,10 @@
-import { onDestroy, onInit, ref } from "@li3/web";
+import { getElement, onDestroy, onInit, ref } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
 import { loadTimezonePreference } from "@app/preferences.mjs";
 
 export default function setup() {
-  const workspaceId = window.location.pathname.match(/^\/workspaces\/([^/]+)\/runs$/)?.[1] || "";
+  const routeParams = getElement().routeParams || {};
+  const workspaceId = routeParams.workspaceId || routeParams.teamId || "";
   const jobs = ref([]),
     refreshError = ref(false),
     hasMore = ref(false),

@@ -1,4 +1,4 @@
-import { onDestroy, onInit, ref, templateRef } from "@li3/web";
+import { getElement, onDestroy, onInit, ref, templateRef } from "@li3/web";
 import { diffLines } from "diff";
 import { navigateTo } from "@app/app-router.mjs";
 import { apiFetch } from "@app/api-client.mjs";
@@ -10,6 +10,7 @@ import {
 } from "@app/recipe-insertion.mjs";
 
 export default function () {
+  const routeParams = getElement().routeParams || {};
   const params = new URLSearchParams(window.location.search);
   const workflowPath = window.location.pathname
     .replace(/^\/ui/, "")
@@ -17,17 +18,24 @@ export default function () {
   const workspaceRoute = window.location.pathname
     .replace(/^\/ui/, "")
     .match(/^\/workspaces\/([^/]+)\/workflows(?:\/|$)/);
-  const page = workflowPath ? "editor" : document.body.dataset.page || params.get("page") || "workflows";
+  const page =
+    routeParams.page || (workflowPath ? "editor" : document.body.dataset.page || params.get("page") || "workflows");
   const pathWorkspaceId = workflowPath?.[1] ? decodeURIComponent(workflowPath[1]) : "";
   const pathWorkflowId = workflowPath && workflowPath[2] !== "new" ? workflowPath[2] : "";
-  const initialId = params.get("id") || pathWorkflowId;
-  const initialRevision = params.get("revision") ? Number(params.get("revision")) : null;
+  const routedWorkflowId = routeParams.workflowId === "new" ? "" : routeParams.workflowId;
+  const initialId = routedWorkflowId || params.get("id") || pathWorkflowId;
+  const revisionParam = routeParams.revision ?? params.get("revision");
+  const initialRevision = revisionParam ? Number(revisionParam) : null;
   const readOnly = Boolean(initialRevision);
   const workflows = ref([]);
   const availableWorkspaces = ref([]);
   const workspacesLoading = ref(page === "editor");
   const routedWorkspaceId =
-    params.get("workspaceId") || pathWorkspaceId || (workspaceRoute?.[1] ? decodeURIComponent(workspaceRoute[1]) : "");
+    routeParams.workspaceId ||
+    routeParams.teamId ||
+    params.get("workspaceId") ||
+    pathWorkspaceId ||
+    (workspaceRoute?.[1] ? decodeURIComponent(workspaceRoute[1]) : "");
   const initialWorkspaceId = routedWorkspaceId || localStorage.getItem("runner-team-id") || "";
   const selectedWorkspaceId = ref(initialWorkspaceId);
   const secrets = ref([]);

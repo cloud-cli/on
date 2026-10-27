@@ -11,10 +11,12 @@ const node = (tag, text, className) => {
   return item;
 };
 
-export function mountInvocation(root) {
+export function mountInvocation(root, routeParams = root.routeParams || {}) {
+  const workspaceId = routeParams.workspaceId || root.dataset.workspaceId;
+  const invocationId = routeParams.invocationId || root.dataset.invocationId;
   root.className = "mx-auto w-full max-w-4xl space-y-5 py-6";
   const back = node("a", "Back to workspace", "text-sm underline");
-  back.href = `/ui/workspaces/${encodeURIComponent(root.dataset.workspaceId)}/channels`;
+  back.href = `/ui/workspaces/${encodeURIComponent(workspaceId)}/channels`;
   const heading = node("h1", "Workflow invocation", "text-2xl font-semibold");
   const status = node("p", "Loading invocation…", "text-sm text-app-secondary");
   status.setAttribute("role", "status");
@@ -31,7 +33,6 @@ export function mountInvocation(root) {
   root.replaceChildren(back, heading, status, summary, variants);
 
   const load = async () => {
-    const { workspaceId, invocationId } = root.dataset;
     const headers = { accept: "application/json", "X-Team-ID": workspaceId };
     try {
       const response = await apiFetch(`/api/v1/workflow-invocations/${encodeURIComponent(invocationId)}`, { headers });
@@ -126,7 +127,7 @@ export function mountInvocation(root) {
   };
   if (typeof EventSource !== "undefined") {
     const eventsUrl = new URL("/api/events", window.location.href);
-    eventsUrl.searchParams.set("teamId", root.dataset.workspaceId);
+    eventsUrl.searchParams.set("teamId", workspaceId);
     eventSource = new EventSource(eventsUrl);
     eventSource.addEventListener("jobs.changed", (event) => {
       let notification;
@@ -135,7 +136,7 @@ export function mountInvocation(root) {
       } catch {
         return;
       }
-      if (notification.teamId === root.dataset.workspaceId) {
+      if (notification.teamId === workspaceId) {
         refreshRunStatuses();
       }
     });

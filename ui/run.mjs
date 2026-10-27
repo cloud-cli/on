@@ -1,4 +1,4 @@
-import { computed, onDestroy, onInit, ref } from "@li3/web";
+import { computed, getElement, onDestroy, onInit, ref } from "@li3/web";
 import { AnsiUp } from "ansi_up";
 import { marked } from "marked";
 import { apiFetch } from "@app/api-client.mjs";
@@ -7,7 +7,8 @@ import { navigateTo } from "@app/app-router.mjs";
 import { formatTimestampedLogLine } from "@app/timezone-format.mjs";
 
 export default function setup() {
-  const jobId = window.location.pathname.split("/").filter(Boolean).pop() || "";
+  const routeParams = getElement().routeParams || {};
+  const jobId = routeParams.jobId || window.location.pathname.split("/").filter(Boolean).pop() || "";
   const report = ref({ jobId, steps: [], artifacts: [], inputs: {} });
   const stepAttempts = ref([]);
   const attemptsState = ref("loading");

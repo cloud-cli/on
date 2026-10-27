@@ -208,7 +208,9 @@ import apiClientSource from "../ui/api-client.mjs?raw";
 import appShellSetup from "../ui/app-shell.mjs?raw";
 import appHeaderSetup from "../ui/app-header.mjs?raw";
 import appRouterSetup from "../ui/app-router.mjs?raw";
+import routeTableSource from "../ui/route-table.mjs?raw";
 import channelsSetup from "../ui/channels-ui.mjs?raw";
+import invocationSetup from "../ui/invocation-ui.mjs?raw";
 import dashboardSetup from "../ui/dashboard.mjs?raw";
 import runSetup from "../ui/run.mjs?raw";
 import settingsSetup from "../ui/settings-ui.mjs?raw";
@@ -535,12 +537,26 @@ export class WebhookServer {
       });
       return res.end(appRouterSetup);
     }
+    if (req.method === "GET" && url.pathname === "/route-table.mjs") {
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
+      return res.end(routeTableSource);
+    }
     if (req.method === "GET" && url.pathname === "/channels-ui.mjs") {
       res.writeHead(200, {
         "Cache-Control": "no-cache",
         "Content-Type": "text/javascript; charset=utf-8",
       });
       return res.end(channelsSetup);
+    }
+    if (req.method === "GET" && url.pathname === "/invocation-ui.mjs") {
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
+      return res.end(invocationSetup);
     }
     if (req.method === "GET" && (url.pathname === "/dashboard.mjs" || url.pathname === "/pages/dashboard.mjs")) {
       res.writeHead(200, {
@@ -2483,7 +2499,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
         .end(JSON.stringify({ eventId: eventFanoutOutcomeMatch[1], ...outcome }));
       return;
     }
-    const eventOutcomeProjectionMatch = url.pathname.match(/^\/api\/v1\/domain-events\/([a-zA-Z0-9-]+)\/outcome-projection$/);
+    const eventOutcomeProjectionMatch = url.pathname.match(
+      /^\/api\/v1\/domain-events\/([a-zA-Z0-9-]+)\/outcome-projection$/,
+    );
     if (req.method === "GET" && eventOutcomeProjectionMatch) {
       const authorized = await this.authorizer.workspace(req, res, "webhooks.view");
       if (!authorized) {
@@ -2496,7 +2514,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
       if (!projection) {
         return deny(res, 404, "Event outcome not found");
       }
-      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" })
+      res
+        .writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" })
         .end(JSON.stringify(projection));
       return;
     }

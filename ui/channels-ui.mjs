@@ -11,7 +11,8 @@ const element = (tag, text, className) => {
   return node;
 };
 
-export function mountChannels(root) {
+export function mountChannels(root, routeParams = root.routeParams || {}) {
+  const routedWorkspaceId = routeParams.workspaceId || "";
   root.className = "mx-auto w-full max-w-6xl space-y-5 py-6";
   root.setAttribute("aria-labelledby", "channels-title");
   const heading = element("h1", "Streams", "text-2xl font-semibold");
@@ -182,7 +183,7 @@ export function mountChannels(root) {
       headers: {
         accept: "application/json",
         "content-type": "application/json",
-        ...(root.dataset.workspaceId ? { "X-Team-ID": root.dataset.workspaceId } : {}),
+        ...(routedWorkspaceId ? { "X-Team-ID": routedWorkspaceId } : {}),
         ...requestHeaders,
       },
     });
@@ -419,7 +420,7 @@ export function mountChannels(root) {
             targets.append(link);
           }
           for (const invocationId of links.invocationIds || []) {
-            const workspaceId = root.dataset.workspaceId || localStorage.getItem("runner-team-id") || "";
+            const workspaceId = routedWorkspaceId || localStorage.getItem("runner-team-id") || "";
             const link = element("a", `Invocation ${invocationId}`, "underline focus-visible:ring-2");
             link.href = `/ui/workspaces/${encodeURIComponent(workspaceId)}/invocations/${encodeURIComponent(invocationId)}`;
             targets.append(link);
@@ -782,8 +783,8 @@ export function mountChannels(root) {
   }
   if (typeof EventSource !== "undefined") {
     const eventUrl = new URL("/api/events", window.location.href);
-    if (root.dataset.workspaceId) {
-      eventUrl.searchParams.set("teamId", root.dataset.workspaceId);
+    if (routedWorkspaceId) {
+      eventUrl.searchParams.set("teamId", routedWorkspaceId);
     }
     channelEvents = new EventSource(eventUrl);
     channelEvents.addEventListener("channel.message", (event) => {

@@ -8,7 +8,8 @@ describe("invocation UI", () => {
     expect(source).toContain("Decision: ${variant.admissionOutcome}");
     expect(source).toContain("/api/v1/runs/${encodeURIComponent(runId)}");
     expect(source).toContain("jobs.changed");
-    expect(source).toContain('eventsUrl.searchParams.set("teamId", root.dataset.workspaceId)');
+    expect(source).toContain('eventsUrl.searchParams.set("teamId", workspaceId)');
+    expect(source).toContain("routeParams = root.routeParams || {}");
     expect(source).toContain("runStatusRefreshers");
   });
 

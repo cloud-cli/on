@@ -4,6 +4,8 @@ import { WebhookServer } from "./server.js";
 import recipeTemplate from "../ui/recipes.html?raw";
 import recipeSetup from "../ui/recipes-ui.mjs?raw";
 import channelsSetup from "../ui/channels-ui.mjs?raw";
+import invocationSetup from "../ui/invocation-ui.mjs?raw";
+import routeTableSource from "../ui/route-table.mjs?raw";
 
 const htmlFiles = [
   ...readdirSync(new URL("../ui/", import.meta.url))
@@ -98,6 +100,26 @@ describe("canonical setup-script asset routes", () => {
       "Content-Type": "text/javascript; charset=utf-8",
     });
     expect(response.end).toHaveBeenCalledWith(channelsSetup);
+  });
+
+  it("serves the invocation module imported by the application router", async () => {
+    const response = await request("/assets/invocation-ui.mjs");
+
+    expect(response.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-cache",
+      "Content-Type": "text/javascript; charset=utf-8",
+    });
+    expect(response.end).toHaveBeenCalledWith(invocationSetup);
+  });
+
+  it("serves the URLPattern route table imported by the application router", async () => {
+    const response = await request("/assets/route-table.mjs");
+
+    expect(response.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-cache",
+      "Content-Type": "text/javascript; charset=utf-8",
+    });
+    expect(response.end).toHaveBeenCalledWith(routeTableSource);
   });
 
   it("serves the safe recipe insertion helper through the assets namespace", async () => {

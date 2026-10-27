@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import source from "./channels-ui.mjs?raw";
 import router from "./app-router.mjs?raw";
+import routes from "./route-table.mjs?raw";
 import shell from "./app-shell.html?raw";
 
 describe("channels UI", () => {
@@ -8,15 +9,17 @@ describe("channels UI", () => {
     expect(source).toContain('import { apiFetch } from "@app/api-client.mjs"');
     expect(source).toContain('query.set("after", after)');
     expect(source).toContain("/api/v1/channels");
-    expect(router).toContain('path === "/channels"');
-    expect(router).toContain("path.match(/^\\/workspaces\\/([^/]+)\\/channels$/)");
-    expect(source).toContain('"X-Team-ID": root.dataset.workspaceId');
+    expect(router).toContain("matchRoute(window.location.href)");
+    expect(routes).toContain('pattern: "/channels"');
+    expect(routes).toContain('pattern: "/workspaces/:workspaceId/channels"');
+    expect(source).toContain('const routedWorkspaceId = routeParams.workspaceId || ""');
+    expect(source).toContain('"X-Team-ID": routedWorkspaceId');
     expect(source).toContain("selectionGeneration");
     expect(source).toContain("You're up to date.");
     expect(source).toContain("const refreshMessages = async () =>");
     expect(source).toContain("setTimeout(pollForMessages, 15_000)");
     expect(source).toContain('new URL("/api/events", window.location.href)');
-    expect(source).toContain('eventUrl.searchParams.set("teamId", root.dataset.workspaceId)');
+    expect(source).toContain('eventUrl.searchParams.set("teamId", routedWorkspaceId)');
     expect(source).toContain('addEventListener("channel.message"');
     expect(source).toContain('addEventListener("channel.domain-event"');
     expect(source).toContain('addEventListener("open"');

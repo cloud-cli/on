@@ -1,15 +1,16 @@
-import { onDestroy, onInit, ref } from "@li3/web";
+import { getElement, onDestroy, onInit, ref } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
 
 export default function setup() {
+  const routeParams = getElement().routeParams || {};
   const root = document.querySelector("[data-incoming-events-root]");
   if (!root) {
     return;
   }
 
-  const workspaceId = decodeURIComponent(
-    window.location.pathname.match(/^\/workspaces\/([^/]+)\/runs\/events$/)?.[1] || "",
-  );
+  const workspaceId =
+    routeParams.workspaceId ||
+    decodeURIComponent(window.location.pathname.match(/^\/workspaces\/([^/]+)\/runs\/events$/)?.[1] || "");
   const list = root.querySelector("[data-list]");
   const loading = root.querySelector("[data-loading]");
   const listError = root.querySelector("[data-list-error]");

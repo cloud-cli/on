@@ -71,7 +71,7 @@ describe("workflow management UI", () => {
     expect(source).toContain("Secret names must start with a letter");
     expect(source).toContain("initialId || `wf-${crypto.randomUUID()}`");
     expect(source).toContain(
-      'const page = workflowPath ? "editor" : document.body.dataset.page || params.get("page") || "workflows"',
+      'routeParams.page || (workflowPath ? "editor" : document.body.dataset.page || params.get("page") || "workflows")',
     );
     expect(workflowsSetup).toContain("if (initialId && selectedWorkspaceId.value)");
     expect(workflowsSetup).toContain("await openWorkflow(initialId)");
@@ -124,7 +124,9 @@ describe("workflow management UI", () => {
     expect(source).not.toContain("workspaceName");
     expect(source).not.toContain("workflow.workspaceName");
     expect(workflowsSetup).toContain("match(/^\\/workspaces\\/([^/]+)\\/workflows(?:\\/|$)/)");
-    expect(workflowsSetup).toContain('params.get("workspaceId") || pathWorkspaceId ||');
+    expect(workflowsSetup).toContain("routeParams.workspaceId ||");
+    expect(workflowsSetup).toContain("routeParams.teamId ||");
+    expect(workflowsSetup).toContain('params.get("workspaceId") ||');
     expect(workflowsSetup).toContain('api("/api/v1/workflows", { headers: { "X-Team-ID": routedWorkspaceId } })');
     expect(workflowsSetup).toContain('headers: { "X-Team-ID": workspace.id }');
     expect(workflowsSetup).toContain('api("/api/v1/workflows", { headers: { "X-Team-ID": workspace.id } })');
@@ -171,10 +173,9 @@ describe("workflow management UI", () => {
     expect(source).toContain('.replace(/^\\/ui/, "")');
     expect(source).toContain('page === "editor"');
     expect(source).toMatch(/workflowPath\[2\] !== ['"]new['"]/);
-    expect(source).toMatch(/const initialId = params\.get\(["']id["']\) \|\| pathWorkflowId/);
-    expect(source).toMatch(
-      /const initialRevision = params\.get\(["']revision["']\) \? Number\(params\.get\(["']revision["']\)\) : null/,
-    );
+    expect(source).toContain('routeParams.workflowId === "new" ? "" : routeParams.workflowId');
+    expect(source).toContain("const initialId = routedWorkflowId || params.get(\"id\") || pathWorkflowId");
+    expect(source).toContain("const revisionParam = routeParams.revision ?? params.get(\"revision\")");
   });
 
   it("does not render settings navigation on workflow management pages", () => {
