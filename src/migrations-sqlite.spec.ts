@@ -245,6 +245,35 @@ describe("v3 migrations against SQLite", () => {
     expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 
+  it("backfills only valid same-workspace event bindings and is idempotent", async () => {
+    createPreV3Database(true);
+    await runMigrations();
+    const database = dbTestHooks.currentDatabase() as DatabaseSync;
+    database.exec(`
+      INSERT INTO teams(id, name, webhook_token) VALUES ('team-b', 'Other team', 'token-b');
+      INSERT INTO channels(id, team_id, name) VALUES
+        ('stream-a', 'team-a', 'A'), ('stream-b', 'team-b', 'B');
+      INSERT INTO domain_events(id, team_id, type, schema_version, source, occurred_at, recorded_at, data_json)
+        VALUES
+          ('valid-a', 'team-a', 'channel.message', 1, 'test', '2026-01-01', '2026-01-01', '{"channelId":"stream-a"}'),
+          ('cross-team', 'team-b', 'channel.message', 1, 'test', '2026-01-01', '2026-01-01', '{"channelId":"stream-a"}'),
+          ('missing-channel', 'team-a', 'channel.message', 1, 'test', '2026-01-01', '2026-01-01', '{"channelId":"missing"}'),
+          ('non-text', 'team-a', 'channel.message', 1, 'test', '2026-01-01', '2026-01-01', '{"channelId":4}');
+      DROP TABLE stream_event_bindings;
+      DELETE FROM schema_migrations WHERE version = '033_stream_event_bindings';
+    `);
+
+    await runMigrations();
+    const expected = [{ team_id: "team-a", stream_id: "stream-a", event_id: "valid-a" }];
+    const selectBindings = () =>
+      database.prepare("SELECT team_id, stream_id, event_id FROM stream_event_bindings ORDER BY event_id").all();
+    expect(selectBindings()).toEqual(expected);
+
+    database.exec("DELETE FROM schema_migrations WHERE version = '033_stream_event_bindings'");
+    await runMigrations();
+    expect(selectBindings()).toEqual(expected);
+  });
+
   it("uses the channel history expression index without changing ordered cursor pages", async () => {
     createPreV3Database(true);
     const database = dbTestHooks.currentDatabase() as DatabaseSync;
