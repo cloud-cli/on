@@ -1,11 +1,13 @@
 import http from "node:http";
 import os from "node:os";
 import { execFileSync, spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const dbPort = 18_888;
 const appPort = 18_889;
 const image = process.env.E2E_IMAGE || "on:e2e";
 const containerName = "on-e2e-smoke";
+const databaseAdapterPath = fileURLToPath(new URL("./e2e-db.mjs", import.meta.url));
 const hostAddress =
   process.env.E2E_HOST_ADDRESS ||
   Object.values(os.networkInterfaces())
@@ -67,6 +69,8 @@ const containerArgs = [
   "--rm",
   "--name",
   containerName,
+  "--volume",
+  `${databaseAdapterPath}:/home/app/e2e-db.mjs:ro`,
   "-e",
   "RUNNER_ADMIN_SECRET=e2e-admin-secret",
   "-e",
