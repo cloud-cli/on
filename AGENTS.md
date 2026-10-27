@@ -80,7 +80,7 @@ When invoking `systemd-run`:
 Systemd transient units run in a stripped environment by default. Node must explicitly pass its active `PATH` and job variables using `--setenv`:
 
 ```typescript
-const envFlags = [`--setenv=PATH=${process.env.PATH || "/usr/local/bin:/usr/bin:/bin"}`];
+const envFlags = [`--setenv=PATH=${process.env.PATH || '/usr/local/bin:/usr/bin:/bin'}`];
 ```
 
 ### 3. Exit Code vs. `stderr` Parsing
