@@ -55,7 +55,7 @@ describe("On application shell", () => {
     expect(html).not.toContain("user.name || user.email");
     expect(html).not.toContain("{{ user.email }}");
     expect(html).toContain('on-click="toggleTheme()"');
-    expect(html).toContain('class="flex items-center gap-2 px-2 pb-2 pt-2 sm:gap-4 sm:px-3 md:px-4"');
+    expect(html).toContain('class="flex items-center gap-2 px-2 py-1 sm:gap-4 sm:px-3 md:px-4"');
     expect(html).not.toContain('class="ml-auto flex shrink-0 items-center gap-2 sm:gap-4"');
     expect(html).toContain("md:h-dvh md:w-56");
     expect(html).toContain("isDarkTheme ? 'sun' : 'moon'");
