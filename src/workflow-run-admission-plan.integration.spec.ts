@@ -211,4 +211,38 @@ describe("workflow-run admission plan SQLite integration", () => {
     await expect(repository.claimVariant("evt-rejected", -1)).resolves.toBeNull();
     await expect(repository.claimVariant("evt-filtered", -2)).resolves.toBeNull();
   });
+
+  it("keeps the first terminal outcome when an internal dispatch is delivered again", async () => {
+    const variant: WorkflowRunVariant = {
+      eventId: "evt-duplicate",
+      teamId: "team-1",
+      workflowId: "workflow-1",
+      revision: 3,
+      index: 0,
+      matrix: { axis: "one" },
+      tags: ["one"],
+    };
+
+    await repository.persistTerminal(variant, "admitted", undefined, "accepted");
+    // Internal runner-dispatch may be retried after its acknowledgement is lost.
+    // Its stable event/variant key must behave like external fanout's repeat,
+    // preserving the original durable outcome instead of replacing it.
+    await repository.persistTerminal(variant, "failed", "late_failure", "rejected");
+
+    connection.close();
+    connection = new DatabaseSync(path.join(directory, "admissions.sqlite"));
+
+    await expect(repository.get("evt-duplicate", 0)).resolves.toMatchObject({
+      status: "admitted",
+      admissionOutcome: "accepted",
+      jobId: null,
+      errorCode: null,
+    });
+    await expect(repository.claimVariant("evt-duplicate", 0)).resolves.toBeNull();
+    expect(
+      connection
+        .prepare("SELECT COUNT(*) AS count FROM workflow_run_admissions WHERE event_id = ? AND variant_index = ?")
+        .get("evt-duplicate", 0)?.count,
+    ).toBe(1);
+  });
 });
