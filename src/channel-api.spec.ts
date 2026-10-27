@@ -24,6 +24,24 @@ function makeServer(capabilities = ["workflows.view", "workflows.edit"]) {
     }),
     channels: {
       listChannels: vi.fn(async (teamId) => [{ id: "chan", teamId, name: "activity", createdAt: "now" }]),
+      listStreams: vi.fn(async (workspaceId) => [{ id: "chan", workspaceId, name: "activity", createdAt: "now" }]),
+      createStream: vi.fn(async (workspaceId, name) => ({ id: "chan", workspaceId, name, createdAt: "now" })),
+      getStream: vi.fn(async (workspaceId, streamId) =>
+        workspaceId === "team-a" && streamId === "chan"
+          ? { id: "chan", workspaceId, name: "activity", createdAt: "now" }
+          : null,
+      ),
+      listStreamThreads: vi.fn(async (workspaceId, streamId) => [
+        {
+          id: "thread-1",
+          workspaceId,
+          streamId,
+          title: "Investigate",
+          createdBy: "actor-a",
+          createdAt: "now",
+          updatedAt: "now",
+        },
+      ]),
       getChannel: vi.fn(async (teamId) => (teamId === "team-a" ? { id: "chan" } : null)),
       createChannel: vi.fn(async (teamId, name) => ({
         id: "chan",
@@ -57,8 +75,8 @@ function makeServer(capabilities = ["workflows.view", "workflows.edit"]) {
         events: [],
         nextCursor: null,
       })),
-      bindEventToStream: vi.fn(async (teamId, streamId, eventId) =>
-        teamId === "team-a" && streamId === "chan" && eventId === "event-a",
+      bindEventToStream: vi.fn(
+        async (teamId, streamId, eventId) => teamId === "team-a" && streamId === "chan" && eventId === "event-a",
       ),
     },
     readJson: vi.fn(),
@@ -67,6 +85,131 @@ function makeServer(capabilities = ["workflows.view", "workflows.edit"]) {
 }
 
 describe("workspace channel APIs", () => {
+  it("exposes canonical Streams using workspace naming while retaining shared identifiers", async () => {
+    const server = makeServer();
+    const res = response();
+    await WebhookServer.prototype.handleStreamList.call(server, {}, res);
+    expect(server.channels.listStreams).toHaveBeenCalledWith("team-a");
+    expect(JSON.parse(res.end.mock.calls[0][0]).streams[0]).toEqual({
+      id: "chan",
+      workspaceId: "team-a",
+      name: "activity",
+      createdAt: "now",
+    });
+    expect(JSON.parse(res.end.mock.calls[0][0])).not.toHaveProperty("teamId");
+  });
+
+  it("projects Stream Threads through canonical workspace and stream fields", async () => {
+    const server = makeServer();
+    const listed = response();
+    await WebhookServer.prototype.handleCanonicalThreadList.call(server, {}, listed, "chan");
+    expect(server.channels.getStream).toHaveBeenCalledWith("team-a", "chan");
+    expect(server.channels.listStreamThreads).toHaveBeenCalledWith("team-a", "chan");
+    expect(JSON.parse(listed.end.mock.calls[0][0])).toEqual({
+      threads: [
+        {
+          id: "thread-1",
+          workspaceId: "team-a",
+          streamId: "chan",
+          title: "Investigate",
+          createdBy: "actor-a",
+          createdAt: "now",
+          updatedAt: "now",
+        },
+      ],
+      streamId: "chan",
+    });
+
+    server.readJson.mockResolvedValueOnce({ title: "Investigate" });
+    const created = response();
+    await WebhookServer.prototype.handleCanonicalThreadCreate.call(server, {}, created, "chan");
+    expect(server.channels.createThread).toHaveBeenCalledWith("team-a", "chan", "Investigate", "actor-a");
+    expect(JSON.parse(created.end.mock.calls[0][0]).thread).toMatchObject({
+      workspaceId: "team-a",
+      streamId: "chan",
+      title: "Investigate",
+    });
+    expect(JSON.parse(created.end.mock.calls[0][0]).thread).not.toHaveProperty("teamId");
+
+    server.readJson.mockResolvedValueOnce({ title: "Investigate", workspaceId: "team-b" });
+    const forged = response();
+    await WebhookServer.prototype.handleCanonicalThreadCreate.call(server, {}, forged, "chan");
+    expect(forged.writeHead).toHaveBeenCalledWith(400, expect.anything());
+    expect(server.channels.createThread).toHaveBeenCalledTimes(1);
+  });
+
+  it("pages canonical Thread messages within the workspace, Stream, and Thread", async () => {
+    const server = makeServer();
+    server.channels.listThreadMessages.mockResolvedValue([
+      {
+        id: "reply-1",
+        teamId: "team-a",
+        channelId: "chan",
+        threadId: "thread-1",
+        author: "actor-a",
+        body: { text: "hi" },
+      },
+    ]);
+    const listed = response();
+    await WebhookServer.prototype.handleCanonicalThreadMessages.call(
+      server,
+      {
+        url: "/api/v1/streams/chan/threads/thread-1/messages?limit=1&after=reply-0",
+      },
+      listed,
+      "chan",
+      "thread-1",
+    );
+    expect(server.channels.getThread).toHaveBeenCalledWith("team-a", "chan", "thread-1");
+    expect(server.channels.listThreadMessages).toHaveBeenCalledWith("team-a", "chan", "thread-1", 1, "reply-0");
+    expect(JSON.parse(listed.end.mock.calls[0][0]).messages[0]).toMatchObject({
+      workspaceId: "team-a",
+      streamId: "chan",
+      threadId: "thread-1",
+    });
+
+    for (const url of ["?limit=0", "?limit=101", `?after=${"x".repeat(257)}`]) {
+      const invalid = response();
+      await WebhookServer.prototype.handleCanonicalThreadMessages.call(server, { url }, invalid, "chan", "thread-1");
+      expect(invalid.writeHead).toHaveBeenCalledWith(400, expect.anything());
+    }
+    server.channels.getThread.mockResolvedValue(null);
+    const scopedOut = response();
+    await WebhookServer.prototype.handleCanonicalThreadMessages.call(server, {}, scopedOut, "other", "thread-1");
+    expect(scopedOut.writeHead).toHaveBeenCalledWith(404, expect.anything());
+  });
+
+  it("rejects secret canonical message bodies and derives author and scope from authentication", async () => {
+    const server = makeServer();
+    server.channels.appendThreadMessage.mockResolvedValue({
+      id: "reply-1",
+      teamId: "team-a",
+      channelId: "chan",
+      threadId: "thread-1",
+      author: "actor-a",
+      body: { text: "ok" },
+    });
+    server.readJson.mockResolvedValueOnce({ body: { api_key: "secret" } });
+    const rejected = response();
+    await WebhookServer.prototype.handleCanonicalThreadMessageAppend.call(server, {}, rejected, "chan", "thread-1");
+    expect(rejected.writeHead).toHaveBeenCalledWith(400, expect.anything());
+    expect(server.channels.appendThreadMessage).not.toHaveBeenCalled();
+
+    server.readJson.mockResolvedValueOnce({ body: { text: "ok" }, author: "forged", workspaceId: "team-b" });
+    const forged = response();
+    await WebhookServer.prototype.handleCanonicalThreadMessageAppend.call(server, {}, forged, "chan", "thread-1");
+    expect(forged.writeHead).toHaveBeenCalledWith(400, expect.anything());
+    server.readJson.mockResolvedValueOnce({ body: { text: "ok" } });
+    const accepted = response();
+    await WebhookServer.prototype.handleCanonicalThreadMessageAppend.call(server, {}, accepted, "chan", "thread-1");
+    expect(server.channels.appendThreadMessage).toHaveBeenCalledWith({
+      teamId: "team-a",
+      channelId: "chan",
+      threadId: "thread-1",
+      author: "actor-a",
+      body: { text: "ok" },
+    });
+  });
   it("lists only the authenticated workspace and requires view capability", async () => {
     const server = makeServer();
     const res = response();

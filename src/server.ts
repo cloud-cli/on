@@ -2215,6 +2215,43 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (url.pathname === "/api/channels" && req.method === "POST") {
       return this.handleChannelCreate(req, res);
     }
+    if (url.pathname === "/api/v1/streams" && req.method === "GET") {
+      return this.handleStreamList(req, res);
+    }
+    if (url.pathname === "/api/v1/streams" && req.method === "POST") {
+      return this.handleStreamCreate(req, res);
+    }
+    const canonicalThreads = url.pathname.match(/^\/api\/v1\/streams\/([^/]+)\/threads$/);
+    const canonicalMessages = url.pathname.match(/^\/api\/v1\/streams\/([^/]+)\/threads\/([^/]+)\/messages$/);
+    try {
+      if (canonicalThreads && req.method === "GET") {
+        return this.handleCanonicalThreadList(req, res, decodeURIComponent(canonicalThreads[1]));
+      }
+      if (canonicalThreads && req.method === "POST") {
+        return this.handleCanonicalThreadCreate(req, res, decodeURIComponent(canonicalThreads[1]));
+      }
+      if (canonicalMessages && req.method === "GET") {
+        return this.handleCanonicalThreadMessages(
+          req,
+          res,
+          decodeURIComponent(canonicalMessages[1]),
+          decodeURIComponent(canonicalMessages[2]),
+        );
+      }
+      if (canonicalMessages && req.method === "POST") {
+        return this.handleCanonicalThreadMessageAppend(
+          req,
+          res,
+          decodeURIComponent(canonicalMessages[1]),
+          decodeURIComponent(canonicalMessages[2]),
+        );
+      }
+    } catch (error) {
+      if (error instanceof URIError) {
+        return deny(res, 400, "Malformed path identifier");
+      }
+      throw error;
+    }
     const channelThreads = url.pathname.match(/^\/api\/channels\/([^/]+)\/threads$/);
     if (channelThreads && req.method === "GET") {
       return this.handleThreadList(req, res, decodeURIComponent(channelThreads[1]));
@@ -4968,6 +5005,185 @@ sessionStorage.removeItem('runner-pending-team-invite');
     await this.workflowsLoaded;
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ workflows: await this.workflows.listForTeam(teamId) }));
+  }
+
+  private async handleStreamList(req: http.IncomingMessage, res: http.ServerResponse) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.view");
+    if (!auth) {
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(
+      JSON.stringify({
+        streams: await this.channels.listStreams(auth.teamId),
+        workspaceId: auth.teamId,
+        canEdit: auth.capabilities.includes("workflows.edit"),
+      }),
+    );
+  }
+
+  private async handleStreamCreate(req: http.IncomingMessage, res: http.ServerResponse) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.edit");
+    if (!auth) {
+      return;
+    }
+    const body = await this.readJson(req, res, 256 * 1024);
+    if (
+      !body ||
+      typeof body.name !== "string" ||
+      !body.name.trim() ||
+      body.name.length > 120 ||
+      Object.keys(body).some((key) => key !== "name")
+    ) {
+      if (!res.headersSent) {
+        deny(res, 400, "A stream name is required; caller-supplied fields are not accepted");
+      }
+      return;
+    }
+    const stream = await this.channels.createStream(auth.teamId, body.name.trim());
+    res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ stream }));
+  }
+
+  private async handleCanonicalThreadList(req: http.IncomingMessage, res: http.ServerResponse, streamId: string) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.view");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getStream(auth.teamId, streamId))) {
+      return deny(res, 404, "Stream not found");
+    }
+    const threads = await this.channels.listStreamThreads(auth.teamId, streamId);
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ threads, streamId }));
+  }
+
+  private async handleCanonicalThreadCreate(req: http.IncomingMessage, res: http.ServerResponse, streamId: string) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.edit");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getStream(auth.teamId, streamId))) {
+      return deny(res, 404, "Stream not found");
+    }
+    const body = await this.readJson(req, res, 16 * 1024);
+    if (
+      !body ||
+      typeof body.title !== "string" ||
+      !body.title.trim() ||
+      body.title.length > 160 ||
+      Object.keys(body).length !== 1
+    ) {
+      if (!res.headersSent) {
+        deny(res, 400, "A thread title is required");
+      }
+      return;
+    }
+    const legacy = await this.channels.createThread(auth.teamId, streamId, body.title.trim(), auth.principal.subject);
+    const thread = {
+      id: legacy.id,
+      workspaceId: legacy.teamId,
+      streamId: legacy.channelId,
+      title: legacy.title,
+      createdBy: legacy.createdBy,
+      createdAt: legacy.createdAt,
+      updatedAt: legacy.updatedAt,
+    };
+    res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ thread }));
+  }
+
+  private async handleCanonicalThreadMessages(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    streamId: string,
+    threadId: string,
+  ) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.view");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getThread(auth.teamId, streamId, threadId))) {
+      return deny(res, 404, "Thread not found");
+    }
+    const url = new URL(req.url || "/", "http://localhost");
+    const rawLimit = url.searchParams.get("limit");
+    const limit = rawLimit === null ? 50 : Number(rawLimit);
+    const after = url.searchParams.get("after") || undefined;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (after && after.length > 256)) {
+      return deny(res, 400, "Invalid thread message pagination");
+    }
+    const messages = (await this.channels.listThreadMessages(auth.teamId, streamId, threadId, limit, after)).map(
+      (m: any) => ({
+        id: m.id,
+        workspaceId: m.teamId,
+        streamId: m.channelId,
+        threadId: m.threadId,
+        author: m.author,
+        body: m.body,
+        causedByEventId: m.causedByEventId,
+        causedByJobId: m.causedByJobId,
+        createdAt: m.createdAt,
+      }),
+    );
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(
+      JSON.stringify({
+        messages,
+        streamId,
+        threadId,
+        limit,
+        next: messages.length === limit ? messages.at(-1)?.id : null,
+      }),
+    );
+  }
+
+  private async handleCanonicalThreadMessageAppend(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    streamId: string,
+    threadId: string,
+  ) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.edit");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getThread(auth.teamId, streamId, threadId))) {
+      return deny(res, 404, "Thread not found");
+    }
+    const body = await this.readJson(req, res, 256 * 1024);
+    if (!body || Object.keys(body).length !== 1 || !Object.hasOwn(body, "body") || !isSafeChannelBody(body.body)) {
+      if (!res.headersSent) {
+        deny(res, 400, "Thread message body is invalid, too large/deep, or contains a secret field");
+      }
+      return;
+    }
+    const legacy = await this.channels.appendThreadMessage({
+      teamId: auth.teamId,
+      channelId: streamId,
+      threadId,
+      author: auth.principal.subject,
+      body: body.body,
+    });
+    const message = {
+      id: legacy.id,
+      workspaceId: legacy.teamId,
+      streamId: legacy.channelId,
+      threadId: legacy.threadId,
+      author: legacy.author,
+      body: legacy.body,
+      causedByEventId: legacy.causedByEventId,
+      causedByJobId: legacy.causedByJobId,
+      createdAt: legacy.createdAt,
+    };
+    this.events.publish("channel.thread.message", {
+      teamId: auth.teamId,
+      channelId: streamId,
+      threadId,
+      messageId: message.id,
+    });
+    res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ message }));
   }
 
   private async handleChannelList(req: http.IncomingMessage, res: http.ServerResponse) {

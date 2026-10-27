@@ -22,9 +22,56 @@ export type ChannelThread = {
   createdAt: string;
   updatedAt: string;
 };
+export type Stream = { id: string; workspaceId: string; name: string; createdAt: string };
+export type Thread = {
+  id: string;
+  workspaceId: string;
+  streamId: string;
+  title: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 /** Channel message bodies are persisted as ordinary JSON, not encrypted. Callers must exclude secrets and credentials. */
 export class ChannelRepository {
+  async listStreams(workspaceId: string): Promise<Stream[]> {
+    return (await this.listChannels(workspaceId)).map(({ id, teamId, name, createdAt }) => ({
+      id,
+      workspaceId: teamId,
+      name,
+      createdAt,
+    }));
+  }
+
+  async getStream(workspaceId: string, streamId: string): Promise<Stream | null> {
+    const stream = await this.getChannel(workspaceId, streamId);
+    return stream
+      ? { id: stream.id, workspaceId: stream.teamId, name: stream.name, createdAt: stream.createdAt }
+      : null;
+  }
+
+  async createStream(workspaceId: string, name: string): Promise<Stream> {
+    const stream = await this.createChannel(workspaceId, name);
+    return { id: stream.id, workspaceId: stream.teamId, name: stream.name, createdAt: stream.createdAt };
+  }
+
+  async listStreamThreads(workspaceId: string, streamId: string): Promise<Thread[]> {
+    return (await this.listThreads(workspaceId, streamId)).map((thread) => this.toThread(thread));
+  }
+
+  private toThread(thread: ChannelThread): Thread {
+    return {
+      id: thread.id,
+      workspaceId: thread.teamId,
+      streamId: thread.channelId,
+      title: thread.title,
+      createdBy: thread.createdBy,
+      createdAt: thread.createdAt,
+      updatedAt: thread.updatedAt,
+    };
+  }
+
   async listThreads(teamId: string, channelId: string): Promise<ChannelThread[]> {
     const rows = await db.all(
       `SELECT id, team_id, channel_id, title, created_by, created_at, updated_at

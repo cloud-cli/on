@@ -4083,6 +4083,270 @@
           }
         }
       }
+    },
+    "/api/v1/streams": {
+      "get": {
+        "tags": ["events"],
+        "summary": "List workspace Streams",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streams scoped to the authenticated workspace, using stable IDs shared with legacy Channels"
+          }
+        }
+      },
+      "post": {
+        "tags": ["events"],
+        "summary": "Create a Stream",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created Stream using the stable legacy Channel storage identity"
+          }
+        }
+      }
+    },
+    "/api/v1/streams/{streamId}/threads": {
+      "parameters": [
+        {
+          "name": "streamId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "$ref": "#/components/parameters/WorkspaceId"
+        }
+      ],
+      "get": {
+        "tags": ["events"],
+        "summary": "List Threads in a workspace Stream",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Threads scoped to the authenticated workspace and Stream"
+          },
+          "404": {
+            "description": "Stream not found in workspace"
+          }
+        }
+      },
+      "post": {
+        "tags": ["events"],
+        "summary": "Create a Thread in a workspace Stream",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title"],
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created Thread with server-derived author"
+          },
+          "400": {
+            "description": "Invalid Thread title or untrusted properties"
+          },
+          "404": {
+            "description": "Stream not found in workspace"
+          }
+        }
+      }
+    },
+    "/api/v1/streams/{streamId}/threads/{threadId}/messages": {
+      "parameters": [
+        {
+          "name": "streamId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "threadId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "$ref": "#/components/parameters/WorkspaceId"
+        }
+      ],
+      "get": {
+        "tags": ["events"],
+        "summary": "List messages in a Thread",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Opaque Thread-message cursor",
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ascending Thread message page with next cursor"
+          },
+          "404": {
+            "description": "Thread not found in workspace Stream"
+          }
+        }
+      },
+      "post": {
+        "tags": ["events"],
+        "summary": "Append a message to a Thread",
+        "description": "Body is limited to 256 KiB and depth 32. Secret-like property names are rejected. Author and workspace are derived from authentication.",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["body"],
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "description": "Safe JSON message value"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Appended Thread message with server-derived author metadata"
+          },
+          "400": {
+            "description": "Invalid or unsafe body"
+          },
+          "404": {
+            "description": "Thread not found in workspace Stream"
+          }
+        }
+      }
     }
   },
   "components": {
