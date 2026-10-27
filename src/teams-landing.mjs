@@ -22,9 +22,18 @@ export default function () {
         headers: { accept: "application/json", "content-type": "application/json" },
         body: JSON.stringify({ name: newTeamName.value }),
       });
-      const result = await response.json();
+      let result = null;
+      try {
+        result = await response.json();
+      } catch {
+        // Authorization layers and proxies may return an empty or non-JSON error body.
+      }
       if (!response.ok) {
-        throw new Error(result.error || "Unable to create workspace.");
+        throw new Error(result?.error || "Unable to create workspace.");
+      }
+
+      if (!result?.workspace?.name) {
+        throw new Error("Workspace was created, but its details could not be loaded.");
       }
 
       newTeamName.value = "";
