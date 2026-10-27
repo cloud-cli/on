@@ -301,9 +301,7 @@
             </section>
             <div class="grid gap-0 lg:grid-cols-[226px_minmax(0,1fr)]">
               <aside class="steps-panel border-app-border bg-app-panel p-4 lg:border-r" aria-label="Execution steps">
-                <div
-                  class="steps-heading mb-3 hidden items-center justify-between px-2 text-sm font-semibold text-app-foreground sm:flex"
-                >
+                <div class="steps-heading sr-only">
                   <span>Execution steps</span>
                   <span>{{ successfulSteps }} / {{ totalSteps }}</span>
                 </div>
@@ -315,8 +313,9 @@
                     attr-aria-label="(step.name || step.id || 'Step') + ', ' + upper(step.status)"
                   >
                     <lucide-icon
-                      class="h-4 w-4 shrink-0"
+                      class="shrink-0"
                       bind-icon="step.status === 'success' ? 'circle-check' : step.status === 'failed' ? 'circle-x' : step.status === 'running' ? 'loader-circle' : step.status === 'skipped' ? 'circle-minus' : 'circle'"
+                      bind-class="step.status === 'running' ? 'animate-spin' : ''"
                       size="14"
                     ></lucide-icon>
                     <span class="block min-w-0 flex-1 truncate" attr-title="step.name || step.id || 'Step'"

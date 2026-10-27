@@ -348,12 +348,16 @@ describe("run view", () => {
 
     expect(html).toContain("attr-aria-selected=\"tab.isActive ? 'true' : 'false'\"");
     expect(html).toContain("aria-[pressed=true]:font-bold");
+    expect(html).toContain('class="shrink-0"\n                      bind-icon=');
+    expect(html).toContain("bind-class=\"step.status === 'running' ? 'animate-spin' : ''\"");
     expect(html).toContain("bg-white px-3 py-1.5");
     expect(html).toContain('aria-label="Copy URL"');
     expect(html).toContain('aria-label="Restart run"');
     expect(html).toContain('class="hidden sm:inline"');
     expect(html).toContain("grid-cols-5");
     expect(html).toContain('class="sr-only">{{ tab.label }}</span>');
+    expect(html).toContain('<div class="steps-heading sr-only">');
+    expect(html).toContain("{{ successfulSteps }} / {{ totalSteps }}");
     expect(html).toContain('attr-aria-label="tab.label"');
     expect(html).toContain("sm:absolute sm:right-0 sm:top-full sm:z-20");
     expect(html).toContain('class="run-actions flex w-full flex-wrap items-center gap-2 shrink-0 sm:w-auto"');
