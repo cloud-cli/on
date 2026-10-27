@@ -2080,6 +2080,27 @@
         }
       }
     },
+    "/api/v1/domain-events/{eventId}/outcome-projection": {
+      "get": {
+        "tags": ["events"],
+        "summary": "Inspect normalized event fanout and delivery outcomes",
+        "description": "Requires webhooks.view. Returns workspace-scoped delivery outcome statuses without event payloads or delivery error details. `repeatSemantics` identifies an idempotent repeated fanout; unmatched means no subscription matched, distinct from filtered delivery.",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Workspace-scoped normalized fanout and delivery outcomes" },
+          "403": { "description": "Missing webhooks.view capability" },
+          "404": { "description": "Outcome not found in workspace" }
+        }
+      }
+    },
     "/api/v1/workflow-invocations/{invocationId}": {
       "get": {
         "tags": ["workflows"],

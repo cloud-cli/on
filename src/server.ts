@@ -2483,6 +2483,23 @@ sessionStorage.removeItem('runner-pending-team-invite');
         .end(JSON.stringify({ eventId: eventFanoutOutcomeMatch[1], ...outcome }));
       return;
     }
+    const eventOutcomeProjectionMatch = url.pathname.match(/^\/api\/v1\/domain-events\/([a-zA-Z0-9-]+)\/outcome-projection$/);
+    if (req.method === "GET" && eventOutcomeProjectionMatch) {
+      const authorized = await this.authorizer.workspace(req, res, "webhooks.view");
+      if (!authorized) {
+        return;
+      }
+      const projection = await this.domainEventDeliveryRepository.getOutcomeProjection(
+        authorized.teamId,
+        eventOutcomeProjectionMatch[1],
+      );
+      if (!projection) {
+        return deny(res, 404, "Event outcome not found");
+      }
+      res.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" })
+        .end(JSON.stringify(projection));
+      return;
+    }
     const retryEventDeliveryMatch = url.pathname.match(
       /^\/api\/v1\/domain-events\/([a-zA-Z0-9-]+)\/deliveries\/([a-zA-Z0-9-]+)\/retry$/,
     );

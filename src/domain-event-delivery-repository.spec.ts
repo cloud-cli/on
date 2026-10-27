@@ -57,6 +57,38 @@ describe("DomainEventDeliveryRepository", () => {
     expect(database.get.mock.calls[1][1]).toEqual(["team-a", "event-b"]);
   });
 
+  it("normalizes persisted fanout and delivery states without exposing error data", async () => {
+    database.get.mockResolvedValueOnce({ status: "repeat", delivery_count: 3 });
+    database.all.mockResolvedValueOnce([
+      { status: "admitted", last_error: "private" },
+      { status: "filtered" },
+      { status: "failed" },
+      { status: "claimed" },
+    ]);
+    await expect(repository.getOutcomeProjection("team-a", "event-a")).resolves.toEqual({
+      eventId: "event-a",
+      fanout: "repeat",
+      repeatSemantics: "idempotent-repeat",
+      deliveries: [{ status: "accepted" }, { status: "filtered" }, { status: "failed" }, { status: "in-progress" }],
+    });
+    expect(database.get.mock.calls[0][1]).toEqual(["team-a", "event-a"]);
+    expect(database.all.mock.calls[0][1]).toEqual(["team-a", "event-a"]);
+  });
+
+  it("keeps unmatched distinct from filtered and returns null for another workspace", async () => {
+    database.get.mockResolvedValueOnce({ status: "unmatched", delivery_count: 0 });
+    database.all.mockResolvedValueOnce([]);
+    await expect(repository.getOutcomeProjection("team-a", "event-a")).resolves.toMatchObject({
+      fanout: "unmatched",
+      deliveries: [],
+    });
+    database.get.mockResolvedValueOnce(null);
+    database.all.mockResolvedValueOnce([]);
+    await expect(repository.getOutcomeProjection("team-b", "event-a")).resolves.toBeNull();
+    expect(database.get.mock.calls.at(-1)?.[1]).toEqual(["team-b", "event-a"]);
+    expect(database.all.mock.calls.at(-1)?.[1]).toEqual(["team-b", "event-a"]);
+  });
+
   it("fans out only currently matching subscriptions and tolerates duplicates", async () => {
     database.get.mockResolvedValueOnce({ sequence: 9, type: "order.created" }).mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ status: "matched", delivery_count: 1 });
     await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({ status: "matched", deliveryCount: 1 });

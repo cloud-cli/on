@@ -31,6 +31,13 @@ export type EventDelivery = {
 
 export type EventFanoutOutcome = { status: "matched" | "repeat" | "unmatched"; deliveryCount: number };
 
+export type EventOutcomeProjection = {
+  eventId: string;
+  fanout: "matched" | "repeat" | "unmatched" | null;
+  repeatSemantics: "idempotent-repeat" | null;
+  deliveries: Array<{ status: "pending" | "in-progress" | "accepted" | "filtered" | "failed" }>;
+};
+
 export class DomainEventDeliveryRepository {
   async getForTeam(teamId: string, subscriptionId: string): Promise<EventSubscription | null> {
     const row = await db.get("SELECT * FROM domain_event_subscriptions WHERE team_id = ? AND id = ?", [
@@ -55,6 +62,33 @@ export class DomainEventDeliveryRepository {
       [teamId, eventId],
     );
     return row ? { status: row.status, deliveryCount: Number(row.delivery_count) } : null;
+  }
+
+  /** Read-only normalized outcome summary; deliberately excludes event payloads and delivery errors. */
+  async getOutcomeProjection(teamId: string, eventId: string): Promise<EventOutcomeProjection | null> {
+    const outcome = await this.getFanoutOutcome(teamId, eventId);
+    const rows = await db.all(
+      `SELECT status FROM domain_event_deliveries WHERE team_id = ? AND event_id = ? ORDER BY created_at, id`,
+      [teamId, eventId],
+    );
+    if (!outcome && rows.length === 0) {
+      return null;
+    }
+    return {
+      eventId,
+      fanout: outcome?.status ?? null,
+      repeatSemantics: outcome?.status === "repeat" ? "idempotent-repeat" : null,
+      deliveries: rows.map((row: any) => ({
+        status:
+          row.status === "admitted"
+            ? "accepted"
+            : row.status === "claimed"
+              ? "in-progress"
+              : row.status === "pending" || row.status === "filtered" || row.status === "failed"
+                ? row.status
+                : "failed",
+      })),
+    };
   }
 
   async retryFailed(teamId: string, deliveryId: string): Promise<EventDelivery | null> {

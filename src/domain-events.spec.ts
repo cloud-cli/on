@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const database = vi.hoisted(() => ({ get: vi.fn() }));
+const database = vi.hoisted(() => ({ get: vi.fn(), all: vi.fn() }));
 vi.mock("./db-client.js", () => ({ default: database }));
 
 import { WebhookServer } from "./server.js";
@@ -123,6 +123,31 @@ describe("POST /api/v1/domain-events", () => {
     const res = await request(server, "GET", "/api/v1/domain-events/evt-1/fanout-outcome");
     expect(server.domainEventDeliveryRepository.getFanoutOutcome).toHaveBeenCalledWith("workspace-a", "evt-1");
     expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({ eventId: "evt-1", status: "unmatched", deliveryCount: 0 });
+  });
+
+  it("returns a workspace-scoped normalized external outcome projection without event data", async () => {
+    const server = makeServer();
+    vi.spyOn(server.domainEventDeliveryRepository, "getOutcomeProjection").mockResolvedValue({
+      eventId: "evt-1",
+      fanout: "repeat",
+      repeatSemantics: "idempotent-repeat",
+      deliveries: [{ status: "filtered" }, { status: "failed" }],
+    });
+    const res = await request(server, "GET", "/api/v1/domain-events/evt-1/outcome-projection");
+    expect(server.domainEventDeliveryRepository.getOutcomeProjection).toHaveBeenCalledWith("workspace-a", "evt-1");
+    expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({
+      eventId: "evt-1",
+      fanout: "repeat",
+      repeatSemantics: "idempotent-repeat",
+      deliveries: [{ status: "filtered" }, { status: "failed" }],
+    });
+    expect(res.end.mock.calls[0][0]).not.toContain("data");
+
+    const denied = makeServer([]);
+    const lookup = vi.spyOn(denied.domainEventDeliveryRepository, "getOutcomeProjection");
+    const deniedRes = await request(denied, "GET", "/api/v1/domain-events/evt-1/outcome-projection");
+    expect(deniedRes.writeHead).toHaveBeenCalledWith(403, expect.any(Object));
+    expect(lookup).not.toHaveBeenCalled();
   });
 
   it("exposes scoped invocation admission and run status without request inputs", async () => {
