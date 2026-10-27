@@ -118,7 +118,7 @@
         >
           <nav
             aria-label="Global navigation"
-            class="flex min-w-0 flex-wrap items-center gap-1 md:flex-col md:items-stretch md:gap-1"
+            class="flex min-w-0 flex-wrap items-center gap-1 md:flex-col md:flex-nowrap md:items-stretch md:gap-1"
           >
             <a
               href="/ui/workspaces"
@@ -135,14 +135,15 @@
               ><lucide-icon icon="book-open" size="17"></lucide-icon>Recipes</a
             >
           </nav>
-          <div class="hidden border-t border-app-border md:my-4 md:block"></div>
+          <div class="hidden shrink-0 border-t border-app-border md:my-4 md:block"></div>
           <nav
             aria-label="Workspace navigation"
-            class="flex min-w-0 flex-wrap items-center gap-1 md:mt-1 md:flex-col md:items-stretch md:gap-1"
+            class="flex min-w-0 flex-wrap items-center gap-1 md:mt-1 md:flex-col md:flex-nowrap md:items-stretch md:gap-1"
           >
             <template for="team of teams"
               ><template if="team.isSelected"
-                ><span class="basis-full truncate px-3 py-1 text-sm font-semibold text-app-foreground md:py-2"
+                ><span
+                  class="basis-full truncate px-3 py-1 text-sm font-semibold text-app-foreground md:basis-auto md:py-2"
                   >{{ team.name }}</span
                 ><a
                   attr-href="workspacePath(team.id, 'workflows')"
@@ -164,10 +165,11 @@
                 <template for="channel of workspaceChannels"
                   ><a
                     attr-href="workspacePath(team.id, 'channels') + '/' + encodeURIComponent(channel.id)"
-                    class="flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-app-primary md:px-3"
+                    class="flex min-h-10 min-w-0 max-w-full shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-sm text-app-secondary no-underline outline-none hover:bg-white/70 hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary aria-[current=page]:bg-white aria-[current=page]:font-semibold aria-[current=page]:text-app-primary md:px-3"
                     attr-aria-current="selectedChannelId === channel.id ? 'page' : null"
                     attr-title="channel.name"
-                    ><lucide-icon icon="messages-square" size="15"></lucide-icon>{{ channel.name }}</a
+                    ><lucide-icon class="shrink-0" icon="messages-square" size="15"></lucide-icon
+                    ><span class="min-w-0 truncate">{{ channel.name }}</span></a
                   ></template
                 >
                 <template if="channelsEmpty"
@@ -190,7 +192,7 @@
             <button
               type="button"
               data-quick-switch-open
-              class="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-app-border bg-app-card px-3 text-left text-sm text-app-secondary outline-none focus-visible:ring-2 focus-visible:ring-app-primary sm:max-w-4xl"
+              class="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-lg border border-app-border bg-app-card px-3 text-left text-sm text-app-secondary outline-none focus-visible:ring-2 focus-visible:ring-app-primary"
               on-click="openQuickSwitch()"
               aria-keyshortcuts="Meta+K Control+K"
             >

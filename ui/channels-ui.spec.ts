@@ -59,7 +59,8 @@ describe("channels UI", () => {
     expect(source).toContain('"Message body"');
     expect(source).toContain("JSON message body");
     expect(source).toContain("JSON.stringify(message.body, null, 2)");
-    expect(shell).toContain("{{ channel.name }}</a");
+    expect(shell).toContain("{{ channel.name }}</span");
+    expect(shell).toContain('class="min-w-0 truncate"');
     expect(shell).toContain("workspacePath(team.id, 'channels')");
     expect(shell).toContain('for="channel of workspaceChannels"');
     expect(shell).toContain("attr-aria-current=\"selectedChannelId === channel.id ? 'page' : null\"");

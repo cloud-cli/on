@@ -134,7 +134,8 @@ describe("On application shell", () => {
     expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
     expect(shellSetup).toContain('path.startsWith("/workspaces/")');
     expect(shellSetup).not.toContain("syncWorkspaceNavigation");
-    expect(html).toContain("flex min-w-0 flex-wrap items-center gap-1 md:mt-1 md:flex-col");
+    expect(html).toContain("flex min-w-0 flex-wrap items-center gap-1 md:mt-1 md:flex-col md:flex-nowrap");
+    expect(html).toContain("md:flex-col md:flex-nowrap md:items-stretch");
     expect(html).toContain("team.isSelected");
     expect(html).toContain('aria-label="Switch workspace"');
     expect(html).toContain('attr-data-workspace-switch="team.id"');
@@ -169,11 +170,14 @@ describe("On application shell", () => {
     expect(html).toContain("max-h-[40dvh] min-w-0 flex-col items-stretch gap-2 overflow-y-auto");
     expect(html).toContain("flex min-w-0 flex-wrap items-center gap-1");
     expect(html).toContain("basis-full truncate px-3 py-1 text-sm font-semibold");
+    expect(html).toContain("text-app-foreground md:basis-auto md:py-2");
     expect(html).toContain("basis-full px-3 pb-1 text-xs font-semibold text-app-secondary");
+    expect(html).toContain('class="min-w-0 truncate"');
     expect(html).toContain(
       "shrink-0 items-center whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-app-primary",
     );
-    expect(html).toContain("sm:max-w-4xl");
+    expect(html).toContain('class="flex min-h-10 w-full min-w-0 items-center gap-2');
+    expect(html).not.toContain("sm:max-w-4xl");
     expect(html).toContain('class="min-w-0 flex-1 truncate">Search workspaces, streams, routes');
     expect(html).toContain('class="ml-auto shrink-0 rounded border border-app-border px-1.5 text-xs">⌘K');
   });
