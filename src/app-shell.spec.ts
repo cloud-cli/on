@@ -28,7 +28,7 @@ describe("On application shell", () => {
     expect(html).toContain('aria-label="Primary navigation"');
     expect(html).toContain("data-workspace-rail");
     expect(html).toContain('aria-label="Workspace switcher"');
-    expect(html).toContain("aria-pressed=\"selectedWorkspaceId === team.id ? 'true' : 'false'\"");
+    expect(html).toContain("attr-aria-pressed=\"team.isSelected ? 'true' : 'false'\"");
     expect(html).not.toContain('href="/ui/runs"');
     expect(html).toContain('href="/ui/recipes"');
     expect(html).not.toContain('href="/ui/workflows"');
@@ -55,7 +55,7 @@ describe("On application shell", () => {
     expect(html).not.toContain("user.name || user.email");
     expect(html).not.toContain("{{ user.email }}");
     expect(html).toContain('on-click="toggleTheme()"');
-    expect(html).toContain('class="flex items-center gap-2 px-4 pt-4 sm:gap-4 sm:px-6 lg:px-8"');
+    expect(html).toContain('class="flex items-center gap-2 px-2 pb-2 pt-2 sm:gap-4 sm:px-3 md:px-4"');
     expect(html).not.toContain('class="ml-auto flex shrink-0 items-center gap-2 sm:gap-4"');
     expect(html).toContain("md:h-dvh md:w-56");
     expect(html).toContain("isDarkTheme ? 'sun' : 'moon'");
@@ -106,7 +106,9 @@ describe("On application shell", () => {
     expect(html).toContain('on-focus="showWorkspacePopover(team.name, $event.currentTarget)"');
     expect(shellSetup).toContain("button.getBoundingClientRect()");
     expect(shellSetup).toContain("popover.showPopover()");
-    expect(html).toContain('<template if="selectedWorkspaceId === team.id"');
+    expect(shellSetup).toContain("showWorkspacePopover,");
+    expect(shellSetup).toContain("hideWorkspacePopover,");
+    expect(html).toContain('<template if="team.isSelected"');
     expect(html).toContain("workspacePath(team.id, 'runs')");
     expect(html).toContain("workspacePath(team.id, 'workflows')");
     expect(html).toContain('for="channel of workspaceChannels"');
@@ -122,15 +124,15 @@ describe("On application shell", () => {
     expect(shellSetup).not.toContain("No channels in this workspace yet.");
     expect(html).toContain("on-click=\"selectWorkspace(team.id, 'runs')\"");
     expect(shellSetup).toContain('const selectedWorkspaceId = ref("")');
-    expect(shellSetup).toContain("selectedWorkspaceId.value = decodeURIComponent(workspaceRoute[1])");
-    expect(shellSetup).toContain("teams.value.some((team) => team.id === storedWorkspaceId)");
-    expect(shellSetup).toContain('selectedWorkspaceId.value = event.detail?.teamId || ""');
+    expect(shellSetup).toContain("setSelectedWorkspace(decodeURIComponent(workspaceRoute[1]))");
+    expect(shellSetup).toContain("availableTeams.some((team) => team.id === storedWorkspaceId)");
+    expect(shellSetup).toContain("const syncWorkspace = () => syncSection()");
     expect(shellSetup).toContain('fetch("/api/v1/workspaces"');
     expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
     expect(shellSetup).toContain('path.startsWith("/workspaces/")');
     expect(shellSetup).not.toContain("syncWorkspaceNavigation");
-    expect(html).toContain("flex min-w-0 items-center gap-1 md:mt-1 md:flex-col");
-    expect(html).toContain("selectedWorkspaceId === team.id");
+    expect(html).toContain("flex min-w-0 flex-wrap items-center gap-1 md:mt-1 md:flex-col");
+    expect(html).toContain("team.isSelected");
     expect(html).toContain('aria-label="Switch workspace"');
     expect(html).toContain('attr-data-workspace-switch="team.id"');
     expect(html).toContain("{{ channel.name }}");
@@ -147,9 +149,40 @@ describe("On application shell", () => {
     expect(html).toContain(">Channels</span");
   });
 
+  it("uses the completed URL route as the source of truth for workspace shell navigation", () => {
+    expect(shellSetup).toContain("const syncWorkspace = () => syncSection()");
+    expect(shellSetup).toContain('addEventListener("runner-route-changed", syncSection)');
+    expect(shellSetup).toContain("setSelectedWorkspace(decodeURIComponent(workspaceRoute[1]))");
+    expect(shellSetup).toContain('selectedChannelId.value = workspaceRoute[2] === "channels"');
+    expect(html).toContain("attr-aria-pressed=\"team.isSelected ? 'true' : 'false'\"");
+    expect(html).toContain('<template if="team.isSelected"');
+    expect(shellSetup).toContain("isSelected: team.id === workspaceId");
+  });
+
+  it("keeps quick switch outside the inset panel and wraps navigation on mobile", () => {
+    expect(html.indexOf("data-quick-switch-open")).toBeLessThan(
+      html.indexOf("max-h-full min-h-0 min-w-0 overflow-y-auto"),
+    );
+    expect(html).toContain("max-h-[40dvh] min-w-0 flex-col items-stretch gap-2 overflow-y-auto");
+    expect(html).toContain("flex min-w-0 flex-wrap items-center gap-1");
+    expect(html).toContain("basis-full truncate px-3 py-1 text-sm font-semibold");
+    expect(html).toContain("basis-full px-3 pb-1 text-xs font-semibold text-app-secondary");
+    expect(html).toContain(
+      "shrink-0 items-center whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-app-primary",
+    );
+    expect(html).toContain("sm:max-w-4xl");
+    expect(html).toContain('class="min-w-0 flex-1 truncate">Search workspaces, streams, routes');
+    expect(html).toContain('class="ml-auto shrink-0 rounded border border-app-border px-1.5 text-xs">⌘K');
+  });
+
   it("frames main content in an inset rounded panel on every viewport edge", () => {
     expect(html).toContain("bg-app-background p-2 sm:p-3 md:col-start-3 md:row-start-1 md:p-4");
-    expect(html).toContain("min-w-0 rounded-2xl bg-app-card");
+    expect(html).toContain("max-h-full min-h-0 min-w-0 overflow-y-auto overscroll-y-auto rounded-2xl bg-app-card");
+    expect(html).toContain("h-dvh grid grid-rows-[auto_minmax(0,1fr)]");
+    expect(html).toContain("max-h-[40dvh] min-w-0 flex-col items-stretch gap-2 overflow-y-auto");
+    expect(html).not.toMatch(/<body[^>]*overflow-hidden/);
+    expect(html).not.toMatch(/data-app-layout[^>]*overflow-hidden/);
+    expect(html).toContain("overscroll-y-auto");
     expect(html).not.toContain("md:rounded-tl-xl");
     expect(html).not.toContain("md:border-r");
   });

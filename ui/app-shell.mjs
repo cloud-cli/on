@@ -18,6 +18,13 @@ export default function setup() {
   const quickSwitchOpen = ref(false);
   const quickSwitchItems = ref([]);
   const themePreference = ref("system");
+  const setSelectedWorkspace = (workspaceId) => {
+    selectedWorkspaceId.value = workspaceId;
+    teams.value = teams.value.map((team) => ({
+      ...team,
+      isSelected: team.id === workspaceId,
+    }));
+  };
   const themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
   const isDarkTheme = ref(
     document.documentElement.dataset.theme === "dark" ||
@@ -26,11 +33,14 @@ export default function setup() {
   const loadTeams = async () => {
     try {
       const response = await fetch("/api/v1/workspaces", { headers: { accept: "application/json" } });
-      teams.value = response.ok ? (await response.json()).workspaces || [] : [];
+      const availableTeams = response.ok ? (await response.json()).workspaces || [] : [];
       if (!selectedWorkspaceId.value) {
         const storedWorkspaceId = localStorage.getItem("runner-team-id") || "";
-        selectedWorkspaceId.value = teams.value.some((team) => team.id === storedWorkspaceId) ? storedWorkspaceId : "";
+        selectedWorkspaceId.value = availableTeams.some((team) => team.id === storedWorkspaceId)
+          ? storedWorkspaceId
+          : "";
       }
+      teams.value = availableTeams.map((team) => ({ ...team, isSelected: team.id === selectedWorkspaceId.value }));
     } catch (error) {
       console.error("Unable to load teams", error);
     }
@@ -50,7 +60,7 @@ export default function setup() {
     const path = window.location.pathname.replace(/^\/ui/, "").replace(/\/+$/, "") || "/";
     const workspaceRoute = path.match(/^\/workspaces\/([^/]+)\/(workflows|runs|channels)(?:\/([^/]+))?(?:\/events)?$/);
     if (workspaceRoute) {
-      selectedWorkspaceId.value = decodeURIComponent(workspaceRoute[1]);
+      setSelectedWorkspace(decodeURIComponent(workspaceRoute[1]));
       selectedChannelId.value = workspaceRoute[2] === "channels" ? decodeURIComponent(workspaceRoute[3] || "") : "";
       activeSection.value = `workspace-${workspaceRoute[2] === "channels" ? "channels" : workspaceRoute[2] === "workflows" ? "workflows" : "runs"}`;
     } else if (
@@ -103,7 +113,7 @@ export default function setup() {
     activeSection.value = section;
   };
   const selectWorkspace = (teamId, page = "runs") => {
-    selectedWorkspaceId.value = teamId;
+    setSelectedWorkspace(teamId);
     activeSection.value = `workspace-${page === "channels" ? "channels" : page === "workflows" ? "workflows" : "runs"}`;
     void loadWorkspaceChannels();
   };
@@ -114,8 +124,8 @@ export default function setup() {
       .toUpperCase();
   let activeWorkspacePopover;
   const showWorkspacePopover = (_name, button) => {
-    const popover = button?.parentElement?.querySelector("[data-workspace-popover]");
-    if (!popover) {
+    const popover = button?.nextElementSibling;
+    if (!popover?.hasAttribute("data-workspace-popover")) {
       return;
     }
     if (
@@ -137,10 +147,13 @@ export default function setup() {
     if (button?.matches(":hover, :focus")) {
       return;
     }
-    if (activeWorkspacePopover?.matches(":popover-open")) {
-      activeWorkspacePopover.hidePopover();
+    const popover = button?.nextElementSibling;
+    if (popover?.matches(":popover-open")) {
+      popover.hidePopover();
     }
-    activeWorkspacePopover = null;
+    if (activeWorkspacePopover === popover) {
+      activeWorkspacePopover = null;
+    }
   };
   const navigateShell = (path) => {
     history.pushState(null, "", path);
@@ -153,7 +166,7 @@ export default function setup() {
         : activeSection.value === "workspace-workflows"
           ? "workflows"
           : "runs";
-    selectedWorkspaceId.value = teamId;
+    setSelectedWorkspace(teamId);
     navigateShell(workspacePath(teamId, page));
   };
   const filterQuickSwitch = (query = "") => {
@@ -263,9 +276,7 @@ export default function setup() {
       console.error("Unable to save appearance preference", error);
     }
   };
-  const syncWorkspace = (event) => {
-    selectedWorkspaceId.value = event.detail?.teamId || "";
-  };
+  const syncWorkspace = () => syncSection();
 
   onInit(() => {
     void getAuthPreference("theme")
@@ -333,6 +344,8 @@ export default function setup() {
     selectWorkspace,
     switchWorkspace,
     workspaceInitial,
+    showWorkspacePopover,
+    hideWorkspacePopover,
     quickSwitchOpen,
     quickSwitchItems,
     openQuickSwitch,
