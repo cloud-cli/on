@@ -122,6 +122,8 @@ describe("On application shell", () => {
     expect(styles).not.toContain(".workspace-rail.is-expanded .workspace-name");
     expect(html).not.toContain("'Switch to ' + team.name");
     expect(html).toContain('popover="manual"');
+    expect(html).toContain("bg-app-card px-3 py-2 text-sm font-medium text-app-foreground shadow-lg");
+    expect(html).not.toContain("text-gray-900 shadow-lg");
     expect(html).toContain('attr-data-workspace-popover="team.id"');
     expect(html).toContain('on-pointerenter="showWorkspacePopover(team.name, $event.currentTarget)"');
     expect(html).toContain('on-focus="showWorkspacePopover(team.name, $event.currentTarget)"');
@@ -150,6 +152,12 @@ describe("On application shell", () => {
     expect(shellSetup).toContain("availableTeams.some((team) => team.id === storedWorkspaceId)");
     expect(shellSetup).toContain("const syncWorkspace = () => syncSection()");
     expect(shellSetup).toContain('fetch("/api/v1/workspaces"');
+    expect(shellSetup).toContain("if (!hadSelectedWorkspace && selectedWorkspaceId.value)");
+    expect(shellSetup).toContain("void loadWorkspaceChannels();");
+    expect(shellSetup).toContain('const firstSync = lastSyncedPath === ""');
+    expect(shellSetup).toContain("selectedWorkspaceId.value !== previousWorkspaceId");
+    expect(shellSetup).toContain("if (path === lastSyncedPath)");
+    expect(shellSetup).toContain("navigateShell(workspacePath(teamId, page))");
     expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
     expect(shellSetup).toContain('path.startsWith("/workspaces/")');
     expect(shellSetup).not.toContain("syncWorkspaceNavigation");

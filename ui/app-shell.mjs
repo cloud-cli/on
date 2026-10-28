@@ -15,6 +15,7 @@ export default function setup() {
   const channelsStatus = ref("Loading channels…");
   const channelsEmpty = ref(false);
   let channelsRequestId = 0;
+  let lastSyncedPath = "";
   const quickSwitchOpen = ref(false);
   const workspaceRailExpanded = ref(false);
   const quickSwitchItems = ref([]);
@@ -32,6 +33,7 @@ export default function setup() {
       (!document.documentElement.dataset.theme && themeMedia.matches),
   );
   const loadTeams = async () => {
+    const hadSelectedWorkspace = Boolean(selectedWorkspaceId.value);
     try {
       const response = await fetch("/api/v1/workspaces", { headers: { accept: "application/json" } });
       const availableTeams = response.ok ? (await response.json()).workspaces || [] : [];
@@ -42,6 +44,9 @@ export default function setup() {
           : "";
       }
       teams.value = availableTeams.map((team) => ({ ...team, isSelected: team.id === selectedWorkspaceId.value }));
+      if (!hadSelectedWorkspace && selectedWorkspaceId.value) {
+        void loadWorkspaceChannels();
+      }
     } catch (error) {
       console.error("Unable to load teams", error);
     }
@@ -59,6 +64,12 @@ export default function setup() {
 
   const syncSection = () => {
     const path = window.location.pathname.replace(/^\/ui/, "").replace(/\/+$/, "") || "/";
+    if (path === lastSyncedPath) {
+      return;
+    }
+    const firstSync = lastSyncedPath === "";
+    lastSyncedPath = path;
+    const previousWorkspaceId = selectedWorkspaceId.value;
     const workspaceRoute = path.match(/^\/workspaces\/([^/]+)\/(workflows|runs|channels)(?:\/([^/]+))?(?:\/events)?$/);
     if (workspaceRoute) {
       setSelectedWorkspace(decodeURIComponent(workspaceRoute[1]));
@@ -76,7 +87,9 @@ export default function setup() {
     } else {
       activeSection.value = "workspaces";
     }
-    void loadWorkspaceChannels();
+    if (selectedWorkspaceId.value !== previousWorkspaceId || (firstSync && !selectedWorkspaceId.value)) {
+      void loadWorkspaceChannels();
+    }
   };
 
   const loadWorkspaceChannels = async () => {
@@ -171,7 +184,6 @@ export default function setup() {
         : activeSection.value === "workspace-workflows"
           ? "workflows"
           : "runs";
-    setSelectedWorkspace(teamId);
     navigateShell(workspacePath(teamId, page));
   };
   const filterQuickSwitch = (query = "") => {
