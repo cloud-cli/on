@@ -56,7 +56,7 @@ describe("On application shell", () => {
     expect(html).toContain('href="/ui/settings"');
     expect(html).toContain('aria-label="Open preferences"');
     expect(html).toContain(
-      'class="user-avatar relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg',
+      'class="user-avatar flex h-12 min-h-12 w-full min-w-0 shrink-0 items-center gap-2 overflow-hidden rounded-full',
     );
     expect(html).toContain('class="user-card mt-auto flex w-full flex-col items-center gap-2 pt-3"');
     expect(html).not.toContain("user.name || user.email");
@@ -110,11 +110,12 @@ describe("On application shell", () => {
     expect(navigation).toBeLessThan(content);
     expect(html).toContain('attr-data-workspace-switch="team.id"');
     expect(html).toContain('attr-aria-label="team.name"');
-    expect(html).toContain('class="workspace-name min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"');
+    expect(html).toContain('class="workspace-name min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap"');
     expect(html).toContain('class="workspace-avatar grid size-8 shrink-0 place-items-center rounded-full');
     expect(html).not.toMatch(/>\s*>\s*<span\s+class="workspace-avatar/);
-    expect(styles).toContain(".workspace-rail.is-expanded .workspace-name");
-    expect(styles).not.toMatch(/(?:^|\n)  \.workspace-name\s*\{[^}]*transition:/);
+    expect(styles).toContain(".workspace-rail .workspace-switch");
+    expect(styles).toContain(".workspace-rail:not(.is-expanded) .workspace-avatar");
+    expect(styles).not.toContain(".workspace-rail.is-expanded .workspace-name");
     expect(html).not.toContain("'Switch to ' + team.name");
     expect(html).toContain('popover="manual"');
     expect(html).toContain('attr-data-workspace-popover="team.id"');

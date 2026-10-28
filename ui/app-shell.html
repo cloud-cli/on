@@ -66,13 +66,13 @@
                 on-focus="showWorkspacePopover(team.name, $event.currentTarget)"
                 on-blur="hideWorkspacePopover($event.currentTarget)"
                 on-click="switchWorkspace(team.id)"
-                class="workspace-switch flex min-h-10 w-10 min-w-0 shrink-0 items-center gap-2 overflow-hidden rounded-full border border-app-border bg-app-card p-1 text-left font-semibold text-app-primary outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-app-primary aria-pressed:border-app-primary aria-pressed:ring-2 aria-pressed:ring-app-primary"
+                class="workspace-switch flex h-12 min-h-12 w-10 min-w-0 shrink-0 items-center gap-2 overflow-hidden rounded-full border border-app-border bg-app-card p-1 text-left font-semibold text-app-primary outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-app-primary aria-pressed:border-app-primary aria-pressed:ring-2 aria-pressed:ring-app-primary"
                 attr-data-workspace-switch="team.id"
               >
                 <span
                   class="workspace-avatar grid size-8 shrink-0 place-items-center rounded-full bg-app-panel text-app-primary shadow-sm"
                   >{{ workspaceInitial(team.name) }}</span
-                ><span class="workspace-name min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+                ><span class="workspace-name min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
                   >{{ team.name }}</span
                 >
               </button>
@@ -102,18 +102,23 @@
                 href="/ui/settings"
                 aria-label="Open preferences"
                 title="Preferences"
-                class="user-avatar relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg border border-app-border bg-app-primary text-sm font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-app-primary"
+                class="user-avatar flex h-12 min-h-12 w-full min-w-0 shrink-0 items-center gap-2 overflow-hidden rounded-full border border-app-border bg-app-card p-1 text-left text-sm font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-app-primary"
               >
-                <template if="user.photo || user.picture"
-                  ><img
-                    attr-src="user.photo || user.picture"
-                    referrerpolicy="no-referrer"
-                    alt=""
-                    class="absolute inset-0 size-full object-cover"
-                /></template>
-                <span aria-hidden="true" attr-class="(user.photo || user.picture) ? 'hidden' : ''"
-                  >{{ userInitial }}</span
-                ><span class="user-details"
+                <span
+                  class="user-photo grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-app-primary text-sm font-bold text-white"
+                >
+                  <template if="user.photo || user.picture"
+                    ><img
+                      attr-src="user.photo || user.picture"
+                      referrerpolicy="no-referrer"
+                      alt=""
+                      class="size-full object-cover"
+                  /></template>
+                  <span aria-hidden="true" attr-class="(user.photo || user.picture) ? 'hidden' : ''"
+                    >{{ userInitial }}</span
+                  >
+                </span>
+                <span class="user-details min-w-0 flex-1 overflow-hidden"
                   ><span class="block truncate">{{ user.name }}</span
                   ><span class="block truncate text-xs font-normal opacity-80">{{ user.email }}</span></span
                 >
