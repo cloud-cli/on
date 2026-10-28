@@ -58,6 +58,8 @@ describe("On application shell", () => {
     expect(html).toContain(
       'class="user-avatar flex h-12 min-h-12 w-full min-w-0 shrink-0 items-center gap-2 overflow-hidden rounded-full',
     );
+    expect(html).toContain("bg-app-card p-1 text-left text-sm font-bold text-app-foreground");
+    expect(html).not.toMatch(/class="user-avatar[^\"]*text-white/);
     expect(html).toContain('class="user-card mt-auto flex w-full flex-col items-center gap-2 pt-3"');
     expect(html).not.toContain("user.name || user.email");
     expect(html).toContain("{{ user.email }}");
