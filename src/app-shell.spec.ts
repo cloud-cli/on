@@ -26,6 +26,11 @@ describe("On application shell", () => {
     expect(html).toContain('"@app/": "/assets/"');
     expect(html).toContain('"yaml": "https://esm.sh/yaml@2.9.0"');
     expect(html).toContain('aria-label="Primary navigation"');
+    expect(html).toContain('aria-label="Open navigation"');
+    expect(html).toContain('aria-label="Close navigation"');
+    expect(html).not.toContain('attr-aria-hidden="navigationOpen');
+    expect(html).toContain('on-click="toggleTheme()"');
+    expect(html).toContain('class="mt-auto flex flex-col gap-1 border-t border-app-border pt-3 md:hidden"');
     expect(html).toContain("data-workspace-rail");
     expect(html).toContain('aria-label="Workspace switcher"');
     expect(html).toContain("attr-aria-pressed=\"team.isSelected ? 'true' : 'false'\"");
@@ -36,8 +41,12 @@ describe("On application shell", () => {
     expect(html.match(/href="\/ui\/workspaces"/g)).toHaveLength(1);
     expect(html).toContain('href="/ui/settings"');
     expect(html).toContain("focus-visible:ring-2");
-    expect(html).toContain('aria-label="Toggle workspace rail"');
+    expect(html).toContain('aria-label="Open or expand navigation"');
+    expect(html).toContain("attr-aria-expanded=\"navigationOpen || workspaceRailExpanded ? 'true' : 'false'\"");
     expect(html).toContain('on-click="toggleWorkspaceRail()"');
+    expect(shellSetup).toContain('window.matchMedia("(max-width: 767px)").matches');
+    expect(shellSetup).toContain('window.matchMedia("(min-width: 768px)")');
+    expect(shellSetup).toContain('desktopNavigationMedia.addEventListener("change", closeNavigationOnDesktop)');
     expect(shellSetup).toContain("toggleWorkspaceRail");
     expect(styles).toContain(".workspace-rail.is-expanded");
     expect(styles).not.toContain(".workspace-rail:hover");
@@ -85,9 +94,10 @@ describe("On application shell", () => {
     expect(html).not.toContain("min-h-screen border-r border-app-border");
     expect(html).toContain('aria-label="Global navigation"');
     expect(html).toContain('aria-label="Workspace navigation"');
-    expect(html).toContain('class="col-start-2 row-start-1');
+    expect(html).toContain('class="col-start-1 row-start-1');
     expect(html).toContain("md:col-start-3 md:row-start-1 md:p-4");
-    expect(html).not.toContain("data-mobile-menu-button");
+    expect(html).toContain("data-nav-open");
+    expect(html).toContain("data-nav-close");
     expect(html).not.toContain("data-workspace-nav-item");
     expect(html).not.toContain("data-workspace-submenu");
     expect(html).toContain("mt-auto");
@@ -117,7 +127,7 @@ describe("On application shell", () => {
     expect(html).not.toMatch(/>\s*>\s*<span\s+class="workspace-avatar/);
     expect(styles).toContain(".workspace-rail .workspace-switch");
     expect(styles).toContain(".workspace-rail .brand-toggle");
-    expect(styles).not.toContain(".rail-label,");
+    expect(styles).toContain("[data-workspace-rail] .rail-label,");
     expect(styles).toContain(".workspace-rail:not(.is-expanded) .workspace-avatar");
     expect(styles).not.toContain(".workspace-rail.is-expanded .workspace-name");
     expect(html).not.toContain("'Switch to ' + team.name");
@@ -220,13 +230,13 @@ describe("On application shell", () => {
     expect(html).toContain("bg-app-background p-2 pt-0 sm:p-3 sm:pt-0 md:col-start-3 md:row-start-1 md:p-4 md:pt-0");
     expect(html).toContain("max-h-full min-h-0 min-w-0 overflow-y-auto overscroll-y-auto rounded-2xl bg-app-card");
     expect(html).toContain("grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)]");
-    expect(html).toContain("h-dvh grid grid-rows-[auto_minmax(0,1fr)]");
+    expect(html).toContain("h-dvh grid min-w-0 grid-rows-[auto_minmax(0,1fr)] grid-cols-[minmax(0,1fr)]");
     expect(html).toContain("max-h-[40dvh] min-w-0 flex-col items-stretch gap-2 overflow-y-auto");
     expect(html).not.toMatch(/<body[^>]*overflow-hidden/);
     expect(html).not.toMatch(/data-app-layout[^>]*overflow-hidden/);
     expect(html).toContain("overscroll-y-auto");
     expect(html).not.toContain("md:rounded-tl-xl");
-    expect(html).not.toContain("md:border-r");
+    expect(html).toContain("md:border-r");
   });
 
   it("keeps the sidebar unfilled and reserves the former shade for hover states", () => {

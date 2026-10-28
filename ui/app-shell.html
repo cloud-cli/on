@@ -34,17 +34,17 @@
       </a>
       <div
         data-app-layout
-        class="h-dvh grid grid-rows-[auto_minmax(0,1fr)] grid-cols-[4rem_minmax(0,1fr)] md:grid-rows-1 md:grid-cols-[4rem_14rem_minmax(0,1fr)]"
+        class="h-dvh grid min-w-0 grid-rows-[auto_minmax(0,1fr)] grid-cols-[minmax(0,1fr)] md:grid-rows-1 md:grid-cols-[4rem_14rem_minmax(0,1fr)]"
       >
         <aside
           data-workspace-rail
           aria-label="Workspace switcher"
-          class="workspace-rail relative z-20 row-span-2 flex min-h-dvh w-16 flex-col items-center gap-3 border-r border-app-border bg-app-background px-2 py-4 md:row-span-1 md:sticky md:top-0 md:h-dvh"
+          class="workspace-rail relative z-20 row-span-1 flex min-h-0 w-full min-w-0 flex-row items-center gap-3 overflow-x-auto border-b border-app-border bg-app-background px-3 py-2 md:row-span-1 md:sticky md:top-0 md:h-dvh md:w-16 md:flex-col md:overflow-visible md:border-r md:border-b-0 md:px-2 md:py-4"
         >
           <button
             type="button"
-            aria-label="Toggle workspace rail"
-            attr-aria-expanded="workspaceRailExpanded ? 'true' : 'false'"
+            aria-label="Open or expand navigation"
+            attr-aria-expanded="navigationOpen || workspaceRailExpanded ? 'true' : 'false'"
             on-click="toggleWorkspaceRail()"
             class="brand-toggle mb-1 flex min-h-10 w-max items-center gap-3 rounded-lg text-app-foreground outline-none focus-visible:ring-2 focus-visible:ring-app-primary"
           >
@@ -56,7 +56,11 @@
               ><i class="block h-[5px] w-[13px] rounded-[2px] bg-[#547d42]"></i></span
             ><span class="rail-label">dimon<span class="text-app-primary">.</span></span>
           </button>
-          <div role="group" aria-label="Switch workspace" class="flex flex-col items-center gap-2">
+          <div
+            role="group"
+            aria-label="Switch workspace"
+            class="flex min-w-0 shrink-0 flex-row items-center gap-2 md:flex-col"
+          >
             <template for="team of teams"
               ><button
                 type="button"
@@ -136,9 +140,18 @@
         </aside>
         <aside
           id="primary-sidebar"
-          class="col-start-2 row-start-1 flex max-h-[40dvh] min-w-0 flex-col items-stretch gap-2 overflow-y-auto border-b border-app-border px-2 py-2 md:col-start-2 md:row-span-1 md:max-h-dvh md:gap-0 md:border-b-0 md:sticky md:top-0 md:h-dvh md:w-56 md:px-3 md:py-5"
+          class="col-start-1 row-start-1 hidden max-h-[40dvh] min-w-0 flex-col items-stretch gap-2 overflow-y-auto border-b border-app-border px-2 py-2 md:col-start-2 md:row-span-1 md:flex md:max-h-dvh md:gap-0 md:border-b-0 md:sticky md:top-0 md:h-dvh md:w-56 md:px-3 md:py-5"
           aria-label="Primary navigation"
         >
+          <button
+            type="button"
+            data-nav-close
+            aria-label="Close navigation"
+            class="mb-2 ml-auto grid size-10 shrink-0 place-items-center rounded-lg border border-app-border bg-app-card md:hidden"
+            on-click="closeNavigation()"
+          >
+            <lucide-icon icon="x" size="20" aria-hidden="true"></lucide-icon>
+          </button>
           <nav
             aria-label="Global navigation"
             class="flex min-w-0 flex-wrap items-center gap-1 md:flex-col md:flex-nowrap md:items-stretch md:gap-1"
@@ -207,11 +220,43 @@
               ></template
             >
           </nav>
+          <template if="userAuthenticated"
+            ><div class="mt-auto flex flex-col gap-1 border-t border-app-border pt-3 md:hidden">
+              <button
+                type="button"
+                on-click="toggleTheme()"
+                attr-aria-label="isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'"
+                class="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm text-app-foreground hover:bg-app-panel focus-visible:ring-2 focus-visible:ring-app-primary"
+              >
+                <lucide-icon bind-icon="isDarkTheme ? 'sun' : 'moon'" size="18" aria-hidden="true"></lucide-icon>
+                <span>{{ isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode' }}</span>
+              </button>
+              <a
+                href="/ui/settings"
+                on-click="setActive('settings')"
+                class="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm text-app-foreground no-underline hover:bg-app-panel focus-visible:ring-2 focus-visible:ring-app-primary"
+              >
+                <lucide-icon icon="user-round-cog" size="18" aria-hidden="true"></lucide-icon>
+                Preferences
+              </a>
+            </div></template
+          >
         </aside>
         <div
-          class="col-start-2 row-start-2 grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] bg-app-background p-2 pt-0 sm:p-3 sm:pt-0 md:col-start-3 md:row-start-1 md:p-4 md:pt-0"
+          class="col-start-1 row-start-2 grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] bg-app-background p-2 pt-0 sm:p-3 sm:pt-0 md:col-start-3 md:row-start-1 md:p-4 md:pt-0"
         >
           <header class="flex items-center gap-2 px-2 py-1 sm:gap-4 sm:px-3 md:px-4">
+            <button
+              type="button"
+              data-nav-open
+              aria-controls="primary-sidebar"
+              aria-expanded="false"
+              aria-label="Open navigation"
+              class="grid size-10 shrink-0 place-items-center rounded-lg border border-app-border bg-app-card md:hidden"
+              on-click="openNavigation()"
+            >
+              <lucide-icon icon="menu" size="20" aria-hidden="true"></lucide-icon>
+            </button>
             <button
               type="button"
               data-quick-switch-open

@@ -18,6 +18,8 @@ export default function setup() {
   let lastSyncedPath = "";
   const quickSwitchOpen = ref(false);
   const workspaceRailExpanded = ref(false);
+  const navigationOpen = ref(false);
+  const desktopNavigationMedia = window.matchMedia("(min-width: 768px)");
   const quickSwitchItems = ref([]);
   const themePreference = ref("system");
   const setSelectedWorkspace = (workspaceId) => {
@@ -35,7 +37,9 @@ export default function setup() {
   const loadTeams = async () => {
     const hadSelectedWorkspace = Boolean(selectedWorkspaceId.value);
     try {
-      const response = await fetch("/api/v1/workspaces", { headers: { accept: "application/json" } });
+      const response = await fetch("/api/v1/workspaces", {
+        headers: { accept: "application/json" },
+      });
       const availableTeams = response.ok ? (await response.json()).workspaces || [] : [];
       if (!selectedWorkspaceId.value) {
         const storedWorkspaceId = localStorage.getItem("runner-team-id") || "";
@@ -43,7 +47,10 @@ export default function setup() {
           ? storedWorkspaceId
           : "";
       }
-      teams.value = availableTeams.map((team) => ({ ...team, isSelected: team.id === selectedWorkspaceId.value }));
+      teams.value = availableTeams.map((team) => ({
+        ...team,
+        isSelected: team.id === selectedWorkspaceId.value,
+      }));
       if (!hadSelectedWorkspace && selectedWorkspaceId.value) {
         void loadWorkspaceChannels();
       }
@@ -125,8 +132,71 @@ export default function setup() {
 
   const setActive = (section) => {
     activeSection.value = section;
+    closeNavigation();
+  };
+  const openNavigation = () => {
+    navigationOpen.value = true;
+    document.querySelector("[data-app-layout]")?.classList.add("navigation-open");
+    document.querySelector("[data-nav-open]")?.setAttribute("aria-expanded", "true");
+    document.querySelector("[data-workspace-rail]")?.setAttribute("inert", "");
+    document.querySelector(".col-start-1.row-start-2")?.setAttribute("inert", "");
+    document.querySelector("[data-skip-to-content]")?.setAttribute("inert", "");
+    requestAnimationFrame(() => document.querySelector("[data-nav-close]")?.focus());
+  };
+  const closeNavigation = (restoreFocus = true) => {
+    navigationOpen.value = false;
+    document.querySelector("[data-app-layout]")?.classList.remove("navigation-open");
+    document.querySelector("[data-nav-open]")?.setAttribute("aria-expanded", "false");
+    document.querySelector("[data-workspace-rail]")?.removeAttribute("inert");
+    document.querySelector(".col-start-1.row-start-2")?.removeAttribute("inert");
+    document.querySelector("[data-skip-to-content]")?.removeAttribute("inert");
+    if (restoreFocus) {
+      document.querySelector("[data-nav-open]")?.focus();
+    }
+  };
+  const closeNavigationOnDesktop = () => {
+    if (desktopNavigationMedia.matches && navigationOpen.value) {
+      closeNavigation(false);
+    }
+  };
+  const handleNavigationKeys = (event) => {
+    if (event.key === "Escape" && navigationOpen.value) {
+      event.preventDefault();
+      closeNavigation();
+    } else if (event.key === "Tab" && navigationOpen.value) {
+      const focusable = [
+        ...document.querySelectorAll("#primary-sidebar a[href], #primary-sidebar button:not([disabled])"),
+      ];
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+  };
+  const handleNavigationClick = (event) => {
+    if (event.target.closest?.("[data-nav-open], [data-nav-close]")) {
+      return;
+    }
+    if (event.target.closest?.("#primary-sidebar a")) {
+      closeNavigation();
+    } else if (
+      navigationOpen.value &&
+      event.target.closest?.("[data-app-layout]") &&
+      !event.target.closest?.("#primary-sidebar")
+    ) {
+      closeNavigation();
+    }
   };
   const toggleWorkspaceRail = () => {
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      openNavigation();
+      return;
+    }
     workspaceRailExpanded.value = !workspaceRailExpanded.value;
     document.querySelector("[data-workspace-rail]")?.classList.toggle("is-expanded", workspaceRailExpanded.value);
   };
@@ -190,7 +260,11 @@ export default function setup() {
     const normalized = query.trim().toLocaleLowerCase();
     const items = [];
     for (const team of teams.value) {
-      items.push({ label: team.name, type: "Workspace", path: workspacePath(team.id, "runs") });
+      items.push({
+        label: team.name,
+        type: "Workspace",
+        path: workspacePath(team.id, "runs"),
+      });
       for (const [label, page] of [
         ["Streams", "channels"],
         ["Runs", "runs"],
@@ -317,8 +391,14 @@ export default function setup() {
     window.addEventListener("runner-route-changed", syncSection);
     window.addEventListener("runner-team-changed", syncWorkspace);
     document.addEventListener("keydown", handleSkipKeydown);
+    document.addEventListener("keydown", handleNavigationKeys);
+    document.addEventListener("click", handleNavigationClick);
+    desktopNavigationMedia.addEventListener("change", closeNavigationOnDesktop);
     document.addEventListener("keydown", handleGlobalQuickSwitch);
-    void fetch("/api/v1/auth/session", { credentials: "same-origin", headers: { accept: "application/json" } })
+    void fetch("/api/v1/auth/session", {
+      credentials: "same-origin",
+      headers: { accept: "application/json" },
+    })
       .then((response) => (response.ok ? response.json() : null))
       .then((session) => {
         if (!session?.authenticated || !session.user) {
@@ -346,6 +426,9 @@ export default function setup() {
     window.removeEventListener("runner-channels-updated", loadWorkspaceChannels);
     themeMedia.removeEventListener("change", syncSystemTheme);
     document.removeEventListener("keydown", handleSkipKeydown);
+    document.removeEventListener("keydown", handleNavigationKeys);
+    document.removeEventListener("click", handleNavigationClick);
+    desktopNavigationMedia.removeEventListener("change", closeNavigationOnDesktop);
     document.removeEventListener("keydown", handleGlobalQuickSwitch);
   });
 
@@ -365,6 +448,9 @@ export default function setup() {
     setActive,
     workspaceRailExpanded,
     toggleWorkspaceRail,
+    navigationOpen,
+    openNavigation,
+    closeNavigation,
     selectWorkspace,
     switchWorkspace,
     workspaceInitial,

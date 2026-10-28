@@ -13,6 +13,9 @@ const classFrom = (pattern) => {
 const classes = {
   layout: classFrom(/data-app-layout\s+class="([^"]+)"/),
   rail: classFrom(/data-workspace-rail[\s\S]*?class="([^"]+)"/),
+  brand: classFrom(/aria-label="Open or expand navigation"[\s\S]*?class="([^"]+)"/),
+  workspaceGroup: classFrom(/aria-label="Switch workspace"\s+class="([^"]+)"/),
+  workspaceSwitch: classFrom(/attr-data-workspace-switch="team.id"[\s\S]*?class="([^"]+)"/),
   sidebar: classFrom(/id="primary-sidebar"\s+class="([^"]+)"/),
   globalNav: classFrom(/aria-label="Global navigation"\s+class="([^"]+)"/),
   workspaceNav: classFrom(/aria-label="Workspace navigation"\s+class="([^"]+)"/),
@@ -23,34 +26,53 @@ const classes = {
   runsLink: classFrom(/attr-href="workspacePath\(team\.id, 'runs'\)"[\s\S]*?class="([^"]+)"/),
   streamsHeading: classFrom(/class="([^"]+)"\s*>\s*Streams</),
   streamLink: classFrom(/for="channel of workspaceChannels"[\s\S]*?class="([^"]+)"/),
-  content: classFrom(/<div\s+class="(col-start-2 row-start-2 grid[^"]+)"/),
-  header: classFrom(/<header class="([^"]+)"/),
+  content: classFrom(/<div\s+class="(col-start-1 row-start-2 grid[^"]+)"/),
+  header: classFrom(/<header\s+class="([^"]+)"/),
   search: classFrom(/data-quick-switch-open\s+class="([^"]+)"/),
-  panel: classFrom(/<section class="(max-h-full min-h-0 min-w-0 overflow-y-auto[^"]+)"/),
+  menu: classFrom(/data-nav-open[\s\S]*?class="([^"]+)"/),
+  panel: classFrom(/<section\s+class="(max-h-full min-h-0 min-w-0 overflow-y-auto[^"]+)"/),
 };
 
 const fixture = `
-  <div id="layout" class="${classes.layout}">
-    <aside data-workspace-rail class="${classes.rail}">Rail</aside>
+  <div id="layout" data-app-layout class="${classes.layout}">
+    <aside data-workspace-rail aria-label="Workspace switcher" class="${classes.rail}">
+      <button class="${classes.brand}" aria-label="Open or expand navigation">dimon.</button>
+      <div role="group" aria-label="Switch workspace" class="${classes.workspaceGroup}">
+        <button class="${classes.workspaceSwitch}" aria-pressed="true" aria-label="AppHorde">A</button>
+        <button class="${classes.workspaceSwitch}" aria-pressed="false" aria-label="Builds">B</button>
+        <button class="${classes.workspaceSwitch}" aria-pressed="false" aria-label="Docs">D</button>
+      </div>
+    </aside>
     <aside id="primary-sidebar" class="${classes.sidebar}">
+      <button data-nav-close aria-label="Close navigation">Close</button>
       <nav aria-label="Global navigation" class="${classes.globalNav}">
-        <a class="${classes.globalLink}">Workspaces</a>
-        <a class="${classes.globalLink}">Recipes</a>
+        <a href="/ui/workspaces" class="${classes.globalLink}">Workspaces</a>
+        <a href="/ui/recipes" class="${classes.globalLink}">Recipes</a>
       </nav>
       <div class="${classes.divider}"></div>
       <nav aria-label="Workspace navigation" class="${classes.workspaceNav}">
         <span data-workspace-title class="${classes.workspaceTitle}">AppHorde</span>
-        <a data-workflow-link class="${classes.workflowLink}">Workflows</a>
-        <a data-runs-link class="${classes.runsLink}">Runs</a>
+        <a href="/ui/workflows" data-workflow-link class="${classes.workflowLink}">Workflows</a>
+        <a href="/ui/runs" data-runs-link class="${classes.runsLink}">Runs</a>
         <span data-streams-heading class="${classes.streamsHeading}">Streams</span>
-        <a data-stream-link title="A synthetic Stream name that is intentionally too long for the sidebar" class="${classes.streamLink}">
+        <a href="/ui/stream" data-stream-link title="A synthetic Stream name that is intentionally too long for the sidebar" class="${classes.streamLink}">
           <span class="min-w-0 truncate">A synthetic Stream name that is intentionally too long for the sidebar</span>
         </a>
       </nav>
     </aside>
     <div class="${classes.content}">
-      <header class="${classes.header}"><button data-quick-switch-open class="${classes.search}">Search workspaces, streams, routes…</button></header>
-      <section class="${classes.panel}"><main id="main-content"></main></section>
+      <header class="${classes.header}"><button data-nav-open aria-expanded="false" aria-controls="primary-sidebar" class="${classes.menu}">Menu</button><button data-quick-switch-open class="${classes.search}">Search workspaces, streams, routes…</button></header>
+      <section class="${classes.panel}"><main id="main-content" class="min-h-full min-w-0 p-4 sm:p-6 lg:p-8">
+        <h1 class="mb-3 text-2xl font-semibold text-app-foreground">Appearance</h1>
+        <section class="mb-4 rounded-xl border border-app-border bg-app-card p-4">
+          <h2 class="text-lg font-semibold">Choose how the app looks</h2>
+          <p class="mt-2 text-sm text-app-secondary">Your settings adapt to this screen.</p>
+        </section>
+        <section class="rounded-xl border border-app-border bg-app-card p-4">
+          <h2 class="text-lg font-semibold">Workspace settings</h2>
+          <p class="mt-2 text-sm text-app-secondary">Your content stays full width while navigation is closed.</p>
+        </section>
+      </main></section>
     </div>
   </div>
 `;
@@ -59,29 +81,96 @@ for (const viewport of [
   { name: "desktop", width: 1440, height: 900, desktop: true },
   { name: "tablet", width: 768, height: 900, desktop: true },
   { name: "mobile", width: 390, height: 844, desktop: false },
+  { name: "mobile-619", width: 619, height: 844, desktop: false },
+  { name: "mobile-767", width: 767, height: 844, desktop: false },
   { name: "narrow-mobile", width: 320, height: 720, desktop: false },
 ]) {
   test(`shell navigation and quick switch layout at ${viewport.name}`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
     await page.goto("/tests/playwright/channel-harness.html");
     await page.setContent(fixture);
     await page.addStyleTag({ url: "/ui/index.css" });
-    await expect(page.locator("#primary-sidebar")).toBeVisible();
+    await page.evaluate(() => {
+      const layout = document.querySelector("[data-app-layout]");
+      const sidebar = document.querySelector("#primary-sidebar");
+      const background = [
+        document.querySelector("[data-workspace-rail]"),
+        document.querySelector(".col-start-1.row-start-2"),
+      ];
+      const close = (restore = true) => {
+        layout.classList.remove("navigation-open");
+        background.forEach((element) => element.removeAttribute("inert"));
+        document.querySelector("[data-nav-open]").setAttribute("aria-expanded", "false");
+        if (restore) {
+          document.querySelector("[data-nav-open]").focus();
+        }
+      };
+      document.querySelector("[data-nav-open]").addEventListener("click", () => {
+        layout.classList.add("navigation-open");
+        background.forEach((element) => element.setAttribute("inert", ""));
+        document.querySelector("[data-nav-open]").setAttribute("aria-expanded", "true");
+        document.querySelector("[data-nav-close]").focus();
+      });
+      document.querySelector("[data-nav-close]").addEventListener("click", () => close());
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          close();
+        }
+        if (event.key === "Tab" && layout.classList.contains("navigation-open")) {
+          const nodes = [...sidebar.querySelectorAll("a[href], button")];
+          const index = nodes.indexOf(document.activeElement);
+          if (index === nodes.length - 1 && !event.shiftKey) {
+            event.preventDefault();
+            nodes[0].focus();
+          }
+          if (index === 0 && event.shiftKey) {
+            event.preventDefault();
+            nodes.at(-1).focus();
+          }
+        }
+      });
+      document.addEventListener("click", (event) => {
+        if (event.target.closest("[data-nav-open], [data-nav-close]")) {
+          return;
+        }
+        if (event.target.closest("#primary-sidebar a")) {
+          event.preventDefault();
+          close();
+        } else if (layout.classList.contains("navigation-open") && !event.target.closest("#primary-sidebar")) {
+          close();
+        }
+      });
+    });
+    if (viewport.desktop) {
+      await expect(page.locator("#primary-sidebar")).toBeVisible();
+    } else {
+      await expect(page.locator("#primary-sidebar")).toBeHidden();
+    }
 
     const geometry = await page.evaluate(() => {
       const box = (selector) => {
         const rect = document.querySelector(selector).getBoundingClientRect();
-        return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width };
+        return {
+          x: rect.x,
+          y: rect.y,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: rect.width,
+        };
       };
       return {
         viewport: innerWidth,
         documentWidth: document.documentElement.scrollWidth,
         rail: box("[data-workspace-rail]"),
         sidebar: box("#primary-sidebar"),
-        content: box(".col-start-2.row-start-2"),
+        content: box(".col-start-1.row-start-2"),
         panel: box("section"),
         header: box("header"),
         search: box("[data-quick-switch-open]"),
+        menu: box("[data-nav-open]"),
         headerPadding: (() => {
           const style = getComputedStyle(document.querySelector("header"));
           return parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
@@ -100,8 +189,8 @@ for (const viewport of [
     });
 
     expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewport);
-    expect(geometry.rail.width).toBeCloseTo(64, 0);
     if (viewport.desktop) {
+      expect(geometry.rail.width).toBeCloseTo(64, 0);
       expect(geometry.sidebar.width).toBeCloseTo(224, 0);
       expect(geometry.content.x).toBeCloseTo(288, 0);
       expect(geometry.workspaceDirection).toBe("column");
@@ -123,11 +212,54 @@ for (const viewport of [
       expect(geometry.streamsHeading.y).toBeLessThan(geometry.stream.y);
       expect(geometry.streamText).toBe("ellipsis");
     } else {
-      expect(geometry.sidebar.x).toBeCloseTo(64, 0);
-      expect(geometry.sidebar.y).toBeLessThan(geometry.content.y);
-      expect(geometry.sidebar.bottom).toBeLessThanOrEqual(geometry.content.y);
-      expect(geometry.search.width).toBeCloseTo(geometry.header.width - geometry.headerPadding, 0);
+      expect(geometry.rail.width).toBeCloseTo(viewport.width, 0);
+      expect(geometry.sidebar.width).toBe(0);
+      expect(geometry.content.x).toBe(0);
+      expect(geometry.content.width).toBeCloseTo(viewport.width, 0);
+      expect(geometry.search.width).toBeGreaterThan(0);
+      expect(geometry.search.right).toBeLessThanOrEqual(geometry.header.right);
+      expect(geometry.search.x).toBeGreaterThan(geometry.menu.right);
+      await page.locator("[data-nav-open]").click();
+      await expect(page.locator("#primary-sidebar")).toBeVisible();
+      const drawerWidth = await page
+        .locator("#primary-sidebar")
+        .evaluate((element) => element.getBoundingClientRect().width);
+      expect(drawerWidth).toBeCloseTo(Math.min(352, viewport.width - 32), 0);
+      await expect(page.locator("[data-nav-open]")).toHaveAttribute("aria-expanded", "true");
+      await expect(page.locator(".col-start-1.row-start-2")).toHaveAttribute("inert", "");
+      await expect(page.locator("[data-workspace-rail]")).toHaveAttribute("inert", "");
+      await page.locator("[data-nav-close]").focus();
+      await page.keyboard.press("Shift+Tab");
+      await expect(page.locator("#primary-sidebar a").last()).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(page.locator("[data-nav-close]")).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(page.locator("#primary-sidebar")).toBeHidden();
+      await expect(page.locator("[data-nav-open]")).toBeFocused();
+      await expect(page.locator(".col-start-1.row-start-2")).not.toHaveAttribute("inert", "");
+      await expect(page.locator("[data-workspace-rail]")).not.toHaveAttribute("inert", "");
+      await page.locator("[data-nav-open]").click();
+      await page.locator("[data-nav-close]").click();
+      await expect(page.locator("#primary-sidebar")).toBeHidden();
+      await page.locator("[data-nav-open]").click();
+      await page.locator("#layout").click({ position: { x: viewport.width - 2, y: viewport.height - 2 } });
+      await expect(page.locator("#primary-sidebar")).toBeHidden();
+      await page.locator("[data-nav-open]").click();
+      await page.locator("#primary-sidebar a[href='/ui/recipes']").click();
+      await expect(page.locator("#primary-sidebar")).toBeHidden();
+      await expect(page.locator("[data-nav-open]")).toBeFocused();
     }
-    await page.screenshot({ path: testInfo.outputPath(`shell-${viewport.name}.png`), fullPage: true });
+    await page.screenshot({
+      path: testInfo.outputPath(`shell-${viewport.name}.png`),
+      fullPage: true,
+    });
+    if (!viewport.desktop) {
+      await page.locator("[data-nav-open]").click();
+      await expect(page.locator("#primary-sidebar")).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath(`shell-${viewport.name}-drawer.png`),
+        fullPage: true,
+      });
+    }
   });
 }
