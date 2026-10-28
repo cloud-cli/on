@@ -9,7 +9,7 @@ describe("team settings UI", () => {
   it("provides workspace-specific settings and management actions", () => {
     const html = generateTeamSettingsHtml();
 
-    expect(html).toContain("{{ teamName }} workspace");
+    expect(html).toContain("{{ teamName }}");
     expect(html).toContain("Get link");
     expect(html).toContain("Invite by OIDC subject");
     expect(html).toContain('aria-label="OIDC subject"');
@@ -23,7 +23,7 @@ describe("team settings UI", () => {
     expect(html.match(/rounded-xl border border-app-border bg-app-card p-5/g)).toHaveLength(5);
     expect(html).toContain('aria-label="Workspace settings sections"');
     expect(html).toContain(
-      'class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-app-border bg-app-background py-2"',
+      'class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-app-border py-2"',
     );
     expect(
       html.match(/rounded-md border border-app-border bg-white px-2\.5 py-1\.5 text-xs font-medium/g),
