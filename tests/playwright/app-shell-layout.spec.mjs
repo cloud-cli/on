@@ -80,7 +80,12 @@ for (const viewport of [
         sidebar: box("#primary-sidebar"),
         content: box(".col-start-2.row-start-2"),
         panel: box("section"),
+        header: box("header"),
         search: box("[data-quick-switch-open]"),
+        headerPadding: (() => {
+          const style = getComputedStyle(document.querySelector("header"));
+          return parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+        })(),
         title: box("[data-workspace-title]"),
         workflow: box("[data-workflow-link]"),
         runs: box("[data-runs-link]"),
@@ -102,8 +107,12 @@ for (const viewport of [
       expect(geometry.workspaceDirection).toBe("column");
       expect(geometry.workspaceWrap).toBe("nowrap");
       expect(geometry.titleBasis).toBe("auto");
-      expect(geometry.search.x).toBeCloseTo(geometry.panel.x + 16, 0);
-      expect(geometry.search.right).toBeCloseTo(geometry.panel.right - 16, 0);
+      const headerInnerWidth = geometry.header.width - geometry.headerPadding;
+      expect(geometry.search.width).toBeCloseTo(headerInnerWidth / 2, 0);
+      expect(geometry.search.x + geometry.search.width / 2).toBeCloseTo(
+        geometry.header.x + geometry.header.width / 2,
+        0,
+      );
       expect(geometry.title.x).toBeCloseTo(geometry.workflow.x, 0);
       expect(geometry.workflow.x).toBeCloseTo(geometry.runs.x, 0);
       expect(geometry.runs.x).toBeCloseTo(geometry.streamsHeading.x, 0);
@@ -117,6 +126,7 @@ for (const viewport of [
       expect(geometry.sidebar.x).toBeCloseTo(64, 0);
       expect(geometry.sidebar.y).toBeLessThan(geometry.content.y);
       expect(geometry.sidebar.bottom).toBeLessThanOrEqual(geometry.content.y);
+      expect(geometry.search.width).toBeCloseTo(geometry.header.width - geometry.headerPadding, 0);
     }
     await page.screenshot({ path: testInfo.outputPath(`shell-${viewport.name}.png`), fullPage: true });
   });

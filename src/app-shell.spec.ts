@@ -176,7 +176,8 @@ describe("On application shell", () => {
     expect(html).toContain(
       "shrink-0 items-center whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-app-primary",
     );
-    expect(html).toContain('class="flex min-h-10 w-full min-w-0 items-center gap-2');
+    expect(html).toContain('class="mx-auto flex min-h-10 w-full min-w-0 items-center gap-2');
+    expect(html).toContain("md:w-1/2");
     expect(html).not.toContain("sm:max-w-4xl");
     expect(html).toContain('class="min-w-0 flex-1 truncate">Search workspaces, streams, routes');
     expect(html).toContain('class="ml-auto shrink-0 rounded border border-app-border px-1.5 text-xs">⌘K');
