@@ -46,6 +46,17 @@
   color-scheme: light;
 }
 
+.brand-toggle > span:first-child {
+  flex: 0 0 2.5rem;
+}
+.rail-label {
+  white-space: nowrap;
+  font-size: 1.875rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
 @media (min-width: 768px) {
   [data-app-layout] {
     transition: grid-template-columns 260ms cubic-bezier(0.2, 0.8, 0.2, 1) 180ms;
@@ -61,7 +72,7 @@
     align-items: stretch;
     box-shadow: 8px 0 24px rgb(0 0 0 / 10%);
   }
-  .workspace-rail > a {
+  .workspace-rail .brand-toggle {
     display: flex;
     width: max-content;
     align-items: center;
