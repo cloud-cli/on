@@ -109,6 +109,10 @@ describe("On application shell", () => {
     expect(rail).toBeLessThan(navigation);
     expect(navigation).toBeLessThan(content);
     expect(html).toContain('attr-data-workspace-switch="team.id"');
+    expect(html).toContain('attr-aria-label="team.name"');
+    expect(html).toContain('class="workspace-name min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"');
+    expect(html).toContain('class="workspace-avatar grid size-8 shrink-0 place-items-center rounded-full');
+    expect(html).not.toContain("'Switch to ' + team.name");
     expect(html).toContain('popover="manual"');
     expect(html).toContain('attr-data-workspace-popover="team.id"');
     expect(html).toContain('on-pointerenter="showWorkspacePopover(team.name, $event.currentTarget)"');
@@ -187,7 +191,9 @@ describe("On application shell", () => {
     expect(html).toContain("md:w-1/2");
     expect(html).toContain("p-2 pt-0 sm:p-3 sm:pt-0 md:col-start-3 md:row-start-1 md:p-4 md:pt-0");
     expect(html.match(/rounded-full px-2 py-2 text-sm text-app-secondary/g)).toHaveLength(5);
-    expect(html).toContain("rounded-full border border-app-border bg-app-card font-semibold text-app-primary");
+    expect(html).toContain(
+      "rounded-full border border-app-border bg-app-card p-1 text-left font-semibold text-app-primary",
+    );
     expect(html).toContain("rounded-full px-3 py-2 text-sm font-medium text-app-primary");
     expect(html).not.toContain("sm:max-w-4xl");
     expect(html).toContain('class="min-w-0 flex-1 truncate">Search workspaces, streams, routes');

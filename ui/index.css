@@ -92,16 +92,18 @@
   }
   .workspace-rail.is-expanded .workspace-switch {
     width: 100%;
-    display: flex;
-    justify-content: flex-start;
-    padding: 0 0.75rem;
   }
-  .workspace-rail.is-expanded .workspace-switch::after {
-    content: attr(aria-label);
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .workspace-name {
+    max-width: 0;
+    opacity: 0;
+    transition:
+      max-width 260ms ease,
+      opacity 160ms ease;
+  }
+  .workspace-rail.is-expanded .workspace-name {
+    max-width: 11rem;
+    opacity: 1;
+    transition-delay: 160ms;
   }
   .workspace-rail.is-expanded .user-card {
     align-items: flex-start;
