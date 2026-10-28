@@ -57,6 +57,8 @@ describe("dashboard", () => {
     expect(html).toContain('on-click="previousPage()"');
     expect(html).toContain('on-click="nextPage()"');
     expect(html).toContain("Search runs");
+    expect(html).toContain('class="space-y-4 rounded-2xl bg-white"');
+    expect(html).not.toContain("rounded-2xl border border-app-border bg-white p-4 md:p-5");
     expect(html).toContain('on-submit.prevent="applyFilter()"');
     expect(html).toContain('on-input="setFilter($event)"');
     expect(html).toContain("All workflows");

@@ -1,52 +1,22 @@
 <template app>
-  <main class="mx-auto max-w-6xl space-y-6">
-    <header class="space-y-4">
-      <div>
-        <p
-          class="text-sm font-semibold uppercase tracking-wide text-app-primary"
-        >
-          Workspace activity
-        </p>
-        <h1 class="mt-1 text-3xl font-semibold">Incoming events</h1>
-        <p class="mt-2 max-w-3xl text-sm text-app-secondary">
-          Inspect every accepted webhook delivery, including events that did not
-          match a workflow. Payloads are encrypted at rest and visible only to
-          workspace members with webhook access.
-        </p>
-      </div>
-      <nav
-        class="flex gap-2 border-b border-app-border"
-        aria-label="Workspace run views"
+  <main class="w-full space-y-6 py-2">
+    <nav class="flex gap-2 border-b border-app-border" aria-label="Workspace run views">
+      <a
+        attr-href="runsUrl"
+        class="border-b-2 border-transparent px-3 py-2 text-sm text-app-secondary hover:text-app-primary"
+        >Runs</a
       >
-        <a
-          attr-href="runsUrl"
-          class="border-b-2 border-transparent px-3 py-2 text-sm text-app-secondary hover:text-app-primary"
-          >Runs</a
-        >
-        <a
-          aria-current="page"
-          class="border-b-2 border-app-primary px-3 py-2 text-sm font-semibold text-app-primary"
-          >Incoming events</a
-        >
-      </nav>
-    </header>
+      <a aria-current="page" class="border-b-2 border-app-primary px-3 py-2 text-sm font-semibold text-app-primary"
+        >Incoming events</a
+      >
+    </nav>
 
     <template if="listState === 'error'">
-      <p
-        role="alert"
-        class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"
-      >
-        {{ listError }}
-      </p>
+      <p role="alert" class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{{ listError }}</p>
     </template>
-    <section
-      class="overflow-hidden rounded-2xl border border-app-border bg-white"
-      aria-label="Incoming event history"
-    >
+    <section class="overflow-hidden rounded-2xl bg-white" aria-label="Incoming event history">
       <template if="listState === 'loading'"
-        ><p class="p-8 text-center text-sm text-app-secondary" role="status">
-          Loading incoming events…
-        </p></template
+        ><p class="p-8 text-center text-sm text-app-secondary" role="status">Loading incoming events…</p></template
       >
       <template if="listState === 'empty'"
         ><p class="p-8 text-center text-sm text-app-secondary">
@@ -54,46 +24,39 @@
         </p></template
       >
       <template if="listState === 'ready'"
-        ><div class="overflow-x-auto">
-          <table class="w-full min-w-[700px] text-left text-sm">
-            <thead
-              class="border-b border-app-border text-xs text-app-secondary"
-            >
+        ><div
+          class="min-w-0 max-w-full overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-primary"
+          role="region"
+          aria-label="Incoming events table"
+          tabindex="0"
+        >
+          <table class="w-full min-w-[680px] text-left text-sm">
+            <thead class="border-b border-app-border text-xs text-app-secondary">
               <tr>
-                <th class="px-4 py-3 font-medium">Event</th>
-                <th class="px-4 py-3 font-medium">Status</th>
-                <th class="px-4 py-3 font-medium">Received</th>
-                <th class="px-4 py-3 font-medium">Payload</th>
-                <th class="px-4 py-3 font-medium">Actions</th>
+                <th class="px-3 py-3 font-medium">Event</th>
+                <th class="px-3 py-3 font-medium">Status</th>
+                <th class="px-3 py-3 font-medium">Received</th>
+                <th class="px-3 py-3 font-medium">Payload</th>
+                <th class="px-3 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               <template for="event of events">
-                <tr class="border-b border-app-border last:border-0">
-                  <td class="px-4 py-3">
-                    <p class="font-medium">
-                      {{ event.provider }} · {{ event.displayType }}
-                    </p>
-                    <p
-                      class="mt-1 break-all font-mono text-xs text-app-secondary"
-                    >
-                      {{ event.displayId }}
-                    </p>
+                <tr class="border-b border-app-border last:border-0 hover:bg-app-panel">
+                  <td class="px-3 py-3">
+                    <p class="font-medium">{{ event.provider }} · {{ event.displayType }}</p>
+                    <p class="mt-1 break-all font-mono text-xs text-app-secondary">{{ event.displayId }}</p>
                   </td>
-                  <td class="px-4 py-3">
+                  <td class="px-3 py-3">
                     <span
                       class="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold"
                       bind-class="event.statusClass"
                       >{{ event.processingStatus }}</span
                     >
                   </td>
-                  <td class="px-4 py-3 text-app-secondary">
-                    {{ event.formattedDate }}
-                  </td>
-                  <td class="px-4 py-3 text-app-secondary">
-                    {{ event.formattedBytes }}
-                  </td>
-                  <td class="px-4 py-3">
+                  <td class="px-3 py-3 text-app-secondary">{{ event.formattedDate }}</td>
+                  <td class="px-3 py-3 text-app-secondary">{{ event.formattedBytes }}</td>
+                  <td class="px-3 py-3">
                     <button
                       type="button"
                       class="font-semibold text-app-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-primary"
@@ -112,30 +75,19 @@
     </section>
 
     <template if="detailState !== 'closed'">
-      <section
-        class="space-y-4 rounded-2xl border border-app-border bg-white p-5"
-        aria-labelledby="event-detail-title"
-      >
-        <h2 id="event-detail-title" class="text-xl font-semibold">
-          {{ detailTitle }}
-        </h2>
+      <section class="space-y-4 rounded-2xl border border-app-border bg-white p-5" aria-labelledby="event-detail-title">
+        <h2 id="event-detail-title" class="text-xl font-semibold">{{ detailTitle }}</h2>
         <template if="detailState === 'loading'"
-          ><p class="text-sm text-app-secondary" role="status">
-            Loading event details…
-          </p></template
+          ><p class="text-sm text-app-secondary" role="status">Loading event details…</p></template
         >
         <template if="detailState === 'error'"
-          ><p role="alert" class="text-sm text-rose-800">
-            {{ detailError }}
-          </p></template
+          ><p role="alert" class="text-sm text-rose-800">{{ detailError }}</p></template
         >
         <template if="detailState === 'ready'"
           ><div class="space-y-4">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p class="mt-1 break-all font-mono text-xs text-app-secondary">
-                  {{ detailSummary }}
-                </p>
+                <p class="mt-1 break-all font-mono text-xs text-app-secondary">{{ detailSummary }}</p>
               </div>
               <button
                 type="button"
@@ -146,29 +98,19 @@
                 Retrigger matching workflows
               </button>
             </div>
-            <p
-              role="status"
-              aria-live="polite"
-              class="text-sm text-app-secondary"
-            >
+            <p role="status" aria-live="polite" class="text-sm text-app-secondary">
               {{ retriggerStatus || validationMessage }}
             </p>
             <div>
               <h3 class="text-sm font-semibold">Original payload</h3>
-              <pre
-                class="mt-2 max-h-[60vh] overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-white"
-              >
+              <pre class="mt-2 max-h-[60vh] overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-white">
 {{ displayPayload }}</pre
               >
             </div>
           </div></template
         >
         <template if="detailState !== 'loading'"
-          ><button
-            type="button"
-            on-click="closeDetail()"
-            class="text-sm text-app-primary underline"
-          >
+          ><button type="button" on-click="closeDetail()" class="text-sm text-app-primary underline">
             Close details
           </button></template
         >
