@@ -11,9 +11,9 @@ describe("renderErrorPage", () => {
       secondaryAction: { label: "Back", href: "/ui/runs" },
     });
 
-    expect(html).toContain("<title>502 — Couldn&#39;t complete sign-in · on:</title>");
+    expect(html).toContain("<title>502 — Couldn&#39;t complete sign-in · dimon</title>");
     expect(html).toContain('aria-labelledby="error-title"');
-    expect(html).toContain('<span class="brand-name">on<span class="brand-dot">:</span></span>');
+    expect(html).toContain('<span class="brand-name">dimon</span>');
     expect(html).toContain("background: #547d42");
     expect(html).not.toContain("<svg");
     expect(html).toContain('href="/auth/login?url=%2Fui%2Fruns"');

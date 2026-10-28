@@ -1,7 +1,7 @@
 export const webManifest = JSON.stringify({
   id: "/ui/runs",
-  name: "on:",
-  short_name: "on:",
+  name: "dimon",
+  short_name: "dimon",
   description: "Follow CI/CD runs, workflows, and results.",
   start_url: "/ui/runs",
   scope: "/ui/",
@@ -38,7 +38,7 @@ export const serviceWorker = `self.addEventListener('install', () => self.skipWa
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 self.addEventListener('push', (event) => {
   const data = event.data?.json() || {};
-  event.waitUntil(self.registration.showNotification(data.title || 'on:', {
+  event.waitUntil(self.registration.showNotification(data.title || 'dimon', {
     body: data.body || 'A workflow run changed.',
     icon: '/assets/app-icon.svg',
     badge: '/assets/app-icon.svg',

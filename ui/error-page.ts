@@ -45,7 +45,7 @@ export function renderErrorPage({ status, title, message, action, secondaryActio
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>${status} — ${escapeHtml(title)} · on:</title>
+    <title>${status} — ${escapeHtml(title)} · dimon</title>
     <style>
       :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #19231e; background: #f3f6f1; font-synthesis: none; }
       * { box-sizing: border-box; }
@@ -77,9 +77,9 @@ export function renderErrorPage({ status, title, message, action, secondaryActio
   </head>
   <body>
     <main class="page">
-      <div class="brand" aria-label="on:">
+      <div class="brand" aria-label="dimon">
         <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
-        <span class="brand-name">on<span class="brand-dot">:</span></span>
+        <span class="brand-name">dimon</span>
       </div>
       <section class="card" aria-labelledby="error-title">
         <div class="status"><span class="status-dot" aria-hidden="true"></span>ERROR ${status}</div>

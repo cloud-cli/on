@@ -36,7 +36,8 @@ describe("On application shell", () => {
     expect(html.match(/href="\/ui\/workspaces"/g)).toHaveLength(2);
     expect(html).toContain('href="/ui/settings"');
     expect(html).toContain("focus-visible:ring-2");
-    expect(html).toContain('aria-label="on: home"');
+    expect(html).toContain('aria-label="dimon home"');
+    expect(html).toContain("<title>dimon · Runs</title>");
     expect(html).toContain("w-[27px] rounded-[2px] bg-[#547d42]");
     expect(html).toContain('href="#main-content"');
     expect(html).toContain("data-skip-to-content");
@@ -174,17 +175,21 @@ describe("On application shell", () => {
     expect(html).toContain("basis-full px-3 pb-1 text-xs font-semibold text-app-secondary");
     expect(html).toContain('class="min-w-0 truncate"');
     expect(html).toContain(
-      "shrink-0 items-center whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-app-primary",
+      "shrink-0 items-center whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium text-app-primary",
     );
     expect(html).toContain('class="mx-auto flex min-h-10 w-full min-w-0 items-center gap-2');
     expect(html).toContain("md:w-1/2");
+    expect(html).toContain("p-2 pt-0 sm:p-3 sm:pt-0 md:col-start-3 md:row-start-1 md:p-4 md:pt-0");
+    expect(html.match(/rounded-full px-2 py-2 text-sm text-app-secondary/g)).toHaveLength(5);
+    expect(html).toContain("rounded-full border border-app-border bg-app-card font-semibold text-app-primary");
+    expect(html).toContain("rounded-full px-3 py-2 text-sm font-medium text-app-primary");
     expect(html).not.toContain("sm:max-w-4xl");
     expect(html).toContain('class="min-w-0 flex-1 truncate">Search workspaces, streams, routes');
     expect(html).toContain('class="ml-auto shrink-0 rounded border border-app-border px-1.5 text-xs">⌘K');
   });
 
   it("frames main content in an inset rounded panel on every viewport edge", () => {
-    expect(html).toContain("bg-app-background p-2 sm:p-3 md:col-start-3 md:row-start-1 md:p-4");
+    expect(html).toContain("bg-app-background p-2 pt-0 sm:p-3 sm:pt-0 md:col-start-3 md:row-start-1 md:p-4 md:pt-0");
     expect(html).toContain("max-h-full min-h-0 min-w-0 overflow-y-auto overscroll-y-auto rounded-2xl bg-app-card");
     expect(html).toContain("grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)]");
     expect(html).toContain("h-dvh grid grid-rows-[auto_minmax(0,1fr)]");
