@@ -39,7 +39,7 @@
         <aside
           data-workspace-rail
           aria-label="Workspace switcher"
-          class="row-span-2 flex min-h-dvh w-16 flex-col items-center gap-3 border-r border-app-border px-2 py-4 md:row-span-1 md:sticky md:top-0 md:h-dvh"
+          class="workspace-rail relative z-20 row-span-2 flex min-h-dvh w-16 flex-col items-center gap-3 border-r border-app-border bg-app-background px-2 py-4 md:row-span-1 md:sticky md:top-0 md:h-dvh"
         >
           <a
             href="/ui/workspaces"
@@ -49,8 +49,8 @@
             <span class="flex h-[30px] w-[27px] -skew-y-[13deg] flex-col justify-center gap-[4px]" aria-hidden="true"
               ><i class="block h-[5px] w-[27px] rounded-[2px] bg-[#547d42]"></i
               ><i class="block h-[5px] w-5 rounded-[2px] bg-[#547d42]"></i
-              ><i class="block h-[5px] w-[13px] rounded-[2px] bg-[#547d42]"></i
-            ></span>
+              ><i class="block h-[5px] w-[13px] rounded-[2px] bg-[#547d42]"></i></span
+            ><span class="rail-label">gitmini<span class="text-app-primary">.</span></span>
           </a>
           <div role="group" aria-label="Switch workspace" class="flex flex-col items-center gap-2">
             <template for="team of teams"
@@ -64,7 +64,7 @@
                 on-focus="showWorkspacePopover(team.name, $event.currentTarget)"
                 on-blur="hideWorkspacePopover($event.currentTarget)"
                 on-click="switchWorkspace(team.id)"
-                class="grid size-10 shrink-0 place-items-center rounded-full border border-app-border bg-app-card font-semibold text-app-primary outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-app-primary aria-pressed:border-app-primary aria-pressed:ring-2 aria-pressed:ring-app-primary"
+                class="workspace-switch grid size-10 shrink-0 place-items-center rounded-full border border-app-border bg-app-card font-semibold text-app-primary outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-app-primary aria-pressed:border-app-primary aria-pressed:ring-2 aria-pressed:ring-app-primary"
                 attr-data-workspace-switch="team.id"
               >
                 {{ workspaceInitial(team.name) }}
@@ -81,7 +81,7 @@
             >
           </div>
           <template if="userAuthenticated"
-            ><div class="mt-auto flex w-full flex-col items-center gap-2 pt-3">
+            ><div class="user-card mt-auto flex w-full flex-col items-center gap-2 pt-3">
               <button
                 type="button"
                 on-click="toggleTheme()"
@@ -95,7 +95,7 @@
                 href="/ui/settings"
                 aria-label="Open preferences"
                 title="Preferences"
-                class="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg border border-app-border bg-app-primary text-sm font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-app-primary"
+                class="user-avatar relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg border border-app-border bg-app-primary text-sm font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-app-primary"
               >
                 <template if="user.photo || user.picture"
                   ><img
@@ -106,6 +106,9 @@
                 /></template>
                 <span aria-hidden="true" attr-class="(user.photo || user.picture) ? 'hidden' : ''"
                   >{{ userInitial }}</span
+                ><span class="user-details"
+                  ><span class="block truncate">{{ user.name }}</span
+                  ><span class="block truncate text-xs font-normal opacity-80">{{ user.email }}</span></span
                 >
               </a>
             </div></template

@@ -51,10 +51,12 @@ describe("On application shell", () => {
     expect(html).not.toContain("overflow-hidden bg-app-background");
     expect(html).toContain('href="/ui/settings"');
     expect(html).toContain('aria-label="Open preferences"');
-    expect(html).toContain('class="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg');
-    expect(html).toContain('class="mt-auto flex w-full flex-col items-center gap-2 pt-3"');
+    expect(html).toContain(
+      'class="user-avatar relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg',
+    );
+    expect(html).toContain('class="user-card mt-auto flex w-full flex-col items-center gap-2 pt-3"');
     expect(html).not.toContain("user.name || user.email");
-    expect(html).not.toContain("{{ user.email }}");
+    expect(html).toContain("{{ user.email }}");
     expect(html).toContain('on-click="toggleTheme()"');
     expect(html).toContain('class="flex items-center gap-2 px-2 py-1 sm:gap-4 sm:px-3 md:px-4"');
     expect(html).not.toContain('class="ml-auto flex shrink-0 items-center gap-2 sm:gap-4"');
@@ -89,7 +91,7 @@ describe("On application shell", () => {
     expect(shellSetup).toContain('fetch("/api/v1/auth/session"');
     expect(shellSetup).toContain("session?.authenticated || !session.user");
     expect(html).not.toContain("user.name || user.email");
-    expect(html).not.toContain("{{ user.email }}");
+    expect(html).toContain("{{ user.email }}");
     expect(html).not.toContain('target="_blank"');
     expect(html).not.toContain("oidcProviderUrl");
     expect(html).toContain('if="userAuthenticated"');
