@@ -16,6 +16,7 @@ export default function setup() {
   const channelsEmpty = ref(false);
   let channelsRequestId = 0;
   const quickSwitchOpen = ref(false);
+  const workspaceRailExpanded = ref(false);
   const quickSwitchItems = ref([]);
   const themePreference = ref("system");
   const setSelectedWorkspace = (workspaceId) => {
@@ -111,6 +112,10 @@ export default function setup() {
 
   const setActive = (section) => {
     activeSection.value = section;
+  };
+  const toggleWorkspaceRail = () => {
+    workspaceRailExpanded.value = !workspaceRailExpanded.value;
+    document.querySelector("[data-workspace-rail]")?.classList.toggle("is-expanded", workspaceRailExpanded.value);
   };
   const selectWorkspace = (teamId, page = "runs") => {
     setSelectedWorkspace(teamId);
@@ -346,6 +351,8 @@ export default function setup() {
     channelsEmpty,
     isDarkTheme,
     setActive,
+    workspaceRailExpanded,
+    toggleWorkspaceRail,
     selectWorkspace,
     switchWorkspace,
     workspaceInitial,

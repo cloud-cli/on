@@ -33,10 +33,14 @@ describe("On application shell", () => {
     expect(html).toContain('href="/ui/recipes"');
     expect(html).not.toContain('href="/ui/workflows"');
     expect(html).toContain('href="/ui/settings"');
-    expect(html.match(/href="\/ui\/workspaces"/g)).toHaveLength(2);
+    expect(html.match(/href="\/ui\/workspaces"/g)).toHaveLength(1);
     expect(html).toContain('href="/ui/settings"');
     expect(html).toContain("focus-visible:ring-2");
-    expect(html).toContain('aria-label="dimon home"');
+    expect(html).toContain('aria-label="Toggle workspace rail"');
+    expect(html).toContain('on-click="toggleWorkspaceRail()"');
+    expect(shellSetup).toContain("toggleWorkspaceRail");
+    expect(styles).toContain(".workspace-rail.is-expanded");
+    expect(styles).not.toContain(".workspace-rail:hover");
     expect(html).toContain("<title>dimon · Runs</title>");
     expect(html).toContain("w-[27px] rounded-[2px] bg-[#547d42]");
     expect(html).toContain('href="#main-content"');
