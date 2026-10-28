@@ -74,17 +74,15 @@
   }
   .workspace-rail .brand-toggle {
     display: flex;
-    width: max-content;
+    width: 100%;
     align-self: flex-start;
     align-items: center;
     gap: 0.75rem;
+    overflow: hidden;
+    white-space: nowrap;
   }
-  .rail-label,
   .workspace-switch::after {
     display: none;
-  }
-  .workspace-rail.is-expanded .rail-label {
-    display: block;
   }
   .workspace-rail [role="group"] {
     width: 100%;
