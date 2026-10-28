@@ -112,6 +112,9 @@ describe("On application shell", () => {
     expect(html).toContain('attr-aria-label="team.name"');
     expect(html).toContain('class="workspace-name min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"');
     expect(html).toContain('class="workspace-avatar grid size-8 shrink-0 place-items-center rounded-full');
+    expect(html).not.toMatch(/>\s*>\s*<span\s+class="workspace-avatar/);
+    expect(styles).toContain(".workspace-rail.is-expanded .workspace-name");
+    expect(styles).not.toMatch(/(?:^|\n)  \.workspace-name\s*\{[^}]*transition:/);
     expect(html).not.toContain("'Switch to ' + team.name");
     expect(html).toContain('popover="manual"');
     expect(html).toContain('attr-data-workspace-popover="team.id"');

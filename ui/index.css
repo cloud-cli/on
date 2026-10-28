@@ -96,14 +96,13 @@
   .workspace-name {
     max-width: 0;
     opacity: 0;
-    transition:
-      max-width 260ms ease,
-      opacity 160ms ease;
   }
   .workspace-rail.is-expanded .workspace-name {
     max-width: 11rem;
     opacity: 1;
-    transition-delay: 160ms;
+    transition:
+      max-width 260ms ease 160ms,
+      opacity 160ms ease 160ms;
   }
   .workspace-rail.is-expanded .user-card {
     align-items: flex-start;
