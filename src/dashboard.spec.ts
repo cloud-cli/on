@@ -70,7 +70,8 @@ describe("dashboard", () => {
     expect(dashboardSetup).toContain("if (generation === workflowGeneration)");
     expect(dashboardSetup).toContain("if (!Array.isArray(items))");
     expect(dashboardSetup).toContain("encodeURIComponent(activeFilter.value)");
-    expect(dashboardSetup).toContain("/^[A-Za-z0-9_-]+:.+$/.test(activeFilter.value)");
+    const localFilters = dashboardSetup.match(/const filteredJobs = \(\) =>([\s\S]*?);\n  const visibleJobs/);
+    expect(localFilters?.[1]).not.toContain("activeFilter.value");
     expect(dashboardSetup).toContain("if (searchInProgress && !isSearch) {");
     expect(dashboardSetup).toContain("generation !== refreshGeneration");
     expect(html).toContain("Filter runs by status");

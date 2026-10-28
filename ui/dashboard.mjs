@@ -59,12 +59,7 @@ export default function setup() {
         (statusFilter.value === "all" ||
           (statusFilter.value === "running"
             ? ["pending", "running"].includes(job.status)
-            : job.status === statusFilter.value)) &&
-        (!activeFilter.value ||
-          /^[A-Za-z0-9_-]+:.+$/.test(activeFilter.value) ||
-          `${job.workflowId} ${workflowName(job.workflowId)} ${job.id} ${job.status} ${job.workerId || ""}`
-            .toLowerCase()
-            .includes(activeFilter.value.toLowerCase())),
+            : job.status === statusFilter.value)),
     );
   const visibleJobs = () => filteredJobs().slice((page.value - 1) * pageSize, page.value * pageSize);
   const statusTabs = () =>
