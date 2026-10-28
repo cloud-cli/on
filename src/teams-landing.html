@@ -12,10 +12,7 @@
   <body class="min-h-screen bg-app-background p-4 font-sans text-app-foreground md:p-6">
     <template app>
       <main class="w-full space-y-5 py-2">
-        <section
-          class="overflow-hidden rounded-2xl border border-app-border bg-white p-4 shadow-sm sm:p-5"
-          aria-label="Workspace list"
-        >
+        <section class="space-y-4 rounded-2xl bg-white" aria-label="Workspace list">
           <header class="flex flex-wrap items-center justify-between gap-3 border-b border-app-border pb-4">
             <h1 class="text-2xl font-semibold">Workspaces</h1>
             <div class="flex flex-wrap items-center justify-end gap-2">
@@ -65,12 +62,11 @@
           <ul class="mt-2 grid grid-cols-1">
             <template for="team of teams"
               ><li>
-                <div
-                  class="flex min-h-14 items-center gap-3 border-b border-app-border px-2 py-2 last:border-b-0 sm:px-4"
-                >
+                <div class="flex min-h-14 items-center gap-3 border-b border-app-border px-3 py-3 last:border-b-0">
                   <a
-                    attr-href="'/ui/workspaces/' + encodeURIComponent(team.id) + '/runs'"
-                    class="inline-flex min-w-0 flex-1 items-center gap-2 rounded-lg text-lg font-semibold text-app-foreground outline-none hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary sm:text-xl"
+                    attr-href="'/ui/workspaces/' + encodeURIComponent(team.id) + '/settings'"
+                    attr-aria-label="'Open settings for ' + team.name"
+                    class="inline-flex min-w-0 flex-1 items-center gap-2 rounded-lg text-sm font-medium text-app-foreground outline-none hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary"
                   >
                     <span class="truncate">{{ team.name }}</span>
                     <span
@@ -80,15 +76,6 @@
                       aria-label="Workspace admin"
                       title="Workspace admin"
                     ></span>
-                    <span class="sr-only">Open workspace</span>
-                  </a>
-                  <a
-                    attr-href="'/ui/workspaces/' + encodeURIComponent(team.id) + '/settings'"
-                    attr-aria-label="'Edit settings for ' + team.name"
-                    attr-title="'Workspace settings for ' + team.name"
-                    class="grid size-10 shrink-0 place-items-center rounded-lg text-app-secondary outline-none hover:bg-app-panel hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary"
-                  >
-                    <lucide-icon icon="settings-2" size="18" aria-hidden="true"></lucide-icon>
                   </a>
                 </div></li
             ></template>

@@ -149,15 +149,15 @@ describe("team settings UI", () => {
     expect(html).not.toContain('class="text-xs font-semibold uppercase tracking-wider text-app-muted">Your workspaces');
     expect(html).not.toContain("Choose a workspace");
     expect(html).toContain('<main class="w-full space-y-5 py-2">');
-    expect(html).toContain(
-      'class="overflow-hidden rounded-2xl border border-app-border bg-white p-4 shadow-sm sm:p-5"',
-    );
+    expect(html).toContain('class="space-y-4 rounded-2xl bg-white"');
     expect(html).toContain('on-click="toggleCreateForm()"');
     expect(html).toContain('class-hidden="!newTeamFormOpen"');
     expect(html).toContain('id="new-team-name"');
     expect(html).toContain('aria-label="Workspace list"');
 
     expect(html).toContain("encodeURIComponent(team.id) + '/settings'");
+    expect(html).toContain("'Open settings for ' + team.name");
+    expect(html).not.toContain('icon="settings-2"');
     expect(landing).toContain('apiFetch("/api/v1/workspaces"');
   });
 
