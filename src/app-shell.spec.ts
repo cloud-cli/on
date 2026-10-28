@@ -111,7 +111,7 @@ describe("On application shell", () => {
     expect(html).toContain('attr-data-workspace-switch="team.id"');
     expect(html).toContain('attr-aria-label="team.name"');
     expect(html).toContain('class="workspace-name min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap"');
-    expect(html).toContain('class="workspace-avatar grid size-8 shrink-0 place-items-center rounded-full');
+    expect(html).toContain('class="workspace-avatar ml-0.5 grid size-8 shrink-0 place-items-center rounded-full');
     expect(html).not.toMatch(/>\s*>\s*<span\s+class="workspace-avatar/);
     expect(styles).toContain(".workspace-rail .workspace-switch");
     expect(styles).toContain(".workspace-rail:not(.is-expanded) .workspace-avatar");
