@@ -16,7 +16,30 @@
         <header
           class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-app-border py-2"
         >
-          <h1 class="text-2xl font-semibold">{{ teamName }}</h1>
+          <div class="flex min-w-0 items-center gap-3">
+            <span
+              class="grid size-12 shrink-0 place-items-center overflow-hidden rounded-full bg-app-panel text-lg font-semibold text-app-primary"
+              aria-hidden="true"
+            >
+              <template if="logoUrl"><img attr-src="logoEndpoint" alt="" class="size-full object-cover" /></template>
+              <span class-hidden="logoUrl">{{ workspaceInitial }}</span>
+            </span>
+            <h1 class="truncate text-2xl font-semibold">{{ teamName }}</h1>
+            <label
+              class-hidden="!isAdmin"
+              for="workspace-logo"
+              class="shrink-0 cursor-pointer rounded-md border border-app-border px-3 py-2 text-sm"
+              >Upload logo</label
+            >
+            <input
+              id="workspace-logo"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              class="sr-only"
+              on-change="uploadLogo($event)"
+              class-hidden="!isAdmin"
+            />
+          </div>
           <nav aria-label="Workspace settings sections" class="flex flex-wrap justify-end gap-1.5">
             <a
               href="#team-members"
@@ -511,6 +534,7 @@
           </section>
         </div>
         <p class="text-sm text-rose-700" role="alert" class-hidden="!error">{{ error }}</p>
+        <p class="text-sm text-app-muted" role="status" aria-live="polite">{{ logoMessage }}</p>
       </main>
       <script setup src="/assets/team-settings-ui.mjs"></script
     ></template>

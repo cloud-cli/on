@@ -2367,6 +2367,52 @@
         }
       }
     },
+    "/api/v1/workspaces/{workspaceId}/logo": {
+      "get": {
+        "tags": ["workspaces"],
+        "summary": "Get the workspace logo",
+        "security": [{ "oidcSessionCookie": [] }, { "oidcAdminBearer": [] }],
+        "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": {
+            "description": "Validated PNG, JPEG, or WebP image",
+            "content": {
+              "image/png": { "schema": { "type": "string", "format": "binary" } },
+              "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
+              "image/webp": { "schema": { "type": "string", "format": "binary" } }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["workspaces"],
+        "summary": "Set or replace the workspace logo",
+        "security": [{ "oidcSessionCookie": [] }, { "oidcAdminBearer": [] }],
+        "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["mimeType", "data"],
+                "properties": {
+                  "mimeType": { "type": "string", "enum": ["image/png", "image/jpeg", "image/webp"] },
+                  "data": { "type": "string", "description": "Base64 encoded image, at most 256 KiB decoded" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "Logo stored" },
+          "400": { "description": "Invalid image type, signature, encoding, or size" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
     "/api/v1/workspaces/{workspaceId}/invitations": {
       "post": {
         "tags": ["workspaces"],

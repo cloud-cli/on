@@ -99,6 +99,34 @@ describe("team settings UI", () => {
     expect(setup).toContain("You are not a member of this workspace.");
   });
 
+  it("supports safe workspace logo preview and admin-only validated uploads", () => {
+    const html = generateTeamSettingsHtml();
+    expect(html).toContain('id="workspace-logo"');
+    expect(html).toContain('accept="image/png,image/jpeg,image/webp"');
+    expect(html).toContain('class-hidden="!isAdmin"');
+    expect(html).toContain('attr-src="logoEndpoint"');
+    expect(html).toContain('role="status" aria-live="polite">{{ logoMessage }}');
+    expect(setup).toContain('"image/png", "image/jpeg", "image/webp"');
+    expect(setup).toContain("256 * 1024");
+    expect(setup).toContain('workspaceUrl("/logo")');
+    expect(setup).toContain("JSON.stringify({ mimeType: file.type, data: btoa(binary) })");
+    expect(setup).toContain("team.logoUrl || null");
+    expect(setup).not.toContain("team.logoUrl;");
+  });
+
+  it("renders workspace logos through the authenticated endpoint with initials as fallback", async () => {
+    const { readFileSync } = await import("node:fs");
+    const shell = readFileSync(new URL("./app-shell.html", import.meta.url), "utf8");
+    const landing = readFileSync(new URL("../src/teams-landing.html", import.meta.url), "utf8");
+    for (const html of [shell, landing]) {
+      expect(html).toContain("team.logoUrl");
+      expect(html).toContain("encodeURIComponent(team.id) + '/logo'");
+      expect(html).not.toContain('attr-src="team.logoUrl"');
+    }
+    expect(shell).toContain("workspaceInitial(team.name)");
+    expect(landing).toContain("slice(0, 1).toUpperCase()");
+  });
+
   it.each([
     ["/ui/workspaces/team-a/settings", "team-a"],
     ["/ui/teams/team-b/settings", "team-b"],

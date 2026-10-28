@@ -1003,6 +1003,17 @@ const migrations: Migration[] = [
         WHERE status = 'admitted' AND admission_outcome IS NULL`);
     },
   },
+  {
+    version: "037_workspace_logos",
+    async apply() {
+      await db.exec(`CREATE TABLE IF NOT EXISTS workspace_logos (
+        team_id TEXT PRIMARY KEY REFERENCES teams(id) ON DELETE CASCADE,
+        mime_type TEXT NOT NULL CHECK (mime_type IN ('image/png','image/jpeg','image/webp')),
+        data TEXT NOT NULL CHECK (length(data) BETWEEN 4 AND 349528),
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

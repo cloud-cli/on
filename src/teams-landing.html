@@ -68,6 +68,20 @@
                     attr-aria-label="'Open settings for ' + team.name"
                     class="inline-flex min-w-0 flex-1 items-center gap-2 rounded-lg text-sm font-medium text-app-foreground outline-none hover:text-app-primary focus-visible:ring-2 focus-visible:ring-app-primary"
                   >
+                    <span
+                      class="grid size-9 shrink-0 place-items-center overflow-hidden rounded-full bg-app-panel text-sm font-semibold text-app-primary"
+                      aria-hidden="true"
+                    >
+                      <template if="team.logoUrl"
+                        ><img
+                          attr-src="'/api/v1/workspaces/' + encodeURIComponent(team.id) + '/logo'"
+                          alt=""
+                          class="size-full object-cover"
+                      /></template>
+                      <span class-hidden="team.logoUrl"
+                        >{{ String(team.name || 'W').trim().slice(0, 1).toUpperCase() }}</span
+                      >
+                    </span>
                     <span class="truncate">{{ team.name }}</span>
                     <span
                       if="team.role === 'admin'"

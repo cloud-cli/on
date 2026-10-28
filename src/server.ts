@@ -45,6 +45,7 @@ import { renderErrorPage, type ErrorPageOptions } from "../ui/error-page.js";
 import { OidcUserRepository } from "./oidc-user-repository.js";
 import { UserPreferencesRepository } from "./user-preferences.js";
 import { TeamRepository } from "./teams.js";
+import { isValidWorkspaceLogo, MAX_WORKSPACE_LOGO_BYTES } from "./workspace-logo.js";
 import { WorkspaceWebhookRepository } from "./workspace-webhook-repository.js";
 import { RunnerRegistry } from "./runner-registry.js";
 import { memberViewForCaller, PrincipalRepository } from "./principals.js";
@@ -3924,6 +3925,66 @@ sessionStorage.removeItem('runner-pending-team-invite');
     const workspaceApi = url.pathname === "/api/workspaces" || url.pathname.startsWith("/api/workspaces/");
     const basePath = workspaceApi ? "/api/workspaces" : "/api/teams";
     const prefix = workspaceApi ? "workspaces" : "teams";
+
+    const logoMatch = url.pathname.match(/^\/api\/(?:v1\/)?workspaces\/([^/]+)\/logo$/);
+    if (logoMatch && (req.method === "GET" || req.method === "PUT")) {
+      const teamId = decodeURIComponent(logoMatch[1]);
+      const authorized = await this.authorizer.workspace(
+        req,
+        res,
+        req.method === "GET" ? "workspace.view" : "settings.manage",
+        teamId,
+      );
+      if (!authorized) {
+        return;
+      }
+      if (req.method === "GET") {
+        const logo = await this.teams.workspaceLogo(teamId);
+        if (!logo) {
+          res.writeHead(404).end();
+          return;
+        }
+        res
+          .writeHead(200, {
+            "Content-Type": logo.mimeType,
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+          })
+          .end(logo.data);
+        return;
+      }
+      const contentType = String(req.headers["content-type"] || "")
+        .split(";", 1)[0]
+        .trim()
+        .toLowerCase();
+      if (contentType !== "application/json") {
+        res.writeHead(415, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "JSON is required" }));
+        return;
+      }
+      const body = await this.readJson(req, res, Math.ceil((MAX_WORKSPACE_LOGO_BYTES * 4) / 3) + 1024);
+      if (!body || typeof body.mimeType !== "string" || typeof body.data !== "string") {
+        if (!res.headersSent) {
+          res.writeHead(400).end(JSON.stringify({ error: "mimeType and base64 data are required" }));
+        }
+        return;
+      }
+      const data = Buffer.from(body.data, "base64");
+      if (data.toString("base64") !== body.data || !isValidWorkspaceLogo(body.mimeType, data)) {
+        res
+          .writeHead(400, { "Content-Type": "application/json" })
+          .end(JSON.stringify({ error: "Invalid image type, encoding, or size" }));
+        return;
+      }
+      await this.teams.setWorkspaceLogo(teamId, body.mimeType, data);
+      await this.principals.recordAudit({
+        actor: authorized.principal.subject,
+        action: "workspace.logo.update",
+        target: teamId,
+        teamId,
+      });
+      res.writeHead(204).end();
+      return;
+    }
 
     if (url.pathname === basePath && req.method === "GET") {
       const isAdmin = await this.authorizer.hasOidcAdmin(req, context.principal);

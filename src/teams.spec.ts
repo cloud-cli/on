@@ -112,3 +112,28 @@ describe("team invitations", () => {
     ]);
   });
 });
+
+describe("workspace logos", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("stores and replaces image bytes scoped to one workspace", async () => {
+    const repository = new TeamRepository();
+    const bytes = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
+      "base64",
+    );
+    await repository.setWorkspaceLogo("workspace-a", "image/png", bytes);
+    expect(database.run.mock.calls[0][0]).toContain("ON CONFLICT(team_id) DO UPDATE");
+    expect(database.run.mock.calls[0][1]).toEqual(["workspace-a", "image/png", bytes.toString("base64")]);
+    database.get.mockResolvedValue({ mime_type: "image/png", data: bytes.toString("base64") });
+    expect(await repository.workspaceLogo("workspace-a")).toEqual({ mimeType: "image/png", data: bytes });
+    expect(database.get.mock.calls[0][1]).toEqual(["workspace-a"]);
+  });
+
+  it("rejects malformed logos before they reach the database", async () => {
+    await expect(
+      new TeamRepository().setWorkspaceLogo("workspace-a", "image/png", Buffer.from("not an image")),
+    ).rejects.toThrow("Invalid workspace logo image");
+    expect(database.run).not.toHaveBeenCalled();
+  });
+});

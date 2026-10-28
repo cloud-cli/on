@@ -11,6 +11,10 @@ export default function () {
   const isAdmin = ref(false);
   const canManage = ref(false);
   const teamName = ref("");
+  const logoUrl = ref(null);
+  const logoEndpoint = ref("");
+  const workspaceInitial = ref("W");
+  const logoMessage = ref("");
   const newTeamName = ref("");
   const inviteEmail = ref("");
   const inviteSubject = ref("");
@@ -54,6 +58,36 @@ export default function () {
     return result;
   };
   const workspaceUrl = (suffix = "") => `/api/v1/workspaces/${encodeURIComponent(teamId)}${suffix}`;
+  const uploadLogo = (event) =>
+    act(async () => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) {
+        return;
+      }
+      if (!isAdmin.value) {
+        throw new Error("Only workspace admins can upload a logo.");
+      }
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+        throw new Error("Choose a PNG, JPEG, or WebP image.");
+      }
+      if (file.size > 256 * 1024) {
+        throw new Error("Logo images must be 256 KiB or smaller.");
+      }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let binary = "";
+      for (let index = 0; index < bytes.length; index += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+      }
+      await request(workspaceUrl("/logo"), {
+        method: "PUT",
+        body: JSON.stringify({ mimeType: file.type, data: btoa(binary) }),
+      });
+      logoUrl.value = workspaceUrl(`/logo?updated=${Date.now()}`);
+      logoEndpoint.value = logoUrl.value;
+      logoMessage.value = "Workspace logo updated.";
+      error.value = "";
+    });
   const load = async () => {
     const permissions = await request(workspaceUrl("/permissions"));
     members.value = permissions.members || [];
@@ -346,6 +380,12 @@ export default function () {
       }
 
       teamName.value = team.name;
+      logoUrl.value = team.logoUrl || null;
+      logoEndpoint.value = logoUrl.value ? workspaceUrl("/logo") : "";
+      workspaceInitial.value = String(team.name || "W")
+        .trim()
+        .slice(0, 1)
+        .toUpperCase();
       isAdmin.value = team.role === "admin";
       await load();
     } catch (reason) {
@@ -356,6 +396,11 @@ export default function () {
   return {
     teamId,
     teamName,
+    logoUrl,
+    logoEndpoint,
+    workspaceInitial,
+    logoMessage,
+    uploadLogo,
     newTeamName,
     setNewTeamName,
     renameWorkspace,

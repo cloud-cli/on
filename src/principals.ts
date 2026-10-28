@@ -366,7 +366,15 @@ export class PrincipalRepository {
   /** Workspaces visible to one principal, with the capabilities they hold there. */
   async workspaceListFor(
     subject: string,
-  ): Promise<Array<{ id: string; name: string; role: WorkspaceRole; capabilities: WorkspaceCapability[] }>> {
+  ): Promise<
+    Array<{
+      id: string;
+      name: string;
+      role: WorkspaceRole;
+      logoUrl: string | null;
+      capabilities: WorkspaceCapability[];
+    }>
+  > {
     const rows = await this.workspacesFor(subject);
     return Promise.all(
       rows.map(async (workspace) => {
@@ -376,9 +384,14 @@ export class PrincipalRepository {
     );
   }
 
-  async workspacesFor(subject: string): Promise<Array<{ id: string; name: string; role: WorkspaceRole }>> {
+  async workspacesFor(
+    subject: string,
+  ): Promise<Array<{ id: string; name: string; role: WorkspaceRole; logoUrl: string | null }>> {
     const rows = await db.all(
-      `SELECT t.id, t.name, m.role FROM teams t JOIN team_members m ON m.team_id = t.id
+      `SELECT t.id, t.name, m.role,
+         CASE WHEN l.team_id IS NULL THEN NULL ELSE '/api/v1/workspaces/' || t.id || '/logo' END AS logoUrl
+       FROM teams t JOIN team_members m ON m.team_id = t.id
+       LEFT JOIN workspace_logos l ON l.team_id = t.id
        WHERE m.subject = ? ORDER BY t.name`,
       [subject],
     );
@@ -386,6 +399,7 @@ export class PrincipalRepository {
       id: row.id,
       name: row.name,
       role: isWorkspaceRole(row.role) ? row.role : roleFromLegacyMemberRole(row.role),
+      logoUrl: row.logoUrl ?? null,
     }));
   }
 }

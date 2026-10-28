@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import db from "./db-client.js";
+import { isValidWorkspaceLogo } from "./workspace-logo.js";
 
 const opaque = (bytes = 32) => crypto.randomBytes(bytes).toString("base64url");
 const digest = (value: string) => crypto.createHash("sha256").update(value).digest("hex");
@@ -9,14 +10,32 @@ export type TeamRole = "viewer" | "collaborator" | "admin";
 /** Persistence primitives for team membership and one-use, email-bound invitations. */
 export class TeamRepository {
   async listAll() {
-    return db.all("SELECT id, name FROM teams ORDER BY name");
+    return db.all(
+      "SELECT t.id, t.name, CASE WHEN l.team_id IS NULL THEN NULL ELSE '/api/v1/workspaces/' || t.id || '/logo' END AS logoUrl FROM teams t LEFT JOIN workspace_logos l ON l.team_id = t.id ORDER BY t.name",
+    );
   }
 
   async listForUser(subject: string) {
     return db.all(
-      `SELECT t.id, t.name, m.role FROM teams t JOIN team_members m ON m.team_id = t.id
+      `SELECT t.id, t.name, m.role, CASE WHEN l.team_id IS NULL THEN NULL ELSE '/api/v1/workspaces/' || t.id || '/logo' END AS logoUrl FROM teams t JOIN team_members m ON m.team_id = t.id LEFT JOIN workspace_logos l ON l.team_id = t.id
        WHERE m.subject = ? ORDER BY t.name`,
       [subject],
+    );
+  }
+
+  async workspaceLogo(teamId: string): Promise<{ mimeType: string; data: Buffer } | null> {
+    const row = await db.get("SELECT mime_type, data FROM workspace_logos WHERE team_id = ?", [teamId]);
+    return row ? { mimeType: row.mime_type, data: Buffer.from(row.data, "base64") } : null;
+  }
+
+  async setWorkspaceLogo(teamId: string, mimeType: string, data: Buffer): Promise<void> {
+    if (!isValidWorkspaceLogo(mimeType, data)) {
+      throw new Error("Invalid workspace logo image");
+    }
+    await db.run(
+      `INSERT INTO workspace_logos (team_id, mime_type, data) VALUES (?, ?, ?)
+       ON CONFLICT(team_id) DO UPDATE SET mime_type = excluded.mime_type, data = excluded.data, updated_at = CURRENT_TIMESTAMP`,
+      [teamId, mimeType, data.toString("base64")],
     );
   }
 
