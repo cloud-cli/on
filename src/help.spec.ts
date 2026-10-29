@@ -24,7 +24,7 @@ describe("workflow help", () => {
     expect(html).not.toContain("[object Object]");
     expect(html).toMatch(/<td class="[^"]*"><code[^>]*>inputs<\/code><\/td>/);
     expect(html).toMatch(/<h3 id="environment-and-expressions"[^>]*>Environment and Expressions<\/h3>/);
-    expect(html).toContain('<li class="pl-1">');
+    expect(html).toContain('href="#environment-and-expressions"');
     expect(html).toContain("&lt;base64 file bytes&gt;");
   });
 

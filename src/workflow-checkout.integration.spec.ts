@@ -15,7 +15,7 @@ describe("documented workflow checkout", () => {
   });
 
   it("checks out the requested commit after its branch has moved", () => {
-    const workflowSyntax = readFileSync(new URL("../docs/workflow-syntax.md", import.meta.url), "utf8");
+    const workflowSyntax = readFileSync(new URL("../docs/reference/workflow-syntax.md", import.meta.url), "utf8");
     expect(workflowSyntax).toContain('git clone --depth 1 "$clone_url" .');
     expect(workflowSyntax).toContain('git fetch --depth 1 origin "$commit_sha"');
     expect(workflowSyntax).toContain('git checkout --detach "$commit_sha"');
@@ -58,7 +58,7 @@ describe("documented workflow checkout", () => {
   });
 
   it("does not substitute a lagging mirror's branch head when the requested commit is absent", () => {
-    const workflowSyntax = readFileSync(new URL("../docs/workflow-syntax.md", import.meta.url), "utf8");
+    const workflowSyntax = readFileSync(new URL("../docs/reference/workflow-syntax.md", import.meta.url), "utf8");
     expect(workflowSyntax).toContain('git fetch --depth 1 origin "$commit_sha"');
     expect(workflowSyntax).toContain('git checkout --detach "$commit_sha"');
     tempDirectory = mkdtempSync(join(tmpdir(), "workflow-lagging-mirror-"));

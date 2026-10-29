@@ -1,5 +1,5 @@
 import { marked } from "marked";
-import workflowDocs from "../docs/workflow-syntax.md?raw";
+import workflowDocs from "../docs/workflow-help.md?raw";
 export { workflowDocs };
 
 export function renderHelpHtml(embed = false): string {
