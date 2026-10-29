@@ -114,7 +114,7 @@ export default function setup() {
     channelsStatus.value = "Loading Streams…";
     try {
       const response = await apiFetch("/api/v1/streams", {
-        headers: { accept: "application/json", "X-Team-ID": workspaceId },
+        headers: { accept: "application/json", "X-Workspace-ID": workspaceId },
       });
       if (!response.ok) {
         throw new Error(`Unable to load Streams (${response.status}).`);

@@ -272,7 +272,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       headers: {
         accept: "application/json",
         "content-type": "application/json",
-        ...(routedWorkspaceId ? { "X-Team-ID": routedWorkspaceId } : {}),
+        ...(routedWorkspaceId ? { "X-Workspace-ID": routedWorkspaceId } : {}),
         ...requestHeaders,
       },
     });

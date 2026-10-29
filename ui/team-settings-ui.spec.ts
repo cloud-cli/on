@@ -95,7 +95,7 @@ describe("team settings UI", () => {
     expect(setup).toContain("JSON.stringify({ subject })");
     expect(setup).toContain("createSubjectInvitation");
     expect(setup).toContain('workspaceUrl("/webhooks")');
-    expect(setup).toContain('"X-Team-ID": teamId');
+    expect(setup).toContain('"X-Workspace-ID": teamId');
     expect(setup).toContain("You are not a member of this workspace.");
   });
 
@@ -145,7 +145,7 @@ describe("team settings UI", () => {
     expect(html).not.toContain("Agents &amp; tokens");
     expect(html).toContain("Task Runner Secrets");
     expect(setup).toContain("/api/v1/secrets/");
-    expect(setup).toContain('"X-Team-ID": teamId');
+    expect(setup).toContain('"X-Workspace-ID": teamId');
     expect(setup).not.toMatch(/system-users|tokens/);
     expect(generateSettingsHtml()).not.toContain("Agents &amp; tokens");
     expect(generateSettingsHtml()).not.toContain("Secrets");

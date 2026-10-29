@@ -16,7 +16,7 @@ describe("channels UI", () => {
     expect(source).toContain("/api/v1/channels/${encodeURIComponent(channelId)}/messages?");
     expect(source).not.toContain("/api/v1/streams/${encodeURIComponent(channelId)}/messages?");
     expect(source).toContain('query.set("after", after)');
-    expect(source).toContain('"X-Team-ID": routedWorkspaceId');
+    expect(source).toContain('"X-Workspace-ID": routedWorkspaceId');
     expect(source).toContain("Request failed (${response.status})");
     expect(router).toContain("matchRoute(window.location.href)");
     expect(routes).toContain('pattern: "/channels"');
@@ -34,7 +34,7 @@ describe("channels UI", () => {
     expect(source).toMatch(
       /routeParams\.workspaceId\s*\|\|\s*routeParams\.teamId\s*\|\|\s*localStorage\.getItem\("runner-team-id"\)/,
     );
-    expect(source).toContain('"X-Team-ID": routedWorkspaceId');
+    expect(source).toContain('"X-Workspace-ID": routedWorkspaceId');
     expect(source).toContain("selectionGeneration");
     expect(source).toContain("You're up to date.");
     expect(source).toContain("const refreshMessages = async () =>");

@@ -162,7 +162,7 @@ describe("On application shell", () => {
     expect(html).toContain('for="channel of workspaceChannels"');
     expect(html).toContain("workspacePath(selectedWorkspaceId, 'channels') + '/' + encodeURIComponent(channel.id)");
     expect(shellSetup).toContain('apiFetch("/api/v1/streams"');
-    expect(shellSetup).toContain('"X-Team-ID": workspaceId');
+    expect(shellSetup).toContain('"X-Workspace-ID": workspaceId');
     expect(shellSetup).toContain("result.streams || []");
     expect(shellSetup).toContain("channelsStatus");
     expect(shellSetup).toContain("channelsEmpty.value = workspaceChannels.value.length === 0");

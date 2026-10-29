@@ -12,7 +12,7 @@ request schemas, responses, and authentication requirements; do not infer routes
 - Browser access uses the OIDC session created by `/auth/login` and `/auth/callback`.
 - API access can use an approved Bearer token. The token identifies a principal; it does not bypass workspace
   membership.
-- Workspace-scoped requests identify their workspace through `X-Team-ID` where the operation does not include it
+- Workspace-scoped requests identify their workspace through `X-Workspace-ID` where the operation does not include it
   in the path. The server checks the principal's current membership and capability on each request.
 - Runner routes use the individual runner's Bearer credential. Lease operations also require the lease token
   described by the OpenAPI schema.

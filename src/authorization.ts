@@ -31,7 +31,7 @@ function requestedTeamId(req: http.IncomingMessage, override?: string): string {
   if (override) {
     return override;
   }
-  const header = typeof req.headers["x-team-id"] === "string" ? req.headers["x-team-id"].trim() : "";
+  const header = typeof req.headers["x-workspace-id"] === "string" ? req.headers["x-workspace-id"].trim() : "";
   if (header) {
     return header;
   }
@@ -170,7 +170,7 @@ export class RequestAuthorizer {
     }
     const teamId = requestedTeamId(req, teamIdOverride);
     if (!teamId) {
-      deny(res, 400, "X-Team-ID is required");
+      deny(res, 400, "X-Workspace-ID is required");
       return null;
     }
     if (await this.hasOidcAdmin(req, context.principal)) {

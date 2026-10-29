@@ -127,10 +127,10 @@ describe("workflow management UI", () => {
     expect(workflowsSetup).toContain("routeParams.workspaceId ||");
     expect(workflowsSetup).toContain("routeParams.teamId ||");
     expect(workflowsSetup).toContain('params.get("workspaceId") ||');
-    expect(workflowsSetup).toContain('api("/api/v1/workflows", { headers: { "X-Team-ID": routedWorkspaceId } })');
-    expect(workflowsSetup).toContain('headers: { "X-Team-ID": workspace.id }');
-    expect(workflowsSetup).toContain('api("/api/v1/workflows", { headers: { "X-Team-ID": workspace.id } })');
-    expect(workflowsSetup).toContain('"X-Team-ID": selectedWorkspaceId.value');
+    expect(workflowsSetup).toContain('api("/api/v1/workflows", { headers: { "X-Workspace-ID": routedWorkspaceId } })');
+    expect(workflowsSetup).toContain('headers: { "X-Workspace-ID": workspace.id }');
+    expect(workflowsSetup).toContain('api("/api/v1/workflows", { headers: { "X-Workspace-ID": workspace.id } })');
+    expect(workflowsSetup).toContain('"X-Workspace-ID": selectedWorkspaceId.value');
     expect(workflowsSetup).not.toContain('"/api/workflows');
     expect(workflowsSetup).toContain("Choose a workspace before saving this workflow.");
     expect(workflowsSetup).toContain("persistWorkspaceSelection(selectedWorkspaceId.value)");
@@ -174,8 +174,8 @@ describe("workflow management UI", () => {
     expect(source).toContain('page === "editor"');
     expect(source).toMatch(/workflowPath\[2\] !== ['"]new['"]/);
     expect(source).toContain('routeParams.workflowId === "new" ? "" : routeParams.workflowId');
-    expect(source).toContain("const initialId = routedWorkflowId || params.get(\"id\") || pathWorkflowId");
-    expect(source).toContain("const revisionParam = routeParams.revision ?? params.get(\"revision\")");
+    expect(source).toContain('const initialId = routedWorkflowId || params.get("id") || pathWorkflowId');
+    expect(source).toContain('const revisionParam = routeParams.revision ?? params.get("revision")');
   });
 
   it("does not render settings navigation on workflow management pages", () => {

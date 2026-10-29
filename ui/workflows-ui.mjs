@@ -124,7 +124,7 @@ export default function () {
 
   const api = async (url, options = {}) => {
     const requestHeaders = {
-      "X-Team-ID": selectedWorkspaceId.value,
+      "X-Workspace-ID": selectedWorkspaceId.value,
       ...(options.headers || {}),
     };
     const response = await apiFetch(url, {
@@ -162,8 +162,8 @@ export default function () {
   const loadWorkflows = async () => {
     if (routedWorkspaceId) {
       const [{ workspaces = [] }, { workflows: workspaceWorkflows = [] }] = await Promise.all([
-        api("/api/v1/workspaces", { headers: { "X-Team-ID": "" } }),
-        api("/api/v1/workflows", { headers: { "X-Team-ID": routedWorkspaceId } }),
+        api("/api/v1/workspaces", { headers: { "X-Workspace-ID": "" } }),
+        api("/api/v1/workflows", { headers: { "X-Workspace-ID": routedWorkspaceId } }),
       ]);
       const workspace = workspaces.find((item) => item.id === routedWorkspaceId);
       if (!workspace) {
@@ -176,11 +176,11 @@ export default function () {
       }));
       return;
     }
-    const { workspaces = [] } = await api("/api/v1/workspaces", { headers: { "X-Team-ID": "" } });
+    const { workspaces = [] } = await api("/api/v1/workspaces", { headers: { "X-Workspace-ID": "" } });
     const results = await Promise.all(
       workspaces.map(async (workspace) => {
         try {
-          const data = await api("/api/v1/workflows", { headers: { "X-Team-ID": workspace.id } });
+          const data = await api("/api/v1/workflows", { headers: { "X-Workspace-ID": workspace.id } });
           return (data.workflows || []).map((workflow) => ({
             ...workflow,
             workspaceId: workspace.id,
@@ -213,7 +213,7 @@ export default function () {
   const loadWorkspaceOptions = async () => {
     workspacesLoading.value = true;
     try {
-      const { workspaces: result = [] } = await api("/api/v1/workspaces", { headers: { "X-Team-ID": "" } });
+      const { workspaces: result = [] } = await api("/api/v1/workspaces", { headers: { "X-Workspace-ID": "" } });
       availableWorkspaces.value = result;
       const currentSelectionExists = result.some((workspace) => workspace.id === selectedWorkspaceId.value);
       if (!currentSelectionExists) {
@@ -239,7 +239,7 @@ export default function () {
         }
         await api(`/api/v1/workflows/${selectedId.value}/transfer`, {
           method: "POST",
-          headers: { "X-Team-ID": sourceWorkspaceId },
+          headers: { "X-Workspace-ID": sourceWorkspaceId },
           body: JSON.stringify({ targetWorkspaceId: workspaceId }),
         });
         selectedWorkspaceId.value = workspaceId;

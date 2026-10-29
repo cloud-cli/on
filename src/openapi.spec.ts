@@ -120,6 +120,7 @@ describe("OpenAPI specification", () => {
   });
 
   it("documents scoped workflow access and OIDC-session secret settings", () => {
+    expect(spec.components.parameters.WorkspaceId.name).toBe("X-Workspace-ID");
     expect(spec.components.securitySchemes.oidcSessionCookie).toEqual({
       type: "apiKey",
       in: "cookie",

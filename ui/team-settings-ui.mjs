@@ -48,7 +48,7 @@ export default function () {
         accept: "application/json",
         ...(options.body ? { "content-type": "application/json" } : {}),
         ...options.headers,
-        "X-Team-ID": teamId,
+        "X-Workspace-ID": teamId,
       },
     });
     const result = response.status === 204 ? {} : await response.json().catch(() => ({}));

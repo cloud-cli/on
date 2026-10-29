@@ -329,7 +329,7 @@ test("workspace channel deep link restores the selected transcript", async ({ pa
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    requests.push({ url: url.pathname, team: request.headers()["x-team-id"] });
+    requests.push({ url: url.pathname, workspace: request.headers()["x-workspace-id"] });
     let body = {};
     if (url.pathname === "/api/v1/auth/token") {
       body = {
@@ -360,7 +360,9 @@ test("workspace channel deep link restores the selected transcript", async ({ pa
   await expect(page.getByText("Deep-linked transcript")).toBeVisible();
   await expect(page.getByRole("button", { name: "Wanted" })).toHaveAttribute("aria-pressed", "true");
   await expect(page).toHaveURL(/\/ui\/workspaces\/team-a\/channels\/wanted$/);
-  expect(requests.filter(({ url }) => url.endsWith("/messages")).every(({ team }) => team === "team-a")).toBe(true);
+  expect(requests.filter(({ url }) => url.endsWith("/messages")).every(({ workspace }) => workspace === "team-a")).toBe(
+    true,
+  );
 });
 
 test("channel deep links fail closed when the channel is absent from the authorized workspace", async ({ page }) => {
@@ -910,7 +912,7 @@ for (const viewport of [
           ],
         };
       } else if (url.pathname === "/api/v1/runs/42") {
-        runStatusRequests.push(route.request().headers()["x-team-id"]);
+        runStatusRequests.push(route.request().headers()["x-workspace-id"]);
         data = {
           status: runStatusRequests.length === 1 ? "running" : "success",
           jobId: "42",

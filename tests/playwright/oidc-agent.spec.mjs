@@ -365,7 +365,7 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
 
     stage = "canonical-stream-thread-api";
     const streamsUrl = `${appOrigin}/api/v1/streams`;
-    const workspaceHeaders = { "X-Team-ID": workspaceId, Origin: appOrigin };
+    const workspaceHeaders = { "X-Workspace-ID": workspaceId, Origin: appOrigin };
     stage = "canonical-stream-list-status";
     let streamList = await page.request.get(streamsUrl, { headers: workspaceHeaders });
     expect(streamList.status()).toBe(200);
@@ -416,11 +416,11 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     const persistedThreads = await page.request.get(threadUrl, { headers: workspaceHeaders });
     expect((await persistedThreads.json()).threads.map(({ id }) => id)).toContain(thread.id);
     const foreignStreamThreads = await page.request.get(`${streamsUrl}/${encodeURIComponent(stream.id)}/threads`, {
-      headers: { "X-Team-ID": foreignWorkspaceId },
+      headers: { "X-Workspace-ID": foreignWorkspaceId },
     });
     expect([403, 404]).toContain(foreignStreamThreads.status());
     stage = "canonical-message-foreign-workspace";
-    const foreignMessages = await page.request.get(messagesUrl, { headers: { "X-Team-ID": foreignWorkspaceId } });
+    const foreignMessages = await page.request.get(messagesUrl, { headers: { "X-Workspace-ID": foreignWorkspaceId } });
     expect([403, 404]).toContain(foreignMessages.status());
 
     stage = "permission-denial";

@@ -33,12 +33,14 @@ function makeServer(capabilities = ["webhooks.manage", "webhooks.view", "workflo
     },
     domainEventRepository: new DomainEventRepository(),
     domainEventDeliveryRepository: new DomainEventDeliveryRepository(),
-    queue: { getJobForTeam: vi.fn(async (_teamId: string, jobId: string) => ({
-      id: Number(jobId),
-      status: "success",
-      created_at: "2026-01-01T00:00:00.000Z",
-      updated_at: "2026-01-01T00:01:00.000Z",
-    })) },
+    queue: {
+      getJobForTeam: vi.fn(async (_teamId: string, jobId: string) => ({
+        id: Number(jobId),
+        status: "success",
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:01:00.000Z",
+      })),
+    },
     workflowsLoaded: Promise.resolve(),
     readJson: vi.fn(async (req: any) => req.body ?? null),
     principals: { recordAudit: vi.fn(async () => {}) },
@@ -54,7 +56,7 @@ async function request(server: any, method: string, path: string, body?: unknown
       method,
       url: path,
       body,
-      headers: { host: "app.test", "x-team-id": "workspace-a" },
+      headers: { host: "app.test", "x-workspace-id": "workspace-a" },
     },
     res,
   );

@@ -127,20 +127,24 @@ describe("RequestAuthorizer", () => {
     let res = response();
     expect(await auth.workspace(request({ cookie: "sid" }), res as any, "workflows.view")).toBeNull();
     expect(res.writeHead).toHaveBeenCalledWith(400, expect.anything());
-    expect(error(res)).toBe("X-Team-ID is required");
+    expect(error(res)).toBe("X-Workspace-ID is required");
     principals.membership.mockResolvedValue(null);
     res = response();
-    expect(await auth.workspace(request({ cookie: "sid", "x-team-id": "t" }), res as any, "workflows.view")).toBeNull();
+    expect(
+      await auth.workspace(request({ cookie: "sid", "x-workspace-id": "t" }), res as any, "workflows.view"),
+    ).toBeNull();
     expect(res.writeHead).toHaveBeenCalledWith(404, expect.anything());
     expect(error(res)).toBe("Workspace not found");
     principals.membership.mockResolvedValue({ role: "viewer", capabilities: [] });
     res = response();
-    expect(await auth.workspace(request({ cookie: "sid", "x-team-id": "t" }), res as any, "workflows.view")).toBeNull();
+    expect(
+      await auth.workspace(request({ cookie: "sid", "x-workspace-id": "t" }), res as any, "workflows.view"),
+    ).toBeNull();
     expect(error(res)).toContain("workflows.view");
     principals.membership.mockResolvedValue({ role: "viewer", capabilities: ["workflows.view"] });
     expect(
       await auth.workspace(
-        request({ cookie: "sid", "x-team-id": "header" }),
+        request({ cookie: "sid", "x-workspace-id": "header" }),
         response() as any,
         "workflows.view",
         "override",
@@ -168,7 +172,7 @@ describe("RequestAuthorizer", () => {
     ).not.toBeNull();
     principals.membership.mockResolvedValue({ role: "viewer", capabilities: ["workflows.view"] });
     expect(
-      await auth.legacyScope(request({ cookie: "sid", "x-team-id": "t" }), response() as any, "workflows:read"),
+      await auth.legacyScope(request({ cookie: "sid", "x-workspace-id": "t" }), response() as any, "workflows:read"),
     ).toMatchObject({ teamId: "t" });
     expect(await auth.legacyScope(request({ cookie: "sid" }), response() as any, "workers:read")).not.toBeNull();
     const unknown = response();
@@ -178,7 +182,7 @@ describe("RequestAuthorizer", () => {
 
   it("grants platform-wide workspace and platform capabilities only to an active OIDC admin token", async () => {
     const { auth, oidc, principals } = setup();
-    const tokenRequest = request({ authorization: "Bearer oidc-admin", "x-team-id": "unrelated-workspace" });
+    const tokenRequest = request({ authorization: "Bearer oidc-admin", "x-workspace-id": "unrelated-workspace" });
     oidc.userFromAccessToken.mockResolvedValue({ id: "automation-user" });
     oidc.scopesForToken.mockResolvedValue(["openid", "admin"]);
     oidc.identityForToken.mockResolvedValue({ subject: "automation-user", scopes: ["openid", "admin"] });
@@ -202,7 +206,7 @@ describe("RequestAuthorizer", () => {
 
   it("does not elevate inactive, non-admin, API-key, or disabled credentials", async () => {
     const { auth, oidc, principals } = setup();
-    const tokenRequest = request({ authorization: "Bearer token", "x-team-id": "workspace" });
+    const tokenRequest = request({ authorization: "Bearer token", "x-workspace-id": "workspace" });
     oidc.userFromAccessToken.mockResolvedValue({ id: "automation-user" });
     principals.tokenPrincipal.mockResolvedValue(null);
     principals.principal.mockResolvedValue(human("automation-user"));
@@ -247,7 +251,7 @@ describe("RequestAuthorizer", () => {
 
     await expect(
       auth.workspace(
-        request({ cookie: "sid", authorization: "Bearer oidc-admin", "x-team-id": "workspace" }),
+        request({ cookie: "sid", authorization: "Bearer oidc-admin", "x-workspace-id": "workspace" }),
         res as any,
         "secrets.manage",
       ),

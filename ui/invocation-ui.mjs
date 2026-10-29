@@ -33,7 +33,7 @@ export function mountInvocation(root, routeParams = root.routeParams || {}) {
   root.replaceChildren(back, heading, status, summary, variants);
 
   const load = async () => {
-    const headers = { accept: "application/json", "X-Team-ID": workspaceId };
+    const headers = { accept: "application/json", "X-Workspace-ID": workspaceId };
     try {
       const response = await apiFetch(`/api/v1/workflow-invocations/${encodeURIComponent(invocationId)}`, { headers });
       const data = await response.json().catch(() => ({}));
@@ -100,7 +100,7 @@ export function mountInvocation(root, routeParams = root.routeParams || {}) {
     const requestVersion = requestVersionFor(target);
     try {
       const response = await apiFetch(`/api/v1/runs/${encodeURIComponent(runId)}`, {
-        headers: { accept: "application/json", "X-Team-ID": workspaceId },
+        headers: { accept: "application/json", "X-Workspace-ID": workspaceId },
       });
       const report = await response.json().catch(() => ({}));
       if (!response.ok) {

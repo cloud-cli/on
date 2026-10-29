@@ -518,7 +518,7 @@
       "get": {
         "tags": ["workflows"],
         "summary": "List workflows through the scoped API",
-        "description": "Requires an OIDC session or a bearer token with the workflows:read scope, plus the selected workspace. API keys are bound to their workspace; OIDC requests provide X-Team-ID.",
+        "description": "Requires an OIDC session or a bearer token with the workflows:read scope, plus the selected workspace. API keys are bound to their workspace; OIDC requests provide X-Workspace-ID.",
         "security": [
           {
             "oidcSessionCookie": []
@@ -634,7 +634,7 @@
       "post": {
         "tags": ["workflows"],
         "summary": "Move an unexecuted workflow draft to another workspace",
-        "description": "Requires workflows.edit in both the source workspace (X-Team-ID) and target workspace. Published or executed workflows cannot be transferred.",
+        "description": "Requires workflows.edit in both the source workspace (X-Workspace-ID) and target workspace. Published or executed workflows cannot be transferred.",
         "security": [
           {
             "oidcSessionCookie": []
@@ -687,7 +687,7 @@
       "get": {
         "tags": ["workflows"],
         "summary": "Get a workflow or historical revision through the scoped API",
-        "description": "Requires an OIDC session or a bearer token with the workflows:read scope, plus the selected workspace. API keys are bound to their workspace; OIDC requests provide X-Team-ID.",
+        "description": "Requires an OIDC session or a bearer token with the workflows:read scope, plus the selected workspace. API keys are bound to their workspace; OIDC requests provide X-Workspace-ID.",
         "security": [
           {
             "oidcSessionCookie": []
@@ -738,7 +738,7 @@
       "put": {
         "tags": ["workflows"],
         "summary": "Save a workflow draft through the scoped API",
-        "description": "Requires an OIDC session or a bearer token with the workflows:write scope, plus the selected workspace. API keys are bound to their workspace; OIDC requests provide X-Team-ID. Saving a draft does not publish it.",
+        "description": "Requires an OIDC session or a bearer token with the workflows:write scope, plus the selected workspace. API keys are bound to their workspace; OIDC requests provide X-Workspace-ID. Saving a draft does not publish it.",
         "security": [
           {
             "oidcSessionCookie": []
@@ -796,7 +796,7 @@
       "delete": {
         "tags": ["workflows"],
         "summary": "Delete a workflow and its revisions through the scoped API",
-        "description": "Requires an OIDC session or a bearer token with the workflows:write scope, plus the selected workspace. API keys are bound to their workspace; OIDC requests provide X-Team-ID.",
+        "description": "Requires an OIDC session or a bearer token with the workflows:write scope, plus the selected workspace. API keys are bound to their workspace; OIDC requests provide X-Workspace-ID.",
         "security": [
           {
             "oidcSessionCookie": []
@@ -4448,7 +4448,7 @@
         }
       },
       "WorkspaceId": {
-        "name": "X-Team-ID",
+        "name": "X-Workspace-ID",
         "in": "header",
         "description": "Workspace ID. Required for OIDC sessions; API keys are restricted to their bound workspace.",
         "required": false,

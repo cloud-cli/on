@@ -7,7 +7,7 @@ runner labels, or a network boundary as a sandbox for untrusted code.
 
 OIDC identifies people. Workspace membership and capabilities authorize access to workflows, logs, secrets,
 webhooks, and runners. A user or token must still be a member of the requested workspace; an identifier or
-`X-Team-ID` header does not grant access. Shared runners receive a workspace's jobs only after an explicit grant.
+`X-Workspace-ID` header does not grant access. Shared runners receive a workspace's jobs only after an explicit grant.
 
 Runner labels are scheduling metadata, not authorization. Do not assign a sensitive workload to a broad shared
 runner without granting and isolation policy appropriate to that workspace.

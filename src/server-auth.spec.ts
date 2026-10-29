@@ -227,7 +227,7 @@ describe("current IAM route authorization", () => {
     } as any;
     const authorizer = new RequestAuthorizer(undefined, principals);
     const allowed = await authorizer.workspace(
-      request("/api/v1/jobs", "GET", { authorization: "Bearer token", "x-team-id": "workspace-a" }),
+      request("/api/v1/jobs", "GET", { authorization: "Bearer token", "x-workspace-id": "workspace-a" }),
       response(),
       "runs:read",
     );
@@ -236,7 +236,7 @@ describe("current IAM route authorization", () => {
     const denied = response();
     expect(
       await authorizer.workspace(
-        request("/api/v1/jobs", "GET", { authorization: "Bearer token", "x-team-id": "workspace-b" }),
+        request("/api/v1/jobs", "GET", { authorization: "Bearer token", "x-workspace-id": "workspace-b" }),
         denied,
         "runs:read",
       ),
@@ -246,7 +246,7 @@ describe("current IAM route authorization", () => {
 
     const scopeDenied = response();
     await authorizer.workspace(
-      request("/api/v1/jobs", "POST", { authorization: "Bearer token", "x-team-id": "workspace-a" }),
+      request("/api/v1/jobs", "POST", { authorization: "Bearer token", "x-workspace-id": "workspace-a" }),
       scopeDenied,
       "runs:control",
     );
@@ -266,7 +266,7 @@ describe("current IAM route authorization", () => {
     const members = { tokenPrincipal: vi.fn(async () => principal()), membership: vi.fn(async () => null) } as any;
     expect(
       await new RequestAuthorizer(undefined, members).workspace(
-        request("/api/v1/secrets", "GET", { authorization: "Bearer valid", "x-team-id": "private" }),
+        request("/api/v1/secrets", "GET", { authorization: "Bearer valid", "x-workspace-id": "private" }),
         inaccessible,
         "secrets:read",
       ),
