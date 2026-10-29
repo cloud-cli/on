@@ -4,6 +4,51 @@ import { processJob } from "./worker.js";
 import { SecretStore } from "./secrets.js";
 
 describe("incremental workflow reports", () => {
+  it("exposes webhook headers and restores raw input as a Buffer in eval context", async () => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+    };
+    const driver = { execute: vi.fn(), readLog: vi.fn(async () => "") };
+    const raw = Buffer.from([0, 255, 1]);
+    await processJob({
+      workerId: "webhook-context-worker",
+      job: {
+        id: 127,
+        workflow_id: "webhook-context",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "webhook-context-worker",
+        payload: JSON.stringify({
+          inputs: {},
+          headers: { "x-signature": "sig" },
+          inputsRaw: raw,
+        }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
+      config: { storagePath: "/tmp/webhook-context", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver,
+      workflow: {
+        id: "webhook-context",
+        name: "Webhook context",
+        on: { provider: "generic" },
+        steps: [{ id: "inspect", eval: "({ header: headers['x-signature'], bytes: inputsRaw.toString('hex') })" }],
+      },
+    } as Processable);
+
+    expect(queue.completeJob.mock.calls[0][2].steps[0].outputs).toEqual({
+      header: "sig",
+      bytes: "00ff01",
+    });
+  });
+
   it("does not invoke a driver when durable attempt start persistence fails", async () => {
     const queue = {
       saveReport: vi.fn(async () => {}),

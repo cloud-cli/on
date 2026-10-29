@@ -9,10 +9,17 @@ const payloadSecrets = new SecretRepository();
 const encryptPayload = (payload: JobPayload): string =>
   `enc:v1:${payloadSecrets.encryptValue(JSON.stringify(payload))}`;
 const decryptPayload = (payload: unknown): JobPayload => {
+  let decoded: JobPayload;
   if (typeof payload !== "string" || !payload.startsWith("enc:v1:")) {
-    return (typeof payload === "string" ? JSON.parse(payload) : payload) as JobPayload;
+    decoded = (typeof payload === "string" ? JSON.parse(payload) : payload) as JobPayload;
+  } else {
+    decoded = JSON.parse(payloadSecrets.decryptValue(payload.slice("enc:v1:".length))) as JobPayload;
   }
-  return JSON.parse(payloadSecrets.decryptValue(payload.slice("enc:v1:".length))) as JobPayload;
+  const raw = decoded?.inputsRaw as unknown;
+  if (raw && typeof raw === "object" && (raw as { type?: unknown }).type === "Buffer") {
+    decoded.inputsRaw = Buffer.from((raw as { data: number[] }).data);
+  }
+  return decoded;
 };
 
 function globMatches(value: unknown, pattern: string): boolean {

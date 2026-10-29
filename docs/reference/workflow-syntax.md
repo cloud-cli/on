@@ -85,6 +85,36 @@ on:
 An event subscription starts at its registration boundary; it does not implicitly replay prior events. See
 [Webhooks, domain events, and workspace data](../explanation/domain-events.md).
 
+### Provider-independent webhook intake
+
+Use `on.webhook` when a workflow should react to named webhook event headers without binding its trigger to the
+provider slug in the webhook URL. Signature verification still happens at ingress. The workflow can transform the
+original request and use `dispatch` to pass a normalized contract to a provider-agnostic workflow:
+
+```yaml
+id: github-push-intake
+name: GitHub push intake
+on:
+  webhook:
+    events: [push]
+steps:
+  - id: normalize
+    eval: |
+      ({
+        repository: JSON.parse(inputsRaw.toString('utf8')).repository.full_name,
+        clone_url: JSON.parse(inputsRaw.toString('utf8')).repository.clone_url,
+        commit_sha: JSON.parse(inputsRaw.toString('utf8')).after,
+        ref: JSON.parse(inputsRaw.toString('utf8')).ref
+      })
+  - id: build
+    dispatch: docker-build
+    with: "({ repository: steps.normalize.outputs.repository, clone_url: steps.normalize.outputs.clone_url, commit_sha: steps.normalize.outputs.commit_sha, ref: steps.normalize.outputs.ref })"
+```
+
+`on.webhook.events` is required and matches the event name (for GitHub, `x-github-event`). `dispatch` queues a
+published workflow in the same workspace through the existing authenticated, idempotent workflow invocation path.
+The target workflow should validate its input contract and check out the immutable commit, not a mutable branch head.
+
 ### Scheduled triggers
 
 Cron expressions use five fields and may specify an IANA timezone:
@@ -162,7 +192,11 @@ Strings without `${...}` are literal. Supported value fields such as workflow/st
 groups, and recipe input bindings evaluate `${...}` as a JavaScript-style expression. `if` and `eval` accept
 expressions directly. The evaluator is a restricted AST interpreter, not a full JavaScript runtime.
 
-Available data roots include `inputs`, `env`, `secrets`, `steps`, and (in supported contexts) `files` and `github`.
+Available data roots include `inputs`, `headers`, `inputsRaw`, `env`, `secrets`, `steps`, and (in supported contexts)
+`files` and `github`. For webhooks, `headers` contains the sanitized request headers and `inputsRaw` is the original
+request body as a Node.js `Buffer`, preserving binary payloads. Ingress parses `inputs` as JSON only when the request
+content type is `application/json` or a `+json` media type; for other content types, workflows can inspect
+`inputsRaw` directly.
 `files.exists`, `files.readFile`, and `files.join` are limited to the job workspace. Built-ins include `String`,
 `Number`, `Boolean`, and `JSON.parse`/`JSON.stringify`.
 

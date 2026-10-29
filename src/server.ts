@@ -13,9 +13,11 @@ import { planWorkflowInvocation } from "./workflow-invocation-admission.js";
 import { ChannelRepository } from "./channel-repository.js";
 import { GitHubPreprocessor } from "./preprocessors/github.js";
 import { GiteaPreprocessor } from "./preprocessors/gitea.js";
+import { safeWebhookHeaders } from "./webhook-headers.js";
 import { IncomingEventRepository } from "./incoming-event-repository.js";
 import { getAppIcon, serviceWorker, webManifest } from "../ui/pwa.js";
 import { QueueManager } from "./queue.js";
+import { matchesWebhookTrigger } from "./workflows.js";
 import { AgentWorkflowGrantRepository } from "./agent-workflow-grant-repository.js";
 import { buildRunView, renderRunHtml } from "../ui/run-view.js";
 import { SafeExpressionEvaluator } from "./safe-eval.js";
@@ -2777,6 +2779,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         await this.workflows.publishedForTeam(teamId),
         secretValues,
         teamId,
+        { headers: safeWebhookHeaders(headers), inputsRaw: rawBuffer, webhookIngress: true },
       );
       await this.incomingEvents.finish(
         teamId,
@@ -3739,6 +3742,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
   }
 
   private async preprocess(provider: string, headers, rawBuffer: Buffer, teamId: string, signingSecret?: string) {
+    const contentType = String(headers["content-type"] || "")
+      .split(";")[0]
+      .trim()
+      .toLowerCase();
+    const isJson = contentType === "application/json" || contentType.endsWith("+json");
     let dbSecrets: Record<string, string> = {};
     try {
       dbSecrets = await this.secretRepository.getAllForTeam(teamId);
@@ -3750,9 +3758,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
     const secret = signingSecret || dbSecrets[`${provider.toUpperCase()}_WEBHOOK_SECRET`] || undefined;
     const preprocessor = this.preprocessors.get(provider);
     try {
-      if (preprocessor) {
+      if (preprocessor && isJson) {
         const result = preprocessor.parse(headers, rawBuffer, secret);
-        const { inputs, isValid } = result;
+        const { inputs: parsedInputs, isValid } = result;
+        const inputs = parsedInputs ? { ...parsedInputs, headers: safeWebhookHeaders(headers) } : parsedInputs;
         return { inputs, isValid, secretValues: dbSecrets };
       }
 
@@ -3771,24 +3780,13 @@ sessionStorage.removeItem('runner-pending-team-invite');
         const expectedBytes = Buffer.from(expected);
         isValid = suppliedBytes.length === expectedBytes.length && crypto.timingSafeEqual(suppliedBytes, expectedBytes);
       }
-      const body = JSON.parse(rawBuffer.toString("utf-8"));
-      if (!body || typeof body !== "object" || Array.isArray(body) || !isValid) {
+      const body = isJson ? JSON.parse(rawBuffer.toString("utf-8")) : undefined;
+      if ((isJson && (!body || typeof body !== "object")) || !isValid) {
         return { isValid: false, inputs: null, secretValues: dbSecrets };
       }
-      // Only forward event metadata needed by intake workflows. An arbitrary
-      // webhook header may contain a credential and is persisted with inputs.
-      const safeHeaderNames = new Set([
-        "content-type",
-        "user-agent",
-        "x-github-event",
-        "x-github-delivery",
-        "x-github-hook-id",
-      ]);
-      const safeHeaders = Object.fromEntries(
-        Object.entries(headers).filter(([name]) => safeHeaderNames.has(name.toLowerCase())),
-      );
+      const safeHeaders = safeWebhookHeaders(headers);
       const inputs = {
-        ...body,
+        ...(body && typeof body === "object" && !Array.isArray(body) ? body : {}),
         body,
         raw: body,
         headers: safeHeaders,
@@ -3806,10 +3804,12 @@ sessionStorage.removeItem('runner-pending-team-invite');
     workflows: import("./types.js").WorkflowRevision[],
     secretValues: Record<string, string> = {},
     teamId: string,
+    requestContext: { headers?: Record<string, string>; inputsRaw?: Buffer; webhookIngress?: boolean } = {},
   ) {
     const jobIds: number[] = [];
     for (const { workflowId, definition: workflow, revision } of workflows) {
-      if (workflow.on.provider !== provider) {
+      const eventName = String(inputs?.event || inputs?.headers?.["x-github-event"] || "");
+      if (!matchesWebhookTrigger(workflow.on, provider, eventName, requestContext.webhookIngress === true)) {
         continue;
       }
 
@@ -3846,6 +3846,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
 
         const jobPayload: JobPayload = {
           inputs,
+          headers: requestContext.headers,
+          inputsRaw: requestContext.inputsRaw,
           matrix: variant.matrixContext,
         };
 

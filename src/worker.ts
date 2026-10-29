@@ -372,6 +372,13 @@ export async function processJob(p: Processable) {
   console.log(`\n[${workerId}] 📦 Claimed Job #${job.id} (Workflow: ${job.workflow_id})`);
 
   const payload = (typeof job.payload === "string" ? JSON.parse(job.payload) : job.payload) as JobPayload;
+  if (
+    payload.inputsRaw &&
+    typeof payload.inputsRaw === "object" &&
+    (payload.inputsRaw as unknown as { type?: unknown }).type === "Buffer"
+  ) {
+    payload.inputsRaw = Buffer.from((payload.inputsRaw as unknown as { data: number[] }).data);
+  }
   if (!p.workflow) {
     throw new Error(`Workflow ${job.workflow_id} revision ${job.workflow_revision} was not resolved`);
   }
@@ -408,6 +415,8 @@ export async function processJob(p: Processable) {
   // Step Execution Context available in expressions: ${steps.step1.outputs.id}
   const executionContext: JobExecutionContext = {
     inputs,
+    headers: payload.headers || {},
+    inputsRaw: payload.inputsRaw,
     env: {
       ...config.env,
       CI: "true",

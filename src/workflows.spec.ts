@@ -1,7 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { parseWorkflow } from "./workflows.js";
+import { matchesWebhookTrigger, parseWorkflow } from "./workflows.js";
 
 describe("parseWorkflow", () => {
+  it("matches generic webhook workflows only during verified webhook ingress and for named event types", () => {
+    const trigger = { provider: "webhook", events: ["push"] };
+    expect(matchesWebhookTrigger(trigger, "github", "push", true)).toBe(true);
+    expect(matchesWebhookTrigger(trigger, "github", "pull_request", true)).toBe(false);
+    expect(matchesWebhookTrigger(trigger, "github", "push", false)).toBe(false);
+    expect(matchesWebhookTrigger(trigger, "webhook", "push", false)).toBe(false);
+    expect(matchesWebhookTrigger({ provider: "github" }, "github", "push", false)).toBe(true);
+  });
+
+  it("parses provider-independent webhook subscriptions", () => {
+    const [workflow] = parseWorkflow(`
+id: github-intake
+name: GitHub Intake
+on:
+  webhook:
+    events: [push]
+steps:
+  - id: normalize
+    eval: inputsRaw.toString('utf8')
+`);
+    expect(workflow.on).toMatchObject({ provider: "webhook", events: ["push"] });
+  });
+
+  it("requires explicit webhook event names for provider-independent subscriptions", () => {
+    expect(() =>
+      parseWorkflow(`
+id: any-hook
+name: Any Hook
+on:
+  webhook: {}
+steps:
+  - id: noop
+    eval: true
+`),
+    ).toThrow("on.webhook.events must contain at least one webhook event name");
+  });
+
   it("keeps webhook and time triggers in a portable DB workflow", () => {
     const [workflow] = parseWorkflow(`
 id: nightly-build

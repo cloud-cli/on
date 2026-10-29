@@ -35,6 +35,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "docker build --no-cache -t on:e2e . && node tests/docker-smoke.mjs",
+    "test:e2e:webhook": "tsx tests/docker-webhook-workflow.ts",
     "test:e2e:channels": "playwright test --config=playwright.config.mjs",
     "release": "npx --yes semantic-release@24 -b main --no-ci"
   },
