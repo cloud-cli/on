@@ -110,6 +110,59 @@ describe("durable step attempt visibility", () => {
 describe("runner step attempt writes", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it("completes a worker-shaped attempt after its start marker, including its snapshot", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ changes: 1 }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ changes: 1 }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const manager = new QueueManager("test");
+    const start = {
+      jobId: 7,
+      stepId: "build",
+      attempt: 1,
+      startedAt: "2026-01-01T00:00:00Z",
+      attemptId: "id-1",
+    };
+
+    await expect(manager.saveStepAttemptStartForRunner(7, "runner", "lease", "hash", start)).resolves.toBe(true);
+    await expect(
+      manager.saveStepAttemptForRunner("runner", "lease", "hash", {
+        ...start,
+        status: "success",
+        completedAt: "2026-01-01T00:00:01Z",
+        durationMs: 1000,
+        exitCode: 0,
+        logContent: "build completed",
+        snapshotJson: '{"version":1,"status":"captured","inputs":{}}',
+      }),
+    ).resolves.toBe(true);
+
+    const completion = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(completion.s).toContain("step_execution_attempt_starts s WHERE s.job_id = jobs.id");
+    expect(completion.s).toContain("s.attempt_id = ?");
+    expect(completion.d).toEqual([
+      "build",
+      1,
+      "success",
+      "2026-01-01T00:00:00Z",
+      "2026-01-01T00:00:01Z",
+      1000,
+      0,
+      null,
+      "build completed",
+      "id-1",
+      '{"version":1,"status":"captured","inputs":{}}',
+      7,
+      "runner",
+      "lease",
+      "hash",
+      "build",
+      1,
+      "id-1",
+    ]);
+  });
+
   it.each([
     ["stale lease", false],
     ["expired lease", false],

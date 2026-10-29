@@ -1027,12 +1027,12 @@ export class QueueManager {
         attempt.attemptId,
         attempt.snapshotJson ?? null,
         attempt.jobId,
-        attempt.stepId,
-        attempt.attempt,
-        attempt.attemptId,
         runnerId,
         leaseId,
         leaseTokenHash,
+        attempt.stepId,
+        attempt.attempt,
+        attempt.attemptId,
       ],
     );
     if (Number(result?.changes || 0) === 1) {
