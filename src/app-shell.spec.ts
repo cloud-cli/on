@@ -126,6 +126,7 @@ describe("On application shell", () => {
     expect(html).toContain('class="workspace-avatar ml-0.5 grid size-8 shrink-0 place-items-center rounded-full');
     expect(html).not.toMatch(/>\s*>\s*<span\s+class="workspace-avatar/);
     expect(styles).toContain(".workspace-rail .workspace-switch");
+    expect(styles).toContain("[data-workspace-rail] .workspace-switch {\n    width: calc(var(--spacing) * 12);");
     expect(styles).toContain(".workspace-rail .brand-toggle");
     expect(styles).toContain("[data-workspace-rail] .rail-label,");
     expect(styles).toContain(".workspace-rail:not(.is-expanded) .workspace-avatar");

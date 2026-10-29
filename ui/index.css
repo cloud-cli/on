@@ -75,7 +75,7 @@
   }
 
   [data-workspace-rail] .workspace-switch {
-    width: 2.5rem;
+    width: calc(var(--spacing) * 12);
   }
 
   #primary-sidebar {
