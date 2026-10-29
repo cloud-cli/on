@@ -10,6 +10,7 @@ export default function setup() {
   const userInitial = ref("U");
   const teams = ref([]);
   const selectedWorkspaceId = ref("");
+  const selectedWorkspaceName = ref("");
   const selectedChannelId = ref("");
   const workspaceChannels = ref([]);
   const channelsStatus = ref("Loading channels…");
@@ -28,6 +29,7 @@ export default function setup() {
       ...team,
       isSelected: team.id === workspaceId,
     }));
+    selectedWorkspaceName.value = teams.value.find((team) => team.id === workspaceId)?.name || "";
   };
   const themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
   const isDarkTheme = ref(
@@ -51,6 +53,7 @@ export default function setup() {
         ...team,
         isSelected: team.id === selectedWorkspaceId.value,
       }));
+      selectedWorkspaceName.value = teams.value.find((team) => team.id === selectedWorkspaceId.value)?.name || "";
       if (!hadSelectedWorkspace && selectedWorkspaceId.value) {
         void loadWorkspaceChannels();
       }
@@ -124,7 +127,7 @@ export default function setup() {
       channelsEmpty.value = workspaceChannels.value.length === 0;
       channelsStatus.value = "";
     } catch (error) {
-      if (requestId === channelsRequestId) {
+      if (requestId === channelsRequestId && workspaceId === selectedWorkspaceId.value) {
         channelsStatus.value = error.message || "Unable to load Streams.";
       }
     }
@@ -440,6 +443,7 @@ export default function setup() {
     oidcProviderUrl,
     teams,
     selectedWorkspaceId,
+    selectedWorkspaceName,
     selectedChannelId,
     workspaceChannels,
     channelsStatus,

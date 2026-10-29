@@ -8,6 +8,19 @@ const html = readFileSync(new URL("../ui/app-shell.html", import.meta.url), "utf
 const styles = readFileSync(new URL("../ui/index.css", import.meta.url), "utf8");
 
 describe("On application shell", () => {
+  it("renders one workspace navigation outside the per-workspace repeater", () => {
+    const navigationStart = html.indexOf('aria-label="Workspace navigation"');
+    const navigationEnd = html.indexOf("</nav>", navigationStart);
+    const navigation = html.slice(navigationStart, navigationEnd);
+
+    expect(navigation).toContain('class-hidden="!selectedWorkspaceId"');
+    expect(navigation).not.toContain('<template for="team of teams"');
+    expect(navigation).not.toContain("<template if=");
+    expect(navigation).toContain('class-hidden="!channelsEmpty"');
+    expect(navigation).toContain('class-hidden="!channelsStatus"');
+    expect(navigation.match(/Create your first Stream/g)).toHaveLength(1);
+  });
+
   it("uses compact vertical spacing on every page main", () => {
     for (const directory of ["ui", "src"]) {
       const files = readdirSync(new URL(`../${directory}/`, import.meta.url)).filter((file) => file.endsWith(".html"));
@@ -142,22 +155,27 @@ describe("On application shell", () => {
     expect(shellSetup).toContain("popover.showPopover()");
     expect(shellSetup).toContain("showWorkspacePopover,");
     expect(shellSetup).toContain("hideWorkspacePopover,");
-    expect(html).toContain('<template if="team.isSelected"');
-    expect(html).toContain("workspacePath(team.id, 'runs')");
-    expect(html).toContain("workspacePath(team.id, 'workflows')");
+    expect(html).not.toContain('<template if="team.isSelected"');
+    expect(html).toContain('class-hidden="!selectedWorkspaceId"');
+    expect(html).toContain("workspacePath(selectedWorkspaceId, 'runs')");
+    expect(html).toContain("workspacePath(selectedWorkspaceId, 'workflows')");
     expect(html).toContain('for="channel of workspaceChannels"');
-    expect(html).toContain("workspacePath(team.id, 'channels') + '/' + encodeURIComponent(channel.id)");
+    expect(html).toContain("workspacePath(selectedWorkspaceId, 'channels') + '/' + encodeURIComponent(channel.id)");
     expect(shellSetup).toContain('apiFetch("/api/v1/streams"');
     expect(shellSetup).toContain('"X-Team-ID": workspaceId');
     expect(shellSetup).toContain("result.streams || []");
     expect(shellSetup).toContain("channelsStatus");
     expect(shellSetup).toContain("channelsEmpty.value = workspaceChannels.value.length === 0");
-    expect(html).toContain('if="channelsEmpty"');
+    expect(html).toContain('class-hidden="!channelsEmpty"');
     expect(html).toContain("Create your first Stream</a");
-    expect(html).toContain("attr-href=\"workspacePath(team.id, 'channels')\"");
-    expect(html).toContain('if="channelsStatus"');
+    expect(html).toContain("attr-href=\"workspacePath(selectedWorkspaceId, 'channels')\"");
+    expect(html).toContain('class-hidden="!channelsStatus"');
+    expect(shellSetup).toContain(
+      'selectedWorkspaceName.value = teams.value.find((team) => team.id === workspaceId)?.name || ""',
+    );
+    expect(shellSetup).toContain("workspaceId === selectedWorkspaceId.value");
     expect(shellSetup).not.toContain("No channels in this workspace yet.");
-    expect(html).toContain("on-click=\"selectWorkspace(team.id, 'runs')\"");
+    expect(html).toContain("on-click=\"selectWorkspace(selectedWorkspaceId, 'runs')\"");
     expect(shellSetup).toContain('const selectedWorkspaceId = ref("")');
     expect(shellSetup).toContain("setSelectedWorkspace(decodeURIComponent(workspaceRoute[1]))");
     expect(shellSetup).toContain("availableTeams.some((team) => team.id === storedWorkspaceId)");
@@ -197,7 +215,7 @@ describe("On application shell", () => {
     expect(shellSetup).toContain("setSelectedWorkspace(decodeURIComponent(workspaceRoute[1]))");
     expect(shellSetup).toContain('selectedChannelId.value = workspaceRoute[2] === "channels"');
     expect(html).toContain("attr-aria-pressed=\"team.isSelected ? 'true' : 'false'\"");
-    expect(html).toContain('<template if="team.isSelected"');
+    expect(html).not.toContain('<template if="team.isSelected"');
     expect(shellSetup).toContain("isSelected: team.id === workspaceId");
   });
 
