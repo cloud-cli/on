@@ -382,11 +382,18 @@ export async function processJob(p: Processable) {
   if (!p.workflow) {
     throw new Error(`Workflow ${job.workflow_id} revision ${job.workflow_revision} was not resolved`);
   }
-  const candidateWorkflow = payload.matrix
-    ? expandMatrix(p.workflow).find(
-        (variant) => JSON.stringify(variant.matrixContext) === JSON.stringify(payload.matrix),
-      )
-    : p.workflow;
+  const matrixDimensions = p.workflow.matrix || {};
+  const hasMatrixDimensions = Object.keys(matrixDimensions).length > 0;
+  const hasUnexpectedMatrixValues = Object.keys(payload.matrix || {}).length > 0 && !hasMatrixDimensions;
+  const candidateWorkflow = hasUnexpectedMatrixValues
+    ? undefined
+    : hasMatrixDimensions
+      ? payload.matrix
+        ? expandMatrix(p.workflow).find(
+            (variant) => JSON.stringify(variant.matrixContext) === JSON.stringify(payload.matrix),
+          )
+        : undefined
+      : p.workflow;
   if (!candidateWorkflow) {
     throw new Error(`Matrix variant for job ${job.id} was not found`);
   }

@@ -4,6 +4,43 @@ import { processJob } from "./worker.js";
 import { SecretStore } from "./secrets.js";
 
 describe("incremental workflow reports", () => {
+  it("runs a non-matrix workflow when invocation admission sends an empty matrix context", async () => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {}),
+      saveStepAttempt: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+    };
+    await processJob({
+      workerId: "empty-matrix-worker",
+      job: {
+        id: 128,
+        workflow_id: "no-matrix",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "empty-matrix-worker",
+        payload: JSON.stringify({ inputs: {}, matrix: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
+      config: { storagePath: "/tmp/empty-matrix", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
+      workflow: {
+        id: "no-matrix",
+        name: "No matrix",
+        on: { provider: "generic" },
+        steps: [{ id: "assert", eval: "true" }],
+      },
+    } as Processable);
+
+    expect(queue.completeJob).toHaveBeenCalledWith(128, "success", expect.any(Object));
+  });
+
   it("exposes webhook headers and restores raw input as a Buffer in eval context", async () => {
     const queue = {
       saveReport: vi.fn(async () => {}),
