@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const database = vi.hoisted(() => ({ all: vi.fn(), get: vi.fn(), run: vi.fn() }));
+const database = vi.hoisted(() => ({ all: vi.fn(), get: vi.fn(), run: vi.fn(), transaction: vi.fn() }));
 vi.mock("./db-client.js", () => ({ default: database }));
 import { ChannelRepository } from "./channel-repository.js";
 
@@ -86,6 +86,49 @@ describe("ChannelRepository", () => {
       "Investigate alert",
       "user-a",
     ]);
+  });
+
+  it("creates a workspace-scoped thread and initial text in one transaction", async () => {
+    database.get.mockResolvedValue({
+      id: "thread-1",
+      team_id: "team-a",
+      channel_id: "stream-1",
+      title: "Alert",
+      created_by: "user-a",
+      created_at: "now",
+      updated_at: "now",
+    });
+    await expect(
+      repository.createThreadWithInitialMessage("team-a", "stream-1", "Alert", "user-a", "hello"),
+    ).resolves.toMatchObject({
+      thread: { teamId: "team-a", channelId: "stream-1", title: "Alert" },
+      messageId: expect.any(String),
+    });
+    const [thread, message] = database.transaction.mock.calls[0][0];
+    expect(thread.s).toContain("FROM channels WHERE team_id = ? AND id = ?");
+    expect(thread.d.slice(1)).toEqual(["team-a", "stream-1", "Alert", "user-a", "team-a", "stream-1"]);
+    expect(message.d).toEqual([
+      expect.any(String),
+      "team-a",
+      "stream-1",
+      thread.d[0],
+      "user-a",
+      '{"text":"hello"}',
+      "team-a",
+      "stream-1",
+      thread.d[0],
+    ]);
+    expect(database.run).not.toHaveBeenCalled();
+  });
+
+  it("does not create a thread when the initial message is invalid or the transaction fails", async () => {
+    await expect(repository.createThreadWithInitialMessage("t", "c", "title", "a", "  ")).rejects.toThrow();
+    expect(database.transaction).not.toHaveBeenCalled();
+    database.transaction.mockRejectedValueOnce(new Error("insert failed"));
+    await expect(repository.createThreadWithInitialMessage("t", "c", "title", "a", "text")).rejects.toThrow(
+      "insert failed",
+    );
+    expect(database.get).not.toHaveBeenCalled();
   });
 
   it("stores and reads messages only within their explicit thread", async () => {

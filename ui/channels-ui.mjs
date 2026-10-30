@@ -149,25 +149,22 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
   eventMore.type = "button";
   eventMore.hidden = true;
   eventActions.append(eventRetry, eventReload, eventMore);
-  eventHistory.append(eventSummary, eventStatus, eventList, eventActions);
+  eventHistory.append(eventSummary, eventList);
   const threadsSection = element("section", undefined, "min-w-0 space-y-3 rounded-lg border border-app-border p-3");
   threadsSection.setAttribute("aria-label", "Threads");
-  const threadsHeading = element("h3", "Threads", "font-semibold");
+  const threadsHeading = element("h3", "Timeline", "font-semibold");
   const threadForm = document.createElement("form");
   threadForm.className = "flex gap-2";
-  const threadTitle = document.createElement("input");
-  threadTitle.name = "title";
-  threadTitle.maxLength = 160;
-  threadTitle.required = true;
-  threadTitle.placeholder = "New thread";
-  threadTitle.setAttribute("aria-label", "New thread title");
-  threadTitle.className = "min-w-0 flex-1 rounded-lg border border-app-border px-3 py-2";
-  const createThreadButton = element(
-    "button",
-    "Create thread",
-    "rounded-lg border border-app-border px-3 py-2 text-sm",
-  );
-  threadForm.append(threadTitle, createThreadButton);
+  const createThreadButton = element("button", "Start thread", "rounded-lg border border-app-border px-3 py-2 text-sm");
+  const newThreadText = document.createElement("textarea");
+  newThreadText.required = true;
+  newThreadText.rows = 3;
+  newThreadText.placeholder = "Start a conversation";
+  newThreadText.setAttribute("aria-label", "New thread message");
+  newThreadText.className = "min-w-0 flex-1 rounded-lg border border-app-border p-3 text-sm";
+  threadForm.className = "flex flex-col gap-2";
+  threadForm.append(newThreadText, createThreadButton);
+  threadForm.hidden = true;
   const threadList = element("ul", undefined, "space-y-1");
   threadList.setAttribute("aria-label", "Stream threads");
   const threadStatus = element("p", "Select a Stream to view its threads.", "text-sm text-app-secondary");
@@ -188,24 +185,16 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
   const threadPayload = document.createElement("textarea");
   threadPayload.rows = 3;
   threadPayload.required = true;
-  threadPayload.placeholder = '{"text":"Reply"}';
-  threadPayload.setAttribute("aria-label", "Thread message JSON body");
-  threadPayload.className = "w-full rounded-lg border border-app-border p-3 font-mono text-sm";
+  threadPayload.placeholder = "Write a reply";
+  threadPayload.setAttribute("aria-label", "Thread reply");
+  threadPayload.className = "w-full rounded-lg border border-app-border p-3 text-sm";
   const sendThreadMessage = element(
     "button",
     "Reply",
     "rounded-lg bg-app-primary px-4 py-2 text-sm font-semibold text-white",
   );
   threadComposer.append(threadPayload, sendThreadMessage);
-  threadsSection.append(
-    threadsHeading,
-    threadStatus,
-    threadList,
-    threadForm,
-    threadTranscript,
-    threadMore,
-    threadComposer,
-  );
+  threadsSection.append(threadsHeading, threadStatus, eventStatus, threadList, eventActions);
   const status = element("p", "Loading channels…", "text-sm text-app-secondary");
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
@@ -241,7 +230,14 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
   );
   composer.append(help, payload, send);
   composer.hidden = true;
-  conversation.append(emptyState, title, threadsSection, eventHistory, status, transcript, more, refresh, composer);
+  const legacyHistory = document.createElement("details");
+  legacyHistory.append(
+    element("summary", "Legacy messages", "cursor-pointer font-semibold"),
+    transcript,
+    more,
+    refresh,
+  );
+  conversation.append(emptyState, title, status, threadsSection, eventHistory, legacyHistory, threadForm);
   layout.append(sidebar, conversation);
   root.replaceChildren(heading, emptyState, layout);
 
@@ -250,6 +246,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
   let threadCursor = null;
   let threadLatestMessageId = null;
   let threadRequestGeneration = 0;
+  let threadsRequestGeneration = 0;
   let cursor = null;
   let latestMessageId = null;
   let selectionGeneration = 0;
@@ -265,6 +262,179 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
   let eventRequest = null;
   let eventRefreshPending = false;
   let eventGeneration = 0;
+  let timelineThreads = [];
+  let timelineEvents = [];
+  let suggestionStreams = [];
+  let editorLoader;
+  const editorFor = new WeakMap();
+  const suggestions = async ({ trigger, query }) => {
+    let names = [];
+    if (trigger === "#") {
+      names = suggestionStreams.map((stream) => stream.name);
+    } else if (trigger === "@" && routedWorkspaceId) {
+      try {
+        const data = await request(`/api/v1/workspaces/${encodeURIComponent(routedWorkspaceId)}/members`);
+        names = (data.members || [])
+          .filter((member) => member.kind === "agent" && !member.disabled)
+          .map((member) => member.name);
+      } catch {
+        return [];
+      }
+    }
+    const prefix = query.toLocaleLowerCase();
+    return [...new Set(names.filter((name) => typeof name === "string" && /^[^\s@#]+$/.test(name)))]
+      .filter((name) => name.toLocaleLowerCase().includes(prefix))
+      .slice(0, 20)
+      .map((name) => ({ label: `${trigger}${name}`, value: `${trigger}${name} ` }));
+  };
+  const installEditor = async (textarea) => {
+    if (editorFor.has(textarea) || !textarea.isConnected) {
+      return;
+    }
+    editorFor.set(textarea, null);
+    try {
+      const runtimeSpecifier = "@li3/web";
+      editorLoader ||= import(/* @vite-ignore */ runtimeSpecifier)
+        .then(async ({ load }) => {
+          if (!customElements.get("code-editor")) {
+            await load("https://sodium.static.apphor.de/code-editor.html");
+          }
+          return Boolean(customElements.get("code-editor"));
+        })
+        .catch(() => false);
+      if (!(await editorLoader) || !textarea.isConnected) {
+        editorFor.delete(textarea);
+        return;
+      }
+      const editor = document.createElement("code-editor");
+      editor.setAttribute("wrap", "true");
+      editor.setAttribute("nolines", "true");
+      editor.setAttribute("nostatus", "true");
+      editor.setAttribute("theme", "googlecode");
+      editor.setAttribute("label", textarea.getAttribute("aria-label"));
+      editor.className = "block h-28 min-w-0 overflow-hidden rounded-lg border border-app-border bg-app-card";
+      textarea.before(editor);
+      await editor.unmount?.ready;
+      const input = editor.shadowRoot?.querySelector("textarea");
+      if (!textarea.isConnected || !input || !("autocomplete" in editor) || !("value" in editor)) {
+        editor.remove();
+        editorFor.delete(textarea);
+        return;
+      }
+      editor.value = textarea.value;
+      editor.autocomplete = suggestions;
+      editor.addEventListener("change", (event) => {
+        if (typeof event.detail === "string") {
+          textarea.value = event.detail;
+        }
+      });
+      textarea.hidden = true;
+      textarea.required = false;
+      editorFor.set(textarea, editor);
+    } catch {
+      editorFor.delete(textarea);
+    }
+  };
+  const composerValue = (textarea) =>
+    editorFor.get(textarea)?.shadowRoot?.querySelector("textarea")?.value ?? textarea.value;
+  const clearComposer = (textarea) => {
+    textarea.value = "";
+    const editor = editorFor.get(textarea);
+    if (editor) {
+      editor.value = "";
+    }
+  };
+  const detachEditor = (textarea) => {
+    const editor = editorFor.get(textarea);
+    if (editor) {
+      textarea.value = composerValue(textarea);
+      editor.remove();
+      textarea.hidden = false;
+      textarea.required = true;
+    }
+    editorFor.delete(textarea);
+  };
+  let openingMessages = new Map();
+  let threadMessageRequest = null;
+  let threadRefreshPending = false;
+  const messageText = (body) =>
+    typeof body === "string" ? body : typeof body?.text === "string" ? body.text : JSON.stringify(body, null, 2);
+  const timestamp = (value) => {
+    if (typeof value !== "string") {
+      return Number.POSITIVE_INFINITY;
+    }
+    const normalized = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(value) ? `${value.replace(" ", "T")}Z` : value;
+    const parsed = Date.parse(normalized);
+    return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+  };
+  const drawTimeline = () => {
+    const replyInput = editorFor.get(threadPayload)?.shadowRoot?.activeElement || threadPayload;
+    const focusedReply =
+      document.activeElement === replyInput || document.activeElement === editorFor.get(threadPayload);
+    const selectionStart = replyInput.selectionStart;
+    const selectionEnd = replyInput.selectionEnd;
+    const entries = [
+      ...timelineThreads.map((thread) => ({
+        kind: "thread",
+        value: thread,
+        time: thread.createdAt,
+      })),
+      ...timelineEvents.map((entry) => ({
+        kind: "event",
+        value: entry,
+        time: entry.occurredAt,
+      })),
+    ];
+    entries.sort((a, b) => {
+      const left = timestamp(a.time);
+      const right = timestamp(b.time);
+      return (left === right ? 0 : left - right) || `${a.kind}:${a.value.id}`.localeCompare(`${b.kind}:${b.value.id}`);
+    });
+    threadList.replaceChildren(
+      ...entries.map(({ kind, value }) => {
+        const item = element("li", undefined, "min-w-0 rounded-lg bg-app-panel p-3");
+        item.dataset.timelineKind = kind;
+        item.dataset.timelineId = String(value.id);
+        if (kind === "thread") {
+          const opening = openingMessages.get(value.id);
+          item.append(
+            element(
+              "p",
+              `${opening?.author || value.createdBy || "Member"} · ${value.createdAt || ""}`,
+              "text-xs text-app-secondary",
+            ),
+          );
+          item.append(
+            element(
+              "p",
+              opening ? messageText(opening.body) : value.title || "Loading message…",
+              "mt-2 whitespace-pre-wrap break-words text-sm",
+            ),
+          );
+          const button = element("button", value.title || "Thread", "mt-2 text-left text-sm underline");
+          button.type = "button";
+          button.dataset.id = value.id;
+          button.setAttribute("aria-pressed", String(selectedThread?.id === value.id));
+          button.addEventListener("click", () => void selectThread(value));
+          item.append(button);
+          if (selectedThread?.id === value.id) {
+            item.append(threadTranscript, threadMore, threadComposer);
+          }
+        } else {
+          item.append(element("p", value.type || "Event", "font-semibold"));
+          item.append(element("p", value.occurredAt || "", "text-xs text-app-secondary"));
+          item.append(
+            element("pre", JSON.stringify(value.data ?? value, null, 2), "whitespace-pre-wrap break-all text-sm"),
+          );
+        }
+        return item;
+      }),
+    );
+    if (focusedReply && threadPayload.isConnected) {
+      replyInput.focus();
+      replyInput.setSelectionRange(selectionStart, selectionEnd);
+    }
+  };
   const request = async (url, options) => {
     const { headers: requestHeaders, ...requestOptions } = options || {};
     const response = await apiFetch(url, {
@@ -350,7 +520,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
         ? ""
         : after
           ? "You're up to date."
-          : "No messages in this channel yet.";
+          : "No legacy messages in this channel yet.";
     } catch (error) {
       if (generation !== selectionGeneration || selected?.id !== channelId) {
         return;
@@ -371,6 +541,12 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     const channelId = selected.id;
     const threadId = selectedThread.id;
     const generation = selectionGeneration;
+    if (threadMessageRequest?.generation === generation && threadMessageRequest.threadId === threadId) {
+      threadRefreshPending = true;
+      return;
+    }
+    const token = { generation, threadId };
+    threadMessageRequest = token;
     const requestGeneration = ++threadRequestGeneration;
     const query = new URLSearchParams({ limit: "100" });
     if (after) {
@@ -396,21 +572,20 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
             ),
           )
         : new Set();
+      if (!after && data.messages?.length) {
+        openingMessages.set(threadId, data.messages[0]);
+        drawTimeline();
+      }
+      const openingId = openingMessages.get(threadId)?.id;
       const messages = (data.messages || [])
-        .filter((message) => !existingMessages.has(message.id))
+        .filter((message) => message.id !== openingId && !existingMessages.has(message.id))
         .map((message) => {
           const item = element("li", undefined, "rounded-lg bg-app-panel p-3");
           item.dataset.threadMessageId = message.id;
           item.append(
             element("p", `${message.author || "Member"} · ${message.createdAt || ""}`, "text-xs text-app-secondary"),
           );
-          item.append(
-            element(
-              "pre",
-              typeof message.body === "string" ? message.body : JSON.stringify(message.body, null, 2),
-              "mt-2 whitespace-pre-wrap break-all text-sm",
-            ),
-          );
+          item.append(element("pre", messageText(message.body), "mt-2 whitespace-pre-wrap break-all text-sm"));
           return item;
         });
       if (after) {
@@ -418,8 +593,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       } else {
         threadTranscript.replaceChildren(...messages);
       }
-      const renderedMessages = threadTranscript.querySelectorAll("[data-thread-message-id]");
-      threadLatestMessageId = renderedMessages[renderedMessages.length - 1]?.dataset.threadMessageId || null;
+      threadLatestMessageId = data.messages?.at(-1)?.id || threadLatestMessageId;
       threadCursor = data.next || null;
       threadMore.hidden = !threadCursor;
       threadTranscript.hidden = false;
@@ -434,6 +608,13 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
         threadStatus.textContent = error.message || "Unable to load thread messages.";
       }
     } finally {
+      if (threadMessageRequest === token) {
+        threadMessageRequest = null;
+        if (threadRefreshPending && generation === selectionGeneration && selectedThread?.id === threadId) {
+          threadRefreshPending = false;
+          void loadThreadMessages(threadLatestMessageId);
+        }
+      }
       if (requestGeneration === threadRequestGeneration) {
         threadMore.disabled = false;
       }
@@ -446,9 +627,8 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     threadMore.hidden = true;
     threadTranscript.replaceChildren();
     threadTranscript.hidden = false;
-    for (const button of threadList.querySelectorAll("button")) {
-      button.setAttribute("aria-pressed", String(button.dataset.id === thread.id));
-    }
+    drawTimeline();
+    void installEditor(threadPayload);
     await loadThreadMessages();
   };
   threadMore.addEventListener("click", () => {
@@ -457,42 +637,75 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     }
   });
   const loadThreads = async (channel) => {
-    selectedThread = null;
-    threadCursor = null;
-    threadLatestMessageId = null;
-    threadMore.hidden = true;
-    threadTranscript.replaceChildren();
-    threadTranscript.hidden = true;
-    threadComposer.hidden = true;
+    const generation = selectionGeneration;
+    const requestGeneration = ++threadsRequestGeneration;
     threadStatus.textContent = "Loading threads…";
     try {
       const data = await request(`/api/v1/streams/${encodeURIComponent(channel.id)}/threads`);
-      if (selected?.id !== channel.id) {
+      if (
+        generation !== selectionGeneration ||
+        selected?.id !== channel.id ||
+        requestGeneration !== threadsRequestGeneration
+      ) {
         return;
       }
       const threads = data.threads || [];
-      threadList.replaceChildren(
-        ...threads.map((thread) => {
-          const item = document.createElement("li");
-          const button = element(
-            "button",
-            thread.title,
-            "w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-app-panel",
-          );
-          button.type = "button";
-          button.dataset.id = thread.id;
-          button.setAttribute("aria-pressed", "false");
-          button.addEventListener("click", () => void selectThread(thread));
-          item.append(button);
-          return item;
+      timelineThreads = threads;
+      drawTimeline();
+      const missing = threads.filter((thread) => !openingMessages.has(thread.id));
+      let index = 0;
+      let previewError = "";
+      await Promise.all(
+        Array.from({ length: Math.min(6, missing.length) }, async () => {
+          while (index < missing.length) {
+            const thread = missing[index++];
+            try {
+              const result = await request(
+                `/api/v1/streams/${encodeURIComponent(channel.id)}/threads/${encodeURIComponent(thread.id)}/messages?limit=1`,
+              );
+              if (
+                generation !== selectionGeneration ||
+                requestGeneration !== threadsRequestGeneration ||
+                selected?.id !== channel.id
+              ) {
+                return;
+              }
+              openingMessages.set(thread.id, result.messages?.[0] || null);
+              drawTimeline();
+            } catch (error) {
+              if (generation === selectionGeneration && selected?.id === channel.id) {
+                previewError = error.message || "Unable to load opening messages.";
+              }
+            }
+          }
         }),
       );
+      if (
+        generation !== selectionGeneration ||
+        requestGeneration !== threadsRequestGeneration ||
+        selected?.id !== channel.id
+      ) {
+        return;
+      }
       threadForm.hidden = !canEdit;
-      threadStatus.textContent = threads.length
-        ? "Choose a thread to open the conversation."
-        : "No threads in this Stream yet.";
+      threadStatus.textContent =
+        previewError ||
+        (threads.length ? "Choose a thread to open the conversation." : "No threads in this Stream yet.");
     } catch (error) {
-      if (selected?.id === channel.id) {
+      if (
+        generation === selectionGeneration &&
+        selected?.id === channel.id &&
+        requestGeneration === threadsRequestGeneration
+      ) {
+        if (error.status === 401 || error.status === 403) {
+          timelineThreads = [];
+          openingMessages.clear();
+          selectedThread = null;
+          threadTranscript.replaceChildren();
+          threadComposer.hidden = true;
+          threadForm.hidden = true;
+          drawTimeline();
+        }
         threadStatus.textContent = error.message || "Unable to load threads.";
       }
     }
@@ -517,6 +730,12 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       if (generation !== eventGeneration || selected?.id !== channelId) {
         return;
       }
+      const byId = new Map((reset ? [] : timelineEvents).map((entry) => [String(entry.id), entry]));
+      for (const entry of data.events || []) {
+        byId.set(String(entry.id), entry);
+      }
+      timelineEvents = [...byId.values()];
+      drawTimeline();
       const existing = reset
         ? new Set()
         : new Set([...eventList.querySelectorAll("[data-event-id]")].map((node) => node.dataset.eventId));
@@ -542,6 +761,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
                 (node) => node.dataset.messageId === messageId,
               );
               if (message) {
+                legacyHistory.open = true;
                 message.scrollIntoView({ behavior: "smooth", block: "center" });
               } else {
                 eventStatus.textContent = "Linked message is not in the currently loaded history.";
@@ -595,7 +815,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
         reset && !(data.events || []).length
           ? "No saved events in this channel yet."
           : eventCursor
-            ? `${items.length} saved events loaded. Recorded order; earliest first.`
+            ? `${items.length} saved events loaded. More events are available; the timeline is incomplete until all pages are loaded.`
             : items.length
               ? "End of saved event history. Recorded order; earliest first."
               : "End of saved event history.";
@@ -603,6 +823,8 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       if (generation === eventGeneration && selected?.id === channelId) {
         if (error.status === 401 || error.status === 403) {
           eventList.replaceChildren();
+          timelineEvents = [];
+          drawTimeline();
           eventCursor = null;
           eventResumeCursor = null;
           eventMore.hidden = true;
@@ -617,14 +839,14 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
         eventRequest = null;
         eventMore.disabled = false;
       }
-      if (eventRefreshPending && !disposed && selected && eventHistory.open) {
+      if (generation === eventGeneration && eventRefreshPending && !disposed && selected) {
         eventRefreshPending = false;
         void reconcileEvents();
       }
     }
   };
   const reconcileEvents = () => {
-    if (!selected || !eventHistory.open) {
+    if (!selected) {
       return;
     }
     if (eventRequest) {
@@ -634,6 +856,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     void loadEvents(eventResumeCursor, eventResumeCursor === null);
   };
   const select = async (channel) => {
+    detachEditor(threadPayload);
     selectionGeneration += 1;
     eventGeneration += 1;
     eventRequest = null;
@@ -642,6 +865,14 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     eventFailedCursor = null;
     eventRefreshPending = false;
     eventList.replaceChildren();
+    timelineThreads = [];
+    timelineEvents = [];
+    openingMessages = new Map();
+    threadMessageRequest = null;
+    threadRefreshPending = false;
+    threadTranscript.replaceChildren();
+    threadTranscript.hidden = true;
+    threadComposer.hidden = true;
     eventMore.hidden = true;
     eventStatus.textContent = "";
     eventHistory.open = false;
@@ -660,12 +891,11 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     refresh.hidden = true;
     title.textContent = channel.name;
     eventHistory.hidden = false;
-    if (eventHistory.open) {
-      void loadEvents(null, true);
-    }
-    composer.hidden = !canEdit;
+    void loadEvents(null, true);
+    composer.hidden = true;
     threadList.replaceChildren();
     threadForm.hidden = !canEdit;
+    requestAnimationFrame(() => void installEditor(newThreadText));
     threadStatus.textContent = "Loading threads…";
     for (const button of channelsList.querySelectorAll("button")) {
       button.setAttribute("aria-pressed", String(button.dataset.id === channel.id));
@@ -739,6 +969,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       form.hidden = !canEdit || !(data.streams || []).length;
       composer.hidden = !canEdit || !selected;
       const channels = data.streams || [];
+      suggestionStreams = channels;
       if (channels.length) {
         sidebar.insertBefore(form, channelsList);
       } else {
@@ -845,10 +1076,21 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     }
     routedChannelId = nextChannelId;
     if (!nextChannelId) {
+      detachEditor(threadPayload);
+      selectionGeneration += 1;
+      eventGeneration += 1;
       selected = null;
+      selectedThread = null;
+      timelineThreads = [];
+      timelineEvents = [];
       title.textContent = "Select a channel";
       transcript.replaceChildren();
       threadList.replaceChildren();
+      threadTranscript.replaceChildren();
+      threadComposer.hidden = true;
+      threadForm.hidden = true;
+      eventList.replaceChildren();
+      eventHistory.hidden = true;
       return;
     }
     const button = [...channelsList.querySelectorAll("button")].find((item) => item.dataset.id === nextChannelId);
@@ -882,23 +1124,32 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
   });
   threadForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!selected) {
+    if (!selected || !canEdit || !composerValue(newThreadText).trim()) {
       return;
     }
     createThreadButton.disabled = true;
+    const generation = selectionGeneration;
+    const channelId = selected.id;
+    const text = composerValue(newThreadText).trim();
     try {
-      const channelId = selected.id;
       const data = await request(`/api/v1/streams/${encodeURIComponent(channelId)}/threads`, {
         method: "POST",
-        body: JSON.stringify({ title: threadTitle.value.trim() }),
+        body: JSON.stringify({ title: text.slice(0, 160), text }),
       });
-      threadTitle.value = "";
+      if (generation !== selectionGeneration || selected?.id !== channelId) {
+        return;
+      }
+      if (composerValue(newThreadText).trim() === text) {
+        clearComposer(newThreadText);
+      }
       await loadThreads(selected);
-      if (data.thread) {
+      if (generation === selectionGeneration && selected?.id === channelId && data.thread) {
         await selectThread(data.thread);
       }
     } catch (error) {
-      threadStatus.textContent = error.message || "Unable to create thread.";
+      if (generation === selectionGeneration) {
+        threadStatus.textContent = error.message || "Unable to create thread.";
+      }
     } finally {
       createThreadButton.disabled = false;
     }
@@ -908,40 +1159,51 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     if (!selected || !selectedThread) {
       return;
     }
-    let body;
-    try {
-      body = JSON.parse(threadPayload.value);
-    } catch {
-      threadStatus.textContent = "Enter valid JSON before replying.";
-      threadStatus.setAttribute("role", "alert");
-      threadPayload.focus();
+    const text = composerValue(threadPayload).trim();
+    if (!canEdit || !text) {
       return;
     }
     sendThreadMessage.disabled = true;
+    const generation = selectionGeneration;
+    const channelId = selected.id;
+    const threadId = selectedThread.id;
     try {
-      const channelId = selected.id;
-      const threadId = selectedThread.id;
       await request(
         `/api/v1/streams/${encodeURIComponent(channelId)}/threads/${encodeURIComponent(threadId)}/messages`,
         {
           method: "POST",
-          body: JSON.stringify({ body }),
+          body: JSON.stringify({ body: { text } }),
         },
       );
-      threadPayload.value = "";
+      if (generation !== selectionGeneration || selected?.id !== channelId || selectedThread?.id !== threadId) {
+        return;
+      }
+      if (composerValue(threadPayload).trim() === text) {
+        clearComposer(threadPayload);
+      }
       await loadThreadMessages(threadLatestMessageId);
       threadStatus.setAttribute("role", "status");
       threadStatus.textContent = "Reply sent.";
     } catch (error) {
-      threadStatus.setAttribute("role", "alert");
-      threadStatus.textContent = error.message || "Unable to send reply.";
+      if (generation === selectionGeneration && selectedThread?.id === threadId) {
+        threadStatus.setAttribute("role", "alert");
+        threadStatus.textContent = error.message || "Unable to send reply.";
+      }
     } finally {
       sendThreadMessage.disabled = false;
     }
   });
   more.addEventListener("click", () => void loadMessages(cursor));
   eventSummary.addEventListener("click", () => {
-    if (!eventHistory.open && selected) {
+    if (
+      !eventHistory.open &&
+      selected &&
+      !eventResumeCursor &&
+      !eventCursor &&
+      !eventList.childElementCount &&
+      !eventRequest &&
+      eventRetry.hidden
+    ) {
       void loadEvents(null, true);
     }
   });
@@ -988,6 +1250,13 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       return;
     }
     await refreshMessages();
+    if (selected) {
+      void loadThreads(selected);
+      reconcileEvents();
+      if (selectedThread) {
+        void loadThreadMessages(threadLatestMessageId);
+      }
+    }
     if (!disposed) {
       pollTimer = setTimeout(pollForMessages, 15_000);
     }
@@ -1037,14 +1306,14 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       } catch {
         return;
       }
-      if (
-        !disposed &&
-        selected &&
-        selectedThread &&
-        notification.channelId === selected.id &&
-        notification.threadId === selectedThread.id
-      ) {
-        void loadThreadMessages(threadLatestMessageId);
+      if (!disposed && selected && notification.channelId === selected.id) {
+        if (openingMessages.get(notification.threadId) === null) {
+          openingMessages.delete(notification.threadId);
+        }
+        void loadThreads(selected);
+        if (selectedThread && notification.threadId === selectedThread.id) {
+          void loadThreadMessages(threadLatestMessageId);
+        }
       }
     });
     channelEvents.addEventListener("channel.domain-event", (event) => {
@@ -1062,6 +1331,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       // Reconcile after initial connect and every automatic reconnect to recover gaps.
       if (!disposed && selected) {
         void refreshMessages();
+        void loadThreads(selected);
         reconcileEvents();
       }
     });

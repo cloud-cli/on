@@ -1,4 +1,402 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+
+test.describe("timeline UTC ordering", () => {
+  test.use({ timezoneId: "America/Los_Angeles" });
+  test("normalizes SQLite timestamps and breaks equal-time ties by type and API id", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.EventSource = class extends EventTarget {
+        close() {}
+      };
+    });
+    await page.route("**/api/v1/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/auth/token")) {
+        return route.fulfill({ json: { access_token: "test", expires_at: Date.now() + 600000 } });
+      }
+      if (path === "/api/v1/streams") {
+        return route.fulfill({ json: { canEdit: false, streams: [{ id: "s", name: "Time" }] } });
+      }
+      if (path.endsWith("/threads")) {
+        return route.fulfill({ json: { threads: [{ id: "z", title: "thread", createdAt: "2026-01-01 10:00:00" }] } });
+      }
+      return route.fulfill({ json: { messages: [], next: null } });
+    });
+    await page.route("**/api/channels/*/events**", (route) =>
+      route.fulfill({
+        json: {
+          events: [
+            { id: "b", type: "task", occurredAt: "2026-01-01T10:00:00Z", recordedAt: "2025-01-01T00:00:00Z", data: {} },
+            { id: "a", type: "task", occurredAt: "2026-01-01T10:00:00Z", recordedAt: "2027-01-01T00:00:00Z", data: {} },
+            {
+              id: "later",
+              type: "task",
+              occurredAt: "2026-01-01T11:00:00Z",
+              recordedAt: "2025-01-01T00:00:00Z",
+              data: {},
+            },
+          ],
+          nextCursor: null,
+          resumeCursor: "opaque",
+        },
+      }),
+    );
+    await page.goto("/tests/playwright/channel-harness.html?workspace=team-a");
+    await page.getByRole("button", { name: "Time", exact: true }).click();
+    const entries = page.locator("[data-timeline-id]");
+    await expect(entries).toHaveCount(4);
+    expect(await entries.evaluateAll((nodes) => nodes.map((node) => node.dataset.timelineId))).toEqual([
+      "a",
+      "b",
+      "z",
+      "later",
+    ]);
+  });
+});
+
+test("local Sodium composers insert scoped suggestions and submit plain text", async ({ page }, testInfo) => {
+  let posted;
+  let reply;
+  const scoped = [];
+  await page.route("**/tests/playwright/channel-harness.html**", async (route) => {
+    const html = await readFile("tests/playwright/channel-harness.html", "utf8");
+    await route.fulfill({
+      contentType: "text/html",
+      body: html.replace(
+        '"@app/api-client.mjs": "/ui/api-client.mjs"',
+        '"@app/api-client.mjs": "/ui/api-client.mjs", "@li3/web": "/test-li3.mjs"',
+      ),
+    });
+  });
+  await page.route("**/test-li3.mjs", async (route) =>
+    route.fulfill({ contentType: "text/javascript", body: await readFile("/data/lab/lithium/lib/web/index.js") }),
+  );
+  await page.route("https://sodium.static.apphor.de/**", async (route) => {
+    const name = new URL(route.request().url()).pathname.slice(1);
+    if (!["code-editor.html", "code-editor.mjs", "composer-autocomplete.mjs"].includes(name)) {
+      return route.abort();
+    }
+    return route.fulfill({
+      contentType: name.endsWith(".html") ? "text/html" : "text/javascript",
+      headers: { "access-control-allow-origin": "*" },
+      body: await readFile(`/data/lab/sodium/components/${name}`),
+    });
+  });
+  await page.route("https://unpkg.com/**", async (route) =>
+    route.fulfill({
+      contentType: route.request().url().endsWith(".css") ? "text/css" : "text/javascript",
+      headers: { "access-control-allow-origin": "*" },
+      body: route.request().url().endsWith(".css")
+        ? ""
+        : 'export default { highlight: (s) => ({ value: s, language: "plaintext" }), highlightAuto: (s) => ({ value: s, language: "plaintext" }) };',
+    }),
+  );
+  await page.route("https://cdnjs.cloudflare.com/**", (route) =>
+    route.fulfill({ contentType: "text/css", headers: { "access-control-allow-origin": "*" }, body: "" }),
+  );
+  await page.addInitScript(() => {
+    window.EventSource = class extends EventTarget {
+      close() {}
+    };
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    if (url.pathname.endsWith("/auth/token")) {
+      return route.fulfill({ json: { access_token: "test", expires_at: Date.now() + 600000 } });
+    }
+    scoped.push(req.headers()["x-workspace-id"]);
+    if (url.pathname.endsWith("/members")) {
+      return route.fulfill({
+        json: {
+          members: [
+            { kind: "agent", name: "helper", disabled: false },
+            { kind: "human", name: "human" },
+          ],
+        },
+      });
+    }
+    if (url.pathname === "/api/v1/streams") {
+      return route.fulfill({ json: { canEdit: true, streams: [{ id: "s", name: "general" }] } });
+    }
+    if (url.pathname.endsWith("/threads") && req.method() === "GET") {
+      return route.fulfill({ json: { threads: [{ id: "t", title: "Existing", createdAt: "2026-01-01 00:00:00" }] } });
+    }
+    if (url.pathname.endsWith("/threads")) {
+      posted = req.postDataJSON();
+      return route.fulfill({ json: {} });
+    }
+    if (url.pathname.includes("/threads/") && req.method() === "POST") {
+      reply = req.postDataJSON();
+      return route.fulfill({ json: {} });
+    }
+    return route.fulfill({ json: { messages: [], next: null } });
+  });
+  await page.route("**/api/channels/*/events**", (route) => route.fulfill({ json: { events: [], nextCursor: null } }));
+  await page.goto("/tests/playwright/channel-harness.html?workspace=team-a");
+  await page.getByRole("button", { name: "general" }).click();
+  const editor = page.locator("code-editor").first();
+  const input = editor.getByRole("combobox", { name: "New thread message" });
+  await expect(input).toBeVisible();
+  await input.fill("Hello @hel");
+  await expect(editor.getByRole("option", { name: "@helper" })).toBeVisible();
+  await input.press("Enter");
+  await input.pressSequentially("in #gen");
+  await expect(editor.getByRole("option", { name: "#general" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("sodium-composer.png"), fullPage: true });
+  await input.press("Enter");
+  await page.getByRole("button", { name: "Start thread" }).click();
+  await expect.poll(() => posted).toEqual({ title: "Hello @helper in #general", text: "Hello @helper in #general" });
+  await page.getByRole("button", { name: "Existing" }).click();
+  const replyInput = page.getByRole("combobox", { name: "Thread reply" });
+  await expect(replyInput).toBeVisible();
+  await replyInput.fill("Reply @hel");
+  await expect(page.getByRole("option", { name: "@helper" })).toBeVisible();
+  await replyInput.press("Enter");
+  await page.getByRole("button", { name: "Reply", exact: true }).click();
+  await expect.poll(() => reply).toEqual({ body: { text: "Reply @helper" } });
+  expect(scoped.every((workspace) => workspace === "team-a")).toBe(true);
+});
+
+test("delayed opening message cannot appear after switching Streams", async ({ page }) => {
+  let release;
+  let started;
+  const waiting = new Promise((resolve) => {
+    started = resolve;
+  });
+  await page.addInitScript(() => {
+    window.EventSource = class extends EventTarget {
+      close() {}
+    };
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/auth/token")) {
+      return route.fulfill({ json: { access_token: "test", expires_at: Date.now() + 600000 } });
+    }
+    if (path === "/api/v1/streams") {
+      return route.fulfill({
+        json: {
+          canEdit: false,
+          streams: [
+            { id: "a", name: "Stream A" },
+            { id: "b", name: "Stream B" },
+          ],
+        },
+      });
+    }
+    if (path.endsWith("/threads")) {
+      return route.fulfill({
+        json: {
+          threads: path.includes("/a/") ? [{ id: "t", title: "A thread", createdAt: "2026-01-01T00:00:00Z" }] : [],
+        },
+      });
+    }
+    if (path.includes("/threads/t/messages")) {
+      started();
+      await new Promise((resolve) => {
+        release = resolve;
+      });
+      return route.fulfill({
+        json: { messages: [{ id: "private", author: "Alice", body: { text: "Private opening" } }] },
+      });
+    }
+    return route.fulfill({ json: { messages: [], next: null } });
+  });
+  await page.route("**/api/channels/*/events**", (route) => route.fulfill({ json: { events: [], nextCursor: null } }));
+  await page.goto("/tests/playwright/channel-harness.html?workspace=team-a");
+  await page.getByRole("button", { name: "Stream A" }).click();
+  await waiting;
+  await page.getByRole("button", { name: "Stream B" }).click();
+  release();
+  await expect(page.getByRole("heading", { name: "Stream B" })).toBeVisible();
+  await expect(page.getByText("Private opening")).toHaveCount(0);
+  await expect(page.locator('[data-timeline-id="t"]')).toHaveCount(0);
+});
+
+for (const viewport of [
+  { width: 1280, height: 900, name: "desktop" },
+  { width: 320, height: 844, name: "mobile" },
+]) {
+  test(`timeline shows opening messages and inline replies (${viewport.name})`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.addInitScript(() => {
+      window.__eventSources = [];
+      window.EventSource = class extends EventTarget {
+        constructor() {
+          super();
+          window.__eventSources.push(this);
+        }
+        close() {}
+      };
+    });
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        errors.push(message.text());
+      }
+    });
+    const replies = [
+      {
+        id: "opening",
+        author: "Alice",
+        createdAt: "2026-01-01 10:00:00",
+        body: { text: "Opening <script>hello</script>" },
+      },
+      { id: "reply", author: "Bob", createdAt: "2026-01-04T00:00:00Z", body: { text: "A reply" } },
+    ];
+    await page.route("**/api/v1/**", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/auth/token")) {
+        return route.fulfill({ json: { access_token: "test", expires_at: Date.now() + 600000 } });
+      }
+      if (url.pathname === "/api/v1/streams") {
+        return route.fulfill({ json: { canEdit: true, streams: [{ id: "s", name: "Team stream" }] } });
+      }
+      if (url.pathname.endsWith("/threads")) {
+        return route.fulfill({
+          json: { threads: [{ id: "t", title: "Opening", createdBy: "Alice", createdAt: "2026-01-01 10:00:00" }] },
+        });
+      }
+      if (url.pathname.includes("/threads/")) {
+        const after = url.searchParams.get("after");
+        const start = after ? replies.findIndex((message) => message.id === after) + 1 : 0;
+        const limit = Number(url.searchParams.get("limit"));
+        const messages = replies.slice(start, start + limit);
+        return route.fulfill({ json: { messages, next: messages.length === limit ? messages.at(-1).id : null } });
+      }
+      return route.fulfill({ json: { messages: [], next: null } });
+    });
+    await page.route("**/api/channels/*/events**", (route) =>
+      route.fulfill({
+        json: {
+          events: [
+            {
+              id: "e",
+              type: "task.updated",
+              source: "connector",
+              occurredAt: "2026-01-02T00:00:00Z",
+              recordedAt: "2026-01-05T00:00:00Z",
+              data: { status: "done" },
+            },
+          ],
+          nextCursor: null,
+          resumeCursor: "e",
+        },
+      }),
+    );
+    await page.goto("/tests/playwright/channel-harness.html?workspace=team-a");
+    await page.getByRole("button", { name: "Team stream" }).click();
+    const card = page.locator('[data-timeline-id="t"]');
+    await expect(card).toContainText("Alice");
+    await expect(card).toContainText("Opening <script>hello</script>");
+    await expect(card.locator("script")).toHaveCount(0);
+    await expect(page.locator("[data-timeline-id]")).toHaveCount(2);
+    expect(
+      await page.locator("[data-timeline-id]").evaluateAll((nodes) => nodes.map((node) => node.dataset.timelineId)),
+    ).toEqual(["t", "e"]);
+    await card.getByRole("button", { name: "Opening" }).click();
+    await expect(card.getByText("A reply")).toBeVisible();
+    await expect(card.getByLabel("Thread reply")).toBeVisible();
+    await expect(page.getByLabel("New thread message")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`timeline-${viewport.name}.png`), fullPage: true });
+    expect(errors).toEqual([]);
+  });
+}
+
+test("timeline orders threads by creation and events by occurrence, with plain text conversations", async ({
+  page,
+}) => {
+  let threads = [
+    { id: "later", title: "Later thread", createdAt: "2026-01-03T00:00:00Z" },
+    { id: "first", title: "First thread", createdAt: "2026-01-01T00:00:00Z" },
+  ];
+  let post;
+  let reply;
+  await page.addInitScript(() => {
+    window.__eventSources = [];
+    window.EventSource = class extends EventTarget {
+      constructor() {
+        super();
+        window.__eventSources.push(this);
+      }
+      close() {}
+    };
+  });
+  await page.route("**/api/v1/**", async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname;
+    if (path.endsWith("/auth/token")) {
+      return route.fulfill({
+        json: { access_token: "test", expires_at: Date.now() + 600000 },
+      });
+    }
+    if (path === "/api/v1/streams") {
+      return route.fulfill({
+        json: { canEdit: true, streams: [{ id: "s", name: "Stream" }] },
+      });
+    }
+    if (path.endsWith("/threads") && req.method() === "GET") {
+      return route.fulfill({ json: { threads } });
+    }
+    if (path.endsWith("/threads")) {
+      post = req.postDataJSON();
+      const thread = {
+        id: "new",
+        title: post.title,
+        createdAt: "2026-01-04T00:00:00Z",
+      };
+      threads = [...threads, thread];
+      return route.fulfill({ json: { thread } });
+    }
+    if (path.includes("/threads/") && req.method() === "POST") {
+      reply = req.postDataJSON();
+      return route.fulfill({ json: {} });
+    }
+    return route.fulfill({ json: { messages: [], next: null } });
+  });
+  await page.route("**/api/channels/*/events**", (route) =>
+    route.fulfill({
+      json: {
+        events: [{ id: "event", type: "update", occurredAt: "2026-01-02T00:00:00Z" }],
+        nextCursor: "more",
+        resumeCursor: "cursor",
+      },
+    }),
+  );
+  await page.goto("/tests/playwright/channel-harness.html?workspace=team-a");
+  await page.getByRole("button", { name: "Stream", exact: true }).click();
+  const timeline = page.locator("[data-timeline-id]");
+  await expect(timeline).toHaveCount(3);
+  expect(await timeline.evaluateAll((nodes) => nodes.map((node) => node.dataset.timelineId))).toEqual([
+    "first",
+    "event",
+    "later",
+  ]);
+  await expect(page.getByText(/timeline is incomplete/)).toBeVisible();
+  await page.getByRole("button", { name: "First thread" }).click();
+  await page.getByLabel("Thread reply").fill("plain reply");
+  await page.getByRole("button", { name: "Reply" }).click();
+  expect(reply).toEqual({ body: { text: "plain reply" } });
+  await page.evaluate(() =>
+    window.__eventSources[0].dispatchEvent(
+      new MessageEvent("channel.thread.message", {
+        data: JSON.stringify({ channelId: "s", threadId: "first" }),
+      }),
+    ),
+  );
+  await expect(timeline).toHaveCount(3);
+  expect(await timeline.evaluateAll((nodes) => nodes.map((node) => node.dataset.timelineId))).toEqual([
+    "first",
+    "event",
+    "later",
+  ]);
+  await page.getByLabel("New thread message").fill("Hello there");
+  await page.getByRole("button", { name: "Start thread" }).click();
+  await expect.poll(() => post).toEqual({ title: "Hello there", text: "Hello there" });
+});
 
 for (const viewport of [
   { name: "desktop", width: 1280, height: 900 },
@@ -142,6 +540,9 @@ for (const viewport of [
       body: { text: `Thread message ${index + 1}` },
     }));
     const requests = [];
+    await page.route("**/api/channels/*/events**", (route) =>
+      route.fulfill({ json: { events: [], nextCursor: null } }),
+    );
     await page.addInitScript(() => {
       window.__eventSources = [];
       window.EventSource = class extends EventTarget {
@@ -181,7 +582,10 @@ for (const viewport of [
           const after = url.searchParams.get("after");
           const start = after ? threadMessages.findIndex((message) => message.id === after) + 1 : 0;
           const page = threadMessages.slice(start, start + 100);
-          data = { messages: page, next: page.length === 100 ? page[page.length - 1].id : null };
+          data = {
+            messages: page,
+            next: page.length === 100 ? page[page.length - 1].id : null,
+          };
         } else {
           const body = JSON.parse(request.postData());
           const message = {
@@ -235,16 +639,17 @@ for (const viewport of [
     const channel = page.getByRole("button", { name: longName });
     await channel.click();
     await expect(channel).toHaveAttribute("aria-pressed", "true");
+    await page.getByText("Legacy messages", { exact: true }).click();
     await expect(page.getByText("Earlier message")).toBeVisible();
     await expect(page.locator("[data-message-id]")).toHaveCount(50);
-    await page.getByLabel("New thread title").fill("Investigate incident");
-    await page.getByRole("button", { name: "Create thread" }).click();
+    await page.getByLabel("New thread message").fill("Investigate incident");
+    await page.getByRole("button", { name: "Start thread" }).click();
     await expect(page.getByRole("button", { name: "Investigate incident" })).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("[data-thread-message-id]")).toHaveCount(100);
+    await expect(page.locator("[data-thread-message-id]")).toHaveCount(99);
     await page.getByRole("button", { name: "Load more thread messages" }).click();
     await expect(page.getByText("Thread message 101")).toBeVisible();
-    await expect(page.locator("[data-thread-message-id]")).toHaveCount(101);
-    await page.getByLabel("Thread message JSON body").fill('{"text":"Investigating in the Thread"}');
+    await expect(page.locator("[data-thread-message-id]")).toHaveCount(100);
+    await page.getByLabel("Thread reply").fill("Investigating in the Thread");
     await page.getByRole("button", { name: "Reply" }).click();
     await expect(page.getByText("Investigating in the Thread")).toBeVisible();
     expect(
@@ -276,13 +681,8 @@ for (const viewport of [
     await expect(page.locator("[data-message-id]")).toHaveCount(120);
     await expect(page.locator('[data-message-id="m120"]')).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Load newer messages" })).toBeHidden();
-    await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
-    await page.getByLabel("JSON message body").fill('{"text":"Sent locally"}');
-    await page.getByRole("button", { name: "Send message" }).click();
-    await expect(page.getByText("Sent locally")).toBeVisible();
-
     messages.push({
-      id: "m122",
+      id: "m121",
       author: "Remote member",
       createdAt: "2026-01-01T00:02:00Z",
       body: { text: "Received locally" },
@@ -294,17 +694,15 @@ for (const viewport of [
       window.__eventSources[0].dispatchEvent(event);
     });
     await expect(page.getByText("Received locally")).toBeVisible();
-    await expect(page.locator("[data-message-id]")).toHaveCount(122);
-    await expect(page.locator("[data-message-id]")).toHaveCount(122);
+    await expect(page.locator("[data-message-id]")).toHaveCount(121);
     await expect(page.locator('[data-message-id="m120"]')).toHaveCount(1);
     await expect(page.locator('[data-message-id="m121"]')).toHaveCount(1);
-    await expect(page.locator('[data-message-id="m122"]')).toHaveCount(1);
     expect(
-      requests.filter(({ url }) => url.includes("/messages") && url.includes("after=m121")).length,
+      requests.filter(({ url }) => url.includes("/messages") && url.includes("after=m120")).length,
     ).toBeGreaterThan(0);
     expect(
       requests
-        .filter(({ url }) => url.includes("/messages") && url.includes("after=m121"))
+        .filter(({ url }) => url.includes("/messages") && url.includes("after=m120"))
         .every(({ authorization }) => authorization === "Bearer local-test-token"),
     ).toBe(true);
     expect(requests.some(({ url }) => url.includes("/api/v1/channels/chan-local/messages"))).toBe(true);
@@ -329,7 +727,10 @@ test("workspace channel deep link restores the selected transcript", async ({ pa
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    requests.push({ url: url.pathname, workspace: request.headers()["x-workspace-id"] });
+    requests.push({
+      url: url.pathname,
+      workspace: request.headers()["x-workspace-id"],
+    });
     let body = {};
     if (url.pathname === "/api/v1/auth/token") {
       body = {
@@ -357,6 +758,7 @@ test("workspace channel deep link restores the selected transcript", async ({ pa
 
   await page.goto("/tests/playwright/channel-harness.html?workspace=team-a&channel=wanted");
   await expect(page.getByRole("heading", { name: "Wanted" })).toBeVisible();
+  await page.getByText("Legacy messages", { exact: true }).click();
   await expect(page.getByText("Deep-linked transcript")).toBeVisible();
   await expect(page.getByRole("button", { name: "Wanted" })).toHaveAttribute("aria-pressed", "true");
   await expect(page).toHaveURL(/\/ui\/workspaces\/team-a\/channels\/wanted$/);

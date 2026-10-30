@@ -106,6 +106,45 @@ export class ChannelRepository {
     return thread;
   }
 
+  /** Atomically create a thread and its first text message in the same workspace and stream. */
+  async createThreadWithInitialMessage(
+    teamId: string,
+    channelId: string,
+    title: string,
+    createdBy: string,
+    text: string,
+  ): Promise<{ thread: ChannelThread; messageId: string }> {
+    if (typeof db.transaction !== "function") {
+      throw new Error("Atomic transactions are required to create a thread with an initial message");
+    }
+    if (!text.trim()) {
+      throw new Error("Initial message text is required");
+    }
+    const threadId = crypto.randomUUID();
+    const messageId = crypto.randomUUID();
+    await db.transaction([
+      {
+        s: `INSERT INTO channel_threads (id, team_id, channel_id, title, created_by)
+            SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM channels WHERE team_id = ? AND id = ?)`,
+        d: [threadId, teamId, channelId, title, createdBy, teamId, channelId],
+        m: "run",
+      },
+      {
+        s: `INSERT INTO channel_thread_messages (id, team_id, channel_id, thread_id, author, body_json)
+            SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (
+              SELECT 1 FROM channel_threads WHERE team_id = ? AND channel_id = ? AND id = ?
+            )`,
+        d: [messageId, teamId, channelId, threadId, createdBy, JSON.stringify({ text }), teamId, channelId, threadId],
+        m: "run",
+      },
+    ]);
+    const thread = await this.getThread(teamId, channelId, threadId);
+    if (!thread) {
+      throw new Error("Thread could not be stored");
+    }
+    return { thread, messageId };
+  }
+
   async listThreadMessages<T = unknown>(
     teamId: string,
     channelId: string,

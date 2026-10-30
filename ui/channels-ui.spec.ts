@@ -55,9 +55,10 @@ describe("channels UI", () => {
     expect(source).toContain('history.pushState(null, "", target)');
   });
 
-  it("renders message JSON as text and exposes an accessible composer and navigation", () => {
+  it("renders legacy message JSON as text and exposes plain text composers and navigation", () => {
     expect(source).toContain('"Message body"');
-    expect(source).toContain("JSON message body");
+    expect(source).toContain("New thread message");
+    expect(source).toContain("Thread reply");
     expect(source).toContain("JSON.stringify(message.body, null, 2)");
     expect(shell).toContain("{{ channel.name }}</span");
     expect(shell).toContain('class="min-w-0 truncate"');
@@ -84,7 +85,7 @@ describe("channels UI", () => {
     expect(source).toContain("New Stream");
   });
 
-  it("loads saved events lazily with opaque cursor pagination and text-only rendering", () => {
+  it("loads saved events with opaque cursor pagination and text-only rendering", () => {
     expect(source).toContain('"Event history"');
     expect(source).toContain("/api/channels/${encodeURIComponent(channelId)}/events?${query}");
     expect(source).not.toContain("/api/v1/streams/${encodeURIComponent(channelId)}/events");
@@ -99,5 +100,8 @@ describe("channels UI", () => {
     expect(source).toContain("links.messageIds");
     expect(source).toContain("/ui/runs/${encodeURIComponent(runId)}");
     expect(source).toContain("Linked message is not in the currently loaded history.");
+    expect(source).toContain("thread.createdAt");
+    expect(source).toContain("entry.occurredAt");
+    expect(source).toContain("the timeline is incomplete until all pages are loaded");
   });
 });

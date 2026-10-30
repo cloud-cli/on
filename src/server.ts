@@ -5112,20 +5112,40 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (!(await this.channels.getStream(auth.teamId, streamId))) {
       return deny(res, 404, "Stream not found");
     }
-    const body = await this.readJson(req, res, 16 * 1024);
+    const body = await this.readJson(req, res, 256 * 1024);
     if (
       !body ||
       typeof body.title !== "string" ||
       !body.title.trim() ||
       body.title.length > 160 ||
-      Object.keys(body).length !== 1
+      Object.keys(body).some((key) => key !== "title" && key !== "text") ||
+      (Object.hasOwn(body, "text") &&
+        (typeof body.text !== "string" || !body.text.trim() || !isSafeChannelBody({ text: body.text })))
     ) {
       if (!res.headersSent) {
         deny(res, 400, "A thread title is required");
       }
       return;
     }
-    const legacy = await this.channels.createThread(auth.teamId, streamId, body.title.trim(), auth.principal.subject);
+    let legacy;
+    if (Object.hasOwn(body, "text")) {
+      const result = await this.channels.createThreadWithInitialMessage(
+        auth.teamId,
+        streamId,
+        body.title.trim(),
+        auth.principal.subject,
+        body.text,
+      );
+      legacy = result.thread;
+      this.events.publish("channel.thread.message", {
+        teamId: auth.teamId,
+        channelId: streamId,
+        threadId: legacy.id,
+        messageId: result.messageId,
+      });
+    } else {
+      legacy = await this.channels.createThread(auth.teamId, streamId, body.title.trim(), auth.principal.subject);
+    }
     const thread = {
       id: legacy.id,
       workspaceId: legacy.teamId,

@@ -66,6 +66,10 @@ function makeServer(capabilities = ["workflows.view", "workflows.edit"]) {
         title,
         createdBy,
       })),
+      createThreadWithInitialMessage: vi.fn(async (teamId, channelId, title, createdBy) => ({
+        thread: { id: "thread-1", teamId, channelId, title, createdBy },
+        messageId: "message-1",
+      })),
       listThreadMessages: vi.fn(async () => [{ id: "reply-1", body: { text: "hello" } }]),
       appendThreadMessage: vi.fn(async (input) => ({ ...input, id: "reply-1" })),
     },
@@ -136,6 +140,63 @@ describe("workspace channel APIs", () => {
     await WebhookServer.prototype.handleCanonicalThreadCreate.call(server, {}, forged, "chan");
     expect(forged.writeHead).toHaveBeenCalledWith(400, expect.anything());
     expect(server.channels.createThread).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates an initial message atomically and publishes its scoped notification", async () => {
+    const server = makeServer();
+    server.readJson.mockResolvedValue({ title: " Alert ", text: "hello" });
+    const res = response();
+    await WebhookServer.prototype.handleCanonicalThreadCreate.call(server, {}, res, "chan");
+    expect(server.channels.createThreadWithInitialMessage).toHaveBeenCalledWith(
+      "team-a",
+      "chan",
+      "Alert",
+      "actor-a",
+      "hello",
+    );
+    expect(server.channels.createThread).not.toHaveBeenCalled();
+    expect(server.events.publish).toHaveBeenCalledWith("channel.thread.message", {
+      teamId: "team-a",
+      channelId: "chan",
+      threadId: "thread-1",
+      messageId: "message-1",
+    });
+    expect(res.writeHead).toHaveBeenCalledWith(201, expect.anything());
+    expect(JSON.parse(res.end.mock.calls[0][0]).thread).toMatchObject({ workspaceId: "team-a", streamId: "chan" });
+  });
+
+  it("rejects invalid initial messages, forged fields, and unauthorized or cross-workspace creation", async () => {
+    const server = makeServer();
+    for (const body of [
+      { title: "x", text: " " },
+      { title: "x", text: { api_key: "secret" } },
+      { title: "x", text: "x".repeat(256 * 1024) },
+      { title: "x", text: "ok", author: "forged" },
+      { title: "x", text: "ok", workspaceId: "team-b" },
+    ]) {
+      server.readJson.mockResolvedValueOnce(body);
+      const res = response();
+      await WebhookServer.prototype.handleCanonicalThreadCreate.call(server, {}, res, "chan");
+      expect(res.writeHead).toHaveBeenCalledWith(400, expect.anything());
+    }
+    const missing = response();
+    await WebhookServer.prototype.handleCanonicalThreadCreate.call(server, {}, missing, "other");
+    expect(missing.writeHead).toHaveBeenCalledWith(404, expect.anything());
+    const denied = makeServer(["workflows.view"]);
+    await WebhookServer.prototype.handleCanonicalThreadCreate.call(denied, {}, response(), "chan");
+    expect(denied.channels.getStream).not.toHaveBeenCalled();
+    expect(server.channels.createThreadWithInitialMessage).not.toHaveBeenCalled();
+    expect(server.events.publish).not.toHaveBeenCalled();
+  });
+
+  it("does not publish a notification when atomic creation fails", async () => {
+    const server = makeServer();
+    server.readJson.mockResolvedValue({ title: "x", text: "hello" });
+    server.channels.createThreadWithInitialMessage.mockRejectedValue(new Error("transaction failed"));
+    await expect(
+      WebhookServer.prototype.handleCanonicalThreadCreate.call(server, {}, response(), "chan"),
+    ).rejects.toThrow("transaction failed");
+    expect(server.events.publish).not.toHaveBeenCalled();
   });
 
   it("pages canonical Thread messages within the workspace, Stream, and Thread", async () => {
