@@ -214,12 +214,15 @@ export default function setup() {
     document.querySelector("[data-workspace-rail]")?.classList.toggle("is-expanded", workspaceRailExpanded.value);
   };
   const selectWorkspace = (teamId, page = "runs") => {
+    const workspaceChanged = selectedWorkspaceId.value !== teamId;
     setSelectedWorkspace(teamId);
     activeSection.value =
       page === "connectors"
         ? "workspace-connectors"
         : `workspace-${page === "channels" ? "channels" : page === "workflows" ? "workflows" : "runs"}`;
-    void loadWorkspaceChannels();
+    if (workspaceChanged) {
+      void loadWorkspaceChannels();
+    }
   };
   const workspaceInitial = (name) =>
     String(name || "W")

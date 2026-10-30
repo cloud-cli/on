@@ -205,6 +205,17 @@ describe("On application shell", () => {
     expect(html).not.toContain("Messages are not yet modeled as Threads");
   });
 
+  it("does not reload Streams when navigating between pages in the current workspace", () => {
+    const start = shellSetup.indexOf("const selectWorkspace =");
+    const end = shellSetup.indexOf("const workspaceInitial =", start);
+    const selectWorkspace = shellSetup.slice(start, end);
+
+    expect(selectWorkspace).toContain("const workspaceChanged = selectedWorkspaceId.value !== teamId");
+    expect(selectWorkspace).toContain("if (workspaceChanged)");
+    expect(selectWorkspace).toContain("void loadWorkspaceChannels()");
+    expect(selectWorkspace).not.toMatch(/\n\s*void loadWorkspaceChannels\(\);\s*\n\s*};/);
+  });
+
   it("keeps the workflow link current on workspace workflow routes with trailing slashes", () => {
     expect(shellSetup).toContain('.replace(/^\\/ui/, "").replace(/\\/+$/, "") || "/"');
     expect(shellSetup).toContain('workspaceRoute[2] === "connectors"');
