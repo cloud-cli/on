@@ -35,7 +35,9 @@ closed and must be rewritten to the `run` format to use `verifyBody`; their save
 well.
 
 A GitHub integration can be expressed in connector YAML, including request verification and mapping GitHub payloads to
-domain events, but the connector runtime itself has no GitHub-specific assumptions or behavior.
+domain events, but the connector runtime itself has no GitHub-specific assumptions or behavior. GitMini organization
+webhooks use the same generic ingress, with a distinct connector and signing secret. Both connectors can emit the same
+`git.push` event type so a workflow can build from either source without coupling the workflow to provider payloads.
 
 For example, this connector validates a GitHub push request and emits a normalized event. The GitHub-specific header
 names and payload mapping are choices in this YAML, not behavior built into the runner:
@@ -47,29 +49,64 @@ run: |
   }
 
   if (headers["x-github-event"] === "push") {
-    emit("github.push", {
+    emit("git.push", {
+      owner: inputs.repository.owner.login,
+      repo: inputs.repository.name,
+      branch: inputs.ref,
       ref: inputs.ref,
       repository: inputs.repository.full_name,
-      commits: inputs.commits,
-      revision: inputs.after
+      clone_url: inputs.repository.clone_url,
+      commit_sha: inputs.after,
+      commitSha: inputs.after,
+      source: "github"
     });
   }
 ```
 
-Subscribe a workflow to `github.push` to receive the emitted event data in `inputs.data`:
+Subscribe a workflow to `git.push` to receive the emitted event data in `inputs.data`:
 
 ```yaml
 id: deploy-push
 name: Deploy push
 on:
-  events: [github.push]
+  events: [git.push]
 steps:
   - id: deploy
     env:
-      REVISION: ${inputs.data.revision}
-      REPOSITORY: ${inputs.data.repository}
+      REVISION: ${inputs.data.commitSha}
+      REPOSITORY: ${inputs.data.owner}/${inputs.data.repo}
     run: ./deploy "$REPOSITORY" "$REVISION"
 ```
+
+GitMini signs the exact JSON body with HMAC-SHA-256 in `X-GitMini-Signature` and identifies the event in
+`X-GitMini-Event`. A separate connector can verify that header and normalize a branch push to the same `git.push`
+contract. For example, when a subscription is limited to one GitMini repository and its `main` branch:
+
+```yaml
+run: |
+  if (!verifyBody(body, headers["x-gitmini-signature"])) {
+    throw new Error("Invalid GitMini webhook signature.");
+  }
+
+  if (headers["x-gitmini-event"] === "git.push" && inputs.object === "example/test-repo" &&
+      inputs.details.changes[0].ref === "refs/heads/main") {
+    emit("git.push", {
+      owner: "example",
+      repo: "test-repo",
+      branch: "main",
+      clone_url: "https://git.example/git/example/test-repo.git",
+      commitSha: inputs.details.changes[0].after,
+      commit_sha: inputs.details.changes[0].after,
+      source: "gitmini"
+    });
+  }
+```
+
+The GitHub and GitMini examples use the same event type and normalized `inputs.data` fields; each connector still has its
+own signing secret. Keep source filters narrow when an organization-level GitHub hook forwards pushes from many
+repositories. Do not include a GitMini access token in a clone URL or event data; workflows that need authenticated
+GitMini clones should use a separately scoped secret and a credential mechanism that does not persist credentials in
+event history.
 
 ## Manage and receive requests
 
