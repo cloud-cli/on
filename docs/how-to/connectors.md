@@ -1,89 +1,98 @@
 # Create and manage an HTTP connector
 
-A connector accepts an HTTP request at a private tokenized URL, evaluates a restricted YAML definition, and publishes
-the final step's `{ type, data }` as a workspace domain event. Event subscriptions determine whether any workflow
-receives that event. A receipt is not a workflow run.
+A connector accepts an HTTP request at a private tokenized URL, evaluates a restricted YAML program, and publishes the
+events emitted by that program as workspace domain events. Event subscriptions determine whether any workflow receives
+an event. A receipt is not a workflow run. A program may emit multiple events; emitting none is valid.
 
 ## Connector definition
 
 ```yaml
-kind: connector
-id: deployment-hook
-name: Deployment hook
-steps:
-  - id: normalize
-    eval: |
-      ({
-        type: "deployment.completed",
-        data: {
-          environment: String(body.environment),
-          revision: String(body.revision),
-          requestId: headers["x-request-id"]
-        }
-      })
+run: |
+  if (inputs.status === "complete") {
+    emit("deployment.completed", {
+      environment: String(inputs.environment),
+      revision: String(inputs.revision),
+      requestId: headers["x-request-id"]
+    });
+  }
 ```
 
-The top-level keys are exactly `kind`, `id`, `name`, and `steps`. `kind` must be `connector`; IDs and step IDs are
-unique lowercase slugs; the name must be nonempty. There must be 1–32 steps. Each step contains only `id` and `eval`;
-`run` steps are not supported. Expressions are limited to 8,192 characters and the YAML document to 256,000
-characters. The final step must evaluate to an object with only `type` and `data`, where `type` is a lowercase
-namespaced event type and `data` is a plain JSON object (up to 256 KiB serialized).
+The YAML source has a single top-level `run: |` program. Connector ID and name are metadata supplied separately by the
+management UI/API; they do not belong in the YAML. At runtime, `inputs` is a parsed JSON object, `body` is the raw
+request body as a Buffer, `headers` contains request headers except host/origin and proxy-routing metadata,
+`secrets.WEBHOOK_SECRET` is the configured webhook
+secret, `verifyBody(body, signature)` is available for checking a signature, and `emit(type, data)` emits a normalized
+domain event. Other headers, including authorization/cookie headers, remain available to the connector program. Event
+`data` should contain only suitable domain data; avoid forwarding credentials or other secrets.
 
-The restricted expression context contains `input` (an object with `contentType` and `body`), `body` as an alias for
-`input.body`, sanitized/allowlisted `headers`, and `steps` containing outputs of earlier steps. Body is parsed JSON
-for JSON content types; other valid UTF-8 bodies are text, and binary bodies are represented as base64 data and byte
-length. Expressions support literals, property access, arrays/objects, operators, conditionals and templates. Calls
-are restricted to `String`, `Number`, `Boolean`, `JSON.parse`, `JSON.stringify`, and bounded data-string methods:
-`toString`, `toLowerCase`, `toUpperCase`, `trim`, `slice`, `substring`, `startsWith`, `endsWith`, `includes`,
-`indexOf`, `lastIndexOf`, and `charAt`. Access to `constructor`, `__proto__`, and `prototype` is blocked. This is not
-arbitrary JavaScript: there is no network access, filesystem, secret lookup, module loading, or shell execution.
+Programs are interpreted by a restricted AST interpreter. It supports block, `if`, expression, and `throw`
+statements; it does not execute `Function` or arbitrary JavaScript. Use the runtime-provided verification and emission
+helpers rather than assuming general-purpose APIs are available.
+
+Previously published step-based connector definitions remain executable for compatibility if they have no webhook
+secret. New saves and publishes require the `run` format. Legacy connectors with a configured webhook secret fail
+closed and must be rewritten to the `run` format to use `verifyBody`; their saved receipt replays require that update as
+well.
+
+A GitHub integration can be expressed in connector YAML, including request verification and mapping GitHub payloads to
+domain events, but the connector runtime itself has no GitHub-specific assumptions or behavior.
+
+For example, this connector validates a GitHub push request and emits a normalized event. The GitHub-specific header
+names and payload mapping are choices in this YAML, not behavior built into the runner:
+
+```yaml
+run: |
+  if (!verifyBody(body, headers["x-hub-signature-256"])) {
+    throw new Error("Invalid signature or payload.");
+  }
+
+  if (headers["x-github-event"] === "push") {
+    emit("github.push", {
+      ref: inputs.ref,
+      repository: inputs.repository.full_name,
+      commits: inputs.commits,
+      revision: inputs.after
+    });
+  }
+```
+
+Subscribe a workflow to `github.push` to receive the emitted event data in `inputs.data`:
+
+```yaml
+id: deploy-push
+name: Deploy push
+on:
+  events: [github.push]
+steps:
+  - id: deploy
+    env:
+      REVISION: ${inputs.data.revision}
+      REPOSITORY: ${inputs.data.repository}
+    run: ./deploy "$REPOSITORY" "$REVISION"
+```
 
 ## Manage and receive requests
 
-Use `POST /api/v1/workspaces/{workspaceId}/connectors` with `id`, `name`, and `sourceYaml` to create a connector.
-The YAML `id` and `name` must match the request fields. The response includes the tokenized ingress URL; treat it as
-a credential. `GET` lists connectors, `GET /{connectorId}` reads one, `PUT /{connectorId}` updates its name and
-definition, and `DELETE /{connectorId}` revokes it. These management routes require the corresponding workspace
-webhook view/manage capability.
+Create and manage connectors through the workspace connector UI/API. The connector ID and name are outer metadata, and
+the YAML source is stored as the connector definition. Treat the tokenized ingress URL as a credential.
 
-Send requests to `POST /webhooks/connectors/{token}`. A successful ingress returns `202`; processing and event
-fanout are asynchronous. The endpoint accepts JSON, text, or binary bodies within the ingress size bound. Do not put
-credentials or other secrets in event data: normalized domain-event data is not encrypted at rest.
+Send requests to the connector's ingress URL. A successful ingress is accepted for processing; event fanout is
+asynchronous. Do not put credentials or other secrets in event data: normalized domain-event data is not encrypted at
+rest.
 
-### Optional signing secret
+### Optional webhook secret
 
-The tokenized webhook URL and signing secret are separate random credentials. The URL routes a request to the
-connector; the signing secret authenticates the payload. Use the connector management operation
-`POST /api/v1/workspaces/{workspaceId}/connectors/{connectorId}/signing-secret` to generate or rotate the signing
-secret. The plaintext is returned once with a `whsec_` prefix to distinguish it from the webhook URL token; store it
-securely. Normal connector reads return only whether a secret is configured. Rotation immediately invalidates the
-previous signing secret. Disabling a connector revokes its URL token;
-its signing configuration is retained so re-enabling does not silently downgrade to unsigned requests.
+The tokenized webhook URL and webhook secret are separate credentials. The URL routes a request to the connector; the
+secret can be used by the connector program to verify request signatures. The secret is generated or rotated through
+the connector management UI and is shown only once. Store it securely. Rotating it invalidates the previous secret.
 
-When a signing secret is configured, requests must use either GitHub's native `X-Hub-Signature-256` header (HMAC-SHA-256
-of the exact raw request body) or the timestamped generic signature format below. GitHub's native signature format is
-compatible with GitHub webhook configuration and its delivery ID is used for event idempotency. For other senders,
-include `X-Connector-Timestamp` as Unix seconds and `X-Connector-Signature` as `sha256=<hex HMAC>`. Compute that
-HMAC-SHA-256 over the ASCII timestamp, a period, and the exact raw request body bytes. Timestamped requests more than
-five minutes from server time are rejected. Example in Node.js:
+For example, a sender might provide a signature in a vendor-neutral header:
 
-```js
-import { createHmac } from "node:crypto";
-
-const timestamp = String(Math.floor(Date.now() / 1000));
-const digest = createHmac("sha256", signingSecret)
-  .update(timestamp + ".")
-  .update(rawBody)
-  .digest("hex");
+```text
+X-Webhook-Signature: <signature computed over the exact raw request body>
 ```
 
-Send the result as `X-Connector-Signature: sha256=${digest}`. Do not parse and re-serialize JSON before signing. These
-authentication headers are not exposed to connector mapping expressions or stored receipt metadata. A connector
-without a configured signing secret remains compatible with unsigned senders.
-
-## Receipts and replay
-
-Workspace Incoming Events endpoints list and inspect receipts. Receipt detail omits captured input data. Replaying a
-valid receipt with an active connector evaluates the stored request again through the connector's current revision
-and publishes a new normalized domain event. The replay has its own replay identity; it is not a workflow/job rerun.
-Use the workflow run API when the intent is to run a workflow again.
+Pass the raw `body` and the selected header's signature value to `verifyBody(body, signature)`. The generic helper
+checks HMAC-SHA-256 over the exact body bytes in the `sha256=<hex>` format using `secrets.WEBHOOK_SECRET`; it does not
+apply a timestamp window or deduplicate deliveries. The connector YAML chooses the signature header and maps any
+vendor-specific payload. The runtime does not automatically impose vendor-specific signature or delivery behavior.

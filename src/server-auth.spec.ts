@@ -360,8 +360,7 @@ describe("current IAM route authorization", () => {
       id: "normalize",
       workspaceId: "unrelated",
       name: "Normalize",
-      sourceYaml:
-        "kind: connector\nid: normalize\nname: Normalize\nsteps: [{id: map, eval: \"({type: 'sample.received', data: body})\"}]",
+      sourceYaml: "run: |\n  emit('sample.received', inputs)",
       version: 1,
       enabled: true,
       createdAt: "now",

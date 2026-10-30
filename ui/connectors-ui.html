@@ -137,11 +137,11 @@
             <div class="min-w-0">
               <h3 id="connector-credentials-title" class="font-semibold">Webhook credentials</h3>
               <p class="mt-1 text-xs text-app-secondary">
-                The private webhook URL and signing secret are separate credentials. GitHub can use its
-                <code>X-Hub-Signature-256</code> header with this secret.
+                The private webhook URL and webhook secret are separate credentials. Connector YAML defines how incoming
+                requests are verified and mapped to events.
               </p>
               <p class="mt-1 text-xs text-app-secondary">
-                Signing secret: {{ hasSigningSecret ? 'Configured' : 'Not configured' }}
+                Webhook secret: {{ hasSigningSecret ? 'Configured' : 'Not configured' }}
               </p>
             </div>
             <button
@@ -150,7 +150,7 @@
               bind-disabled="busy || !published"
               class="min-h-11 shrink-0 rounded-lg border border-app-primary px-4 text-sm font-semibold text-app-primary disabled:opacity-50"
             >
-              {{ hasSigningSecret ? 'Rotate signing secret' : 'Generate signing secret' }}
+              {{ hasSigningSecret ? 'Rotate webhook secret' : 'Generate webhook secret' }}
             </button>
           </section>
           <label class="sr-only" for="connector-yaml">Connector YAML</label>

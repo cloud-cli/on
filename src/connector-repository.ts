@@ -117,10 +117,7 @@ export class ConnectorRepository {
       return null;
     }
     const source = current.draftYaml || current.sourceYaml;
-    const definition = (await import("./connector-definition.js")).parseConnectorDefinition(source);
-    if (definition.id !== id) {
-      throw new Error("Invalid connector YAML");
-    }
+    (await import("./connector-definition.js")).parseConnectorDefinition(source);
     const token = current.enabled ? null : crypto.randomBytes(32).toString("base64url");
     await db.run(
       `UPDATE connectors SET name = COALESCE(draft_name, name), source_yaml = ?, revision = revision + 1, draft_yaml = NULL, draft_name = NULL,

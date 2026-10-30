@@ -1,18 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WebhookServer } from "./server.js";
 import crypto from "node:crypto";
+import { WebhookServer } from "./server.js";
 
 const connector = {
   id: "normalize",
   name: "Normalize",
   workspaceId: "workspace-a",
   version: 3,
-  sourceYaml: `kind: connector
-id: normalize
-name: Normalize
-steps:
-  - id: map
-    eval: "({ type: 'sample.received', data: { value: body.value } })"
+  sourceYaml: `run: |
+  emit('sample.received', { value: inputs.value })
 `,
 };
 
@@ -24,7 +20,10 @@ function createServer() {
       headers: {
         "content-type": "application/json",
         "x-delivery-id": "delivery-1",
-        authorization: "must-not-be-persisted",
+        "x-forwarded-for": "must-not-be-exposed",
+        host: "runner.internal",
+        origin: "https://untrusted.example",
+        authorization: "connector-can-read-this",
       },
     })),
     incomingEvents: {
@@ -32,7 +31,9 @@ function createServer() {
       receivedAtForTeam: vi.fn(async () => "2026-10-27T00:00:00.000Z"),
       finish: vi.fn(async () => {}),
     },
-    domainEventRepository: { publish: vi.fn(async () => ({ id: "event-1", type: "sample.received" })) },
+    domainEventRepository: {
+      publish: vi.fn(async (_teamId: string, event: any) => ({ id: "event-1", type: event.type })),
+    },
     domainEventDeliveryRepository: { fanout: vi.fn(async () => ({ status: "matched", deliveryCount: 1 })) },
   };
 }
@@ -42,10 +43,17 @@ const response = () => ({ writeHead: vi.fn().mockReturnThis(), end: vi.fn(), hea
 afterEach(() => vi.restoreAllMocks());
 
 describe("connector webhook ingress", () => {
-  it("captures receipt, evaluates the connector, and publishes a durable typed event", async () => {
+  it("captures raw request, evaluates run with inputs/body/headers, and publishes emitted events", async () => {
     const server = createServer();
     const res = response();
-    await (WebhookServer.prototype as any).handleConnectorWebhook.call(server, connector, {}, res);
+    const sourceYaml = `run: |
+  emit('sample.received', {
+    value: inputs.value,
+    raw: body.toString('utf8'),
+    authorization: headers.authorization
+  })
+`;
+    await (WebhookServer.prototype as any).handleConnectorWebhook.call(server, { ...connector, sourceYaml }, {}, res);
 
     expect(server.incomingEvents.capture).toHaveBeenCalledWith(
       "workspace-a",
@@ -61,142 +69,122 @@ describe("connector webhook ingress", () => {
       occurredAt: "2026-10-27T00:00:00.000Z",
       correlationId: null,
       causationId: "receipt-1",
-      idempotencyKey: "connector:normalize:delivery:delivery-1",
-      data: { value: 7 },
+      idempotencyKey: "connector:normalize:delivery:delivery-1:0",
+      data: { value: 7, raw: '{"value":7}', authorization: "connector-can-read-this" },
     });
     expect(server.domainEventDeliveryRepository.fanout).toHaveBeenCalledWith("workspace-a", "event-1");
-    expect(server.incomingEvents.finish).toHaveBeenCalledWith("workspace-a", "receipt-1", "valid", "queued", {
-      type: "sample.received",
-      data: { value: 7 },
-    });
+    expect(server.incomingEvents.finish).toHaveBeenCalledWith("workspace-a", "receipt-1", "valid", "queued", [
+      { type: "sample.received", data: { value: 7, raw: '{"value":7}', authorization: "connector-can-read-this" } },
+    ]);
     expect(res.writeHead).toHaveBeenCalledWith(202, expect.any(Object));
-    expect(JSON.parse(res.end.mock.calls[0][0])).toMatchObject({ receiptId: "receipt-1", eventId: "event-1" });
+    expect(JSON.parse(res.end.mock.calls[0][0])).toMatchObject({
+      receiptId: "receipt-1",
+      events: [{ id: "event-1", type: "sample.received" }],
+    });
   });
 
-  it("fails closed when a connector document is invalid", async () => {
+  it("filters proxy, host, and origin headers from connector context while retaining other headers", async () => {
     const server = createServer();
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = response();
+    await (WebhookServer.prototype as any).handleConnectorWebhook.call(server, connector, {}, res);
+
+    expect(server.incomingEvents.capture.mock.calls[0][3]).not.toHaveProperty("x-forwarded-for");
+    expect(server.incomingEvents.capture.mock.calls[0][3]).not.toHaveProperty("host");
+    expect(server.incomingEvents.capture.mock.calls[0][3]).not.toHaveProperty("origin");
+    expect(server.incomingEvents.capture.mock.calls[0][3]).toHaveProperty("authorization");
+  });
+
+  it("rejects an invalid signature in connector execution and does not publish events", async () => {
+    const secret = "connector-secret";
+    const rawBody = Buffer.from('{"value":7}');
+    const signature = `sha256=${crypto.createHmac("sha256", secret).update(rawBody).digest("hex")}`;
+    const server = createServer();
+    server.readRequest.mockResolvedValue({
+      rawBuffer: rawBody,
+      headers: { "content-type": "application/json", "x-hook-signature": signature },
+    });
+    const run = `run: |
+  if (!verifyBody(body, headers['x-hook-signature'])) {
+    throw new Error('invalid signature')
+  }
+  emit('sample.received', { value: inputs.value })
+`;
     const res = response();
     await (WebhookServer.prototype as any).handleConnectorWebhook.call(
       server,
-      { ...connector, sourceYaml: "kind: connector\nid: normalize\nname: Normalize\nsteps: [{run: 'true'}]" },
+      { ...connector, sourceYaml: run, signingSecret: secret },
+      {},
+      res,
+    );
+
+    expect(server.domainEventRepository.publish).toHaveBeenCalledOnce();
+    expect(res.writeHead).toHaveBeenCalledWith(202, expect.any(Object));
+
+    const invalid = createServer();
+    invalid.readRequest.mockResolvedValue({
+      rawBuffer: rawBody,
+      headers: { "content-type": "application/json", "x-hook-signature": "sha256=" + "0".repeat(64) },
+    });
+    const invalidRes = response();
+    await (WebhookServer.prototype as any).handleConnectorWebhook.call(
+      invalid,
+      { ...connector, sourceYaml: run, signingSecret: secret },
+      {},
+      invalidRes,
+    );
+    expect(invalid.domainEventRepository.publish).not.toHaveBeenCalled();
+    expect(invalid.incomingEvents.finish).toHaveBeenCalledWith("workspace-a", "receipt-1", "valid", "failed", []);
+    expect(invalidRes.writeHead).toHaveBeenCalledWith(422, expect.any(Object));
+  });
+
+  it("allows valid connectors to intentionally emit no events", async () => {
+    const server = createServer();
+    const res = response();
+    await (WebhookServer.prototype as any).handleConnectorWebhook.call(
+      server,
+      { ...connector, sourceYaml: "run: |\n  if (inputs.skip) { }\n" },
       {},
       res,
     );
 
     expect(server.domainEventRepository.publish).not.toHaveBeenCalled();
-    expect(server.incomingEvents.finish).toHaveBeenCalledWith("workspace-a", "receipt-1", "valid", "failed", null);
-    expect(res.writeHead).toHaveBeenCalledWith(422, expect.any(Object));
-    expect(JSON.stringify(res.end.mock.calls)).not.toContain("run: 'true'");
-  });
-
-  it("validates timestamped HMAC over exact raw body before capturing a receipt", async () => {
-    const secret = "signing-secret";
-    const rawBody = Buffer.from('{"value":7}');
-    const timestamp = String(Math.floor(Date.now() / 1000));
-    const signature = crypto
-      .createHmac("sha256", secret)
-      .update(timestamp + ".")
-      .update(rawBody)
-      .digest("hex");
-    const server = createServer();
-    server.readRequest.mockResolvedValue({
-      rawBuffer: rawBody,
-      headers: {
-        "content-type": "application/json",
-        "x-connector-timestamp": timestamp,
-        "x-connector-signature": `sha256=${signature}`,
-      },
-    });
-    const res = response();
-    await (WebhookServer.prototype as any).handleConnectorWebhook.call(
-      server,
-      { ...connector, signingSecret: secret },
-      {},
-      res,
-    );
-    expect(server.incomingEvents.capture).toHaveBeenCalledOnce();
-    const capturedHeaders = server.incomingEvents.capture.mock.calls[0][3];
-    expect(capturedHeaders).not.toHaveProperty("x-connector-timestamp");
-    expect(capturedHeaders).not.toHaveProperty("x-connector-signature");
+    expect(server.incomingEvents.finish).toHaveBeenCalledWith("workspace-a", "receipt-1", "valid", "unmatched", []);
     expect(res.writeHead).toHaveBeenCalledWith(202, expect.any(Object));
   });
 
-  it("accepts GitHub's native HMAC-SHA256 webhook signature over exact raw bytes", async () => {
-    const secret = "github-signing-secret";
-    const rawBody = Buffer.from('{ "value":7 }');
-    const signature = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  it("publishes all buffered emissions in order with per-emission idempotency keys", async () => {
     const server = createServer();
-    server.readRequest.mockResolvedValue({
-      rawBuffer: rawBody,
-      headers: { "content-type": "application/json", "x-hub-signature-256": `sha256=${signature}` },
-    });
+    server.domainEventRepository.publish
+      .mockResolvedValueOnce({ id: "event-a", type: "sample.first" })
+      .mockResolvedValueOnce({ id: "event-b", type: "sample.second" });
+    server.domainEventDeliveryRepository.fanout
+      .mockResolvedValueOnce({ status: "matched", deliveryCount: 1 })
+      .mockResolvedValueOnce({ status: "matched", deliveryCount: 2 });
     const res = response();
-    await (WebhookServer.prototype as any).handleConnectorWebhook.call(
-      server,
-      { ...connector, signingSecret: secret },
-      {},
-      res,
+    const sourceYaml = `run: |
+  emit('sample.first', { value: inputs.value })
+  emit('sample.second', { value: inputs.value })
+`;
+
+    await (WebhookServer.prototype as any).handleConnectorWebhook.call(server, { ...connector, sourceYaml }, {}, res);
+
+    expect(server.domainEventRepository.publish).toHaveBeenNthCalledWith(
+      1,
+      "workspace-a",
+      expect.objectContaining({ type: "sample.first", idempotencyKey: "connector:normalize:delivery:delivery-1:0" }),
     );
-
-    expect(server.incomingEvents.capture).toHaveBeenCalledOnce();
-    expect(server.incomingEvents.capture.mock.calls[0][3]).not.toHaveProperty("x-hub-signature-256");
-    expect(res.writeHead).toHaveBeenCalledWith(202, expect.any(Object));
-  });
-
-  it("rejects a GitHub signature when raw request bytes change", async () => {
-    const secret = "github-signing-secret";
-    const signedBody = Buffer.from('{"value":7}');
-    const signature = crypto.createHmac("sha256", secret).update(signedBody).digest("hex");
-    const server = createServer();
-    server.readRequest.mockResolvedValue({
-      rawBuffer: Buffer.from('{ "value":7 }'),
-      headers: { "content-type": "application/json", "x-hub-signature-256": `sha256=${signature}` },
-    });
-    const res = response();
-    await (WebhookServer.prototype as any).handleConnectorWebhook.call(
-      server,
-      { ...connector, signingSecret: secret },
-      {},
-      res,
+    expect(server.domainEventRepository.publish).toHaveBeenNthCalledWith(
+      2,
+      "workspace-a",
+      expect.objectContaining({ type: "sample.second", idempotencyKey: "connector:normalize:delivery:delivery-1:1" }),
     );
-
-    expect(res.writeHead).toHaveBeenCalledWith(401, expect.any(Object));
-    expect(server.incomingEvents.capture).not.toHaveBeenCalled();
-  });
-
-  it.each(["missing", "invalid", "stale"])("rejects %s signature before receipt capture", async (caseName) => {
-    const secret = "signing-secret";
-    const rawBody = Buffer.from('{"value":7}');
-    const timestamp = String(Math.floor(Date.now() / 1000) - (caseName === "stale" ? 301 : 0));
-    const signature = caseName === "invalid" ? "sha256=" + "0".repeat(64) : "";
-    const server = createServer();
-    server.readRequest.mockResolvedValue({
-      rawBuffer: rawBody,
-      headers: {
-        "content-type": "application/json",
-        ...(caseName === "missing" ? {} : { "x-connector-timestamp": timestamp }),
-        ...(caseName === "invalid"
-          ? { "x-connector-signature": signature }
-          : caseName === "stale"
-            ? {
-                "x-connector-signature": `sha256=${crypto
-                  .createHmac("sha256", secret)
-                  .update(timestamp + ".")
-                  .update(rawBody)
-                  .digest("hex")}`,
-              }
-            : {}),
-      },
-    });
-    const res = response();
-    await (WebhookServer.prototype as any).handleConnectorWebhook.call(
-      server,
-      { ...connector, signingSecret: secret },
-      {},
-      res,
-    );
-    expect(res.writeHead).toHaveBeenCalledWith(401, expect.any(Object));
-    expect(server.incomingEvents.capture).not.toHaveBeenCalled();
+    expect(server.incomingEvents.finish).toHaveBeenCalledWith("workspace-a", "receipt-1", "valid", "queued", [
+      { type: "sample.first", data: { value: 7 } },
+      { type: "sample.second", data: { value: 7 } },
+    ]);
+    expect(JSON.parse(res.end.mock.calls[0][0]).events).toEqual([
+      { id: "event-a", type: "sample.first" },
+      { id: "event-b", type: "sample.second" },
+    ]);
   });
 });

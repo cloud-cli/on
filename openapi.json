@@ -4514,7 +4514,7 @@
       "post": {
         "tags": ["workspaces"],
         "summary": "Create a workspace connector",
-        "description": "Requires webhooks.manage. Submitted YAML id and name must match request values. Response includes a private ingress URL.",
+        "description": "Requires webhooks.manage. The connector id and name are workspace metadata; sourceYaml contains a single top-level run program. Response includes a private ingress URL.",
         "security": [
           {
             "oidcSessionCookie": []
@@ -4539,7 +4539,7 @@
                   },
                   "sourceYaml": {
                     "type": "string",
-                    "description": "Connector definition YAML."
+                    "description": "Connector YAML containing a single top-level run program."
                   }
                 }
               }
@@ -4669,7 +4669,7 @@
       "post": {
         "tags": ["workspaces"],
         "summary": "Generate or rotate a connector signing secret",
-        "description": "Requires webhooks.manage. Returns a new high-entropy signing secret once; the secret is separate from the private tokenized webhook URL. Requests must sign the timestamp and exact raw body using HMAC-SHA-256.",
+        "description": "Requires webhooks.manage. Returns a new high-entropy webhook secret once; it is separate from the private tokenized webhook URL. Connector programs may use the injected secrets.WEBHOOK_SECRET value to authenticate requests.",
         "security": [{ "oidcSessionCookie": [] }, { "oidcAdminBearer": [] }],
         "responses": {
           "200": { "description": "Connector metadata and one-time signing secret; response is no-store" },

@@ -10,9 +10,7 @@ export default function () {
   const connectors = ref([]);
   const id = ref("example");
   const name = ref("Example");
-  const source = ref(
-    `kind: connector\nid: example\nname: Example\nsteps:\n  - id: normalize\n    eval: "({ type: 'sample.received', data: { body } })"\n`,
-  );
+  const source = ref(`run: |\n  emit("sample.received", inputs);\n`);
   const enabled = ref(false);
   const published = ref(false);
   const hasDraft = ref(false);

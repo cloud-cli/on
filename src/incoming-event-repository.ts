@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import db from "./db-client.js";
 import { SecretRepository } from "./secret-repository.js";
-import { safeWebhookHeaders } from "./webhook-headers.js";
+import { connectorContextHeaders, safeWebhookHeaders } from "./webhook-headers.js";
 
 export type IncomingEventStatus = "received" | "queued" | "unmatched" | "rejected" | "failed";
 export type IncomingEventValidation = "pending" | "valid" | "invalid";
@@ -50,7 +50,7 @@ export class IncomingEventRepository {
     const eventType = normalizedHeaders["x-event-type"] || normalizedHeaders["ce-type"] || null;
     const contentType = normalizedHeaders["content-type"] || null;
     const payloadCiphertext = this.secrets.encryptValue(rawBody.toString("base64"));
-    const headersCiphertext = this.secrets.encryptValue(JSON.stringify(safeWebhookHeaders(headers)));
+    const headersCiphertext = this.secrets.encryptValue(JSON.stringify(connectorContextHeaders(headers)));
     const payloadSha256 = crypto.createHash("sha256").update(rawBody).digest("hex");
     await db.run(
       `INSERT INTO incoming_events
@@ -141,7 +141,9 @@ export class IncomingEventRepository {
       return null;
     }
     const payloadBytes = Buffer.from(this.secrets.decryptValue(row.payload_ciphertext), "base64");
-    const headers = row.headers_ciphertext ? JSON.parse(this.secrets.decryptValue(row.headers_ciphertext)) : {};
+    const headers = safeWebhookHeaders(
+      row.headers_ciphertext ? JSON.parse(this.secrets.decryptValue(row.headers_ciphertext)) : {},
+    );
     const contentType = String(row.content_type || "")
       .split(";", 1)[0]
       .trim()

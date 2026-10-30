@@ -17,19 +17,20 @@ describe("ConnectorRepository", () => {
       connector_id: "deploy",
       team_id: "ws-a",
       name: "Deploy",
-      source_yaml: "steps: []",
+      source_yaml: "run: |\n  emit('sample.received', {})",
       revision: 1,
       enabled: 1,
       created_at: "now",
       updated_at: "now",
     });
-    const created = await repository.createForWorkspace("ws-a", "deploy", "Deploy", "steps: []");
+    const sourceYaml = "run: |\n  emit('sample.received', {})";
+    const created = await repository.createForWorkspace("ws-a", "deploy", "Deploy", sourceYaml);
     expect(created.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(database.run.mock.calls[0][1]).toEqual([
       "ws-a",
       "deploy",
       "Deploy",
-      "steps: []",
+      sourceYaml,
       expect.stringMatching(/^[a-f0-9]{64}$/),
     ]);
     expect(database.run.mock.calls[0][1]).not.toContain(created.token);
@@ -72,8 +73,7 @@ describe("ConnectorRepository", () => {
   });
 
   it("saves new connector definitions as unpublished drafts without generating a token", async () => {
-    const sourceYaml =
-      "kind: connector\nid: intake\nname: Intake\nsteps:\n  - id: normalize\n    eval: \"({type: 'sample.received', data: {body}})\"";
+    const sourceYaml = "run: |\n  emit('sample.received', { value: inputs.value })";
     database.get.mockResolvedValue({
       connector_id: "intake",
       team_id: "ws-a",
@@ -97,8 +97,7 @@ describe("ConnectorRepository", () => {
   });
 
   it("publishes saved drafts, enables ingress, and returns a fresh token only once", async () => {
-    const sourceYaml =
-      "kind: connector\nid: intake\nname: Intake\nsteps:\n  - id: normalize\n    eval: \"({type: 'sample.received', data: {body}})\"";
+    const sourceYaml = "run: |\n  emit('sample.received', { value: inputs.value })";
     database.get
       .mockResolvedValueOnce({
         connector_id: "intake",

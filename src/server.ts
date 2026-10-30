@@ -11,7 +11,7 @@ import { WorkflowRunAdmissionRepository, type WorkflowRunVariant } from "./workf
 import { DomainEventDispatcher, type DomainEventInvocationRequest } from "./domain-event-dispatcher.js";
 import { planWorkflowInvocation } from "./workflow-invocation-admission.js";
 import { ChannelRepository } from "./channel-repository.js";
-import { safeWebhookHeaders } from "./webhook-headers.js";
+import { connectorContextHeaders, safeWebhookHeaders } from "./webhook-headers.js";
 import { IncomingEventRepository } from "./incoming-event-repository.js";
 import { getAppIcon, serviceWorker, webManifest } from "../ui/pwa.js";
 import { QueueManager } from "./queue.js";
@@ -45,7 +45,7 @@ import { UserPreferencesRepository } from "./user-preferences.js";
 import { TeamRepository } from "./teams.js";
 import { isValidWorkspaceLogo, MAX_WORKSPACE_LOGO_BYTES } from "./workspace-logo.js";
 import { ConnectorRepository } from "./connector-repository.js";
-import { evaluateConnector, parseConnectorDefinition } from "./connector-definition.js";
+import { evaluateConnector, parseConnectorDefinition, parseConnectorInputs } from "./connector-definition.js";
 import { RunnerRegistry } from "./runner-registry.js";
 import { memberViewForCaller, PrincipalRepository } from "./principals.js";
 import { RequestAuthorizer, deny, type AuthContext, type WorkspaceAuthorization } from "./authorization.js";
@@ -2711,113 +2711,76 @@ sessionStorage.removeItem('runner-pending-team-invite');
     res: http.ServerResponse,
   ) {
     let receiptId: string | undefined;
-    let normalizedEvent: { type: string; data: Record<string, unknown> } | null = null;
+    let emittedEvents: Array<{ type: string; data: Record<string, unknown> }> = [];
     try {
       const { rawBuffer, headers } = await this.readRequest(req, res);
       if (res.headersSent || !rawBuffer) {
         return;
       }
-      if (connector.signingSecret) {
-        const timestamp = headers["x-connector-timestamp"];
-        const signature = headers["x-connector-signature"];
-        const githubSignature = headers["x-hub-signature-256"];
-        const expectedRawBodySignature = crypto
-          .createHmac("sha256", connector.signingSecret)
-          .update(rawBuffer)
-          .digest();
-        const matchesSignature = (candidate: string | undefined, expected: Buffer) => {
-          const supplied = candidate ? /^sha256=([a-f0-9]{64})$/i.exec(candidate)?.[1] : undefined;
-          if (!supplied) {
-            return false;
-          }
-          const actual = Buffer.from(supplied, "hex");
-          return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
-        };
-        const seconds = typeof timestamp === "string" && /^\d{1,12}$/.test(timestamp) ? Number(timestamp) : NaN;
-        const expectedTimestampSignature = crypto
-          .createHmac("sha256", connector.signingSecret)
-          .update(timestamp + ".")
-          .update(rawBuffer)
-          .digest();
-        const timestampedSignature =
-          typeof signature === "string" &&
-          Number.isFinite(seconds) &&
-          Math.abs(Math.floor(Date.now() / 1000) - seconds) <= 300 &&
-          matchesSignature(signature, expectedTimestampSignature);
-        if (!matchesSignature(githubSignature, expectedRawBodySignature) && !timestampedSignature) {
-          res.writeHead(401, { "Cache-Control": "no-store" }).end();
-          return;
-        }
-      }
       await this.workflowsLoaded;
       const contentType = String(headers["content-type"] || "application/octet-stream")
         .split(";", 1)[0]
-        .trim();
-      const text = (() => {
-        try {
-          return new TextDecoder("utf-8", { fatal: true }).decode(rawBuffer);
-        } catch {
-          return undefined;
-        }
-      })();
-      let body: unknown;
-      if (text === undefined) {
-        body = { encoding: "base64", data: rawBuffer.toString("base64"), byteLength: rawBuffer.byteLength };
-      } else if (contentType === "application/json" || contentType.endsWith("+json")) {
-        try {
-          body = JSON.parse(text);
-        } catch {
-          body = text;
-        }
-      } else {
-        body = text;
-      }
+        .trim()
+        .toLowerCase();
       const safeHeaders = safeWebhookHeaders(headers);
       receiptId = await this.incomingEvents.capture(
         connector.workspaceId,
         connector.id,
         connector.version,
-        safeHeaders,
+        connectorContextHeaders(headers),
         rawBuffer,
       );
-      const input = { contentType, body };
-      normalizedEvent = await evaluateConnector(connector.sourceYaml, { input, headers: safeHeaders });
+      const inputs = parseConnectorInputs(rawBuffer, contentType);
+      emittedEvents = await evaluateConnector(connector.sourceYaml, {
+        inputs,
+        body: rawBuffer,
+        headers: connectorContextHeaders(headers),
+        secrets: connector.signingSecret ? { WEBHOOK_SECRET: connector.signingSecret } : {},
+        contentType,
+      });
       const receivedAt =
         (await this.incomingEvents.receivedAtForTeam(connector.workspaceId, receiptId)) || new Date().toISOString();
-      const deliveryId =
-        safeHeaders["idempotency-key"] || safeHeaders["x-delivery-id"] || safeHeaders["x-github-delivery"];
-      const published = await this.domainEventRepository.publish(connector.workspaceId, {
-        type: normalizedEvent.type,
-        schemaVersion: 1,
-        source: `connector/${connector.id}`,
-        occurredAt: receivedAt,
-        correlationId: null,
-        causationId: receiptId,
-        idempotencyKey: deliveryId ? `connector:${connector.id}:delivery:${deliveryId}` : null,
-        data: normalizedEvent.data,
-      });
-      const fanout = await this.domainEventDeliveryRepository.fanout(connector.workspaceId, published.id);
+      const deliveryId = safeHeaders["idempotency-key"] || safeHeaders["x-delivery-id"];
+      const publishedEvents: Array<{ id: string; type: string }> = [];
+      let queuedDeliveries = 0;
+      for (let index = 0; index < emittedEvents.length; index += 1) {
+        const event = emittedEvents[index];
+        const published = await this.domainEventRepository.publish(connector.workspaceId, {
+          type: event.type,
+          schemaVersion: 1,
+          source: `connector/${connector.id}`,
+          occurredAt: receivedAt,
+          correlationId: null,
+          causationId: receiptId,
+          idempotencyKey: deliveryId
+            ? `connector:${connector.id}:delivery:${deliveryId}:${index}`
+            : `connector:${connector.id}:receipt:${receiptId}:emit:${index}`,
+          data: event.data,
+        });
+        const fanout = await this.domainEventDeliveryRepository.fanout(connector.workspaceId, published.id);
+        queuedDeliveries += fanout.deliveryCount;
+        publishedEvents.push({ id: published.id, type: published.type });
+      }
       await this.incomingEvents.finish(
         connector.workspaceId,
         receiptId,
         "valid",
-        fanout.deliveryCount > 0 ? "queued" : "unmatched",
-        { type: normalizedEvent.type, data: normalizedEvent.data },
+        queuedDeliveries > 0 ? "queued" : "unmatched",
+        emittedEvents,
       );
       res.writeHead(202, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
       res.end(
         JSON.stringify({
           receiptId,
-          eventId: published.id,
-          eventType: published.type,
-          queuedDeliveries: fanout.deliveryCount,
+          events: publishedEvents,
+          queuedDeliveries,
         }),
       );
     } catch (error) {
-      console.error("Connector ingress failed", error instanceof Error ? error.message : "unknown error");
+      console.error("Connector ingress failed");
       if (receiptId) {
         await this.incomingEvents
-          .finish(connector.workspaceId, receiptId, "valid", "failed", normalizedEvent)
+          .finish(connector.workspaceId, receiptId, "valid", "failed", emittedEvents)
           .catch(() => undefined);
       }
       if (!res.headersSent) {
@@ -4008,10 +3971,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
           if (!body || typeof body.name !== "string" || typeof body.sourceYaml !== "string") {
             throw new Error("name and sourceYaml are required");
           }
-          const definition = parseConnectorDefinition(body.sourceYaml);
-          if (definition.id !== connectorId || definition.name !== body.name) {
-            throw new Error("Connector YAML id and name must match");
-          }
+          parseConnectorDefinition(body.sourceYaml);
           connector = await this.connectors.saveDraft(teamId, connectorId, body.name, body.sourceYaml);
         } else if (operation === "publish" && req.method === "POST") {
           connector = await this.connectors.publishDraft(teamId, connectorId);
@@ -4069,10 +4029,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return;
       }
       try {
-        const definition = parseConnectorDefinition(body.sourceYaml);
-        if (definition.id !== body.id || definition.name !== body.name) {
-          throw new Error("Connector YAML id and name must match the submitted values");
-        }
+        parseConnectorDefinition(body.sourceYaml);
         const created = await this.connectors.createForWorkspace(teamId, body.id, body.name, body.sourceYaml);
         await this.principals.recordAudit({
           actor: authorized.principal.subject,
@@ -4132,10 +4089,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return;
       }
       try {
-        const definition = parseConnectorDefinition(body.sourceYaml);
-        if (definition.id !== connectorId || definition.name !== body.name) {
-          throw new Error("Connector YAML id and name must match the requested connector");
-        }
+        parseConnectorDefinition(body.sourceYaml);
         const connector = await this.connectors.updateForWorkspace(teamId, connectorId, body.name, body.sourceYaml);
         if (!connector) {
           res.writeHead(404).end(JSON.stringify({ error: "Connector not found" }));
@@ -4244,46 +4198,42 @@ sessionStorage.removeItem('runner-pending-team-invite');
       const replayId = await this.incomingEvents.createReplay(teamId, eventId, authorized.principal.subject);
       try {
         const contentType = replayContext.contentType.split(";", 1)[0].trim().toLowerCase();
-        const text = (() => {
-          try {
-            return new TextDecoder("utf-8", { fatal: true }).decode(replayContext.body);
-          } catch {
-            return undefined;
-          }
-        })();
-        let rawBody: unknown;
-        if (text === undefined) {
-          rawBody = {
-            encoding: "base64",
-            data: replayContext.body.toString("base64"),
-            byteLength: replayContext.body.byteLength,
-          };
-        } else if (contentType === "application/json" || contentType.endsWith("+json")) {
-          try {
-            rawBody = JSON.parse(text);
-          } catch {
-            rawBody = text;
-          }
-        } else {
-          rawBody = text;
+        const signingSecret = await this.connectors.getSigningSecret(teamId, connector.id);
+        const emittedEvents = await evaluateConnector(replayYaml, {
+          inputs: parseConnectorInputs(replayContext.body, contentType),
+          body: replayContext.body,
+          headers: connectorContextHeaders(replayContext.headers),
+          secrets: signingSecret ? { WEBHOOK_SECRET: signingSecret } : {},
+          contentType,
+        });
+        const publishedEvents: Array<{ id: string; type: string }> = [];
+        let queuedDeliveries = 0;
+        for (let index = 0; index < emittedEvents.length; index += 1) {
+          const emitted = emittedEvents[index];
+          const published = await this.domainEventRepository.publish(teamId, {
+            type: emitted.type,
+            schemaVersion: 1,
+            source: `connector/${connector.id}`,
+            occurredAt: event.receivedAt,
+            correlationId: null,
+            causationId: eventId,
+            idempotencyKey: `connector:${connector.id}:replay:${replayId}:${index}`,
+            data: emitted.data,
+          });
+          const fanout = await this.domainEventDeliveryRepository.fanout(teamId, published.id);
+          queuedDeliveries += fanout.deliveryCount;
+          publishedEvents.push({ id: published.id, type: published.type });
         }
-        const normalizedEvent = await evaluateConnector(replayYaml, {
-          input: { contentType, body: rawBody },
-          headers: replayContext.headers,
-        });
-        const published = await this.domainEventRepository.publish(teamId, {
-          type: normalizedEvent.type,
-          schemaVersion: 1,
-          source: `connector/${connector.id}`,
-          occurredAt: event.receivedAt,
-          correlationId: null,
-          causationId: eventId,
-          idempotencyKey: `connector:${connector.id}:replay:${replayId}`,
-          data: normalizedEvent.data,
-        });
-        const fanout = await this.domainEventDeliveryRepository.fanout(teamId, published.id);
-        const status = fanout.deliveryCount ? "queued" : "unmatched";
-        await this.incomingEvents.finishReplay(teamId, replayId, status, [], null, connector.version, published.id);
+        const status = queuedDeliveries ? "queued" : "unmatched";
+        await this.incomingEvents.finishReplay(
+          teamId,
+          replayId,
+          status,
+          [],
+          null,
+          connector.version,
+          publishedEvents[0]?.id,
+        );
         await this.principals
           .recordAudit({
             actor: authorized.principal.subject,
@@ -4292,9 +4242,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
             teamId,
             detail: {
               replayId,
-              eventId: published.id,
+              eventIds: publishedEvents.map(({ id }) => id),
               connectorRevision: connector.version,
-              queuedDeliveries: fanout.deliveryCount,
+              queuedDeliveries,
             },
           })
           .catch((error) => console.error("Could not audit incoming event replay:", error));
@@ -4307,8 +4257,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
             eventId,
             replayId,
             connectorRevision: connector.version,
-            normalizedEventId: published.id,
-            queuedDeliveries: fanout.deliveryCount,
+            events: publishedEvents,
+            queuedDeliveries,
           }),
         );
       } catch (error: any) {

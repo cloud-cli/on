@@ -39,8 +39,10 @@ describe("workspace Connectors page", () => {
     expect(html).toContain("bg-app-success/10");
     expect(html).toContain("bg-app-error/10");
     expect(html).toContain("Webhook credentials");
-    expect(html).toContain("Rotate signing secret");
-    expect(html).toContain("X-Hub-Signature-256");
+    expect(html).toContain("Rotate webhook secret");
+    expect(html).not.toContain("X-Hub-Signature-256");
+    expect(setup).toContain("run: |");
+    expect(setup).toContain('emit("sample.received", inputs)');
     expect(setup).toContain("const targetId = item?.id || selectedId.value");
     expect(setup).toContain("/signing-secret");
     expect(setup).toContain("oneTimeSigningSecret.value = result.signingSecret");
