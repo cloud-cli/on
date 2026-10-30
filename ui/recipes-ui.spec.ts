@@ -27,7 +27,7 @@ describe("recipe marketplace UI", () => {
     expect(template).toContain('theme="googlecode"');
     expect(template).toContain('aria-label="Recipe YAML source"');
     expect(template).toContain("bg-app-card");
-    expect(template).not.toContain("<textarea");
+    expect(template).toContain("data-template-description");
     expect(template).toContain("data-validation");
     expect(template).toContain("data-editor-page");
     const editor = template.split("data-editor-page")[1].split("data-create-dialog")[0];
@@ -40,6 +40,10 @@ describe("recipe marketplace UI", () => {
     expect(setup).toContain("event.detail");
     expect(setup).toContain("getSource()");
     expect(setup).toContain("Create a new version or fork");
+    expect(template).toContain('data-kind="connectors"');
+    expect(setup).toContain("Fork as new template version");
+    expect(setup).toContain("/api/v1/connector-templates/validate");
+    expect(setup).toContain("/api/v1/connector-templates");
     expect(setup).toContain("/ui/recipes/new");
     expect(setup).toContain('searchParams.get("editor")');
     expect(setup).not.toMatch(/method:\s*["']DELETE/);
@@ -56,5 +60,21 @@ describe("recipe marketplace UI", () => {
     expect(workflowTemplate).toContain("No recipes match that search.");
     expect(workflowTemplate).toContain("Loading recipes…");
     expect(workflowTemplate).toContain('bind-disabled="recipe.revoked"');
+  });
+
+  it("provides safe accessible connector installation and one-time secret handling", () => {
+    expect(setup).not.toMatch(/\b(prompt|alert)\s*\(/);
+    expect(setup).toContain("Array.isArray(workspaceResult.workspaces)");
+    expect(setup).toContain("option.value = w.id");
+    expect(setup).toContain("catalogGeneration");
+    expect(setup).toContain("install.disabled = true");
+    expect(setup).toContain("activeSecret = null");
+    expect(setup).toContain("navigator.clipboard.writeText");
+    expect(setup).toContain('searchParams.set("catalog", tab.dataset.kind)');
+    expect(setup).toContain("listStatus.textContent");
+    expect(template).toContain('role="status" aria-live="polite"');
+    expect(template).toContain("data-secret-dismiss");
+    expect(template).toContain("does not expire, but it is shown only once");
+    expect(template).toContain("[overflow-wrap:anywhere]");
   });
 });

@@ -34,34 +34,17 @@ secret. New saves and publishes require the `run` format. Legacy connectors with
 closed and must be rewritten to the `run` format to use `verifyBody`; their saved receipt replays require that update as
 well.
 
-A GitHub integration can be expressed in connector YAML, including request verification and mapping GitHub payloads to
-domain events, but the connector runtime itself has no GitHub-specific assumptions or behavior. GitMini organization
-webhooks use the same generic ingress, with a distinct connector and signing secret. Both connectors can emit the same
-`git.push` event type so a workflow can build from either source without coupling the workflow to provider payloads.
+A ready-to-install **GitHub push** template is available in **Recipes → Connector templates**. Install an exact template
+version into each workspace that needs it, then use that install's one-time signing secret as the GitHub webhook secret
+and configure the repository/org webhook to send push events to that connector's one-time URL. No organization or
+repository is embedded in the global template. It verifies `X-Hub-Signature-256` against the raw body, requires the
+`X-GitHub-Event: push` header, rejects deleted refs and zero commit SHAs, and emits a normalized `git.push` event with
+owner, repository, branch/ref, clone URL, commit SHA, default branch, and `source: github`.
 
-For example, this connector validates a GitHub push request and emits a normalized event. The GitHub-specific header
-names and payload mapping are choices in this YAML, not behavior built into the runner:
-
-```yaml
-run: |
-  if (!verifyBody(body, headers["x-hub-signature-256"])) {
-    throw new Error("Invalid signature or payload.");
-  }
-
-  if (headers["x-github-event"] === "push") {
-    emit("git.push", {
-      owner: inputs.repository.owner.login,
-      repo: inputs.repository.name,
-      branch: inputs.ref,
-      ref: inputs.ref,
-      repository: inputs.repository.full_name,
-      clone_url: inputs.repository.clone_url,
-      commit_sha: inputs.after,
-      commitSha: inputs.after,
-      source: "github"
-    });
-  }
-```
+Connector authors can publish their own immutable global template versions in the same catalog. A fork copies the
+selected version's source into the editor; publishing creates a new version under the publisher's identity-derived
+namespace. Templates must not contain credentials. Every installation receives its own connector identity and fresh
+ingress/signing credentials.
 
 Subscribe a workflow to `git.push` to receive the emitted event data in `inputs.data`:
 

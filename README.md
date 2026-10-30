@@ -20,6 +20,12 @@ the scheduler, and your first workspace-scoped runner. Then follow the tutorials
 Browse the [documentation index](docs/README.md), the [HTTP API contract](docs/reference/http-api.md), or the
 [workflow syntax reference](docs/reference/workflow-syntax.md).
 
+The Recipes area distinguishes immutable workflow recipe versions from immutable global connector templates.
+Human users can author and publish connector-template versions, and fork existing templates. The catalog includes
+a GitHub push connector that verifies the raw request signature before normalizing push events. Installing an
+exact template version creates an independent workspace connector with a fresh webhook token and signing secret.
+Templates contain no credentials; generated credentials are shown only once per installation.
+
 ## Development
 
 ```sh

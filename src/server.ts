@@ -45,9 +45,12 @@ import { UserPreferencesRepository } from "./user-preferences.js";
 import { TeamRepository } from "./teams.js";
 import { isValidWorkspaceLogo, MAX_WORKSPACE_LOGO_BYTES } from "./workspace-logo.js";
 import { ConnectorRepository } from "./connector-repository.js";
+import { ConnectorTemplateRepository, GITHUB_PUSH_TEMPLATE } from "./connector-templates.js";
 import { evaluateConnector, parseConnectorDefinition, parseConnectorInputs } from "./connector-definition.js";
 import { RunnerRegistry } from "./runner-registry.js";
 import { memberViewForCaller, PrincipalRepository } from "./principals.js";
+
+const MAX_CONNECTOR_TEMPLATE_REQUEST_BYTES = 300_000;
 import { RequestAuthorizer, deny, type AuthContext, type WorkspaceAuthorization } from "./authorization.js";
 import {
   GLOBAL_CAPABILITIES,
@@ -264,6 +267,7 @@ export class WebhookServer {
   private agentWorkflowGrantRepository = new AgentWorkflowGrantRepository();
   private teams = new TeamRepository();
   private connectors = new ConnectorRepository(this.secretRepository);
+  private connectorTemplates = new ConnectorTemplateRepository();
   private incomingEvents = new IncomingEventRepository(this.secretRepository);
   private domainEventRepository = new DomainEventRepository();
   private workflowRunAdmissions = new WorkflowRunAdmissionRepository();
@@ -1740,7 +1744,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     if (url.pathname.startsWith("/api/teams")) {
       return this.handleTeams(req, res, url);
     }
-    if (url.pathname.startsWith("/api/workspaces")) {
+    if (url.pathname.startsWith("/api/workspaces") && !url.pathname.includes("/connector-templates/")) {
       return this.handleTeams(req, res, url);
     }
 
@@ -2178,6 +2182,173 @@ sessionStorage.removeItem('runner-pending-team-invite');
     }
     if (url.pathname === "/api/recipes" && req.method === "POST") {
       return this.handleRecipePublish(req, res);
+    }
+    if (url.pathname === "/api/connector-templates" && req.method === "GET") {
+      if (!(await this.requireAuthenticatedUser(req, res))) {
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ connectorTemplates: await this.connectorTemplates.list() }));
+      return;
+    }
+    if (url.pathname === "/api/connector-templates" && req.method === "POST") {
+      const context = await this.authenticate(req, res);
+      if (!context) {
+        return;
+      }
+      if (context.principal.kind !== "human") {
+        return deny(res, 403, "Only human users may publish connector templates");
+      }
+      const body = await this.readJson(req, res, MAX_CONNECTOR_TEMPLATE_REQUEST_BYTES);
+      if (
+        !body ||
+        typeof body.slug !== "string" ||
+        typeof body.name !== "string" ||
+        typeof body.description !== "string" ||
+        typeof body.sourceYaml !== "string"
+      ) {
+        if (!res.headersSent) {
+          deny(res, 400, "slug, name, description, and sourceYaml are required");
+        }
+        return;
+      }
+      try {
+        parseConnectorDefinition(body.sourceYaml);
+        const preferredUsername = await this.oidcUsers.preferredUsername(context.principal.subject);
+        const namespace = await this.connectorTemplates.namespaceForOwner(
+          context.principal.subject,
+          preferredUsername || "",
+        );
+        if (namespace === GITHUB_PUSH_TEMPLATE.namespace && body.slug === GITHUB_PUSH_TEMPLATE.slug) {
+          throw new Error("This connector template slug is reserved");
+        }
+        const template = await this.connectorTemplates.publish(
+          namespace,
+          context.principal.subject,
+          body.slug,
+          body.name,
+          body.description,
+          body.sourceYaml,
+        );
+        res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ connectorTemplate: template }));
+      } catch (error) {
+        res.writeHead(422, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Invalid connector template" }));
+      }
+      return;
+    }
+    if (url.pathname === "/api/connector-templates/validate" && req.method === "POST") {
+      if (!(await this.requireAuthenticatedUser(req, res))) {
+        return;
+      }
+      const body = await this.readJson(req, res, MAX_CONNECTOR_TEMPLATE_REQUEST_BYTES);
+      if (!body || typeof body.sourceYaml !== "string") {
+        if (!res.headersSent) {
+          deny(res, 400, "sourceYaml is required");
+        }
+        return;
+      }
+      try {
+        parseConnectorDefinition(body.sourceYaml);
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ valid: true }));
+      } catch (error) {
+        res.writeHead(422, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ valid: false, error: error instanceof Error ? error.message : String(error) }));
+      }
+      return;
+    }
+    const templateVersionMatch = url.pathname.match(
+      /^\/api\/connector-templates\/([a-z0-9-]+)\/([a-z0-9-]+)\/versions\/(\d+)$/,
+    );
+    if (templateVersionMatch && req.method === "GET") {
+      if (!(await this.requireAuthenticatedUser(req, res))) {
+        return;
+      }
+      const template = await this.connectorTemplates.get(
+        templateVersionMatch[1],
+        templateVersionMatch[2],
+        Number(templateVersionMatch[3]),
+      );
+      res.writeHead(template ? 200 : 404, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      res.end(JSON.stringify(template ? { connectorTemplate: template } : { error: "Connector template not found" }));
+      return;
+    }
+    const connectorTemplateInstall = url.pathname.match(
+      /^\/api\/workspaces\/([^/]+)\/connector-templates\/([a-z0-9-]+)\/([a-z0-9-]+)\/versions\/(\d+)\/install$/,
+    );
+    if (connectorTemplateInstall && req.method === "POST") {
+      const [, rawWorkspace, namespace, slug, rawVersion] = connectorTemplateInstall;
+      const workspaceId = decodeURIComponent(rawWorkspace);
+      const authorized = await this.authorizer.workspace(req, res, "webhooks.manage", workspaceId);
+      if (!authorized) {
+        return;
+      }
+      const template = await this.connectorTemplates.get(namespace, slug, Number(rawVersion));
+      if (!template) {
+        res.writeHead(404).end(JSON.stringify({ error: "Connector template not found" }));
+        return;
+      }
+      const body = await this.readJson(req, res, 16_384);
+      if (!body) {
+        return;
+      }
+      const id = crypto.randomUUID().replaceAll("-", "");
+      const name = typeof body?.name === "string" && body.name.trim() ? body.name.trim() : template.name;
+      let connectorCreated = false;
+      try {
+        const created = await this.connectors.createForWorkspace(workspaceId, id, name, template.sourceYaml, {
+          namespace,
+          slug,
+          version: Number(rawVersion),
+        });
+        connectorCreated = true;
+        const signing = await this.connectors.rotateSigningSecret(workspaceId, id);
+        if (!signing) {
+          throw new Error("Could not generate connector signing secret");
+        }
+        await this.principals.recordAudit({
+          actor: authorized.principal.subject,
+          action: "connector.template.install",
+          target: `${namespace}/${slug}@${rawVersion}`,
+          teamId: workspaceId,
+          detail: { connectorId: id, revision: created.version },
+        });
+        res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(
+          JSON.stringify({
+            connector: signing.connector,
+            url: `/api/v1/webhooks/connectors/${encodeURIComponent(created.token)}`,
+            signingSecret: signing?.secret,
+          }),
+        );
+      } catch (error) {
+        let cleanupFailed = false;
+        if (connectorCreated) {
+          try {
+            if (!(await this.connectors.deleteForWorkspace(workspaceId, id))) {
+              cleanupFailed = true;
+            }
+          } catch {
+            cleanupFailed = true;
+          }
+        }
+        res.writeHead(cleanupFailed ? 500 : 422, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(
+          JSON.stringify({
+            error: cleanupFailed
+              ? "Template installation failed and its connector could not be cleaned up"
+              : error instanceof Error
+                ? error.message
+                : "Template installation failed",
+          }),
+        );
+      }
+      return;
     }
     const recipeVersionMatch = url.pathname.match(
       /^\/api\/recipes\/([a-z0-9-]+)\/([a-z0-9-]+)\/versions\/(\d+)(\/revoke)?$/,

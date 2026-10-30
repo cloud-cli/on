@@ -77,6 +77,14 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api/v1/workspaces/{workspaceId}/connectors/{connectorId}"].delete).toBeDefined();
     expect(spec.paths["/api/v1/workspaces/{workspaceId}/connectors/{connectorId}/signing-secret"].post).toBeDefined();
     expect(spec.paths["/api/v1/recipes/validate"]).toHaveProperty("post");
+    expect(spec.paths["/api/v1/connector-templates"].get).toBeDefined();
+    expect(spec.paths["/api/v1/connector-templates"].post).toBeDefined();
+    expect(spec.paths["/api/v1/connector-templates/validate"].post).toBeDefined();
+    expect(spec.paths["/api/v1/connector-templates/{namespace}/{slug}/versions/{version}"].get).toBeDefined();
+    expect(
+      spec.paths["/api/v1/workspaces/{workspaceId}/connector-templates/{namespace}/{slug}/versions/{version}/install"]
+        .post.summary,
+    ).toContain("exact connector template version");
     expect(spec.paths["/api/v1/recipes"]).not.toHaveProperty("delete");
     expect(spec.paths["/api/v1/recipes/{namespace}/{slug}/versions/{version}"]).not.toHaveProperty("delete");
   });

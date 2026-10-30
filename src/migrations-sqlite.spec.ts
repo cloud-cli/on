@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { runMigrations } from "./migrations.js";
+import { GITHUB_PUSH_TEMPLATE } from "./connector-templates.js";
 
 vi.mock("./db-client.js", () => {
   let database = new DatabaseSync(":memory:");
@@ -138,6 +139,17 @@ describe("v3 migrations against SQLite", () => {
     expect(versions.map(({ version }) => version)).toContain("028_workflow_run_plan_ready");
     expect(versions.map(({ version }) => version)).toContain("029_step_attempt_identity");
     expect(versions.map(({ version }) => version)).toContain("030_domain_event_delivery_invocation_link");
+    const githubTemplate = database
+      .prepare(
+        "SELECT namespace, slug, version, source_yaml FROM connector_template_versions WHERE slug = 'github-push'",
+      )
+      .get() as { namespace: string; slug: string; version: number; source_yaml: string };
+    expect(githubTemplate).toEqual({
+      namespace: GITHUB_PUSH_TEMPLATE.namespace,
+      slug: GITHUB_PUSH_TEMPLATE.slug,
+      version: GITHUB_PUSH_TEMPLATE.version,
+      source_yaml: GITHUB_PUSH_TEMPLATE.sourceYaml,
+    });
     expect(versions.map(({ version }) => version)).toContain("031_stream_threads");
     expect(versions.map(({ version }) => version)).toContain("032_step_attempt_snapshots");
     expect(versions.map(({ version }) => version)).toContain("033_stream_event_bindings");
@@ -427,6 +439,7 @@ describe("v3 migrations against SQLite", () => {
       objectName: "stream_event_binding_team_guard",
     },
     { version: "035_domain_event_fanout_outcomes", objectType: "table", objectName: "domain_event_fanout_outcomes" },
+    { version: "041_connector_template_registry", objectType: "table", objectName: "connector_template_versions" },
   ])(
     "retries additive migration $version after its schema applied but marker failed",
     async ({ version, objectType, objectName }) => {

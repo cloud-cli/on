@@ -15,6 +15,9 @@ export type Connector = {
   draftYaml: string | null;
   hasDraft: boolean;
   hasSigningSecret: boolean;
+  templateNamespace?: string | null;
+  templateSlug?: string | null;
+  templateVersion?: number | null;
 };
 
 export type CreatedConnector = Connector & { token: string };
@@ -78,15 +81,25 @@ export class ConnectorRepository {
     id: string,
     name: string,
     sourceYaml: string,
+    template?: { namespace: string; slug: string; version: number },
   ): Promise<CreatedConnector> {
     validate(id, name, sourceYaml);
     const token = crypto.randomBytes(32).toString("base64url");
     const digest = tokenDigest(token);
-    await db.run(
-      `INSERT INTO connectors (team_id, connector_id, name, source_yaml, revision, webhook_token_hash, enabled)
-       VALUES (?, ?, ?, ?, 1, ?, 1)`,
-      [workspaceId, id, name, sourceYaml, digest],
-    );
+    if (template) {
+      await db.run(
+        `INSERT INTO connectors (team_id, connector_id, name, source_yaml, revision, webhook_token_hash, enabled,
+          template_namespace, template_slug, template_version)
+         VALUES (?, ?, ?, ?, 1, ?, 1, ?, ?, ?)`,
+        [workspaceId, id, name, sourceYaml, digest, template.namespace, template.slug, template.version],
+      );
+    } else {
+      await db.run(
+        `INSERT INTO connectors (team_id, connector_id, name, source_yaml, revision, webhook_token_hash, enabled)
+         VALUES (?, ?, ?, ?, 1, ?, 1)`,
+        [workspaceId, id, name, sourceYaml, digest],
+      );
+    }
     const connector = await this.getForWorkspace(workspaceId, id);
     if (!connector) {
       throw new Error("Connector could not be stored");
@@ -183,7 +196,7 @@ export class ConnectorRepository {
 
   async listForWorkspace(workspaceId: string): Promise<Connector[]> {
     const rows = await db.all(
-      `SELECT connector_id, team_id, name, source_yaml, revision, enabled, published, created_at, updated_at, draft_yaml, draft_name, signing_secret_ciphertext
+      `SELECT connector_id, team_id, name, source_yaml, revision, enabled, published, created_at, updated_at, draft_yaml, draft_name, signing_secret_ciphertext, template_namespace, template_slug, template_version
        FROM connectors WHERE team_id = ? ORDER BY connector_id`,
       [workspaceId],
     );
@@ -192,7 +205,7 @@ export class ConnectorRepository {
 
   async getForWorkspace(workspaceId: string, id: string): Promise<Connector | null> {
     const row = await db.get(
-      `SELECT connector_id, team_id, name, source_yaml, revision, enabled, published, created_at, updated_at, draft_yaml, draft_name, signing_secret_ciphertext
+      `SELECT connector_id, team_id, name, source_yaml, revision, enabled, published, created_at, updated_at, draft_yaml, draft_name, signing_secret_ciphertext, template_namespace, template_slug, template_version
        FROM connectors WHERE team_id = ? AND connector_id = ?`,
       [workspaceId, id],
     );
@@ -256,6 +269,9 @@ export class ConnectorRepository {
       draftYaml: row.draft_yaml ?? null,
       hasDraft: row.draft_yaml != null,
       hasSigningSecret: typeof row.signing_secret_ciphertext === "string",
+      ...(row.template_namespace ? { templateNamespace: row.template_namespace } : {}),
+      ...(row.template_slug ? { templateSlug: row.template_slug } : {}),
+      ...(row.template_version ? { templateVersion: Number(row.template_version) } : {}),
       ...(row.draft_name ? { draftName: row.draft_name } : {}),
     };
   }

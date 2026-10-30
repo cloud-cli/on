@@ -69,6 +69,31 @@ describe("ConnectorRepository", () => {
     expect(database.run.mock.calls[0][1][1]).toBe(uuid);
   });
 
+  it("creates isolated template installations with fresh ingress tokens and records exact source identity", async () => {
+    database.get
+      .mockResolvedValueOnce({ connector_id: "uuid-a", team_id: "ws-a", name: "GitHub", revision: 1 })
+      .mockResolvedValueOnce({ connector_id: "uuid-b", team_id: "ws-b", name: "GitHub", revision: 1 });
+    const template = { namespace: "on", slug: "github-push", version: 1 };
+    const source = "run: |\n  emit('git.push', inputs)";
+    const first = await repository.createForWorkspace("ws-a", "uuid-a", "GitHub", source, template);
+    const second = await repository.createForWorkspace("ws-b", "uuid-b", "GitHub", source, template);
+
+    expect(first.token).not.toBe(second.token);
+    expect(database.run.mock.calls[0][0]).toContain("template_namespace, template_slug, template_version");
+    expect(database.run.mock.calls[0][1]).toEqual([
+      "ws-a",
+      "uuid-a",
+      "GitHub",
+      source,
+      expect.stringMatching(/^[a-f0-9]{64}$/),
+      "on",
+      "github-push",
+      1,
+    ]);
+    expect(database.run.mock.calls[1][1][0]).toBe("ws-b");
+    expect(database.run.mock.calls[0][1][4]).not.toBe(database.run.mock.calls[1][1][4]);
+  });
+
   it("enforces nonempty bounded name and YAML source", async () => {
     await expect(repository.createForWorkspace("ws", "valid", "  ", "yaml")).rejects.toThrow("name");
     await expect(repository.createForWorkspace("ws", "valid", "n".repeat(201), "yaml")).rejects.toThrow("name");

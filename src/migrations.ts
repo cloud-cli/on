@@ -1,4 +1,5 @@
 import db from "./db-client.js";
+import { GITHUB_PUSH_TEMPLATE } from "./connector-templates.js";
 import YAML from "yaml";
 
 type Migration = {
@@ -1101,6 +1102,57 @@ const migrations: Migration[] = [
       if (!columns.some((column: any) => column.name === "signing_secret_ciphertext")) {
         await db.exec("ALTER TABLE connectors ADD COLUMN signing_secret_ciphertext TEXT");
       }
+    },
+  },
+  {
+    version: "041_connector_template_registry",
+    async apply() {
+      const connectorColumns = await db.all("PRAGMA table_info(connectors)");
+      for (const [name, type] of [
+        ["template_namespace", "TEXT"],
+        ["template_slug", "TEXT"],
+        ["template_version", "INTEGER"],
+      ]) {
+        if (!connectorColumns.some((column: any) => column.name === name)) {
+          await db.exec(`ALTER TABLE connectors ADD COLUMN ${name} ${type}`);
+        }
+      }
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS connector_template_publishers (
+          owner_subject TEXT PRIMARY KEY,
+          namespace TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE IF NOT EXISTS connector_template_versions (
+          namespace TEXT NOT NULL,
+          slug TEXT NOT NULL,
+          version INTEGER NOT NULL CHECK (version > 0),
+          name TEXT NOT NULL,
+          description TEXT NOT NULL,
+          source_yaml TEXT NOT NULL,
+          publisher_subject TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (namespace, slug, version),
+          FOREIGN KEY (publisher_subject) REFERENCES connector_template_publishers(owner_subject)
+        );
+      `);
+      await db.run(`INSERT OR IGNORE INTO connector_template_publishers(owner_subject, namespace) VALUES (?, ?)`, [
+        "system:connector-templates",
+        GITHUB_PUSH_TEMPLATE.namespace,
+      ]);
+      await db.run(
+        `INSERT OR IGNORE INTO connector_template_versions
+          (namespace, slug, version, name, description, source_yaml, publisher_subject)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          GITHUB_PUSH_TEMPLATE.namespace,
+          GITHUB_PUSH_TEMPLATE.slug,
+          GITHUB_PUSH_TEMPLATE.version,
+          GITHUB_PUSH_TEMPLATE.name,
+          GITHUB_PUSH_TEMPLATE.description,
+          GITHUB_PUSH_TEMPLATE.sourceYaml,
+          "system:connector-templates",
+        ],
+      );
     },
   },
 ];

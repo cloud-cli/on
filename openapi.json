@@ -3210,6 +3210,108 @@
         }
       }
     },
+    "/api/v1/connector-templates": {
+      "get": {
+        "tags": ["connectors"],
+        "summary": "List immutable global connector templates",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "responses": { "200": { "description": "Versioned credential-free connector templates" } }
+      },
+      "post": {
+        "tags": ["connectors"],
+        "summary": "Publish an immutable connector template version",
+        "description": "Human publishers receive a namespace derived from their authenticated preferred username. The source is validated before an immutable version is stored.",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["slug", "name", "description", "sourceYaml"],
+                "properties": {
+                  "slug": { "type": "string" },
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "sourceYaml": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Published connector template version" },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/api/v1/connector-templates/validate": {
+      "post": {
+        "tags": ["connectors"],
+        "summary": "Validate connector template YAML",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["sourceYaml"],
+                "properties": { "sourceYaml": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Source is valid" },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/api/v1/connector-templates/{namespace}/{slug}/versions/{version}": {
+      "get": {
+        "tags": ["connectors"],
+        "summary": "Get an exact immutable connector template version",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "parameters": [
+          { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "version", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }
+        ],
+        "responses": {
+          "200": { "description": "Exact template version" },
+          "404": { "description": "Template version not found" }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/connector-templates/{namespace}/{slug}/versions/{version}/install": {
+      "post": {
+        "tags": ["connectors"],
+        "summary": "Install an exact connector template version in a workspace",
+        "description": "Requires webhooks.manage. Creates a new connector with independently generated webhook and signing credentials; both credentials are returned once and are never part of the global template.",
+        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "parameters": [
+          { "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "namespace", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "version", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" } } } }
+          }
+        },
+        "responses": {
+          "201": { "description": "Installed connector and one-time credentials" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "description": "Template version not found" },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
     "/api/v1/recipes": {
       "get": {
         "tags": ["recipes"],

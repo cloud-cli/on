@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Recipes connector-template browser harness</title>
+    <link rel="stylesheet" href="/ui/index.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "@app/api-client.mjs": "/ui/api-client.mjs",
+          "@li3/web": "/tests/playwright/recipes-web-stub.mjs"
+        }
+      }
+    </script>
+  </head>
+  <body class="bg-app-background p-4 font-sans text-app-foreground">
+    <page-recipes>
+      <!-- Keep the production template as the source of all rendered markup. -->
+      <div id="recipes-mount"></div>
+    </page-recipes>
+    <script type="module">
+      const response = await fetch("/ui/recipes.html");
+      const source = await response.text();
+      const parsed = new DOMParser().parseFromString(source, "text/html");
+      const content = parsed.querySelector("template[app]").content;
+      content.querySelector("script[setup]")?.remove();
+      document
+        .querySelector("#recipes-mount")
+        .replaceWith(content.querySelector("[data-recipes-root]").closest("main"));
+      const { default: setup } = await import("/ui/recipes-ui.mjs");
+      setup();
+    </script>
+  </body>
+</html>
