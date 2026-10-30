@@ -230,7 +230,8 @@ describe("On application shell", () => {
     expect(html).toContain("max-h-[40dvh] min-w-0 flex-col items-stretch gap-2 overflow-y-auto");
     expect(html).toContain("flex min-w-0 w-full flex-col items-stretch gap-1");
     expect(html).toContain("min-h-10 w-full shrink-0 items-center");
-    expect(html).toContain("basis-full truncate px-3 py-1 text-sm font-semibold");
+    expect(html).not.toContain("{{ selectedWorkspaceName }}");
+    expect(html).toContain("border-t border-app-border md:my-2 md:block");
     expect(html).toContain("text-app-foreground md:basis-auto md:py-2");
     expect(html).toContain("basis-full px-3 pb-1 text-xs font-semibold text-app-secondary");
     expect(html).toContain('class="min-w-0 truncate"');

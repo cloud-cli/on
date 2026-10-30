@@ -20,7 +20,6 @@ const classes = {
   globalNav: classFrom(/aria-label="Global navigation"\s+class="([^"]+)"/),
   workspaceNav: classFrom(/<div\s+class="([^"]+)"\s+class-hidden="!selectedWorkspaceId"/),
   divider: classFrom(/class="([^"]*border-t border-app-border[^"]*)"/),
-  workspaceTitle: classFrom(/class="([^"]*basis-full truncate px-3 py-1[^"]*)"[\s\S]*?{{ selectedWorkspaceName }}/),
   globalLink: classFrom(/href="\/ui\/workspaces"\s+on-click="setActive\('workspaces'\)"[\s\S]*?class="([^"]+)"/),
   workflowLink: classFrom(/attr-href="workspacePath\(selectedWorkspaceId, 'workflows'\)"[\s\S]*?class="([^"]+)"/),
   connectorLink: classFrom(/attr-href="workspacePath\(selectedWorkspaceId, 'connectors'\)"[\s\S]*?class="([^"]+)"/),
@@ -53,7 +52,6 @@ const fixture = `
         <a href="/ui/recipes" class="${classes.globalLink}">Recipes</a>
         <span class="${classes.divider}"></span>
         <div aria-label="Workspace navigation" data-workspace-navigation class="${classes.workspaceNav}">
-        <span data-workspace-title class="${classes.workspaceTitle}">AppHorde</span>
         <a href="/ui/workflows" data-workflow-link class="${classes.workflowLink}">Workflows</a>
         <a href="/ui/connectors" data-connectors-link class="${classes.connectorLink}">Connectors</a>
         <a href="/ui/runs" data-runs-link class="${classes.runsLink}">Runs</a>
@@ -179,7 +177,6 @@ for (const viewport of [
           const style = getComputedStyle(document.querySelector("header"));
           return parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
         })(),
-        title: box("[data-workspace-title]"),
         workflow: box("[data-workflow-link]"),
         runs: box("[data-runs-link]"),
         streamsHeading: box("[data-streams-heading]"),
@@ -188,7 +185,6 @@ for (const viewport of [
         connectors: box("[data-connectors-link]"),
         workspaceDirection: getComputedStyle(document.querySelector("[data-workspace-navigation]")).flexDirection,
         workspaceWrap: getComputedStyle(document.querySelector("[data-workspace-navigation]")).flexWrap,
-        titleBasis: getComputedStyle(document.querySelector("[data-workspace-title]")).flexBasis,
       };
     });
 
@@ -199,7 +195,6 @@ for (const viewport of [
       expect(geometry.content.x).toBeCloseTo(288, 0);
       expect(geometry.workspaceDirection).toBe("column");
       expect(geometry.workspaceWrap).toBe("nowrap");
-      expect(geometry.titleBasis).toBe("auto");
       expect(geometry.connectors.width).toBeCloseTo(geometry.runs.width, 0);
       const headerInnerWidth = geometry.header.width - geometry.headerPadding;
       expect(geometry.search.width).toBeCloseTo(headerInnerWidth / 2, 0);
@@ -207,11 +202,9 @@ for (const viewport of [
         geometry.header.x + geometry.header.width / 2,
         0,
       );
-      expect(geometry.title.x).toBeCloseTo(geometry.workflow.x, 0);
       expect(geometry.workflow.x).toBeCloseTo(geometry.runs.x, 0);
       expect(geometry.runs.x).toBeCloseTo(geometry.streamsHeading.x, 0);
       expect(geometry.streamsHeading.x).toBeCloseTo(geometry.stream.x, 0);
-      expect(geometry.title.y).toBeLessThan(geometry.workflow.y);
       expect(geometry.workflow.y).toBeLessThan(geometry.runs.y);
       expect(geometry.runs.y).toBeLessThan(geometry.streamsHeading.y);
       expect(geometry.streamsHeading.y).toBeLessThan(geometry.stream.y);
