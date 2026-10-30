@@ -36,8 +36,8 @@ describe("workspace Connectors page", () => {
     expect(html).toContain("New connector");
     expect(html).toContain('on-click="remove(item)"');
     expect(html).toContain("'Edit ' + item.name");
-    expect(html).toContain("bg-app-success/10");
-    expect(html).toContain("bg-app-error/10");
+    expect(html).toContain("cursor-pointer rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700");
+    expect(html).toContain("cursor-pointer rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700");
     expect(html).toContain("Webhook credentials");
     expect(html).toContain("Rotate webhook secret");
     expect(html).not.toContain("X-Hub-Signature-256");

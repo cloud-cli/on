@@ -63,7 +63,7 @@
                   ></span
                 >
                 <a
-                  class="inline-flex min-h-11 shrink-0 items-center justify-center rounded-2xl border border-app-success/25 bg-app-success/10 px-6 text-base font-medium text-app-success outline-none hover:bg-app-success/15 focus-visible:ring-2 focus-visible:ring-app-success/40"
+                  class="cursor-pointer rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100 focus-visible:ring-2 focus-visible:ring-green-700/40"
                   attr-href="basePath + '/' + encodeURIComponent(item.id)"
                   attr-aria-label="'Edit ' + item.name"
                   >Edit</a
@@ -73,7 +73,7 @@
                   on-click="remove(item)"
                   attr-aria-label="'Delete ' + item.name"
                   bind-disabled="busy"
-                  class="inline-flex min-h-11 shrink-0 items-center justify-center rounded-2xl bg-app-error/10 px-6 text-base font-medium text-app-error outline-none hover:bg-app-error/15 focus-visible:ring-2 focus-visible:ring-app-error/40 disabled:opacity-50"
+                  class="cursor-pointer rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-red-700/40 disabled:opacity-50"
                 >
                   Delete
                 </button>
