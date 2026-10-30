@@ -4,6 +4,53 @@ import db from "./db-client.js";
 import { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
 import { validateRecipeSchema, validateRecipeInputs } from "./recipe-schema.js";
 
+const BUILT_IN_RECIPE_OWNER = "system:built-in-recipes";
+const DOCKER_BUILD_RECIPE = `inputs:
+  image: { type: string, required: true }
+  imageTag: { type: string, default: latest }
+  registryUsername: { type: string, required: true }
+  cloneUrl: { type: string, required: true }
+  commitSha: { type: string, required: true }
+secrets:
+  githubToken: { type: string, required: true }
+env:
+  IMAGE: "\${inputs.image}"
+  IMAGE_TAG: "\${inputs.imageTag}"
+  REGISTRY_USERNAME: "\${inputs.registryUsername}"
+  CLONE_URL: "\${inputs.cloneUrl}"
+  COMMIT_SHA: "\${inputs.commitSha}"
+  GITHUB_TOKEN: "\${secrets.githubToken}"
+steps:
+  - run: |
+      set -euo pipefail
+      git clone --no-checkout "$CLONE_URL" source
+      cd source
+      git checkout --detach "$COMMIT_SHA"
+  - run: |
+      set -euo pipefail
+      printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io -u "$REGISTRY_USERNAME" --password-stdin
+  - run: |
+      set -euo pipefail
+      cd source
+      docker build --label "org.opencontainers.image.revision=$COMMIT_SHA" -t "$IMAGE:$IMAGE_TAG" .
+  - run: |
+      set -euo pipefail
+      docker push "$IMAGE:$IMAGE_TAG"
+  - run: |
+      set -euo pipefail
+      IMAGE_TAG="$IMAGE:$IMAGE_TAG"
+      services="$(cy dx.list --image "$IMAGE_TAG" | jq -r '.[].name')"
+      if [ -z "$services" ]; then
+        echo "No services match image $IMAGE_TAG; image published without restarting services."
+        exit 0
+      fi
+      while IFS= read -r service; do
+        [ -n "$service" ] || continue
+        cy dx.pull "$service"
+        cy dx.restart "$service"
+      done <<< "$services"
+`;
+
 export { validateRecipeInputs, ordinaryRecipeInputSchema } from "./recipe-schema.js";
 
 export type Recipe = {
@@ -297,6 +344,46 @@ export class RecipeRepository {
       await db.exec("ALTER TABLE recipe_versions ADD COLUMN publish_id TEXT");
       await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS recipe_versions_publish_id ON recipe_versions(publish_id)");
     }
+    await this.seedBuiltInRecipes();
+  }
+
+  private async seedBuiltInRecipes(): Promise<void> {
+    await db.run(
+      "INSERT INTO recipe_publishers(owner_subject,namespace) VALUES(?,?) ON CONFLICT(owner_subject) DO NOTHING",
+      [BUILT_IN_RECIPE_OWNER, "on"],
+    );
+    const publisher = await db.get("SELECT owner_subject FROM recipe_publishers WHERE namespace=?", ["on"]);
+    if (publisher?.owner_subject !== BUILT_IN_RECIPE_OWNER) {
+      throw new Error('Built-in recipe namespace "on" is owned by another publisher');
+    }
+    await db.run(
+      "INSERT INTO recipes(namespace,slug,owner_subject) VALUES(?,?,?) ON CONFLICT(namespace,slug) DO NOTHING",
+      ["on", "docker-build", BUILT_IN_RECIPE_OWNER],
+    );
+    const recipe = await db.get("SELECT owner_subject FROM recipes WHERE namespace=? AND slug=?", [
+      "on",
+      "docker-build",
+    ]);
+    if (recipe?.owner_subject !== BUILT_IN_RECIPE_OWNER) {
+      throw new Error('Built-in recipe "on/docker-build" is owned by another publisher');
+    }
+    await db.run(
+      "INSERT INTO recipe_versions(namespace,slug,version,name,source_yaml,inputs_json,steps_json,functions_json,env_json) SELECT ?,?,?,?, ?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM recipe_versions WHERE namespace=? AND slug=? AND version=?)",
+      [
+        "on",
+        "docker-build",
+        1,
+        "Docker Build",
+        DOCKER_BUILD_RECIPE,
+        JSON.stringify(parseRecipe(DOCKER_BUILD_RECIPE).inputs),
+        JSON.stringify(parseRecipe(DOCKER_BUILD_RECIPE).steps),
+        JSON.stringify(parseRecipe(DOCKER_BUILD_RECIPE).functions),
+        JSON.stringify(parseRecipe(DOCKER_BUILD_RECIPE).env),
+        "on",
+        "docker-build",
+        1,
+      ],
+    );
   }
 
   async list(): Promise<Recipe[]> {

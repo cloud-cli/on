@@ -83,6 +83,11 @@ describe("global recipe repository identity and versioning", () => {
 
   it("adds functions_json to existing installations and normalizes legacy rows on read", async () => {
     database.all.mockResolvedValue([]);
+    database.get.mockImplementation(async (sql: string) =>
+      sql.includes("recipe_publishers") || sql.includes("FROM recipes")
+        ? { owner_subject: "system:built-in-recipes" }
+        : null,
+    );
     const repository = new RecipeRepository();
     await repository.init();
     expect(database.exec).toHaveBeenCalledWith("ALTER TABLE recipe_versions ADD COLUMN functions_json TEXT");
@@ -110,6 +115,54 @@ describe("global recipe repository identity and versioning", () => {
         },
       },
     });
+  });
+
+  it("seeds the immutable system docker build recipe idempotently", async () => {
+    database.all.mockResolvedValue([]);
+    database.get.mockImplementation(async (sql: string) => {
+      if (sql.includes("recipe_publishers")) {
+        return { owner_subject: "system:built-in-recipes" };
+      }
+      if (sql.includes("FROM recipes")) {
+        return { owner_subject: "system:built-in-recipes" };
+      }
+      return null;
+    });
+    const repository = new RecipeRepository();
+    await repository.init();
+    await repository.init();
+    const seedVersionRuns = database.run.mock.calls.filter(([sql]) =>
+      String(sql).includes("INSERT INTO recipe_versions"),
+    );
+    expect(seedVersionRuns).toHaveLength(2);
+    expect(seedVersionRuns[0][0]).toContain("WHERE NOT EXISTS");
+    expect(
+      database.run.mock.calls.some(
+        ([sql, params]) => String(sql).includes("recipe_publishers") && params.includes("system:built-in-recipes"),
+      ),
+    ).toBe(true);
+    const yaml = String(seedVersionRuns[0][1][4]);
+    const { parseRecipe } = await import("./recipes.js");
+    const recipe = parseRecipe(yaml);
+    expect(recipe.functions.main.inputs.required).toEqual(["image", "registryUsername", "cloneUrl", "commitSha"]);
+    expect(recipe.functions.main.inputs.properties.imageTag.default).toBe("latest");
+    expect(recipe.functions.main.secrets).toEqual({
+      githubToken: { type: "string", required: true },
+    });
+    expect(yaml).not.toContain("cloudyToken");
+    expect(yaml).toContain('git checkout --detach "$COMMIT_SHA"');
+    expect(yaml).toContain('cy dx.list --image "$IMAGE_TAG"');
+    expect(yaml).toContain("| jq -r '.[].name'");
+    expect(yaml).toContain("No services match image $IMAGE_TAG");
+    expect(yaml).toContain('cy dx.pull "$service"');
+    expect(yaml).toContain('cy dx.restart "$service"');
+  });
+
+  it("fails closed when the reserved built-in namespace is owned by another publisher", async () => {
+    database.all.mockResolvedValue([]);
+    database.get.mockResolvedValue({ owner_subject: "human-publisher" });
+    await expect(new RecipeRepository().init()).rejects.toThrow(/namespace "on" is owned/);
+    expect(database.run).toHaveBeenCalledTimes(1);
   });
 
   it("returns persisted named functions from list and get", async () => {
