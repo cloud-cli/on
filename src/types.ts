@@ -57,6 +57,8 @@ export interface StepContext {
   step: WorkflowStep;
   logsDir: string;
   workingDir: string;
+  /** Optional read-only bind-mounted directory containing recipe file secrets. */
+  secretFilesDir?: string;
   command: string;
   env?: Record<string, string>;
   image?: string; // Optional: Docker container image
@@ -185,6 +187,12 @@ export interface WorkflowDefinition {
   _recipeInputSchema?: Record<string, unknown>;
   /** Recipe secret aliases mapped to workspace secret names; never contains values. */
   _recipeSecrets?: Record<string, string>;
+  /** Secret aliases that refer to binary secrets materialized outside the working directory. */
+  _recipeSecretFiles?: Record<string, string>;
+  /** Recipe-wide environment defaults, applied beneath explicit step env values. */
+  _recipeEnv?: Record<string, string>;
+  /** Runtime-only paths for materialized recipe file secrets; never persisted. */
+  _recipeSecretFilePaths?: Record<string, string>;
   /** Selected exported function and its output contract for immutable recipe revisions. */
   _recipeFunction?: string;
   _recipeOutputs?: Record<string, unknown>;
@@ -200,6 +208,8 @@ export interface WorkflowDefinition {
     string,
     {
       inputs: Record<string, unknown>;
+      secrets?: Record<string, { type: "string" | "file"; required?: boolean }>;
+      env?: Record<string, string>;
       outputs: Record<string, unknown>;
       returns?: Record<string, string>;
       steps: WorkflowStep[];

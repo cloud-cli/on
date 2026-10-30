@@ -83,6 +83,54 @@ describe("workflow recipe pinning", () => {
     expect(snapshot._recipeOutputs).toEqual({ type: "object" });
   });
 
+  it("resolves separated inputs, secret-file declarations, defaults, and recipe env", async () => {
+    const row = recipeRow();
+    row.inputs_json = JSON.stringify({
+      type: "object",
+      properties: {
+        image: { type: "string" },
+        imageTag: { type: "string", default: "latest" },
+      },
+      required: ["image"],
+    });
+    row.functions_json = JSON.stringify({
+      main: {
+        inputs: JSON.parse(row.inputs_json),
+        secrets: { credential: { type: "file", required: true } },
+        outputs: { type: "object" },
+        steps: [{ id: "build", run: "build", env: { TAG: "step-tag" } }],
+      },
+    });
+    (row as any).env_json = JSON.stringify({ IMAGE_TAG: "${inputs.imageTag}" });
+    database.get.mockResolvedValue(row);
+    const yaml = `id: image-flow
+name: Image flow
+on: { generic: {} }
+using: tools/deploy@v2
+with: { image: ghcr.io/acme/app }
+secrets: { credential: "\u0024{secrets.SIGNING_KEY}" }
+`;
+
+    const resolved = await (new WorkflowRepository() as any).resolveRecipeWorkflow(yaml);
+    expect(resolved.recipeInputs).toEqual({
+      imageTag: "latest",
+      image: "ghcr.io/acme/app",
+    });
+    expect(resolved.recipeSecrets).toEqual({
+      credential: "SIGNING_KEY",
+    });
+    expect(resolved.recipeSecretFiles).toEqual({
+      credential: "SIGNING_KEY",
+    });
+    expect(resolved.recipeEnv).toEqual({
+      IMAGE_TAG: "${inputs.imageTag}",
+    });
+    expect(resolved.workflows[0].steps[0].env).toEqual({ TAG: "step-tag" });
+    await expect(
+      new WorkflowRepository().validateForSave(yaml.replace('credential: "${secrets.SIGNING_KEY}"', "")),
+    ).rejects.toThrow("Required recipe secret");
+  });
+
   it("selects named functions, validates their inputs, and retains the pinned version", async () => {
     const row = recipeRow();
     row.functions_json = JSON.stringify({
@@ -208,7 +256,10 @@ describe("workflow recipe pinning", () => {
       namespace: "other",
       slug: "legacy",
       version: 7,
-      inputs_json: JSON.stringify({ type: "object", properties: { name: { type: "string" } } }),
+      inputs_json: JSON.stringify({
+        type: "object",
+        properties: { name: { type: "string" } },
+      }),
       steps_json: JSON.stringify([{ id: "legacy-body", run: "echo ${inputs.name}" }]),
       functions_json: null,
     };
@@ -343,7 +394,11 @@ describe("workflow recipe pinning", () => {
         outputs: { type: "object" },
         steps: [
           { id: "first", call: "other/child@1#build", with: { count: 1 } },
-          { id: "second", call: "other/child@1#build", with: { count: "not-an-integer" } },
+          {
+            id: "second",
+            call: "other/child@1#build",
+            with: { count: "not-an-integer" },
+          },
         ],
       },
     });

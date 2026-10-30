@@ -243,12 +243,16 @@ export class WorkflowRepository {
     recipeInputs?: Record<string, unknown>;
     recipeInputSchema?: Record<string, unknown>;
     recipeSecrets?: Record<string, string>;
+    recipeSecretFiles?: Record<string, string>;
+    recipeEnv?: Record<string, string>;
     recipeFunction?: string;
     recipeOutputs?: Record<string, unknown>;
     _pinnedRecipeFunctions?: Record<
       string,
       {
         inputs: Record<string, unknown>;
+        secrets?: Record<string, { type: "string" | "file"; required?: boolean }>;
+        env?: Record<string, string>;
         outputs: Record<string, unknown>;
         returns?: Record<string, string>;
         steps: any[];
@@ -312,22 +316,29 @@ export class WorkflowRepository {
       );
     }
     const selected = functions[selectedFunction];
+    const properties = (selected.inputs as any).properties || {};
     if (!Object.hasOwn(parsed, "with") || !Object.hasOwn(parsed, "secrets")) {
       throw new Error("using workflows require with and secrets objects");
     }
-    const normal = parsed.with;
+    const mappedNormal = parsed.with;
     const secretRefs = parsed.secrets;
     if (
-      !normal ||
-      typeof normal !== "object" ||
-      Array.isArray(normal) ||
+      !mappedNormal ||
+      typeof mappedNormal !== "object" ||
+      Array.isArray(mappedNormal) ||
       !secretRefs ||
       typeof secretRefs !== "object" ||
       Array.isArray(secretRefs)
     ) {
       throw new Error("with and secrets must be objects");
     }
-    const properties = (selected.inputs as any).properties || {};
+    const normal: Record<string, unknown> = Object.fromEntries(
+      Object.entries(properties).flatMap(([key, definition]: [string, any]) =>
+        Object.hasOwn(definition, "default") && !Object.hasOwn(mappedNormal, key) ? [[key, definition.default]] : [],
+      ),
+    );
+    Object.assign(normal, mappedNormal);
+    const secretDefinitions = selected.secrets || {};
     const ordinarySchema = ordinaryRecipeInputSchema(selected.inputs);
     for (const [key, value] of Object.entries(normal)) {
       if (!properties[key] || properties[key].writeOnly === true) {
@@ -344,6 +355,7 @@ export class WorkflowRepository {
       if (
         (selected.inputs as any).required?.includes(key) &&
         (definition as any)?.writeOnly !== true &&
+        !Object.hasOwn(definition as object, "default") &&
         !(key in normal)
       ) {
         throw new Error(`Required recipe input is missing: ${key}`);
@@ -351,12 +363,16 @@ export class WorkflowRepository {
     }
     for (const [key, value] of Object.entries(secretRefs)) {
       if (
-        !properties[key] ||
-        (properties[key] as any).writeOnly !== true ||
+        (!secretDefinitions[key] && (properties[key] as any)?.writeOnly !== true) ||
         typeof value !== "string" ||
         !/^\$\{secrets\.[A-Z][A-Z0-9_]*\}$/.test(value)
       ) {
         throw new Error(`Invalid recipe secret mapping: ${key}`);
+      }
+    }
+    for (const [key, definition] of Object.entries(secretDefinitions)) {
+      if (definition.required && !(key in secretRefs)) {
+        throw new Error(`Required recipe secret is missing: ${key}`);
       }
     }
     for (const key of (selected.inputs as any).required || []) {
@@ -369,6 +385,11 @@ export class WorkflowRepository {
         alias,
         (reference as string).match(/^\$\{secrets\.([A-Z][A-Z0-9_]*)\}$/)![1],
       ]),
+    );
+    const recipeSecretFiles = Object.fromEntries(
+      Object.entries(secretRefs)
+        .filter(([alias]) => secretDefinitions[alias]?.type === "file")
+        .map(([alias, reference]) => [alias, (reference as string).match(/^\$\{secrets\.([A-Z][A-Z0-9_]*)\}$/)![1]]),
     );
     const bindings = { ...normal, ...secretRefs };
     const referenced = new Set<string>();
@@ -422,6 +443,8 @@ export class WorkflowRepository {
     );
     (workflows[0] as any)._pinnedReferences = pinned.references;
     (workflows[0] as any)._pinnedRecipeFunctions = pinned.functions;
+    (workflows[0] as any)._recipeSecretFiles = recipeSecretFiles;
+    (workflows[0] as any)._recipeEnv = recipe.env;
     const compiledWithRefs = {
       ...parsed,
       steps: selected.steps.map(rewriteSecrets),
@@ -443,6 +466,8 @@ export class WorkflowRepository {
       recipeInputs: normal,
       recipeInputSchema: ordinarySchema,
       recipeSecrets,
+      recipeSecretFiles,
+      recipeEnv: recipe.env as Record<string, string>,
       recipeFunction: selectedFunction,
       recipeOutputs: selected.outputs,
       _pinnedReferences: pinned.references,
@@ -462,11 +487,18 @@ export class WorkflowRepository {
     functionName: string,
     rootSecretAliases: string[],
   ): Promise<{
-    references: Array<{ namespace: string; slug: string; version: number; function: string }>;
+    references: Array<{
+      namespace: string;
+      slug: string;
+      version: number;
+      function: string;
+    }>;
     functions: Record<
       string,
       {
         inputs: Record<string, unknown>;
+        secrets?: Record<string, { type: "string" | "file"; required?: boolean }>;
+        env?: Record<string, string>;
         outputs: Record<string, unknown>;
         returns?: Record<string, string>;
         steps: any[];
@@ -483,7 +515,13 @@ export class WorkflowRepository {
     const visiting = new Set<string>();
     const functions: Record<
       string,
-      { inputs: Record<string, unknown>; outputs: Record<string, unknown>; steps: any[] }
+      {
+        inputs: Record<string, unknown>;
+        secrets?: Record<string, { type: "string" | "file"; required?: boolean }>;
+        env?: Record<string, string>;
+        outputs: Record<string, unknown>;
+        steps: any[];
+      }
     > = {};
     const rootKey = `${recipe.namespace}/${recipe.slug}@${recipe.version}#${functionName}`;
     visiting.add(rootKey);
@@ -553,8 +591,13 @@ export class WorkflowRepository {
         if (!nestedFunction) {
           throw new Error(`Nested recipe function not found: ${calledFunction}`);
         }
-        functions[key] = JSON.parse(JSON.stringify(nestedFunction));
-        this.validateNestedCallBindings(step, nestedFunction.inputs, availableSecretAliases);
+        functions[key] = JSON.parse(
+          JSON.stringify({
+            ...nestedFunction,
+            ...(Object.keys(nestedRecipe.env || {}).length ? { env: nestedRecipe.env } : {}),
+          }),
+        );
+        this.validateNestedCallBindings(step, nestedFunction, availableSecretAliases);
         const contextKey = `${key}\u0000${[...Object.keys(step.secrets || {})].sort().join("\u0000")}`;
         if (visited.has(contextKey)) {
           continue;
@@ -572,10 +615,15 @@ export class WorkflowRepository {
 
   private validateNestedCallBindings(
     step: any,
-    schema: Record<string, any>,
+    fn: {
+      inputs: Record<string, any>;
+      secrets?: Record<string, { type: "string" | "file"; required?: boolean }>;
+    },
     availableSecretAliases: Set<string>,
   ): void {
+    const schema = fn.inputs;
     const properties = schema?.properties || {};
+    const secretDefinitions = fn.secrets || {};
     const ordinary = step.with === undefined ? {} : step.with;
     const secrets = step.secrets === undefined ? {} : step.secrets;
     if (!ordinary || typeof ordinary !== "object" || Array.isArray(ordinary)) {
@@ -598,14 +646,17 @@ export class WorkflowRepository {
       }
     }
     for (const key of schema?.required || []) {
-      if (properties[key]?.writeOnly !== true && !Object.hasOwn(ordinary, key)) {
+      if (
+        properties[key]?.writeOnly !== true &&
+        !Object.hasOwn(properties[key] || {}, "default") &&
+        !Object.hasOwn(ordinary, key)
+      ) {
         throw new Error(`Required nested recipe input is missing: ${key}`);
       }
     }
     for (const [key, reference] of Object.entries(secrets)) {
       if (
-        !properties[key] ||
-        properties[key].writeOnly !== true ||
+        (!secretDefinitions[key] && properties[key]?.writeOnly !== true) ||
         typeof reference !== "string" ||
         !/^\$\{secrets\.[A-Za-z_][A-Za-z0-9_]*\}$/.test(reference) ||
         !availableSecretAliases.has(reference.slice(10, -1))
@@ -615,6 +666,11 @@ export class WorkflowRepository {
     }
     for (const key of schema?.required || []) {
       if (properties[key]?.writeOnly === true && !Object.hasOwn(secrets, key)) {
+        throw new Error(`Required nested recipe secret is missing: ${key}`);
+      }
+    }
+    for (const [key, definition] of Object.entries(secretDefinitions)) {
+      if (definition.required && !Object.hasOwn(secrets, key)) {
         throw new Error(`Required nested recipe secret is missing: ${key}`);
       }
     }
@@ -689,6 +745,8 @@ export class WorkflowRepository {
                   _recipeInputs: resolved.recipeInputs,
                   _recipeInputSchema: resolved.recipeInputSchema,
                   _recipeSecrets: resolved.recipeSecrets,
+                  _recipeSecretFiles: resolved.recipeSecretFiles,
+                  _recipeEnv: resolved.recipeEnv,
                   _recipeFunction: resolved.recipeFunction,
                   _recipeOutputs: resolved.recipeOutputs,
                   _pinnedReferences: resolved._pinnedReferences,

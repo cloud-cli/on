@@ -15,4 +15,13 @@ describe("SecretStore log redaction", () => {
     expect(secrets.redactText('secret\\"value')).toBe("****");
     expect(secrets.redactText("YmluYXJ5LXNlY3JldA== binary-secret")).toBe("**** ****");
   });
+
+  it("supports redacting decoded recipe file-secret content", () => {
+    const secrets = new SecretStore();
+    secrets.replace({ KEY_FILE: Buffer.from("key-file-bytes").toString("base64") });
+    secrets.addRedactionValue(Buffer.from("key-file-bytes").toString("utf8"));
+    expect(secrets.redactText("key-file-bytes")).toBe("****");
+    secrets.replace({});
+    expect(secrets.redactText("key-file-bytes")).toBe("key-file-bytes");
+  });
 });

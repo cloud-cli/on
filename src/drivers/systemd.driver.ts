@@ -95,6 +95,7 @@ export class SystemdDriver implements ExecutionDriver {
         "--init",
         `--name=${unitName}`,
         ...(ctx.volumes?.flatMap((volume) => ["-v", volume]) || []),
+        ...(ctx.secretFilesDir ? ["-v", `${ctx.secretFilesDir}:${ctx.secretFilesDir}:ro`] : []),
         "-v",
         `${ctx.workingDir}:/workspace`,
         "-w",

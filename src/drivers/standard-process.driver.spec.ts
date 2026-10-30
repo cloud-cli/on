@@ -15,7 +15,10 @@ describe("standalone driver container environment", () => {
 
   beforeEach(() => {
     tempDirectory = mkdtempSync(join(tmpdir(), "standard-driver-test-"));
-    child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter() });
+    child = Object.assign(new EventEmitter(), {
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+    });
     spawnMock.mockReturnValue(child);
   });
 
@@ -31,6 +34,7 @@ describe("standalone driver container environment", () => {
       step: { id: "build" },
       command: "printf '%s' \"$HOME\"",
       workingDir: hostWorkingDir,
+      secretFilesDir: join(tempDirectory, "secrets"),
       logsDir: join(tempDirectory, "logs"),
       env: { WORKING_DIR: hostWorkingDir, CI: "true" },
       image: "node:22",
@@ -39,6 +43,7 @@ describe("standalone driver container environment", () => {
     const [command, args, options] = spawnMock.mock.calls[0] as [string, string[], { env: NodeJS.ProcessEnv }];
     const imageIndex = args.indexOf("node:22");
     expect(command).toBe("docker");
+    expect(args).toContain(`${join(tempDirectory, "secrets")}:${join(tempDirectory, "secrets")}:ro`);
     expect(options.env.HOME).toBeTruthy();
     expect(args.slice(0, imageIndex)).not.toContain("HOME");
     expect(args.slice(imageIndex)).toContain(

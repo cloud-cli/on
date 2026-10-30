@@ -60,6 +60,7 @@ export class StandardProcessDriver implements ExecutionDriver {
         "--init",
         "-v",
         `${ctx.workingDir}:/workspace`,
+        ...(ctx.secretFilesDir ? ["-v", `${ctx.secretFilesDir}:${ctx.secretFilesDir}:ro`] : []),
         "-w",
         "/workspace",
         "--entrypoint",

@@ -11,7 +11,7 @@ describe("recipe documents", () => {
 
   it("rejects identity metadata and nested recipe references", () => {
     expect(() => parseRecipe("id: sample\ninputs: {type: object}\nsteps: [{run: echo hi}]\n")).toThrow(
-      "only inputs, steps, and functions",
+      "only inputs, secrets, env, steps, and functions",
     );
     expect(() => parseRecipe("inputs: {type: object}\nsteps: [{using: ns/recipe@v1}]\n")).toThrow("Nested recipe");
   });
@@ -29,12 +29,35 @@ describe("recipe documents", () => {
 
   it("normalizes legacy recipes to main and parses named functions", () => {
     const legacy = parseRecipe("inputs: {type: object}\nsteps: [{run: echo hi}]\n");
-    expect(legacy.functions.main).toMatchObject({ inputs: legacy.inputs, steps: legacy.steps });
+    expect(legacy.functions.main).toMatchObject({
+      inputs: legacy.inputs,
+      steps: legacy.steps,
+    });
     const parsed = parseRecipe(
-      `functions:\n  build:\n    inputs: {type: object}\n    outputs: {type: object}\n    steps: [{run: echo build}]\n  test:\n    inputs: {type: object}\n    outputs: {type: object}\n    steps: [{run: echo test}]\n`,
+      `env: { TOOL: ready }\nfunctions:\n  build:\n    inputs: {type: object}\n    outputs: {type: object}\n    steps: [{run: echo build}]\n  test:\n    inputs: {type: object}\n    outputs: {type: object}\n    steps: [{run: echo test}]\n`,
     );
     expect(Object.keys(parsed.functions)).toEqual(["build", "test"]);
     expect(parsed.functions.build.steps).toHaveLength(1);
+    expect(parsed.env).toEqual({ TOOL: "ready" });
+  });
+
+  it("parses separate input and secret declarations plus shared recipe env", () => {
+    const parsed = parseRecipe(
+      'inputs:\n  image:\n    type: string\n    required: true\n  imageTag:\n    type: string\n    default: latest\nsecrets:\n  githubToken:\n    type: string\n    required: true\n  credential:\n    type: file\nenv:\n  IMAGE: "${inputs.image}"\nsteps:\n  - id: build\n    run: build\n',
+    );
+    expect(parsed.functions.main.inputs).toEqual({
+      type: "object",
+      properties: {
+        image: { type: "string" },
+        imageTag: { type: "string", default: "latest" },
+      },
+      required: ["image"],
+    });
+    expect(parsed.functions.main.secrets).toEqual({
+      githubToken: { type: "string", required: true },
+      credential: { type: "file" },
+    });
+    expect(parsed.env).toEqual({ IMAGE: "${inputs.image}" });
   });
 
   it("requires mappings for required outputs and rejects undeclared return fields", () => {
@@ -49,7 +72,9 @@ describe("recipe documents", () => {
       digest: "\u0024{steps.publish.outputs.digest}"
     steps: [{id: publish, run: publish}]
 `);
-    expect(valid.functions.build.returns).toEqual({ digest: "${steps.publish.outputs.digest}" });
+    expect(valid.functions.build.returns).toEqual({
+      digest: "${steps.publish.outputs.digest}",
+    });
 
     expect(() =>
       parseRecipe(`functions:

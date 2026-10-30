@@ -33,6 +33,11 @@ secretFiles:
 The file is written into the job workspace with owner-only permissions. Avoid including secret files in artifacts
 or caches; clean workspace storage according to your runner's retention policy.
 
+For a reusable recipe, declare the binary secret under the recipe's top-level `secrets` map with `type: file`, then
+map it from the workflow's `secrets` object. The recipe receives a path under the run's separate `secrets` directory,
+outside `wd`; container steps mount that directory read-only. This recipe path is distinct from workflow-level
+`secretFiles` mappings above.
+
 ## Protect the master key
 
 Set `RUNNER_MASTER_KEY` only on the control plane, or use the provided systemd credential at

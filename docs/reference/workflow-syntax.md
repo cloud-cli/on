@@ -206,8 +206,8 @@ values in the current worker.
 
 ## Recipe workflows
 
-Pin an immutable published recipe version. Use `with` for ordinary inputs and `secrets` for write-only secret
-inputs:
+Pin an immutable published recipe version. Use `with` for declared ordinary inputs and `secrets` for declared recipe
+secrets. Defaults are applied to omitted ordinary inputs; required unmapped inputs or secrets are rejected:
 
 ```yaml
 using: ada/container-build@v1

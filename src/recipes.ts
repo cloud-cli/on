@@ -13,6 +13,7 @@ export type Recipe = {
   name: string;
   sourceYaml: string;
   inputs: Record<string, unknown>;
+  env: Record<string, unknown>;
   steps: unknown[];
   functions: Record<string, RecipeFunction>;
   revoked: boolean;
@@ -24,8 +25,10 @@ export type RecipeCallStep = {
   with: Record<string, unknown>;
   secrets?: Record<string, string>;
 };
+export type SecretDeclaration = { type: "string" | "file"; required?: boolean };
 export type RecipeFunction = {
   inputs: Record<string, unknown>;
+  secrets?: Record<string, SecretDeclaration>;
   outputs: Record<string, unknown>;
   returns?: Record<string, string>;
   steps: unknown[];
@@ -33,9 +36,74 @@ export type RecipeFunction = {
 export type ParsedRecipe = {
   name: string;
   inputs: Record<string, unknown>;
+  env: Record<string, unknown>;
   steps: unknown[];
   functions: Record<string, RecipeFunction>;
 };
+
+function inputSchema(value: unknown): Record<string, unknown> {
+  if (value === undefined) {
+    return { type: "object", properties: {} };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Recipe inputs must be a map");
+  }
+  // Accept the former JSON-Schema representation while existing stored recipes are being migrated.
+  if ((value as any).type === "object") {
+    return value as Record<string, unknown>;
+  }
+  const properties: Record<string, unknown> = {};
+  const required: string[] = [];
+  for (const [name, declaration] of Object.entries(value)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new Error(`Recipe input name "${name}" must be a valid identifier`);
+    }
+    if (!declaration || typeof declaration !== "object" || Array.isArray(declaration) || !(declaration as any).type) {
+      throw new Error(`Recipe input "${name}" must declare a type`);
+    }
+    const { required: isRequired, ...schema } = declaration as any;
+    if (isRequired !== undefined && typeof isRequired !== "boolean") {
+      throw new Error(`Recipe input "${name}" required must be boolean`);
+    }
+    properties[name] = schema;
+    if (isRequired) {
+      required.push(name);
+    }
+  }
+  return {
+    type: "object",
+    properties,
+    ...(required.length ? { required } : {}),
+  };
+}
+
+function secretSchema(value: unknown): Record<string, SecretDeclaration> {
+  if (value === undefined) {
+    return {};
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Recipe secrets must be a map");
+  }
+  const result: Record<string, SecretDeclaration> = {};
+  for (const [name, declaration] of Object.entries(value)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new Error(`Recipe secret name "${name}" must be a valid identifier`);
+    }
+    const type = typeof declaration === "string" ? declaration : (declaration as any)?.type;
+    const required =
+      typeof declaration === "object" && declaration !== null ? (declaration as any).required : undefined;
+    if (
+      !["string", "file"].includes(type) ||
+      (required !== undefined && typeof required !== "boolean") ||
+      (typeof declaration === "object" &&
+        Object.keys(declaration as object).some((key) => !["type", "required"].includes(key)))
+    ) {
+      throw new Error(`Recipe secret "${name}" must declare type string or file and optional required boolean`);
+    }
+    result[name] = { type, ...(required === undefined ? {} : { required }) };
+  }
+  return result;
+}
 
 export function isSafeRecipeExpression(value: unknown): value is string {
   return (
@@ -48,17 +116,18 @@ export function parseRecipe(sourceYaml: string): ParsedRecipe {
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
     throw new Error("Recipe must be a YAML object");
   }
-  if (Object.keys(doc).some((key) => !["inputs", "steps", "functions"].includes(key))) {
-    throw new Error("Recipe may contain only inputs, steps, and functions");
+  if (Object.keys(doc).some((key) => !["inputs", "secrets", "env", "steps", "functions"].includes(key))) {
+    throw new Error("Recipe may contain only inputs, secrets, env, steps, and functions");
   }
-  const legacy = Object.hasOwn(doc, "inputs") || Object.hasOwn(doc, "steps");
+  const legacy = Object.hasOwn(doc, "inputs") || Object.hasOwn(doc, "secrets") || Object.hasOwn(doc, "steps");
   if (legacy && Object.hasOwn(doc, "functions")) {
     throw new Error("Recipe must use either top-level inputs/steps or functions, not both");
   }
   const functionDefinitions: Record<string, any> = legacy
     ? {
         main: {
-          inputs: doc.inputs,
+          inputs: inputSchema(doc.inputs),
+          secrets: secretSchema(doc.secrets),
           outputs: { type: "object" },
           steps: doc.steps,
         },
@@ -81,12 +150,13 @@ export function parseRecipe(sourceYaml: string): ParsedRecipe {
       !definition ||
       typeof definition !== "object" ||
       Array.isArray(definition) ||
-      Object.keys(definition).some((key) => !["inputs", "outputs", "returns", "steps"].includes(key))
+      Object.keys(definition).some((key) => !["inputs", "secrets", "outputs", "returns", "steps"].includes(key))
     ) {
       throw new Error(`Recipe function "${functionName}" must contain inputs, outputs, and steps`);
     }
     const docInputs = (definition as any).inputs;
     const outputs = (definition as any).outputs;
+    const secrets = secretSchema((definition as any).secrets);
     const returns = (definition as any).returns;
     const steps = (definition as any).steps;
     if (!docInputs || typeof docInputs !== "object" || Array.isArray(docInputs)) {
@@ -174,12 +244,28 @@ export function parseRecipe(sourceYaml: string): ParsedRecipe {
         throw new Error(`functions.${functionName}.steps[${index}].timeoutMs must be a positive integer`);
       }
     }
-    functions[functionName] = { inputs: docInputs, outputs, ...(returns ? { returns } : {}), steps };
+    functions[functionName] = {
+      inputs: docInputs,
+      ...(Object.keys(secrets).length ? { secrets } : {}),
+      outputs,
+      ...(returns ? { returns } : {}),
+      steps,
+    };
   }
 
+  if (doc.env !== undefined && (!doc.env || typeof doc.env !== "object" || Array.isArray(doc.env))) {
+    throw new Error("Recipe env must be an object");
+  }
+  const env = doc.env || {};
+  for (const [name, value] of Object.entries(env)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || typeof value !== "string") {
+      throw new Error(`Recipe env.${name} must be a string value with a valid environment variable name`);
+    }
+  }
   return {
     name: "",
-    inputs: legacy ? doc.inputs : functions[Object.keys(functions)[0]].inputs,
+    inputs: legacy ? functions.main.inputs : functions[Object.keys(functions)[0]].inputs,
+    env,
     steps: legacy ? doc.steps : functions[Object.keys(functions)[0]].steps,
     functions,
   };
@@ -197,7 +283,7 @@ export class RecipeRepository {
     CREATE TABLE IF NOT EXISTS recipe_versions (
       namespace TEXT NOT NULL, slug TEXT NOT NULL, version INTEGER NOT NULL, name TEXT NOT NULL, publish_id TEXT UNIQUE,
       source_yaml TEXT NOT NULL, inputs_json TEXT NOT NULL, steps_json TEXT NOT NULL,
-      functions_json TEXT,
+      functions_json TEXT, env_json TEXT NOT NULL DEFAULT '{}',
       revoked INTEGER NOT NULL DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY(namespace, slug, version),
       FOREIGN KEY(namespace, slug) REFERENCES recipes(namespace, slug)
@@ -205,6 +291,9 @@ export class RecipeRepository {
     const columns = await db.all("PRAGMA table_info(recipe_versions)");
     if (!columns.some((column: any) => column.name === "functions_json")) {
       await db.exec("ALTER TABLE recipe_versions ADD COLUMN functions_json TEXT");
+    }
+    if (!columns.some((column: any) => column.name === "env_json")) {
+      await db.exec("ALTER TABLE recipe_versions ADD COLUMN env_json TEXT NOT NULL DEFAULT '{}'");
     }
     if (!columns.some((column: any) => column.name === "publish_id")) {
       await db.exec("ALTER TABLE recipe_versions ADD COLUMN publish_id TEXT");
@@ -214,7 +303,7 @@ export class RecipeRepository {
 
   async list(): Promise<Recipe[]> {
     return (
-      await db.all(`SELECT namespace,slug,version,name,source_yaml,inputs_json,steps_json,functions_json,revoked FROM recipe_versions
+      await db.all(`SELECT namespace,slug,version,name,source_yaml,inputs_json,steps_json,functions_json,env_json,revoked FROM recipe_versions
       WHERE version = (SELECT MAX(v.version) FROM recipe_versions v WHERE v.namespace=recipe_versions.namespace AND v.slug=recipe_versions.slug)
       ORDER BY namespace,slug`)
     ).map((row: any) => this.fromRow(row));
@@ -287,7 +376,7 @@ export class RecipeRepository {
         m: "run",
       },
       {
-        s: "INSERT INTO recipe_versions(namespace,slug,version,name,publish_id,source_yaml,inputs_json,steps_json,functions_json) SELECT ?,?,COALESCE((SELECT MAX(version) FROM recipe_versions WHERE namespace=? AND slug=?),0)+1,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM recipes WHERE namespace=? AND slug=? AND owner_subject=?)",
+        s: "INSERT INTO recipe_versions(namespace,slug,version,name,publish_id,source_yaml,inputs_json,steps_json,functions_json,env_json) SELECT ?,?,COALESCE((SELECT MAX(version) FROM recipe_versions WHERE namespace=? AND slug=?),0)+1,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM recipes WHERE namespace=? AND slug=? AND owner_subject=?)",
         d: [
           namespace,
           slug,
@@ -299,6 +388,7 @@ export class RecipeRepository {
           JSON.stringify(parsed.inputs),
           JSON.stringify(parsed.steps),
           JSON.stringify(parsed.functions),
+          JSON.stringify(parsed.env),
           namespace,
           slug,
           ownerSubject,
@@ -343,6 +433,7 @@ export class RecipeRepository {
       name: row.name,
       sourceYaml: row.source_yaml,
       inputs: JSON.parse(row.inputs_json),
+      env: row.env_json ? JSON.parse(row.env_json) : {},
       steps: JSON.parse(row.steps_json),
       functions: row.functions_json
         ? JSON.parse(row.functions_json)

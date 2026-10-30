@@ -15,7 +15,10 @@ describe("systemd driver container environment", () => {
 
   beforeEach(() => {
     tempDirectory = mkdtempSync(join(tmpdir(), "systemd-driver-test-"));
-    child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter() });
+    child = Object.assign(new EventEmitter(), {
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+    });
     spawnMock.mockReturnValue(child);
   });
 
@@ -31,6 +34,7 @@ describe("systemd driver container environment", () => {
       step: { id: "build" },
       command: "printf '%s' \"$WORKING_DIR\"",
       workingDir: hostWorkingDir,
+      secretFilesDir: join(tempDirectory, "secrets"),
       logsDir: join(tempDirectory, "logs"),
       env: { WORKING_DIR: hostWorkingDir, CI: "true" },
       image: "node:22",
@@ -43,6 +47,7 @@ describe("systemd driver container environment", () => {
     expect(args).toContain("--quiet");
     expect(args).toContain("-w");
     expect(args).toContain("/workspace");
+    expect(args).toContain(`${join(tempDirectory, "secrets")}:${join(tempDirectory, "secrets")}:ro`);
     expect(args).toContain("-e");
     expect(args).toContain("WORKING_DIR");
     expect(args).not.toContain("HOME");

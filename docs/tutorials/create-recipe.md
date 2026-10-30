@@ -1,6 +1,6 @@
 # Publish and use a recipe
 
-Recipes package reusable workflow steps with a JSON Schema input contract. A published recipe version is immutable;
+Recipes package reusable workflow steps with declared inputs and secrets. A published recipe version is immutable;
 workflows refer to an exact version. Recipes are globally visible to signed-in users, so review executable recipe
 code before using it.
 
@@ -13,17 +13,16 @@ Paste this recipe YAML:
 
 ```yaml
 inputs:
-  type: object
-  required: [image]
-  properties:
-    image:
-      type: string
+  image:
+    type: string
+    required: true
+
+env:
+  IMAGE: ${inputs.image}
 
 steps:
   - id: build
     name: Build image
-    env:
-      IMAGE: ${inputs.image}
     run: docker build --tag "$IMAGE" .
 ```
 
@@ -59,14 +58,20 @@ secrets: {}
 Validate and save the workflow, then use **Run now** to test the pinned recipe with a matching runner. Publish the
 workflow when it is ready for automatic triggers.
 
-To pass a secret, declare it in the recipe input schema with `writeOnly: true`, then map it through the calling
-workspace's secrets store:
+To pass a secret, declare it separately from ordinary inputs and map it through the calling workspace's secrets store:
 
 ```yaml
-# In the recipe input schema:
-registry_token:
-  type: string
-  writeOnly: true
+# In the recipe:
+secrets:
+  registryToken:
+    type: string
+    required: true
+
+steps:
+  - id: publish
+    env:
+      REGISTRY_TOKEN: ${secrets.registryToken}
+    run: npm publish
 ```
 
 ```yaml
@@ -75,5 +80,7 @@ secrets:
   registry_token: ${secrets.REGISTRY_TOKEN}
 ```
 
-Use the secret in a recipe step through its declared input and `env`; do not print it or include it in outputs.
+For a binary file secret, declare `type: file`; the recipe receives its path under the run's `secrets` directory,
+outside `wd`. Do not print secrets or include them in outputs, artifacts, or caches. Recipe-level `env` is inherited by
+all steps; step-level `env` overrides it.
 For named recipe functions, call the selected export with `function: <name>`. See the [recipe syntax reference](../reference/recipe-syntax.md) for contracts and nested calls.

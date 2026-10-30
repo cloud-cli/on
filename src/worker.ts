@@ -378,9 +378,17 @@ export async function processJob(p: Processable) {
               snapshotJson =
                 Buffer.byteLength(encoded, "utf8") <= 65536
                   ? encoded
-                  : JSON.stringify({ version: 1, status: "omitted", reason: "too_large" });
+                  : JSON.stringify({
+                      version: 1,
+                      status: "omitted",
+                      reason: "too_large",
+                    });
             } catch {
-              snapshotJson = JSON.stringify({ version: 1, status: "omitted", reason: "too_large" });
+              snapshotJson = JSON.stringify({
+                version: 1,
+                status: "omitted",
+                reason: "too_large",
+              });
             }
           }
           return value.call(target, {
@@ -459,6 +467,7 @@ export async function processJob(p: Processable) {
     : jobStoragePath;
   const logsDir = Path.join(storagePath, "logs");
   const workingDir = Path.join(storagePath, "wd");
+  const recipeSecretsDir = Path.join(storagePath, "secrets");
   const runUrl = new URL(`/ui/runs/${job.id}`, config.serverUrl).toString();
 
   // Step Execution Context available in expressions: ${steps.step1.outputs.id}
@@ -480,6 +489,7 @@ export async function processJob(p: Processable) {
     files: workspaceFiles(workingDir),
   };
   let cacheKey = "";
+  const recipeSecretFilePaths: Record<string, string> = {};
 
   const stepReports = [...steps, ...postSteps].map((step, index): StepReport => {
     step.id ||= `step-${index}`;
@@ -508,132 +518,160 @@ export async function processJob(p: Processable) {
   await queue.saveReport(job.id, executionReport);
   void notifyJobChange(config, job.id);
   try {
-    Object.assign(executionContext.env, await evaluateEnv(resolvedWorkflow.env, executionContext));
-    Object.assign(executionContext.env, {
-      CI: "true",
-      CI_JOB_ID: String(job.id),
-      CI_JOB_NAME: resolvedWorkflow.name,
-      CI_JOB_URL: runUrl,
-    });
-    if (resolvedWorkflow._recipeInputs) {
-      const evaluateRecipeValue = async (value: unknown): Promise<unknown> => {
-        if (typeof value === "string") {
-          const directExpression = value.match(/^\$\{([\s\S]+)\}$/);
-          if (directExpression) {
-            return SafeExpressionEvaluator.evaluateExpression(directExpression[1], executionContext);
+    try {
+      Object.assign(executionContext.env, await evaluateEnv(resolvedWorkflow.env, executionContext));
+      Object.assign(executionContext.env, {
+        CI: "true",
+        CI_JOB_ID: String(job.id),
+        CI_JOB_NAME: resolvedWorkflow.name,
+        CI_JOB_URL: runUrl,
+      });
+      if (resolvedWorkflow._recipeInputs) {
+        const evaluateRecipeValue = async (value: unknown): Promise<unknown> => {
+          if (typeof value === "string") {
+            const directExpression = value.match(/^\$\{([\s\S]+)\}$/);
+            if (directExpression) {
+              return SafeExpressionEvaluator.evaluateExpression(directExpression[1], executionContext);
+            }
+            return SafeExpressionEvaluator.evaluateValue(value, executionContext);
           }
-          return SafeExpressionEvaluator.evaluateValue(value, executionContext);
+          if (Array.isArray(value)) {
+            return Promise.all(value.map(evaluateRecipeValue));
+          }
+          if (value && typeof value === "object") {
+            const entries = await Promise.all(
+              Object.entries(value).map(async ([key, item]) => [key, await evaluateRecipeValue(item)] as const),
+            );
+            return Object.fromEntries(entries);
+          }
+          return value;
+        };
+        const resolvedInputs: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(resolvedWorkflow._recipeInputs)) {
+          resolvedInputs[key] = await evaluateRecipeValue(value);
         }
-        if (Array.isArray(value)) {
-          return Promise.all(value.map(evaluateRecipeValue));
+        if (resolvedWorkflow._recipeInputSchema) {
+          validateRecipeInputs(resolvedWorkflow._recipeInputSchema, resolvedInputs, "with");
         }
-        if (value && typeof value === "object") {
-          const entries = await Promise.all(
-            Object.entries(value).map(async ([key, item]) => [key, await evaluateRecipeValue(item)] as const),
-          );
-          return Object.fromEntries(entries);
+        Object.assign(executionContext.inputs, resolvedInputs);
+      }
+      writeSecretFiles(resolvedWorkflow.secretFiles, secrets, workingDir);
+      for (const [alias, source] of Object.entries(resolvedWorkflow._recipeSecretFiles || {})) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(alias) || !/^[A-Z][A-Z0-9_]*$/.test(source)) {
+          throw new Error("Invalid recipe file-secret mapping");
         }
-        return value;
-      };
-      const resolvedInputs: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(resolvedWorkflow._recipeInputs)) {
-        resolvedInputs[key] = await evaluateRecipeValue(value);
+        const value = executionContext.secrets[source];
+        if (typeof value !== "string") {
+          throw new Error(`Recipe file secret is unavailable: ${alias}`);
+        }
+        if (!FS.existsSync(recipeSecretsDir)) {
+          FS.mkdirSync(recipeSecretsDir, { recursive: true, mode: 0o700 });
+          FS.chmodSync(recipeSecretsDir, 0o700);
+        }
+        const bytes = Buffer.from(value, "base64");
+        if (bytes.toString("base64") !== value.replace(/\s/g, "")) {
+          throw new Error(`Recipe file secret is not valid base64 data: ${alias}`);
+        }
+        secrets.addRedactionValue?.(bytes.toString("utf8"));
+        secrets.addRedactionValue?.(bytes.toString("latin1"));
+        const secretPath = Path.join(recipeSecretsDir, alias);
+        FS.writeFileSync(secretPath, bytes, { mode: 0o600 });
+        FS.chmodSync(secretPath, 0o600);
+        recipeSecretFilePaths[alias] = secretPath;
       }
-      if (resolvedWorkflow._recipeInputSchema) {
-        validateRecipeInputs(resolvedWorkflow._recipeInputSchema, resolvedInputs, "with");
-      }
-      Object.assign(executionContext.inputs, resolvedInputs);
-    }
-    writeSecretFiles(resolvedWorkflow.secretFiles, secrets, workingDir);
-    cacheKey = resolvedWorkflow.cache
-      ? String(await SafeExpressionEvaluator.evaluateValue(resolvedWorkflow.cache.key, executionContext))
-      : "";
-    if (cacheKey && resolvedWorkflow.cache) {
-      await restoreStoredFiles(
-        queue,
-        "cache",
-        `${job.workflow_id}:${cacheKey}`,
-        resolvedWorkflow.cache.paths,
-        workingDir,
-      );
-    }
-    await queue.saveReport(job.id, executionReport);
-  } catch (error: any) {
-    executionReport.status = "failed";
-    executionReport.finishedAt = new Date().toISOString();
-    executionReport.durationMs = Date.now() - jobStartTime;
-    const failedReport = {
-      ...executionReport,
-      steps: executionReport.steps.map((step) => ({
-        ...step,
-        status: "skipped" as const,
-      })),
-    };
-    await queue.completeJob(job.id, "failed", failedReport);
-    console.error(`[${workerId}] ❌ Job setup failed:`, error);
-    return;
-  }
-  const plugins = [...config.plugins];
-  for (const definition of resolvedWorkflow.plugins || []) {
-    try {
-      const pluginSecrets = await evaluateEnv(definition.secrets, executionContext);
-      plugins.push(createWorkflowPlugin({ ...definition, secrets: pluginSecrets }));
-    } catch (error) {
-      console.error(`[${workerId}] Workflow plugin '${definition.name}' failed to initialize:`, error);
-    }
-  }
-  const pluginManager = new PluginManager(plugins);
-  const workflowContext = {
-    jobId: String(job.id),
-    workflowName: resolvedWorkflow.name,
-    inputs,
-    runUrl,
-  };
-  await pluginManager.triggerWorkflowStart(workflowContext);
-
-  const context = { payload, steps, executionContext, ...processable };
-  const { cancelled, failed } = await processSteps(context, executionReport);
-  let finalStatus: FinalJobStatus = cancelled ? "cancelled" : failed ? "failed" : "success";
-  if (finalStatus === "success") {
-    try {
-      const artifacts = resolvedWorkflow.artifacts
-        ? await collectStoredFiles(resolvedWorkflow.artifacts.paths, workingDir)
-        : [];
-      if (artifacts.length) {
-        await queue.saveStoredFiles("artifact", String(job.id), artifacts);
-        executionReport.artifacts = artifacts.map((file) => file.path);
-      }
+      resolvedWorkflow._recipeSecretFilePaths = recipeSecretFilePaths;
+      cacheKey = resolvedWorkflow.cache
+        ? String(await SafeExpressionEvaluator.evaluateValue(resolvedWorkflow.cache.key, executionContext))
+        : "";
       if (cacheKey && resolvedWorkflow.cache) {
-        const cacheFiles = await collectStoredFiles(resolvedWorkflow.cache.paths, workingDir);
-        if (cacheFiles.length) {
-          await queue.saveStoredFiles("cache", `${job.workflow_id}:${cacheKey}`, cacheFiles);
-        }
+        await restoreStoredFiles(
+          queue,
+          "cache",
+          `${job.workflow_id}:${cacheKey}`,
+          resolvedWorkflow.cache.paths,
+          workingDir,
+        );
       }
+      await queue.saveReport(job.id, executionReport);
     } catch (error: any) {
-      console.error(`[${workerId}] ⚠️ Failed to store workflow files:`, error);
-      finalStatus = "failed";
+      executionReport.status = "failed";
+      executionReport.finishedAt = new Date().toISOString();
+      executionReport.durationMs = Date.now() - jobStartTime;
+      const failedReport = {
+        ...executionReport,
+        steps: executionReport.steps.map((step) => ({
+          ...step,
+          status: "skipped" as const,
+        })),
+      };
+      await queue.completeJob(job.id, "failed", failedReport);
+      console.error(`[${workerId}] ❌ Job setup failed:`, error);
+      return;
     }
-  }
-
-  // Lifecycle hooks begin only after setup succeeds, and post-step failures are non-fatal.
-  executionContext.env.CI_JOB_STATUS = finalStatus;
-  executionContext.job = { status: finalStatus, runUrl };
-  if (postSteps.length) {
-    const postContext = { ...context, steps: postSteps };
-    try {
-      await processSteps(postContext, executionReport, steps.length, true);
-    } catch (error) {
-      console.error(`[${workerId}] Post steps failed:`, error);
+    const plugins = [...config.plugins];
+    for (const definition of resolvedWorkflow.plugins || []) {
+      try {
+        const pluginSecrets = await evaluateEnv(definition.secrets, executionContext);
+        plugins.push(createWorkflowPlugin({ ...definition, secrets: pluginSecrets }));
+      } catch (error) {
+        console.error(`[${workerId}] Workflow plugin '${definition.name}' failed to initialize:`, error);
+      }
     }
-  }
+    const pluginManager = new PluginManager(plugins);
+    const workflowContext = {
+      jobId: String(job.id),
+      workflowName: resolvedWorkflow.name,
+      inputs,
+      runUrl,
+    };
+    await pluginManager.triggerWorkflowStart(workflowContext);
 
-  executionReport.status = finalStatus;
-  executionReport.durationMs = Date.now() - jobStartTime;
-  executionReport.finishedAt = new Date().toISOString();
-  await queue.completeJob(job.id, finalStatus, executionReport);
-  void notifyJobChange(config, job.id);
-  console.log(`[${workerId}] ✅ Job #${job.id} completed as: ${finalStatus}`);
-  await pluginManager.triggerWorkflowFinish(workflowContext, finalStatus);
+    const context = { payload, steps, executionContext, ...processable };
+    const { cancelled, failed } = await processSteps(context, executionReport);
+    let finalStatus: FinalJobStatus = cancelled ? "cancelled" : failed ? "failed" : "success";
+    if (finalStatus === "success") {
+      try {
+        const artifacts = resolvedWorkflow.artifacts
+          ? await collectStoredFiles(resolvedWorkflow.artifacts.paths, workingDir)
+          : [];
+        if (artifacts.length) {
+          await queue.saveStoredFiles("artifact", String(job.id), artifacts);
+          executionReport.artifacts = artifacts.map((file) => file.path);
+        }
+        if (cacheKey && resolvedWorkflow.cache) {
+          const cacheFiles = await collectStoredFiles(resolvedWorkflow.cache.paths, workingDir);
+          if (cacheFiles.length) {
+            await queue.saveStoredFiles("cache", `${job.workflow_id}:${cacheKey}`, cacheFiles);
+          }
+        }
+      } catch (error: any) {
+        console.error(`[${workerId}] ⚠️ Failed to store workflow files:`, error);
+        finalStatus = "failed";
+      }
+    }
+
+    // Lifecycle hooks begin only after setup succeeds, and post-step failures are non-fatal.
+    executionContext.env.CI_JOB_STATUS = finalStatus;
+    executionContext.job = { status: finalStatus, runUrl };
+    if (postSteps.length) {
+      const postContext = { ...context, steps: postSteps };
+      try {
+        await processSteps(postContext, executionReport, steps.length, true);
+      } catch (error) {
+        console.error(`[${workerId}] Post steps failed:`, error);
+      }
+    }
+
+    executionReport.status = finalStatus;
+    executionReport.durationMs = Date.now() - jobStartTime;
+    executionReport.finishedAt = new Date().toISOString();
+    await queue.completeJob(job.id, finalStatus, executionReport);
+    void notifyJobChange(config, job.id);
+    console.log(`[${workerId}] ✅ Job #${job.id} completed as: ${finalStatus}`);
+    await pluginManager.triggerWorkflowFinish(workflowContext, finalStatus);
+  } finally {
+    FS.rmSync(recipeSecretsDir, { recursive: true, force: true });
+  }
 }
 
 interface ExecOutput {
@@ -841,17 +879,29 @@ async function executeSingleStep(params: {
   config: RunnerConfig;
 }): Promise<ExecOutput> {
   const { step, stepIndex, executionContext } = params;
-  const stepExecutionContext =
-    step.__recipeTemplate && params.recipeSecrets
-      ? {
-          ...executionContext,
-          secrets: Object.fromEntries(
-            Object.entries(params.recipeSecrets).flatMap(([alias, source]) =>
-              Object.hasOwn(executionContext.secrets, source) ? [[alias, executionContext.secrets[source]]] : [],
-            ),
-          ),
-        }
-      : executionContext;
+  let stepExecutionContext = executionContext;
+  if (step.__recipeTemplate && params.recipeSecrets) {
+    const recipeSecretFiles = params.processable.workflow?._recipeSecretFiles || {};
+    stepExecutionContext = {
+      ...executionContext,
+      secrets: Object.fromEntries(
+        Object.entries(params.recipeSecrets).flatMap(([alias, source]) => {
+          const filePath = params.processable.workflow?._recipeSecretFilePaths?.[alias];
+          if (recipeSecretFiles[alias] && filePath) {
+            return [[alias, filePath]];
+          }
+          return Object.hasOwn(executionContext.secrets, source) ? [[alias, executionContext.secrets[source]]] : [];
+        }),
+      ),
+    };
+  }
+  if (step.__recipeTemplate && params.processable.workflow?._recipeEnv) {
+    const recipeEnv = await evaluateEnv(params.processable.workflow._recipeEnv, stepExecutionContext);
+    stepExecutionContext = {
+      ...stepExecutionContext,
+      env: { ...stepExecutionContext.env, ...recipeEnv },
+    };
+  }
   step.id ||= `step-${stepIndex}`;
   step.name ||= step.id;
 
@@ -949,6 +999,12 @@ async function executeSingleStep(params: {
       }
       const resolvedInputs = { ...(ordinary as Record<string, unknown>) };
       const inputProperties = ((fn.inputs as any)?.properties || {}) as Record<string, { writeOnly?: boolean }>;
+      for (const [name, property] of Object.entries(inputProperties)) {
+        if (property.writeOnly !== true && Object.hasOwn(property, "default") && !Object.hasOwn(resolvedInputs, name)) {
+          resolvedInputs[name] = await evaluateBinding((property as any).default);
+        }
+      }
+      const secretDefinitions = fn.secrets || {};
       const scopedSecrets: Record<string, string> = {};
       for (const inputName of Object.keys(resolvedInputs)) {
         if (inputProperties[inputName]?.writeOnly === true) {
@@ -958,14 +1014,23 @@ async function executeSingleStep(params: {
       for (const [alias, reference] of Object.entries(step.secrets || {})) {
         const source =
           typeof reference === "string" ? reference.match(/^\$\{secrets\.([A-Za-z_][A-Za-z0-9_]*)\}$/)?.[1] : undefined;
-        if (!inputProperties[alias]?.writeOnly || !source || !Object.hasOwn(stepExecutionContext.secrets, source)) {
+        if (
+          (!secretDefinitions[alias] && !inputProperties[alias]?.writeOnly) ||
+          !source ||
+          !Object.hasOwn(stepExecutionContext.secrets, source)
+        ) {
           throw new Error(`Invalid or unavailable nested secret mapping: ${alias}`);
         }
         const secret = stepExecutionContext.secrets[source];
-        resolvedInputs[alias] = secret;
+        if (inputProperties[alias]?.writeOnly === true) {
+          resolvedInputs[alias] = secret;
+        }
         scopedSecrets[alias] = secret;
       }
       validateRecipeInputs(fn.inputs, resolvedInputs, "with");
+      const nestedInputs = Object.fromEntries(
+        Object.entries(resolvedInputs).filter(([name]) => !inputProperties[name]?.writeOnly),
+      );
 
       const nestedSteps = fn.steps.map((nested, index) => ({
         ...nested,
@@ -982,10 +1047,12 @@ async function executeSingleStep(params: {
       callInstance.inputs = inputSnapshot.status === "captured" ? inputSnapshot.inputs || {} : {};
       const nestedContext: JobExecutionContext = {
         ...stepExecutionContext,
-        inputs: ordinary as Record<string, unknown>,
+        env: { ...stepExecutionContext.env },
+        inputs: nestedInputs,
         secrets: scopedSecrets,
         steps: { ...stepExecutionContext.steps },
       };
+      Object.assign(nestedContext.env, await evaluateEnv(fn.env, nestedContext));
       const nestedResult = await processSteps(
         {
           ...params.processable,
@@ -1022,7 +1089,11 @@ async function executeSingleStep(params: {
         outputs[name] = await SafeExpressionEvaluator.evaluateExpression(runtimePath, nestedContext);
       }
       validateRecipeInputs(fn.outputs, outputs, "outputs");
-      const outputSnapshot = createStepAttemptSnapshot({ inputs: {}, priorSteps: {}, outputs });
+      const outputSnapshot = createStepAttemptSnapshot({
+        inputs: {},
+        priorSteps: {},
+        outputs,
+      });
       callInstance.outputs =
         outputSnapshot.status === "captured" && outputSnapshot.outputs && typeof outputSnapshot.outputs === "object"
           ? (outputSnapshot.outputs as Record<string, unknown>)
@@ -1137,17 +1208,20 @@ async function executeSingleStep(params: {
       timeoutMs: step.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS,
       attempt: params.attempt,
       image: step.image,
+      secretFilesDir: Object.keys(params.processable.workflow?._recipeSecretFilePaths || {}).length
+        ? Path.dirname(Object.values(params.processable.workflow!._recipeSecretFilePaths!)[0])
+        : undefined,
       volumes: step.volumes,
       dockerArgs: step.dockerArgs,
       workingDir: executionContext.workingDir,
       logsDir: executionContext.logsDir,
       env: {
-        ...executionContext.env,
+        ...stepExecutionContext.env,
         ...evaluatedStepEnv,
         WORKING_DIR: executionContext.workingDir,
         CI: "true",
         CI_JOB_ID: String(params.jobId),
-        CI_JOB_NAME: executionContext.env.CI_JOB_NAME || step.name || step.id || `step-${stepIndex}`,
+        CI_JOB_NAME: stepExecutionContext.env.CI_JOB_NAME || step.name || step.id || `step-${stepIndex}`,
       },
     };
 

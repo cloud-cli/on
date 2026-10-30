@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import FS from "node:fs";
+import Path from "node:path";
+import OS from "node:os";
 import type { Processable, WorkflowExecutionReport } from "./types.js";
 import { processJob } from "./worker.js";
 import { SecretStore } from "./secrets.js";
@@ -28,7 +31,12 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp/empty-matrix", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp/empty-matrix",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
       workflow: {
         id: "no-matrix",
@@ -70,13 +78,23 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp/webhook-context", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp/webhook-context",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver,
       workflow: {
         id: "webhook-context",
         name: "Webhook context",
         on: { provider: "generic" },
-        steps: [{ id: "inspect", eval: "({ header: headers['x-signature'], bytes: body.toString('hex') })" }],
+        steps: [
+          {
+            id: "inspect",
+            eval: "({ header: headers['x-signature'], bytes: body.toString('hex') })",
+          },
+        ],
       },
     } as Processable);
 
@@ -111,12 +129,21 @@ describe("incremental workflow reports", () => {
         concurrency_key: null,
         status: "running",
         worker_id: "json-webhook-worker",
-        payload: JSON.stringify({ inputs: {}, headers: { "content-type": "application/json" }, body: rawBody }),
+        payload: JSON.stringify({
+          inputs: {},
+          headers: { "content-type": "application/json" },
+          body: rawBody,
+        }),
         created_at: new Date().toISOString(),
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp/json-webhook-context", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp/json-webhook-context",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
       workflow: {
         id: "json-webhook-context",
@@ -126,7 +153,10 @@ describe("incremental workflow reports", () => {
       },
     } as Processable);
 
-    expect(queue.completeJob.mock.calls[0][2].inputs.body).toEqual({ repository: "example/repo", ok: true });
+    expect(queue.completeJob.mock.calls[0][2].inputs.body).toEqual({
+      repository: "example/repo",
+      ok: true,
+    });
   });
 
   it("maps legacy queued inputsRaw payloads to the body binding", async () => {
@@ -153,7 +183,12 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp/legacy-webhook-context", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp/legacy-webhook-context",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
       workflow: {
         id: "legacy-webhook-context",
@@ -192,7 +227,12 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp/start-failure", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp/start-failure",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver,
       workflow: {
         id: "start-failure",
@@ -237,7 +277,10 @@ describe("incremental workflow reports", () => {
         created_at: new Date().toISOString(),
       },
       queue,
-      secrets: { getAll: () => ({ token: "secret-value" }), redactText: (text: string) => text },
+      secrets: {
+        getAll: () => ({ token: "secret-value" }),
+        redactText: (text: string) => text,
+      },
       config: {
         storagePath: "/tmp/nested-call-test",
         serverUrl: "http://runner.test",
@@ -254,7 +297,10 @@ describe("incremental workflow reports", () => {
             id: "nested-call",
             call: "team/recipe@1#main",
             with: { message: "hello" },
-            secrets: { password: "${secrets.token}", opaque: "${secrets.token}" },
+            secrets: {
+              password: "${secrets.token}",
+              opaque: "${secrets.token}",
+            },
           },
           {
             id: "second-call",
@@ -262,7 +308,10 @@ describe("incremental workflow reports", () => {
             with: { message: "${inputs.original}" },
             secrets: { password: "${secrets.token}" },
           },
-          { id: "consume-output", eval: "steps['nested-call'].outputs.message" },
+          {
+            id: "consume-output",
+            eval: "steps['nested-call'].outputs.message",
+          },
         ],
         _pinnedReferences: [{ namespace: "team", slug: "recipe", version: 1, function: "main" }],
         _pinnedRecipeFunctions: {
@@ -302,7 +351,9 @@ describe("incremental workflow reports", () => {
       status: "success",
       outputs: "hello",
     });
-    expect(queue.completeJob.mock.calls[0][2].steps[1].outputs).toEqual({ message: "second" });
+    expect(queue.completeJob.mock.calls[0][2].steps[1].outputs).toEqual({
+      message: "second",
+    });
     expect(queue.completeJob.mock.calls[0][2].steps[3]).toMatchObject({
       id: "nested-call#attempt-1/secret-check",
       status: "success",
@@ -372,7 +423,12 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp/nested-call-tree", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp/nested-call-tree",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
       workflow: {
         id: "nested-tree",
@@ -385,14 +441,30 @@ describe("incremental workflow reports", () => {
         ],
         _pinnedRecipeFunctions: {
           "team/outer@1#main": {
-            inputs: { type: "object", properties: {}, additionalProperties: false },
-            outputs: { type: "object", properties: {}, additionalProperties: false },
+            inputs: {
+              type: "object",
+              properties: {},
+              additionalProperties: false,
+            },
+            outputs: {
+              type: "object",
+              properties: {},
+              additionalProperties: false,
+            },
             returns: {},
             steps: [{ id: "invoke-inner", call: "team/inner@2#run", with: {} }],
           },
           "team/inner@2#run": {
-            inputs: { type: "object", properties: {}, additionalProperties: false },
-            outputs: { type: "object", properties: {}, additionalProperties: false },
+            inputs: {
+              type: "object",
+              properties: {},
+              additionalProperties: false,
+            },
+            outputs: {
+              type: "object",
+              properties: {},
+              additionalProperties: false,
+            },
             returns: {},
             steps: [{ id: "work", eval: "true" }],
           },
@@ -421,7 +493,17 @@ describe("incremental workflow reports", () => {
   });
 
   it.each([
-    ["revoked", true, { "team/recipe@1#main": { inputs: {}, outputs: { type: "object" }, steps: [] } }],
+    [
+      "revoked",
+      true,
+      {
+        "team/recipe@1#main": {
+          inputs: {},
+          outputs: { type: "object" },
+          steps: [],
+        },
+      },
+    ],
     ["missing pinned snapshot", false, {}],
   ])("fails nested calls closed for %s dependencies", async (_label, revoked, pinned) => {
     const queue = {
@@ -449,7 +531,12 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp/nested-invalid", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp/nested-invalid",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver,
       workflow: {
         id: "nested-invalid",
@@ -491,7 +578,12 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp/unpinned", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp/unpinned",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
       workflow: {
         id: "unpinned",
@@ -499,7 +591,13 @@ describe("incremental workflow reports", () => {
         on: { provider: "generic" },
         steps: [{ id: "call", call: "team/recipe@1#main", with: {} }],
         _pinnedReferences: [],
-        _pinnedRecipeFunctions: { "team/recipe@1#main": { inputs: {}, outputs: { type: "object" }, steps: [] } },
+        _pinnedRecipeFunctions: {
+          "team/recipe@1#main": {
+            inputs: {},
+            outputs: { type: "object" },
+            steps: [],
+          },
+        },
       },
     } as Processable);
     expect(queue.isRecipeVersionRevoked).toHaveBeenCalledWith("team", "recipe", 1);
@@ -585,6 +683,109 @@ describe("incremental workflow reports", () => {
     const report = queue.completeJob.mock.calls[0][2];
     expect(JSON.stringify(report)).not.toContain("mapped-value");
     expect(JSON.stringify(report)).not.toContain("unmapped-value");
+  });
+
+  it("stages file secrets outside wd and applies recipe env before step env", async () => {
+    const storagePath = FS.mkdtempSync(Path.join(OS.tmpdir(), "on-recipe-secret-test-"));
+    const secretBytes = Buffer.from("binary signing credential");
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+      saveStepAttemptStart: vi.fn(async () => {}),
+    };
+    let observed:
+      | {
+          secretPath: string;
+          secretDir: string;
+          bytes: Buffer;
+          mode: number;
+          env: Record<string, string>;
+        }
+      | undefined;
+    const driver = {
+      execute: vi.fn((context: any) => {
+        const secretPath = context.env.CREDENTIAL as string;
+        const stat = FS.statSync(secretPath);
+        observed = {
+          secretPath,
+          secretDir: context.secretFilesDir,
+          bytes: FS.readFileSync(secretPath),
+          mode: stat.mode & 0o777,
+          env: context.env,
+        };
+        return {
+          done: Promise.resolve({ exitCode: 0, durationMs: 1 }),
+          cancel: vi.fn(),
+          logFilePath: "",
+        };
+      }),
+      readLog: vi.fn(async () => ""),
+    };
+
+    try {
+      await processJob({
+        workerId: "file-secret-worker",
+        job: {
+          id: "file-secret-run",
+          workflow_id: "file-secret",
+          workflow_revision: 1,
+          required_tags: "[]",
+          concurrency_key: null,
+          status: "running",
+          worker_id: "file-secret-worker",
+          payload: JSON.stringify({ inputs: {} }),
+          created_at: new Date().toISOString(),
+        },
+        queue,
+        secrets: {
+          getAll: () => ({ SIGNING_KEY: secretBytes.toString("base64") }),
+          redactText: (text: string) => text,
+        },
+        config: {
+          storagePath,
+          serverUrl: "http://runner.test",
+          env: {},
+          plugins: [],
+        },
+        driver,
+        workflow: {
+          id: "file-secret",
+          name: "File secret",
+          on: { provider: "generic" },
+          steps: [
+            {
+              id: "sign",
+              run: 'sign "$CREDENTIAL"',
+              env: { CREDENTIAL: "${secrets.credential}", SHARED: "step" },
+              __recipeTemplate: true,
+            },
+          ],
+          _recipeInputs: { imageTag: "latest" },
+          _recipeInputSchema: {
+            type: "object",
+            required: ["imageTag"],
+            properties: { imageTag: { type: "string" } },
+            additionalProperties: false,
+          },
+          _recipeSecrets: { credential: "SIGNING_KEY" },
+          _recipeSecretFiles: { credential: "SIGNING_KEY" },
+          _recipeEnv: { SHARED: "recipe", EXTRA: "${inputs.imageTag}" },
+        },
+      } as Processable);
+
+      expect(observed).toBeDefined();
+      expect(observed!.bytes).toEqual(secretBytes);
+      expect(observed!.mode).toBe(0o600);
+      expect(observed!.secretPath).toContain(`${Path.sep}secrets${Path.sep}`);
+      expect(observed!.secretPath).not.toContain(`${Path.sep}wd${Path.sep}`);
+      expect(observed!.env).toMatchObject({ SHARED: "step", EXTRA: "latest" });
+      expect(FS.existsSync(observed!.secretDir)).toBe(false);
+      expect(JSON.stringify(queue.completeJob.mock.calls[0][2])).not.toContain(secretBytes.toString());
+    } finally {
+      FS.rmSync(storagePath, { recursive: true, force: true });
+    }
   });
 
   it("isolates workspace paths by lease identity and keeps each lease path stable", async () => {
@@ -1051,7 +1252,11 @@ describe("incremental workflow reports", () => {
     [
       "invalid nested input",
       {
-        inputs: { type: "object", properties: { count: { type: "integer" } }, required: ["count"] },
+        inputs: {
+          type: "object",
+          properties: { count: { type: "integer" } },
+          required: ["count"],
+        },
         outputs: { type: "object" },
       },
       {},
@@ -1060,7 +1265,12 @@ describe("incremental workflow reports", () => {
     ],
     [
       "invalid output schema",
-      { inputs: { type: "object" }, outputs: { type: "not-a-json-schema-type" }, with: {}, returns: {} },
+      {
+        inputs: { type: "object" },
+        outputs: { type: "not-a-json-schema-type" },
+        with: {},
+        returns: {},
+      },
       {},
       undefined,
       {},
@@ -1069,7 +1279,11 @@ describe("incremental workflow reports", () => {
       "invalid returned value",
       {
         inputs: { type: "object" },
-        outputs: { type: "object", properties: { count: { type: "integer" } }, required: ["count"] },
+        outputs: {
+          type: "object",
+          properties: { count: { type: "integer" } },
+          required: ["count"],
+        },
         with: {},
         returns: { count: "${inputs.value}" },
       },
@@ -1079,7 +1293,12 @@ describe("incremental workflow reports", () => {
     ],
     [
       "malformed return expression",
-      { inputs: { type: "object" }, outputs: { type: "object" }, with: {}, returns: { value: "${inputs.value + 1}" } },
+      {
+        inputs: { type: "object" },
+        outputs: { type: "object" },
+        with: {},
+        returns: { value: "${inputs.value + 1}" },
+      },
       { value: 1 },
       undefined,
       undefined,
@@ -1087,7 +1306,11 @@ describe("incremental workflow reports", () => {
     [
       "unsupported binding expression",
       {
-        inputs: { type: "object", properties: { value: { type: "string" } }, required: ["value"] },
+        inputs: {
+          type: "object",
+          properties: { value: { type: "string" } },
+          required: ["value"],
+        },
         outputs: { type: "object" },
         with: { value: "prefix-${inputs.value}" },
         returns: {},
@@ -1122,15 +1345,31 @@ describe("incremental workflow reports", () => {
       },
       queue,
       secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: { storagePath: "/tmp/nested-validation", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      config: {
+        storagePath: "/tmp/nested-validation",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
       workflow: {
         id: "nested-validation",
         name: "Nested validation",
         on: { provider: "generic" },
-        steps: [{ id: "invoke", call: "team/recipe@1#main", with: withInputs ?? fn.with }],
+        steps: [
+          {
+            id: "invoke",
+            call: "team/recipe@1#main",
+            with: withInputs ?? fn.with,
+          },
+        ],
         _pinnedReferences: [{ namespace: "team", slug: "recipe", version: 1, function: "main" }],
-        _pinnedRecipeFunctions: { "team/recipe@1#main": { ...pinnedFn, steps: [{ id: "noop", eval: "true" }] } },
+        _pinnedRecipeFunctions: {
+          "team/recipe@1#main": {
+            ...pinnedFn,
+            steps: [{ id: "noop", eval: "true" }],
+          },
+        },
       },
     } as Processable);
     expect(queue.completeJob.mock.calls[0][1]).toBe("failed");
@@ -1164,20 +1403,38 @@ describe("incremental workflow reports", () => {
         created_at: new Date().toISOString(),
       },
       queue,
-      secrets: { getAll: () => suppliedSecrets, redactText: (text: string) => text },
-      config: { storagePath: "/tmp/nested-secret", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      secrets: {
+        getAll: () => suppliedSecrets,
+        redactText: (text: string) => text,
+      },
+      config: {
+        storagePath: "/tmp/nested-secret",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
       workflow: {
         id: "nested-secret",
         name: "Nested secret",
         on: { provider: "generic" },
-        steps: [{ id: "invoke", call: "team/recipe@1#main", with: {}, secrets: secretsMap }],
+        steps: [
+          {
+            id: "invoke",
+            call: "team/recipe@1#main",
+            with: {},
+            secrets: secretsMap,
+          },
+        ],
         _pinnedReferences: [{ namespace: "team", slug: "recipe", version: 1, function: "main" }],
         _pinnedRecipeFunctions: {
           "team/recipe@1#main": {
             inputs: {
               type: "object",
-              properties: { ordinary: { type: "string" }, password: { type: "string", writeOnly: true } },
+              properties: {
+                ordinary: { type: "string" },
+                password: { type: "string", writeOnly: true },
+              },
             },
             outputs: { type: "object" },
             steps: [],
@@ -1208,7 +1465,10 @@ describe("incremental workflow reports", () => {
     let executions = 0;
     const driver = {
       execute: vi.fn(() => ({
-        done: Promise.resolve({ exitCode: ++executions === 1 ? 1 : 0, durationMs: 1 }),
+        done: Promise.resolve({
+          exitCode: ++executions === 1 ? 1 : 0,
+          durationMs: 1,
+        }),
         cancel: vi.fn(),
         logFilePath: "/etc/hosts",
       })),
@@ -1228,15 +1488,30 @@ describe("incremental workflow reports", () => {
         created_at: new Date().toISOString(),
       },
       queue,
-      secrets: { getAll: () => ({ TOKEN: secret }), redactText: (text: string) => text.split(secret).join("****") },
-      config: { storagePath: "/tmp/nested-retry", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      secrets: {
+        getAll: () => ({ TOKEN: secret }),
+        redactText: (text: string) => text.split(secret).join("****"),
+      },
+      config: {
+        storagePath: "/tmp/nested-retry",
+        serverUrl: "http://runner.test",
+        env: {},
+        plugins: [],
+      },
       driver,
       workflow: {
         id: "nested-retry",
         name: "Nested retry",
         on: { provider: "generic" },
         retries: 1,
-        steps: [{ id: "invoke", call: "team/recipe@1#main", with: {}, secrets: { password: "${secrets.TOKEN}" } }],
+        steps: [
+          {
+            id: "invoke",
+            call: "team/recipe@1#main",
+            with: {},
+            secrets: { password: "${secrets.TOKEN}" },
+          },
+        ],
         _pinnedReferences: [{ namespace: "team", slug: "recipe", version: 1, function: "main" }],
         _pinnedRecipeFunctions: {
           "team/recipe@1#main": {
@@ -1266,7 +1541,12 @@ describe("incremental workflow reports", () => {
     expect(final.steps.map(({ id }) => id)).toContain("invoke#attempt-1/effect");
     expect(final.steps.map(({ id }) => id)).toContain("invoke#attempt-2/effect");
     expect(
-      final.callInstances?.map(({ callId, status, stepIds, inputs }) => ({ callId, status, stepIds, inputs })),
+      final.callInstances?.map(({ callId, status, stepIds, inputs }) => ({
+        callId,
+        status,
+        stepIds,
+        inputs,
+      })),
     ).toEqual([
       {
         callId: "130:invoke#attempt-1",
