@@ -15,6 +15,33 @@ const request = (url: string, method = "GET", headers: Record<string, string> = 
   ({ url, method, headers: { host: "app.test", ...headers } }) as any;
 
 describe("current IAM route authorization", () => {
+  it.each([
+    "/ui/channels",
+    "/ui/workspaces/team-a/channels",
+    "/ui/workspaces/team-a/channels/stream-a",
+    "/ui/workspaces/team-a/connectors",
+    "/ui/workspaces/team-a/connectors/connector-a",
+    "/ui/workspaces/team-a/workflows",
+    "/ui/workspaces/team-a/workflows/build-1",
+    "/ui/workspaces/team-a/runs/events",
+    "/ui/workspaces/team-a/invocations/invocation-a",
+  ])("requires sign-in and serves the shell on refresh for %s", async (path) => {
+    const renderAppShell = vi.fn((res) => res.writeHead(200).end("shell"));
+    const server = { oidc: { enabled: true, userFromCookie: vi.fn(() => null) }, renderAppShell };
+    const unauthenticated = response();
+    await (WebhookServer.prototype as any).handleRequest.call(server, request(`${path}?revision=2`), unauthenticated);
+    expect(unauthenticated.writeHead).toHaveBeenCalledWith(302, {
+      Location: `/auth/login?url=${encodeURIComponent(`${path}?revision=2`)}`,
+    });
+    expect(renderAppShell).not.toHaveBeenCalled();
+
+    server.oidc.userFromCookie.mockReturnValue({ subject: "user-1" } as any);
+    const authenticated = response();
+    await (WebhookServer.prototype as any).handleRequest.call(server, request(path), authenticated);
+    expect(renderAppShell).toHaveBeenCalledWith(authenticated);
+    expect(authenticated.writeHead).toHaveBeenCalledWith(200);
+  });
+
   it("serves recipe revocation status only through an authorized active lease", async () => {
     const server = {
       workflowsLoaded: Promise.resolve(),

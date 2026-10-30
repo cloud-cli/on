@@ -660,6 +660,8 @@ export class WebhookServer {
         url.pathname === "/" ||
         /^\/workspaces\/[^/]+\/runs(?:\/events)?$/.test(url.pathname) ||
         /^\/workspaces\/[^/]+\/invocations\/[^/]+$/.test(url.pathname) ||
+        /^\/workspaces\/[^/]+\/(?:channels|connectors)(?:\/[^/]+)?$/.test(url.pathname) ||
+        url.pathname === "/channels" ||
         /^\/workspaces\/[^/]+\/workflows(?:\/(?:new|[a-z0-9-]+))?$/.test(url.pathname))
     ) {
       return this.renderAppShell(res);

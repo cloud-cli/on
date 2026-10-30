@@ -164,7 +164,11 @@ export function isProtectedUiRoute(pathname: string, method: string): boolean {
     pathname === "/settings" ||
     pathname === "/teams" ||
     pathname === "/workspaces" ||
-    /^\/workspaces\/[^/]+\/runs$/.test(pathname) ||
+    pathname === "/channels" ||
+    /^\/workspaces\/[^/]+\/runs(?:\/events)?$/.test(pathname) ||
+    /^\/workspaces\/[^/]+\/invocations\/[^/]+$/.test(pathname) ||
+    /^\/workspaces\/[^/]+\/(?:channels|connectors)(?:\/[^/]+)?$/.test(pathname) ||
+    /^\/workspaces\/[^/]+\/workflows(?:\/(?:new|[a-z0-9-]+))?$/.test(pathname) ||
     /^\/teams\/[^/]+\/settings$/.test(pathname) ||
     /^\/workspaces\/[^/]+\/settings$/.test(pathname) ||
     /^\/settings\/(secrets|tokens|notifications|workers|timezone)$/.test(pathname) ||
