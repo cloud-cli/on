@@ -259,7 +259,7 @@ export class WebhookServer {
   private userPreferences = new UserPreferencesRepository();
   private agentWorkflowGrantRepository = new AgentWorkflowGrantRepository();
   private teams = new TeamRepository();
-  private connectors = new ConnectorRepository();
+  private connectors = new ConnectorRepository(this.secretRepository);
   private incomingEvents = new IncomingEventRepository(this.secretRepository);
   private domainEventRepository = new DomainEventRepository();
   private workflowRunAdmissions = new WorkflowRunAdmissionRepository();
@@ -2697,7 +2697,14 @@ sessionStorage.removeItem('runner-pending-team-invite');
    * Processes incoming HTTP webhooks
    */
   private async handleConnectorWebhook(
-    connector: { id: string; workspaceId: string; name: string; sourceYaml: string; version: number },
+    connector: {
+      id: string;
+      workspaceId: string;
+      name: string;
+      sourceYaml: string;
+      version: number;
+      signingSecret?: string | null;
+    },
     req: http.IncomingMessage,
     res: http.ServerResponse,
   ) {
@@ -2707,6 +2714,38 @@ sessionStorage.removeItem('runner-pending-team-invite');
       const { rawBuffer, headers } = await this.readRequest(req, res);
       if (res.headersSent || !rawBuffer) {
         return;
+      }
+      if (connector.signingSecret) {
+        const timestamp = headers["x-connector-timestamp"];
+        const signature = headers["x-connector-signature"];
+        const githubSignature = headers["x-hub-signature-256"];
+        const expectedRawBodySignature = crypto
+          .createHmac("sha256", connector.signingSecret)
+          .update(rawBuffer)
+          .digest();
+        const matchesSignature = (candidate: string | undefined, expected: Buffer) => {
+          const supplied = candidate ? /^sha256=([a-f0-9]{64})$/i.exec(candidate)?.[1] : undefined;
+          if (!supplied) {
+            return false;
+          }
+          const actual = Buffer.from(supplied, "hex");
+          return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+        };
+        const seconds = typeof timestamp === "string" && /^\d{1,12}$/.test(timestamp) ? Number(timestamp) : NaN;
+        const expectedTimestampSignature = crypto
+          .createHmac("sha256", connector.signingSecret)
+          .update(timestamp + ".")
+          .update(rawBuffer)
+          .digest();
+        const timestampedSignature =
+          typeof signature === "string" &&
+          Number.isFinite(seconds) &&
+          Math.abs(Math.floor(Date.now() / 1000) - seconds) <= 300 &&
+          matchesSignature(signature, expectedTimestampSignature);
+        if (!matchesSignature(githubSignature, expectedRawBodySignature) && !timestampedSignature) {
+          res.writeHead(401, { "Cache-Control": "no-store" }).end();
+          return;
+        }
       }
       await this.workflowsLoaded;
       const contentType = String(headers["content-type"] || "application/octet-stream")
@@ -2743,7 +2782,8 @@ sessionStorage.removeItem('runner-pending-team-invite');
       normalizedEvent = await evaluateConnector(connector.sourceYaml, { input, headers: safeHeaders });
       const receivedAt =
         (await this.incomingEvents.receivedAtForTeam(connector.workspaceId, receiptId)) || new Date().toISOString();
-      const deliveryId = safeHeaders["idempotency-key"] || safeHeaders["x-delivery-id"];
+      const deliveryId =
+        safeHeaders["idempotency-key"] || safeHeaders["x-delivery-id"] || safeHeaders["x-github-delivery"];
       const published = await this.domainEventRepository.publish(connector.workspaceId, {
         type: normalizedEvent.type,
         schemaVersion: 1,
@@ -3928,7 +3968,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     const connectorsPath = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/connectors$`));
     const connectorPath = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/connectors/([^/]+)$`));
     const connectorOperation = url.pathname.match(
-      new RegExp(`^/api/${prefix}/([^/]+)/connectors/([^/]+)/(draft|publish|enabled)$`),
+      new RegExp(`^/api/${prefix}/([^/]+)/connectors/([^/]+)/(draft|publish|enabled|signing-secret)$`),
     );
     if (connectorOperation && ["PUT", "POST", "PATCH"].includes(req.method || "")) {
       const [, rawTeam, rawId, operation] = connectorOperation;
@@ -3939,6 +3979,26 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return;
       }
       try {
+        if (operation === "signing-secret" && req.method === "POST") {
+          if (!(await this.connectors.getForWorkspace(teamId, connectorId))) {
+            res.writeHead(404).end(JSON.stringify({ error: "Connector not found" }));
+            return;
+          }
+          await this.principals.recordAudit({
+            actor: authorized.principal.subject,
+            action: "connector.signing-secret.rotate",
+            target: connectorId,
+            teamId,
+          });
+          const rotated = await this.connectors.rotateSigningSecret(teamId, connectorId);
+          if (!rotated) {
+            res.writeHead(404).end(JSON.stringify({ error: "Connector not found" }));
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+          res.end(JSON.stringify({ connector: rotated.connector, signingSecret: rotated.secret }));
+          return;
+        }
         let connector;
         let urlValue: string | undefined;
         if (operation === "draft" && req.method === "PUT") {

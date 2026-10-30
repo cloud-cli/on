@@ -16,12 +16,10 @@ const decryptPayload = (payload: unknown): JobPayload => {
     decoded = JSON.parse(payloadSecrets.decryptValue(payload.slice("enc:v1:".length))) as JobPayload;
   }
   if (decoded && typeof decoded === "object") {
-    // Preserve already-queued webhook jobs created before the context rename.
-    const legacy = decoded as JobPayload & { inputsRaw?: unknown };
-    const raw = (decoded.body ?? legacy.inputsRaw) as unknown;
-    if (raw && typeof raw === "object" && (raw as { type?: unknown }).type === "Buffer") {
-      decoded.body = Buffer.from((raw as { data: number[] }).data);
-    }
+    // Preserve arbitrary JSON inputs, but discard legacy raw HTTP context.
+    const legacy = decoded as JobPayload & { body?: unknown; headers?: unknown; inputsRaw?: unknown };
+    delete legacy.body;
+    delete legacy.headers;
     delete legacy.inputsRaw;
   }
   return decoded;

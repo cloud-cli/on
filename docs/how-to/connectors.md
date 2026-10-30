@@ -50,6 +50,37 @@ Send requests to `POST /webhooks/connectors/{token}`. A successful ingress retur
 fanout are asynchronous. The endpoint accepts JSON, text, or binary bodies within the ingress size bound. Do not put
 credentials or other secrets in event data: normalized domain-event data is not encrypted at rest.
 
+### Optional signing secret
+
+The tokenized webhook URL and signing secret are separate random credentials. The URL routes a request to the
+connector; the signing secret authenticates the payload. Use the connector management operation
+`POST /api/v1/workspaces/{workspaceId}/connectors/{connectorId}/signing-secret` to generate or rotate the signing
+secret. The plaintext is returned once with a `whsec_` prefix to distinguish it from the webhook URL token; store it
+securely. Normal connector reads return only whether a secret is configured. Rotation immediately invalidates the
+previous signing secret. Disabling a connector revokes its URL token;
+its signing configuration is retained so re-enabling does not silently downgrade to unsigned requests.
+
+When a signing secret is configured, requests must use either GitHub's native `X-Hub-Signature-256` header (HMAC-SHA-256
+of the exact raw request body) or the timestamped generic signature format below. GitHub's native signature format is
+compatible with GitHub webhook configuration and its delivery ID is used for event idempotency. For other senders,
+include `X-Connector-Timestamp` as Unix seconds and `X-Connector-Signature` as `sha256=<hex HMAC>`. Compute that
+HMAC-SHA-256 over the ASCII timestamp, a period, and the exact raw request body bytes. Timestamped requests more than
+five minutes from server time are rejected. Example in Node.js:
+
+```js
+import { createHmac } from "node:crypto";
+
+const timestamp = String(Math.floor(Date.now() / 1000));
+const digest = createHmac("sha256", signingSecret)
+  .update(timestamp + ".")
+  .update(rawBody)
+  .digest("hex");
+```
+
+Send the result as `X-Connector-Signature: sha256=${digest}`. Do not parse and re-serialize JSON before signing. These
+authentication headers are not exposed to connector mapping expressions or stored receipt metadata. A connector
+without a configured signing secret remains compatible with unsigned senders.
+
 ## Receipts and replay
 
 Workspace Incoming Events endpoints list and inspect receipts. Receipt detail omits captured input data. Replaying a

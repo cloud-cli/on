@@ -28,6 +28,25 @@ describe("workspace Connectors page", () => {
     expect(setup).toContain("Permanently delete connector");
   });
 
+  it("uses a full-width workflow-style list with heading and per-row actions", () => {
+    const html = readFileSync(new URL("./connectors-ui.html", import.meta.url), "utf8");
+    const setup = readFileSync(new URL("./connectors-ui.mjs", import.meta.url), "utf8");
+
+    expect(html).toContain('<main class="w-full space-y-5">');
+    expect(html).toContain("New connector");
+    expect(html).toContain('on-click="remove(item)"');
+    expect(html).toContain("'Edit ' + item.name");
+    expect(html).toContain("bg-app-success/10");
+    expect(html).toContain("bg-app-error/10");
+    expect(html).toContain("Webhook credentials");
+    expect(html).toContain("Rotate signing secret");
+    expect(html).toContain("X-Hub-Signature-256");
+    expect(setup).toContain("const targetId = item?.id || selectedId.value");
+    expect(setup).toContain("/signing-secret");
+    expect(setup).toContain("oneTimeSigningSecret.value = result.signingSecret");
+    expect(setup).toContain("await refresh();");
+  });
+
   it("removes recipe-library browsing from workflow list", () => {
     expect(readFileSync(new URL("./workflows-ui.html", import.meta.url), "utf8")).not.toContain(
       "Browse recipe library",

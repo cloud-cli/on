@@ -1094,6 +1094,15 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: "040_connector_webhook_signing_secret",
+    async apply() {
+      const columns = await db.all("PRAGMA table_info(connectors)");
+      if (!columns.some((column: any) => column.name === "signing_secret_ciphertext")) {
+        await db.exec("ALTER TABLE connectors ADD COLUMN signing_secret_ciphertext TEXT");
+      }
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

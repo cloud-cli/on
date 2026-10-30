@@ -123,9 +123,10 @@ Strings without `${...}` are literal. Supported value fields such as workflow/st
 groups, and recipe input bindings evaluate `${...}` as a JavaScript-style expression. `if` and `eval` accept
 expressions directly. The evaluator is a restricted AST interpreter, not a full JavaScript runtime.
 
-Available data roots include `inputs`, `headers`, `body`, `env`, `secrets`, `steps`, and (in supported contexts)
-`files`. For connector ingress, see the [connector guide](../how-to/connectors.md) for the bounded input context and
-normalized event contract.
+Available data roots include `inputs`, `env`, `secrets`, `steps`, and (in supported contexts) `files`. Workflows receive
+their JSON `inputs` interface; raw HTTP request bodies and headers are not workflow bindings. Connectors own HTTP
+payload parsing, signature checks, and data mapping. See the [connector guide](../how-to/connectors.md) for its separate
+bounded input context and normalized event contract.
 `files.exists`, `files.readFile`, and `files.join` are limited to the job workspace. Built-ins include `String`,
 `Number`, `Boolean`, and `JSON.parse`/`JSON.stringify`.
 

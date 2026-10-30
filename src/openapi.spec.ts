@@ -75,6 +75,7 @@ describe("OpenAPI specification", () => {
       oidcAdminBearer: [],
     });
     expect(spec.paths["/api/v1/workspaces/{workspaceId}/connectors/{connectorId}"].delete).toBeDefined();
+    expect(spec.paths["/api/v1/workspaces/{workspaceId}/connectors/{connectorId}/signing-secret"].post).toBeDefined();
     expect(spec.paths["/api/v1/recipes/validate"]).toHaveProperty("post");
     expect(spec.paths["/api/v1/recipes"]).not.toHaveProperty("delete");
     expect(spec.paths["/api/v1/recipes/{namespace}/{slug}/versions/{version}"]).not.toHaveProperty("delete");

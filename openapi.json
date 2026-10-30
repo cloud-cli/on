@@ -4660,6 +4660,23 @@
           }
         }
       }
+    },
+    "/api/v1/workspaces/{workspaceId}/connectors/{connectorId}/signing-secret": {
+      "parameters": [
+        { "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "name": "connectorId", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "post": {
+        "tags": ["workspaces"],
+        "summary": "Generate or rotate a connector signing secret",
+        "description": "Requires webhooks.manage. Returns a new high-entropy signing secret once; the secret is separate from the private tokenized webhook URL. Requests must sign the timestamp and exact raw body using HMAC-SHA-256.",
+        "security": [{ "oidcSessionCookie": [] }, { "oidcAdminBearer": [] }],
+        "responses": {
+          "200": { "description": "Connector metadata and one-time signing secret; response is no-store" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "description": "Invalid connector operation" }
+        }
+      }
     }
   },
   "components": {

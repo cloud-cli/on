@@ -16,6 +16,9 @@ const excludedHeaders = new Set([
   "transfer-encoding",
   "upgrade",
   "via",
+  "x-connector-timestamp",
+  "x-connector-signature",
+  "x-hub-signature-256",
 ]);
 
 /** Keep useful input metadata while excluding routing and credential-bearing headers. */

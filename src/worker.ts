@@ -36,39 +36,6 @@ import { activeStepHandles, shutdownState } from "./worker-state.js";
 import { createStepAttemptSnapshot } from "./step-attempt-snapshot.js";
 export { abortActiveJob, abortActiveWorkerTask, shutdownState } from "./worker-state.js";
 
-const MAX_RUN_INPUT_BODY_PREVIEW_BYTES = 256;
-
-function bodyForRunInputs(body: Buffer | undefined, headers: Record<string, string> = {}): unknown {
-  if (!Buffer.isBuffer(body)) {
-    return undefined;
-  }
-  const contentType = String(headers["content-type"] || "")
-    .split(";", 1)[0]
-    .trim()
-    .toLowerCase();
-  if (contentType === "application/json" || contentType.endsWith("+json")) {
-    try {
-      return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
-    } catch {
-      // Keep malformed JSON inspectable as bounded binary rather than lossy text.
-    }
-  }
-  if (contentType.startsWith("text/")) {
-    try {
-      return new TextDecoder("utf-8", { fatal: true }).decode(body);
-    } catch {
-      // Invalid UTF-8 is represented as bytes below.
-    }
-  }
-  const data = [...body.subarray(0, MAX_RUN_INPUT_BODY_PREVIEW_BYTES)];
-  return {
-    type: "Buffer",
-    data,
-    byteLength: body.byteLength,
-    truncated: body.byteLength > data.length,
-  };
-}
-
 let eventStreamController: AbortController | null = null;
 let wakeScheduler: (() => void) | null = null;
 
@@ -413,18 +380,6 @@ export async function processJob(p: Processable) {
   console.log(`\n[${workerId}] 📦 Claimed Job #${job.id} (Workflow: ${job.workflow_id})`);
 
   const payload = (typeof job.payload === "string" ? JSON.parse(job.payload) : job.payload) as JobPayload;
-  // Accept legacy serialized queue records, but expose only `body` to workflows.
-  const serializedBody = payload.body ?? (payload as JobPayload & { inputsRaw?: unknown }).inputsRaw;
-  if (
-    serializedBody &&
-    typeof serializedBody === "object" &&
-    (serializedBody as { type?: unknown }).type === "Buffer"
-  ) {
-    payload.body = Buffer.from((serializedBody as { data: number[] }).data);
-  } else if (serializedBody !== undefined) {
-    payload.body = serializedBody as Buffer;
-  }
-  delete (payload as JobPayload & { inputsRaw?: unknown }).inputsRaw;
   if (!p.workflow) {
     throw new Error(`Workflow ${job.workflow_id} revision ${job.workflow_revision} was not resolved`);
   }
@@ -455,11 +410,7 @@ export async function processJob(p: Processable) {
   const steps = resolvedWorkflow.steps;
   const postSteps = resolvedWorkflow.post || [];
   const inputs = { ...(payload.inputs || {}) };
-  const reportInputs = {
-    ...inputs,
-    ...(payload.body ? { body: bodyForRunInputs(payload.body, payload.headers) } : {}),
-    ...(resolvedWorkflow._recipeInputs || {}),
-  };
+  const reportInputs = { ...inputs, ...(resolvedWorkflow._recipeInputs || {}) };
   const jobStartTime = Date.now();
   const jobStoragePath = Path.join(config.storagePath, `job-${job.id}`);
   const storagePath = p.executionId
@@ -473,8 +424,6 @@ export async function processJob(p: Processable) {
   // Step Execution Context available in expressions: ${steps.step1.outputs.id}
   const executionContext: JobExecutionContext = {
     inputs,
-    headers: payload.headers || {},
-    body: payload.body,
     env: {
       ...config.env,
       RUN_ID: String(job.id),

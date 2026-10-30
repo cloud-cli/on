@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import db from "./db-client.js";
+import { SecretRepository } from "./secret-repository.js";
 
 export type Connector = {
   id: string;
@@ -13,6 +14,7 @@ export type Connector = {
   updatedAt: string;
   draftYaml: string | null;
   hasDraft: boolean;
+  hasSigningSecret: boolean;
 };
 
 export type CreatedConnector = Connector & { token: string };
@@ -23,6 +25,7 @@ export type ResolvedConnector = {
   name: string;
   sourceYaml: string;
   version: number;
+  signingSecret: string | null;
 };
 
 const MAX_ID_LENGTH = 64;
@@ -44,6 +47,32 @@ function validate(id: string, name: string, sourceYaml: string): void {
 
 /** Workspace-scoped YAML connector persistence. Webhook tokens are returned only once at creation. */
 export class ConnectorRepository {
+  constructor(
+    private readonly secrets: Pick<SecretRepository, "encryptValue" | "decryptValue"> = new SecretRepository(),
+  ) {}
+
+  async getSigningSecret(workspaceId: string, id: string): Promise<string | null> {
+    const row = await db.get(
+      "SELECT signing_secret_ciphertext FROM connectors WHERE team_id = ? AND connector_id = ? AND enabled = 1",
+      [workspaceId, id],
+    );
+    return typeof row?.signing_secret_ciphertext === "string"
+      ? this.secrets.decryptValue(row.signing_secret_ciphertext)
+      : null;
+  }
+
+  async rotateSigningSecret(workspaceId: string, id: string): Promise<{ connector: Connector; secret: string } | null> {
+    const secret = `whsec_${crypto.randomBytes(32).toString("base64url")}`;
+    const result = await db.run(
+      "UPDATE connectors SET signing_secret_ciphertext = ?, updated_at = CURRENT_TIMESTAMP WHERE team_id = ? AND connector_id = ? AND published = 1",
+      [this.secrets.encryptValue(secret), workspaceId, id],
+    );
+    if (Number(result?.changes || 0) === 0) {
+      return null;
+    }
+    const connector = await this.getForWorkspace(workspaceId, id);
+    return connector ? { connector, secret } : null;
+  }
   async createForWorkspace(
     workspaceId: string,
     id: string,
@@ -157,7 +186,7 @@ export class ConnectorRepository {
 
   async listForWorkspace(workspaceId: string): Promise<Connector[]> {
     const rows = await db.all(
-      `SELECT connector_id, team_id, name, source_yaml, revision, enabled, published, created_at, updated_at, draft_yaml, draft_name
+      `SELECT connector_id, team_id, name, source_yaml, revision, enabled, published, created_at, updated_at, draft_yaml, draft_name, signing_secret_ciphertext
        FROM connectors WHERE team_id = ? ORDER BY connector_id`,
       [workspaceId],
     );
@@ -166,7 +195,7 @@ export class ConnectorRepository {
 
   async getForWorkspace(workspaceId: string, id: string): Promise<Connector | null> {
     const row = await db.get(
-      `SELECT connector_id, team_id, name, source_yaml, revision, enabled, published, created_at, updated_at, draft_yaml, draft_name
+      `SELECT connector_id, team_id, name, source_yaml, revision, enabled, published, created_at, updated_at, draft_yaml, draft_name, signing_secret_ciphertext
        FROM connectors WHERE team_id = ? AND connector_id = ?`,
       [workspaceId, id],
     );
@@ -196,7 +225,7 @@ export class ConnectorRepository {
       return null;
     }
     const row = await db.get(
-      `SELECT connector_id, team_id, name, source_yaml, revision FROM connectors
+      `SELECT connector_id, team_id, name, source_yaml, revision, signing_secret_ciphertext FROM connectors
        WHERE webhook_token_hash = ? AND enabled = 1`,
       [tokenDigest(token)],
     );
@@ -209,6 +238,10 @@ export class ConnectorRepository {
       name: row.name,
       sourceYaml: row.source_yaml,
       version: Number(row.revision),
+      signingSecret:
+        typeof row.signing_secret_ciphertext === "string"
+          ? this.secrets.decryptValue(row.signing_secret_ciphertext)
+          : null,
     };
   }
 
@@ -225,6 +258,7 @@ export class ConnectorRepository {
       updatedAt: row.updated_at,
       draftYaml: row.draft_yaml ?? null,
       hasDraft: row.draft_yaml != null,
+      hasSigningSecret: typeof row.signing_secret_ciphertext === "string",
       ...(row.draft_name ? { draftName: row.draft_name } : {}),
     };
   }

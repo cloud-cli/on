@@ -16,10 +16,12 @@ export default function () {
   const enabled = ref(false);
   const published = ref(false);
   const hasDraft = ref(false);
+  const hasSigningSecret = ref(false);
   const loading = ref(false);
   const busy = ref(false);
   const error = ref("");
   const oneTimeUrl = ref("");
+  const oneTimeSigningSecret = ref("");
   const request = async (path, options = {}) => {
     const response = await apiFetch(path, {
       ...options,
@@ -49,6 +51,7 @@ export default function () {
           enabled.value = item.enabled;
           published.value = item.published;
           hasDraft.value = item.hasDraft;
+          hasSigningSecret.value = item.hasSigningSecret;
         } else {
           throw new Error("Connector not found in this workspace.");
         }
@@ -108,22 +111,50 @@ export default function () {
       oneTimeUrl.value = result.url ? new URL(result.url, location.origin).toString() : "";
       await refresh();
     });
-  const remove = () =>
+  const rotateSigningSecret = () =>
     act(async () => {
-      if (!confirm(`Permanently delete connector ${name.value}? Its ingress URL will stop working.`)) {
+      if (
+        hasSigningSecret.value &&
+        !confirm("Rotate the signing secret? Requests signed with the current secret will stop working.")
+      ) {
         return;
       }
-      await request(`${api}/${encodeURIComponent(selectedId.value)}`, { method: "DELETE" });
-      selectedId.value = "";
-      editing.value = false;
-      location.assign(basePath);
+      const result = await request(`${api}/${encodeURIComponent(selectedId.value)}/signing-secret`, { method: "POST" });
+      oneTimeSigningSecret.value = result.signingSecret || "";
+      await refresh();
+    });
+  const remove = (item = null) =>
+    act(async () => {
+      const targetId = item?.id || selectedId.value;
+      const targetName = item?.name || name.value;
+      if (!targetId) {
+        return;
+      }
+      if (!confirm(`Permanently delete connector ${targetName}? Its ingress URL will stop working.`)) {
+        return;
+      }
+      await request(`${api}/${encodeURIComponent(targetId)}`, { method: "DELETE" });
+      if (targetId === selectedId.value) {
+        selectedId.value = "";
+        editing.value = false;
+        location.assign(basePath);
+      } else {
+        await refresh();
+      }
     });
   const copyUrl = async () => {
     await navigator.clipboard.writeText(oneTimeUrl.value);
     oneTimeUrl.value = "";
   };
+  const copySigningSecret = async () => {
+    await navigator.clipboard.writeText(oneTimeSigningSecret.value);
+    oneTimeSigningSecret.value = "";
+  };
   const dismissUrl = () => {
     oneTimeUrl.value = "";
+  };
+  const dismissSigningSecret = () => {
+    oneTimeSigningSecret.value = "";
   };
   onInit(async () => {
     try {
@@ -147,14 +178,18 @@ export default function () {
     busy,
     error,
     oneTimeUrl,
+    oneTimeSigningSecret,
     setId,
     setName,
     setSource,
     save,
     publish,
     toggleEnabled,
+    rotateSigningSecret,
     remove,
     copyUrl,
     dismissUrl,
+    copySigningSecret,
+    dismissSigningSecret,
   };
 }

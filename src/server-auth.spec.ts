@@ -376,6 +376,50 @@ describe("current IAM route authorization", () => {
     expect(JSON.parse(res.end.mock.calls[0][0]).connector).not.toHaveProperty("token");
   });
 
+  it("rotates a connector signing secret only with workspace manage capability and disables caching", async () => {
+    const connector = {
+      id: "normalize",
+      workspaceId: "workspace-a",
+      name: "Normalize",
+      sourceYaml: "yaml",
+      version: 1,
+      enabled: true,
+      published: true,
+      hasSigningSecret: true,
+    };
+    const server = {
+      authorizer: {
+        authenticated: vi.fn(async () => ({ principal: principal(), source: "token" })),
+        workspace: vi.fn(async () => ({ principal: principal(), source: "token", teamId: "workspace-a" })),
+      },
+      principals: { recordAudit: vi.fn(async () => {}) },
+      connectors: {
+        getForWorkspace: vi.fn(async () => connector),
+        rotateSigningSecret: vi.fn(async () => ({ connector, secret: "whsec_new-secret" })),
+      },
+    } as any;
+    const res = response();
+
+    await (WebhookServer.prototype as any).handleTeams.call(
+      server,
+      request("/api/workspaces/workspace-a/connectors/normalize/signing-secret", "POST"),
+      res,
+      new URL("http://app.test/api/workspaces/workspace-a/connectors/normalize/signing-secret"),
+    );
+
+    expect(server.authorizer.workspace).toHaveBeenCalledWith(expect.anything(), res, "webhooks.manage", "workspace-a");
+    expect(server.connectors.rotateSigningSecret).toHaveBeenCalledWith("workspace-a", "normalize");
+    expect(server.principals.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "connector.signing-secret.rotate",
+        target: "normalize",
+        teamId: "workspace-a",
+      }),
+    );
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({ "Cache-Control": "no-store" }));
+    expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({ connector, signingSecret: "whsec_new-secret" });
+  });
+
   it("records a rejected input decision durably and reuses it for an idempotent retry", async () => {
     const domainEventRepository = {
       getByIdempotencyKey: vi.fn(async () => null),

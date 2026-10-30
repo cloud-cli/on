@@ -245,6 +245,38 @@ describe("v3 migrations against SQLite", () => {
     expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 
+  it("adds connector draft and signing-secret columns while preserving published rows", async () => {
+    createPreV3Database(true);
+    await runMigrations();
+    const database = dbTestHooks.currentDatabase() as DatabaseSync;
+    const columns = database.prepare("PRAGMA table_info(connectors)").all() as Array<{
+      name: string;
+      dflt_value: string | null;
+    }>;
+    expect(columns.map(({ name }) => name)).toEqual(
+      expect.arrayContaining(["draft_yaml", "draft_name", "published", "signing_secret_ciphertext"]),
+    );
+
+    database
+      .prepare(
+        `INSERT INTO connectors (team_id, connector_id, name, source_yaml, revision, webhook_token_hash, enabled)
+       VALUES ('team-a', 'legacy', 'Legacy', 'steps: []', 1, 'legacy-token-hash', 1)`,
+      )
+      .run();
+    const row = database
+      .prepare(
+        "SELECT draft_yaml, draft_name, published, signing_secret_ciphertext FROM connectors WHERE connector_id = 'legacy'",
+      )
+      .get();
+    expect(row).toEqual({ draft_yaml: null, draft_name: null, published: 1, signing_secret_ciphertext: null });
+
+    database.exec(
+      "DELETE FROM schema_migrations WHERE version IN ('039_connector_drafts', '040_connector_webhook_signing_secret')",
+    );
+    await runMigrations();
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
   it("backfills only valid same-workspace event bindings and is idempotent", async () => {
     createPreV3Database(true);
     await runMigrations();

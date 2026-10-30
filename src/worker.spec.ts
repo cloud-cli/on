@@ -49,7 +49,7 @@ describe("incremental workflow reports", () => {
     expect(queue.completeJob).toHaveBeenCalledWith(128, "success", expect.any(Object));
   });
 
-  it("exposes webhook headers and restores the raw body as a Buffer in eval context", async () => {
+  it("keeps legacy HTTP payload fields out of workflow context and run inputs", async () => {
     const queue = {
       saveReport: vi.fn(async () => {}),
       saveStepLog: vi.fn(async () => {}),
@@ -70,7 +70,7 @@ describe("incremental workflow reports", () => {
         status: "running",
         worker_id: "webhook-context-worker",
         payload: JSON.stringify({
-          inputs: {},
+          inputs: { event: { name: "push" } },
           headers: { "x-signature": "sig" },
           body: raw,
         }),
@@ -92,113 +92,14 @@ describe("incremental workflow reports", () => {
         steps: [
           {
             id: "inspect",
-            eval: "({ header: headers['x-signature'], bytes: body.toString('hex') })",
+            eval: "inputs.event.name",
           },
         ],
       },
     } as Processable);
 
-    expect(queue.completeJob.mock.calls[0][2].steps[0].outputs).toEqual({
-      header: "sig",
-      bytes: "00ff01",
-    });
-    expect(queue.completeJob.mock.calls[0][2].inputs.body).toEqual({
-      type: "Buffer",
-      data: [0, 255, 1],
-      byteLength: 3,
-      truncated: false,
-    });
-  });
-
-  it("records JSON webhook bodies as structured run inputs", async () => {
-    const queue = {
-      saveReport: vi.fn(async () => {}),
-      saveStepLog: vi.fn(async () => {}),
-      saveStepAttemptStart: vi.fn(async () => {}),
-      completeJob: vi.fn(async () => {}),
-      isCancelled: vi.fn(async () => false),
-    };
-    const rawBody = Buffer.from('{"repository":"example/repo","ok":true}', "utf8");
-    await processJob({
-      workerId: "json-webhook-worker",
-      job: {
-        id: 130,
-        workflow_id: "json-webhook-context",
-        workflow_revision: 1,
-        required_tags: "[]",
-        concurrency_key: null,
-        status: "running",
-        worker_id: "json-webhook-worker",
-        payload: JSON.stringify({
-          inputs: {},
-          headers: { "content-type": "application/json" },
-          body: rawBody,
-        }),
-        created_at: new Date().toISOString(),
-      },
-      queue,
-      secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: {
-        storagePath: "/tmp/json-webhook-context",
-        serverUrl: "http://runner.test",
-        env: {},
-        plugins: [],
-      },
-      driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
-      workflow: {
-        id: "json-webhook-context",
-        name: "JSON webhook context",
-        on: {},
-        steps: [{ id: "inspect", eval: "body.toString('utf8')" }],
-      },
-    } as Processable);
-
-    expect(queue.completeJob.mock.calls[0][2].inputs.body).toEqual({
-      repository: "example/repo",
-      ok: true,
-    });
-  });
-
-  it("maps legacy queued inputsRaw payloads to the body binding", async () => {
-    const queue = {
-      saveReport: vi.fn(async () => {}),
-      saveStepLog: vi.fn(async () => {}),
-      saveStepAttemptStart: vi.fn(async () => {}),
-      completeJob: vi.fn(async () => {}),
-      isCancelled: vi.fn(async () => false),
-    };
-    const legacyBody = Buffer.from("legacy webhook payload");
-    await processJob({
-      workerId: "legacy-webhook-worker",
-      job: {
-        id: 129,
-        workflow_id: "legacy-webhook-context",
-        workflow_revision: 1,
-        required_tags: "[]",
-        concurrency_key: null,
-        status: "running",
-        worker_id: "legacy-webhook-worker",
-        payload: JSON.stringify({ inputs: {}, inputsRaw: legacyBody }),
-        created_at: new Date().toISOString(),
-      },
-      queue,
-      secrets: { getAll: () => ({}), redactText: (text: string) => text },
-      config: {
-        storagePath: "/tmp/legacy-webhook-context",
-        serverUrl: "http://runner.test",
-        env: {},
-        plugins: [],
-      },
-      driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
-      workflow: {
-        id: "legacy-webhook-context",
-        name: "Legacy webhook context",
-        on: {},
-        steps: [{ id: "inspect", eval: "body.toString('utf8')" }],
-      },
-    } as Processable);
-
-    expect(queue.completeJob.mock.calls[0][2].steps[0].outputs).toBe("legacy webhook payload");
+    expect(queue.completeJob.mock.calls[0][2].steps[0].outputs).toBe("push");
+    expect(queue.completeJob.mock.calls[0][2].inputs).toEqual({ event: { name: "push" } });
   });
 
   it("does not invoke a driver when durable attempt start persistence fails", async () => {

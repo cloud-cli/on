@@ -175,6 +175,62 @@ describe("ConnectorRepository", () => {
     expect(database.get.mock.calls[0][1]).toEqual(["ws-b", "deploy"]);
   });
 
+  it("stores signing secrets encrypted and exposes only a presence boolean in list/get", async () => {
+    const encryptValue = vi.fn((value: string) => `ciphertext:${Buffer.from(value).toString("base64")}`);
+    repository = new ConnectorRepository({ encryptValue, decryptValue: (value) => value });
+    database.run.mockResolvedValue({ changes: 1 });
+    database.get.mockResolvedValue({
+      connector_id: "deploy",
+      team_id: "ws-a",
+      name: "Deploy",
+      source_yaml: "yaml",
+      revision: 1,
+      enabled: 1,
+      published: 1,
+      created_at: "now",
+      updated_at: "now",
+      signing_secret_ciphertext: "encrypted-value",
+    });
+    const rotated = await repository.rotateSigningSecret("ws-a", "deploy");
+    expect(rotated?.secret).toMatch(/^whsec_[A-Za-z0-9_-]{43}$/);
+    expect(database.run.mock.calls[0][1][0]).toBe(`ciphertext:${Buffer.from(rotated!.secret).toString("base64")}`);
+    expect(database.run.mock.calls[0][1][0]).not.toBe(rotated?.secret);
+    expect(database.run.mock.calls[0][0]).not.toMatch(/webhook_token_hash/i);
+    expect(encryptValue).toHaveBeenCalledWith(rotated?.secret);
+    expect(rotated?.connector).toMatchObject({ hasSigningSecret: true });
+    expect(rotated?.connector).not.toHaveProperty("signingSecret");
+  });
+
+  it("preserves signing configuration when disabling while revoking the webhook URL token", async () => {
+    database.get
+      .mockResolvedValueOnce({
+        connector_id: "deploy",
+        team_id: "ws-a",
+        name: "Deploy",
+        source_yaml: "yaml",
+        revision: 1,
+        enabled: 1,
+        published: 1,
+        created_at: "now",
+        updated_at: "now",
+      })
+      .mockResolvedValueOnce({
+        connector_id: "deploy",
+        team_id: "ws-a",
+        name: "Deploy",
+        source_yaml: "yaml",
+        revision: 1,
+        enabled: 0,
+        published: 1,
+        created_at: "now",
+        updated_at: "now",
+        signing_secret_ciphertext: null,
+      });
+    await repository.setEnabled("ws-a", "deploy", false);
+    expect(database.run.mock.calls[0][0]).not.toContain("signing_secret_ciphertext = NULL");
+    expect(database.run.mock.calls[0][0]).toContain("webhook_token_hash = NULL");
+  });
+
   it("revokes within workspace and token lookup hashes tokens and omits disabled connectors", async () => {
     database.run.mockResolvedValue({ changes: 1 });
     expect(await repository.revokeForWorkspace("ws-a", "deploy")).toBe(true);
