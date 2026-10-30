@@ -18,7 +18,7 @@ describe("team data isolation queries", () => {
       workflows.saveDraftForTeam(
         "team-a",
         "private-flow",
-        "id: private-flow\nname: Private\non: {generic: {}}\nsteps: [{run: 'true'}]",
+        "id: private-flow\nname: Private\non: {}\nsteps: [{run: 'true'}]",
       ),
     ).rejects.toThrow("Workflow not found");
     expect(database.run).not.toHaveBeenCalled();

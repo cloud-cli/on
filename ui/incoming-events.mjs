@@ -29,7 +29,7 @@ export default function setup() {
       statusClass: Object.hasOwn(statusClasses, event.processingStatus)
         ? statusClasses[event.processingStatus]
         : statusClasses.received,
-      inspectLabel: `Inspect ${event.provider} ${event.eventType || "event"}`,
+      inspectLabel: `Inspect ${event.connectorId} ${event.eventType || "event"}`,
     })),
   );
   const detailSummary = computed(() => {
@@ -38,11 +38,15 @@ export default function setup() {
       ? `${event.eventType || "unknown event"} · ${event.deliveryId || event.id} · ${formatDate(event.receivedAt)}`
       : "";
   });
-  const detailTitle = computed(() => (currentEvent.value ? `${currentEvent.value.provider} event` : "Event details"));
+  const detailTitle = computed(() =>
+    currentEvent.value ? `${currentEvent.value.connectorId} event` : "Event details",
+  );
   const displayPayload = computed(() => formatIncomingPayload(currentEvent.value));
   const canRetrigger = computed(() => currentEvent.value?.validationStatus === "valid");
   const validationMessage = computed(() =>
-    canRetrigger.value ? "Only this verified delivery will be replayed." : "Unverified payloads cannot be replayed.",
+    canRetrigger.value
+      ? "Replay reruns the connector mapping for this receipt."
+      : "Invalid payloads cannot be replayed.",
   );
 
   const request = async (url, options = {}) => {
@@ -122,7 +126,7 @@ export default function setup() {
       return;
     }
     retriggering.value = true;
-    retriggerStatus.value = "Matching this event against current published workflows…";
+    retriggerStatus.value = "Running this receipt through its connector…";
     try {
       const result = await request(
         `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/events/${encodeURIComponent(event.id)}/retrigger`,

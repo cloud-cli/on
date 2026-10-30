@@ -27,7 +27,7 @@
     },
     "on": {
       "type": "object",
-      "description": "Trigger conditions and provider configs.",
+      "description": "Workspace domain-event and time-based trigger configuration.",
       "properties": {
         "events": {
           "type": "array",
@@ -45,130 +45,9 @@
         "solar": {
           "type": "array",
           "items": { "$ref": "#/definitions/ScheduleTrigger" }
-        },
-        "webhook": {
-          "type": "object",
-          "required": ["events"],
-          "properties": {
-            "events": {
-              "type": "array",
-              "minItems": 1,
-              "uniqueItems": true,
-              "items": { "type": "string", "minLength": 1 }
-            },
-            "if": {
-              "oneOf": [
-                { "type": "string" },
-                { "type": "array", "items": { "type": "string" } }
-              ]
-            }
-          },
-          "additionalProperties": false
         }
       },
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "if": {
-            "description": "AST boolean condition expression",
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            ]
-          },
-          "events": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "owner": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            ]
-          },
-          "repo": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            ]
-          },
-          "branches": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "refs": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "name": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            ]
-          },
-          "tag": {
-            "type": "boolean"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "paths": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "schedule": {
-            "type": "array",
-            "items": {
-              "$ref": "#/definitions/ScheduleTrigger"
-            }
-          },
-          "solar": {
-            "type": "array",
-            "items": {
-              "$ref": "#/definitions/ScheduleTrigger"
-            }
-          }
-        }
-      }
+      "additionalProperties": false
     },
     "concurrency": {
       "type": "object",

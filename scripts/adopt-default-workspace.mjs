@@ -104,7 +104,6 @@ export async function inspect(db, workspaceId) {
     apiKeys: await ownedCount("api_keys"),
     memberships: await ownedCount("team_members"),
     pushSubscriptions: await ownedCount("team_push_subscriptions"),
-    workspaceWebhooks: await ownedCount("workspace_webhooks"),
     invitations: await ownedCount("team_invitations"),
     runnerGrants: await ownedCount("runner_team_grants"),
     teamRunnerEnrollments: tables.has("runner_enrollments")
@@ -238,11 +237,6 @@ export async function adopt(db, workspaceId, tables) {
         [workspaceId, SOURCE_WORKSPACE],
       ),
       statement("DELETE FROM team_push_subscriptions WHERE team_id = ?", [SOURCE_WORKSPACE]),
-    );
-  }
-  if (tables.has("workspace_webhooks")) {
-    steps.push(
-      statement("UPDATE workspace_webhooks SET team_id = ? WHERE team_id = ?", [workspaceId, SOURCE_WORKSPACE]),
     );
   }
   if (tables.has("team_invitations")) {

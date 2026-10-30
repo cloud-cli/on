@@ -328,13 +328,18 @@ describe("current IAM route authorization", () => {
     expect(res.end).toHaveBeenCalledWith(JSON.stringify({ workspaces }));
   });
 
-  it("allows admin-scope tokens to provision webhook URLs through the canonical workspace API", async () => {
-    const registration = {
-      id: "hook-1",
-      provider: "github",
+  it("creates a workspace-scoped connector and returns its webhook address once", async () => {
+    const record = {
+      id: "normalize",
+      workspaceId: "unrelated",
+      name: "Normalize",
+      sourceYaml:
+        "kind: connector\nid: normalize\nname: Normalize\nsteps: [{id: map, eval: \"({type: 'sample.received', data: body})\"}]",
+      version: 1,
+      enabled: true,
       createdAt: "now",
+      updatedAt: "now",
       token: "one-time-route-token",
-      signingSecret: "one-time-signing-secret",
     };
     const server = {
       authorizer: {
@@ -345,24 +350,30 @@ describe("current IAM route authorization", () => {
       workflowsLoaded: Promise.resolve(),
       teams: {},
       principals: { recordAudit: vi.fn(async () => {}) },
-      workspaceWebhooks: { create: vi.fn(async () => registration) },
-      readJson: vi.fn(async () => ({ provider: "github" })),
+      connectors: { createForWorkspace: vi.fn(async () => record) },
+      readJson: vi.fn(async () => ({ id: "normalize", name: "Normalize", sourceYaml: record.sourceYaml })),
     } as any;
     const res = response();
 
     await (WebhookServer.prototype as any).handleTeams.call(
       server,
-      request("/api/workspaces/unrelated/webhooks", "POST", { authorization: "Bearer admin" }),
+      request("/api/workspaces/unrelated/connectors", "POST", { authorization: "Bearer admin" }),
       res,
-      new URL("http://app.test/api/workspaces/unrelated/webhooks"),
+      new URL("http://app.test/api/workspaces/unrelated/connectors"),
     );
 
     expect(server.authorizer.workspace).toHaveBeenCalledWith(expect.anything(), res, "webhooks.manage", "unrelated");
-    expect(server.workspaceWebhooks.create).toHaveBeenCalledWith("unrelated", "github");
-    expect(server.principals.recordAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "workspace.webhook.create", teamId: "unrelated", target: "hook-1" }),
+    expect(server.connectors.createForWorkspace).toHaveBeenCalledWith(
+      "unrelated",
+      "normalize",
+      "Normalize",
+      record.sourceYaml,
     );
-    expect(res.end.mock.calls[0][0]).toContain("one-time-signing-secret");
+    expect(server.principals.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "connector.create", teamId: "unrelated", target: "normalize" }),
+    );
+    expect(res.end.mock.calls[0][0]).toContain("/webhooks/connectors/one-time-route-token");
+    expect(JSON.parse(res.end.mock.calls[0][0]).connector).not.toHaveProperty("token");
   });
 
   it("records a rejected input decision durably and reuses it for an idempotent retry", async () => {
@@ -421,47 +432,5 @@ describe("current IAM route authorization", () => {
       invocationId: firstBody.invocationId,
       admissionOutcome: "rejected",
     });
-  });
-});
-
-describe("incoming workflow webhook dispatch", () => {
-  it("queues the persisted workflow ID rather than the YAML definition ID", async () => {
-    const queue = { enqueue: vi.fn(async () => 42) };
-    const server = {
-      preprocessors: new Map(),
-      queue,
-      events: { publish: vi.fn() },
-    } as any;
-
-    const jobs = await (WebhookServer.prototype as any).matchWorkflows.call(
-      server,
-      "github",
-      { event: "push" },
-      [
-        {
-          workflowId: "wf-docker-publish",
-          revision: 3,
-          definition: {
-            id: "docker-publish",
-            name: "Docker publish",
-            on: { provider: "github" },
-            tags: ["alpha"],
-            steps: [{ id: "build", run: "echo build" }],
-          },
-        },
-      ],
-      {},
-      "workspace-1",
-    );
-
-    expect(queue.enqueue).toHaveBeenCalledWith(
-      "wf-docker-publish",
-      3,
-      { inputs: { event: "push" }, matrix: undefined, body: undefined, headers: undefined },
-      ["alpha"],
-      "",
-      false,
-    );
-    expect(jobs).toEqual([42]);
   });
 });

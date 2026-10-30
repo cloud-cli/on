@@ -10,27 +10,25 @@ id: hello
 name: Hello
 
 on:
-  github:
-    events: [push]
-    owner: acme
-    repo: web-app
+  events: [sample.received]
 
 steps:
   - id: greet
     env:
-      REPOSITORY: ${inputs.full_name}
-    run: printf 'Building %s\n' "$REPOSITORY"
+      EVENT_TYPE: ${inputs.type}
+    run: printf 'Received event %s\n' "$EVENT_TYPE"
 ```
 
 `id` is required and normalized to lowercase hyphen-separated letters and numbers. `name` is the display name.
-Use a signed workspace webhook for GitHub/Gitea events; see [Connect a GitHub or Gitea webhook](../how-to/connect-git-webhooks.md).
+Use workspace domain events to start event-driven workflows. Configure HTTP ingress with a connector; see
+[Create and manage an HTTP connector](../how-to/connectors.md).
 
 ## Top-level fields
 
 | Field             | Meaning                                                                          |
 | ----------------- | -------------------------------------------------------------------------------- |
 | `id`, `name`      | Stable workflow identity and display name.                                       |
-| `on`              | Webhook, domain-event, cron, or solar trigger configuration.                     |
+| `on`              | Domain-event, cron, or solar trigger configuration.                              |
 | `steps`           | Ordered, non-empty list of workflow steps; use instead of `using`.               |
 | `using`           | Exact recipe reference such as `ada/container-build@v1`; use instead of `steps`. |
 | `function`        | Optional exported recipe function to call.                                       |
@@ -50,28 +48,7 @@ server's workflow validator.
 
 ## Triggers
 
-The `on` mapping can contain one provider trigger plus optional `schedule`, `solar`, and `events` entries.
-
-### GitHub and Gitea
-
-Both connectors normalize verified push payloads. GitHub and Gitea workflow triggers accept filters including
-`events`, `owner`, `repo`, `name`, `branches`/`refs`, `tag`, `paths`, and `if` where supported. Configured filters
-are combined with AND; list values are alternatives. `branches` and `refs` accept glob patterns. `paths` matches
-the changed files in the push payload.
-
-```yaml
-on:
-  github:
-    events: [push]
-    owner: acme
-    repo: web-app
-    branches: [main, "release/*"]
-    paths: ["src/**", package.json]
-    if: inputs.action !== 'deleted'
-```
-
-The GitHub-only `github.fileExists(path)` helper can be used in a GitHub trigger condition to check a repository
-path at the event's ref. A missing or inaccessible file does not trigger the workflow.
+The `on` mapping can contain `events`, `schedule`, and `solar` entries.
 
 ### Domain events
 
@@ -79,41 +56,12 @@ Use `on.events` to subscribe to one or more workspace-scoped event types:
 
 ```yaml
 on:
-  events: [git.push]
+  events: [deployment.completed]
 ```
 
-An event subscription starts at its registration boundary; it does not implicitly replay prior events. See
-[Webhooks, domain events, and workspace data](../explanation/domain-events.md).
-
-### Provider-independent webhook intake
-
-Use `on.webhook` when a workflow should react to named webhook event headers without binding its trigger to the
-provider slug in the webhook URL. Signature verification still happens at ingress. The workflow can transform the
-original request and use `dispatch` to pass a normalized contract to a provider-agnostic workflow:
-
-```yaml
-id: github-push-intake
-name: GitHub push intake
-on:
-  webhook:
-    events: [push]
-steps:
-  - id: normalize
-    eval: |
-      ({
-        repository: JSON.parse(body.toString('utf8')).repository.full_name,
-        clone_url: JSON.parse(body.toString('utf8')).repository.clone_url,
-        commit_sha: JSON.parse(body.toString('utf8')).after,
-        ref: JSON.parse(body.toString('utf8')).ref
-      })
-  - id: build
-    dispatch: docker-build
-    with: "({ repository: steps.normalize.outputs.repository, clone_url: steps.normalize.outputs.clone_url, commit_sha: steps.normalize.outputs.commit_sha, ref: steps.normalize.outputs.ref })"
-```
-
-`on.webhook.events` is required and matches the event name (for GitHub, `x-github-event`). `dispatch` queues a
-published workflow in the same workspace through the existing authenticated, idempotent workflow invocation path.
-The target workflow should validate its input contract and check out the immutable commit, not a mutable branch head.
+An event subscription starts at its registration boundary; it does not implicitly replay prior events. Connectors
+accept ingress and publish normalized domain events. See [Create and manage an HTTP connector](../how-to/connectors.md)
+and [Webhooks, domain events, and workspace data](../explanation/domain-events.md).
 
 ### Scheduled triggers
 
@@ -169,23 +117,6 @@ steps:
     run: ./deploy.sh --target "$TARGET"
 ```
 
-### Check out the exact commit
-
-For a push workflow, fetch the webhook's commit SHA and detach at that revision rather than building the branch's
-possibly newer head:
-
-```yaml
-steps:
-  - id: checkout
-    env:
-      clone_url: ${inputs.clone_url}
-      commit_sha: ${inputs.commit_sha}
-    run: |
-      git clone --depth 1 "$clone_url" .
-      git fetch --depth 1 origin "$commit_sha"
-      git checkout --detach "$commit_sha"
-```
-
 ## Expressions and values
 
 Strings without `${...}` are literal. Supported value fields such as workflow/step `env`, cache keys, concurrency
@@ -193,10 +124,8 @@ groups, and recipe input bindings evaluate `${...}` as a JavaScript-style expres
 expressions directly. The evaluator is a restricted AST interpreter, not a full JavaScript runtime.
 
 Available data roots include `inputs`, `headers`, `body`, `env`, `secrets`, `steps`, and (in supported contexts)
-`files` and `github`. For webhooks, `headers` contains the sanitized request headers and `body` is the original
-request body as a Node.js `Buffer`, preserving binary payloads. Ingress parses `inputs` as JSON only when the request
-content type is `application/json` or a `+json` media type; for other content types, workflows can inspect
-`body` directly.
+`files`. For connector ingress, see the [connector guide](../how-to/connectors.md) for the bounded input context and
+normalized event contract.
 `files.exists`, `files.readFile`, and `files.join` are limited to the job workspace. Built-ins include `String`,
 `Number`, `Boolean`, and `JSON.parse`/`JSON.stringify`.
 

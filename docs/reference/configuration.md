@@ -32,7 +32,7 @@ Example:
 export default {
   port: 11235,
   database: process.env.DATABASE_URL,
-  serverUrl: "https://ci.example.net",
+  serverUrl: "https://on.example.net",
   workers: 4,
   tags: ["linux", "docker"],
   storagePath: "/var/lib/on/workspaces",

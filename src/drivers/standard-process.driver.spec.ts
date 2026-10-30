@@ -36,7 +36,7 @@ describe("standalone driver container environment", () => {
       workingDir: hostWorkingDir,
       secretFilesDir: join(tempDirectory, "secrets"),
       logsDir: join(tempDirectory, "logs"),
-      env: { WORKING_DIR: hostWorkingDir, CI: "true" },
+      env: { WORKING_DIR: hostWorkingDir },
       image: "node:22",
     } as any);
 

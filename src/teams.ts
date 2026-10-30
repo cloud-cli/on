@@ -75,8 +75,8 @@ export class TeamRepository {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       throw new Error("A valid email is required");
     }
-    const token = opaque();
     const id = opaque(18);
+    const token = opaque();
     const expiresAt = new Date(Date.now() + ttlMs).toISOString();
     await db.run(
       `INSERT INTO team_invitations (id, team_id, email, token_hash, expires_at, created_by)
@@ -210,15 +210,19 @@ export class TeamRepository {
     if (typeof db.transaction !== "function") {
       throw new Error("Atomic transactions are required to create a workspace");
     }
+    const teamColumns = (await db.all("PRAGMA table_info(teams)")) || [];
+    const hasLegacyWebhookToken = teamColumns.some((column: any) => column.name === "webhook_token");
     await db.transaction([
-      {
-        s: "INSERT INTO teams (id, name, webhook_token) VALUES (?, ?, ?)",
-        d: [id, trimmedName, digest(token)],
-        m: "run",
-      },
+      hasLegacyWebhookToken
+        ? {
+            s: "INSERT INTO teams (id, name, webhook_token) VALUES (?, ?, ?)",
+            d: [id, trimmedName, digest(opaque())],
+            m: "run",
+          }
+        : { s: "INSERT INTO teams (id, name) VALUES (?, ?)", d: [id, trimmedName], m: "run" },
       { s: "INSERT INTO team_members (team_id, subject, role) VALUES (?, ?, 'admin')", d: [id, creator], m: "run" },
     ]);
-    return { id, name: trimmedName, webhookToken: token };
+    return { id, name: trimmedName };
   }
 
   async renameTeam(teamId: string, name: string) {
@@ -231,20 +235,6 @@ export class TeamRepository {
       throw new Error("Team not found");
     }
     return { id: teamId, name: trimmedName };
-  }
-
-  async rotateWebhookToken(teamId: string) {
-    const token = opaque();
-    const result = await db.run("UPDATE teams SET webhook_token = ? WHERE id = ?", [digest(token), teamId]);
-    return Number(result?.changes || 0) ? token : null;
-  }
-
-  async teamForWebhookToken(token: string) {
-    if (!token || token.length > 200) {
-      return null;
-    }
-    // Earlier deployments stored the default team's random token directly; support it until rotated.
-    return db.get("SELECT id FROM teams WHERE webhook_token = ? OR webhook_token = ? LIMIT 1", [digest(token), token]);
   }
 
   /**
@@ -291,7 +281,6 @@ export class TeamRepository {
       },
       { s: "DELETE FROM workflows WHERE team_id = ?", d: [teamId], m: "run" },
       { s: "DELETE FROM team_secrets WHERE team_id = ?", d: [teamId], m: "run" },
-      { s: "DELETE FROM workspace_webhooks WHERE team_id = ?", d: [teamId], m: "run" },
       { s: "DELETE FROM team_invitations WHERE team_id = ?", d: [teamId], m: "run" },
       { s: "DELETE FROM workspace_permission_overrides WHERE team_id = ?", d: [teamId], m: "run" },
       { s: "DELETE FROM runner_team_grants WHERE team_id = ?", d: [teamId], m: "run" },
@@ -307,10 +296,6 @@ export class TeamRepository {
     ];
     await db.transaction(statements);
     return true;
-  }
-
-  async webhookUrl(teamId: string) {
-    return db.get("SELECT webhook_token FROM teams WHERE id = ?", [teamId]);
   }
 
   async markWorkspaceDeleting(teamId: string): Promise<boolean> {

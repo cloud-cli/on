@@ -7,7 +7,7 @@ Define workflows in YAML, manage them in a web app, and execute jobs on runners 
 
 - **Run close to your systems.** Dispatch jobs by runner labels across one machine or a distributed fleet.
 - **Keep control and execution separate.** The ingress/control plane owns workflow state; API-only workers connect over HTTPS and do not need database credentials.
-- **Build on reusable automation.** Use immutable, versioned recipes, GitHub and Gitea webhooks, schedules, matrices, and workflow dispatch.
+- **Build on reusable automation.** Use YAML connectors to normalize incoming HTTP requests into domain events, alongside schedules, matrices, workflow dispatch, and immutable recipes.
 - **Keep access scoped.** Workspaces isolate workflows, runs, and encrypted secrets; sign in with OIDC and grant runner access explicitly.
 - **See what happened.** Follow runs, step logs, outputs, attempts, artifacts, and event history in the web UI.
 

@@ -44,7 +44,7 @@
               <template for="event of events">
                 <tr class="border-b border-app-border last:border-0 hover:bg-app-panel">
                   <td class="px-3 py-3">
-                    <p class="font-medium">{{ event.provider }} · {{ event.displayType }}</p>
+                    <p class="font-medium">{{ event.connectorId }} · {{ event.displayType }}</p>
                     <p class="mt-1 break-all font-mono text-xs text-app-secondary">{{ event.displayId }}</p>
                   </td>
                   <td class="px-3 py-3">
@@ -95,7 +95,7 @@
                 bind-disabled.bool="!canRetrigger || retriggering"
                 class="rounded-lg bg-app-primary px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Retrigger matching workflows
+                Replay through connector
               </button>
             </div>
             <p role="status" aria-live="polite" class="text-sm text-app-secondary">

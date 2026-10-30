@@ -2,18 +2,18 @@ import { describe, expect, it } from "vitest";
 import { safeWebhookHeaders } from "./webhook-headers.js";
 
 describe("safeWebhookHeaders", () => {
-  it("preserves provider validation metadata and useful custom headers", () => {
+  it("preserves useful source metadata and custom headers", () => {
     expect(
       safeWebhookHeaders({
         "content-type": "application/json",
-        "x-hub-signature-256": "sha256=signature",
-        "x-github-delivery": "delivery-id",
+        "x-source-signature": "signature",
+        "x-delivery-id": "delivery-id",
         "x-custom-validation": "value",
       }),
     ).toEqual({
       "content-type": "application/json",
-      "x-hub-signature-256": "sha256=signature",
-      "x-github-delivery": "delivery-id",
+      "x-source-signature": "signature",
+      "x-delivery-id": "delivery-id",
       "x-custom-validation": "value",
     });
   });
@@ -34,8 +34,8 @@ describe("safeWebhookHeaders", () => {
         "x-custom-auth-token": "secret",
         "x-integration-secret": "secret",
         via: "proxy",
-        "x-github-event": "push",
+        "x-event-type": "sample.received",
       }),
-    ).toEqual({ "x-github-event": "push" });
+    ).toEqual({ "x-event-type": "sample.received" });
   });
 });

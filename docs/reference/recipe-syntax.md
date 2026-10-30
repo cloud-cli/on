@@ -18,7 +18,7 @@ inputs:
     default: latest
 
 secrets:
-  githubToken:
+  serviceToken:
     type: string
     required: true
   credential:
@@ -27,7 +27,7 @@ secrets:
 env:
   IMAGE: ${inputs.image}
   IMAGE_TAG: ${inputs.imageTag}
-  GH_TOKEN: ${secrets.githubToken}
+  SERVICE_TOKEN: ${secrets.serviceToken}
 
 steps:
   - id: build
@@ -47,7 +47,7 @@ using: ada/publish@v1
 with:
   image: ghcr.io/acme/app
 secrets:
-  githubToken: ${secrets.GITHUB_TOKEN}
+  serviceToken: ${secrets.SERVICE_TOKEN}
   credential: ${secrets.SIGNING_KEY}
 ```
 

@@ -44,19 +44,18 @@ id: build-app
 name: Build app
 
 on:
-  github:
-    events: [push]
-    owner: acme
-    repo: web-app
+  events: [image.requested]
 
 using: ada/container-build@v1
 with:
-  image: ghcr.io/acme/web-app:latest
+  image: example.invalid/team/app:1.0
 secrets: {}
 ```
 
 Validate and save the workflow, then use **Run now** to test the pinned recipe with a matching runner. Publish the
-workflow when it is ready for automatic triggers.
+workflow when it is ready for domain-event triggers. Configure HTTP ingress and event production with a
+[connector](../how-to/connectors.md). Replaying an incoming-event receipt publishes a new event; it does not rerun a
+workflow. Use **Run now** or the workflow run API to execute the workflow again.
 
 To pass a secret, declare it separately from ordinary inputs and map it through the calling workspace's secrets store:
 

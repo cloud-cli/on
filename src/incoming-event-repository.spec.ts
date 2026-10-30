@@ -30,7 +30,8 @@ describe("IncomingEventRepository", () => {
     const bytes = Buffer.from('{"ok":true}', "utf8");
     database.get.mockResolvedValue({
       id: "event-1",
-      provider: "generic",
+      connector_id: "sample",
+      connector_revision: 2,
       received_at: "2026-10-24 13:00:00",
       content_type: "application/json; charset=utf-8",
       payload_ciphertext: "encrypted-payload",
@@ -55,7 +56,8 @@ describe("IncomingEventRepository", () => {
     const bytes = Buffer.from([0, 255, 1, 128]);
     database.get.mockResolvedValue({
       id: "event-2",
-      provider: "generic",
+      connector_id: "sample",
+      connector_revision: 2,
       received_at: "2026-10-24 13:00:00",
       content_type: "application/octet-stream",
       payload_ciphertext: "encrypted-payload",

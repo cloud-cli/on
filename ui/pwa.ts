@@ -2,7 +2,7 @@ export const webManifest = JSON.stringify({
   id: "/ui/runs",
   name: "dimon",
   short_name: "dimon",
-  description: "Follow CI/CD runs, workflows, and results.",
+  description: "Follow automation runs, workflows, and results.",
   start_url: "/ui/runs",
   scope: "/ui/",
   display: "standalone",

@@ -16,7 +16,7 @@ Learn by completing a working task.
 Solve a specific operational or authoring problem.
 
 - [Configure OIDC sign-in](how-to/configure-oidc.md)
-- [Connect a GitHub or Gitea webhook](how-to/connect-git-webhooks.md)
+- [Create and manage an HTTP connector](how-to/connectors.md)
 - [Manage workspace secrets](how-to/manage-secrets.md)
 - [Run an API worker in a container](how-to/install-api-runner.md)
 

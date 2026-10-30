@@ -18,7 +18,7 @@ const excludedHeaders = new Set([
   "via",
 ]);
 
-/** Keep webhook validation/provider metadata while excluding routing and credential-bearing headers. */
+/** Keep useful input metadata while excluding routing and credential-bearing headers. */
 export function safeWebhookHeaders(headers: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(headers).filter(([name]) => {

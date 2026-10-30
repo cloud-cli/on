@@ -1,13 +1,15 @@
 import crypto from "node:crypto";
 import db from "./db-client.js";
 import { SecretRepository } from "./secret-repository.js";
+import { safeWebhookHeaders } from "./webhook-headers.js";
 
 export type IncomingEventStatus = "received" | "queued" | "unmatched" | "rejected" | "failed";
 export type IncomingEventValidation = "pending" | "valid" | "invalid";
 
 export type IncomingEventSummary = {
   id: string;
-  provider: string;
+  connectorId: string;
+  connectorRevision: number | null;
   deliveryId: string | null;
   eventType: string | null;
   contentType: string | null;
@@ -26,28 +28,49 @@ export type IncomingEventDetail = IncomingEventSummary & {
   payload: string;
   payloadEncoding: "utf8" | "base64";
   payloadBase64?: string;
+  headers: Record<string, string>;
 };
 
 /** Workspace-scoped, encrypted storage for complete inbound request bodies. */
 export class IncomingEventRepository {
   constructor(private readonly secrets = new SecretRepository()) {}
 
-  async capture(teamId: string, provider: string, headers: Record<string, string>, rawBody: Buffer): Promise<string> {
+  async capture(
+    teamId: string,
+    connectorId: string,
+    connectorRevision: number,
+    headers: Record<string, string>,
+    rawBody: Buffer,
+  ): Promise<string> {
     const id = crypto.randomUUID();
     const normalizedHeaders = Object.fromEntries(
       Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]),
     );
-    const deliveryId = normalizedHeaders["x-github-delivery"] || normalizedHeaders["x-delivery-id"] || null;
-    const eventType =
-      normalizedHeaders["x-github-event"] || normalizedHeaders["x-event-type"] || normalizedHeaders["ce-type"] || null;
+    const deliveryId = normalizedHeaders["idempotency-key"] || normalizedHeaders["x-delivery-id"] || null;
+    const eventType = normalizedHeaders["x-event-type"] || normalizedHeaders["ce-type"] || null;
     const contentType = normalizedHeaders["content-type"] || null;
     const payloadCiphertext = this.secrets.encryptValue(rawBody.toString("base64"));
+    const headersCiphertext = this.secrets.encryptValue(JSON.stringify(safeWebhookHeaders(headers)));
     const payloadSha256 = crypto.createHash("sha256").update(rawBody).digest("hex");
     await db.run(
       `INSERT INTO incoming_events
-        (id, team_id, provider, delivery_id, event_type, content_type, payload_ciphertext, payload_sha256, payload_bytes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, teamId, provider, deliveryId, eventType, contentType, payloadCiphertext, payloadSha256, rawBody.length],
+        (id, team_id, provider, connector_id, connector_revision, delivery_id, event_type, content_type,
+         payload_ciphertext, headers_ciphertext, payload_sha256, payload_bytes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        teamId,
+        connectorId,
+        connectorId,
+        connectorRevision,
+        deliveryId,
+        eventType,
+        contentType,
+        payloadCiphertext,
+        headersCiphertext,
+        payloadSha256,
+        rawBody.length,
+      ],
     );
     return id;
   }
@@ -91,7 +114,7 @@ export class IncomingEventRepository {
   async listForTeam(teamId: string, limit = 50, before?: string): Promise<IncomingEventSummary[]> {
     const boundedLimit = Math.max(1, Math.min(100, Math.floor(limit)));
     const rows = await db.all(
-      `SELECT e.id, e.provider, e.delivery_id, e.event_type, e.content_type, e.received_at,
+      `SELECT e.id, e.connector_id, e.connector_revision, e.delivery_id, e.event_type, e.content_type, e.received_at,
          e.payload_sha256, e.payload_bytes, e.validation_status, e.processing_status, e.queued_jobs,
          e.job_ids, e.error,
          (SELECT COUNT(*) FROM incoming_event_replays r WHERE r.team_id = e.team_id AND r.event_id = e.id) AS replay_count
@@ -107,8 +130,8 @@ export class IncomingEventRepository {
 
   async getForTeam(teamId: string, id: string): Promise<(IncomingEventDetail & { inputs: any }) | null> {
     const row = await db.get(
-      `SELECT e.id, e.provider, e.delivery_id, e.event_type, e.content_type, e.received_at,
-         e.payload_ciphertext, e.inputs_ciphertext, e.payload_sha256, e.payload_bytes,
+      `SELECT e.id, e.connector_id, e.connector_revision, e.delivery_id, e.event_type, e.content_type, e.received_at,
+         e.payload_ciphertext, e.headers_ciphertext, e.inputs_ciphertext, e.payload_sha256, e.payload_bytes,
          e.validation_status, e.processing_status, e.queued_jobs, e.job_ids, e.error,
          (SELECT COUNT(*) FROM incoming_event_replays r WHERE r.team_id = e.team_id AND r.event_id = e.id) AS replay_count
        FROM incoming_events e WHERE e.team_id = ? AND e.id = ?`,
@@ -118,6 +141,7 @@ export class IncomingEventRepository {
       return null;
     }
     const payloadBytes = Buffer.from(this.secrets.decryptValue(row.payload_ciphertext), "base64");
+    const headers = row.headers_ciphertext ? JSON.parse(this.secrets.decryptValue(row.headers_ciphertext)) : {};
     const contentType = String(row.content_type || "")
       .split(";", 1)[0]
       .trim()
@@ -149,7 +173,35 @@ export class IncomingEventRepository {
       payload: textPayload ?? "",
       payloadEncoding,
       ...(payloadEncoding === "base64" ? { payloadBase64: payloadBytes.toString("base64") } : {}),
+      headers,
       inputs,
+    };
+  }
+
+  async getReplayContextForTeam(
+    teamId: string,
+    id: string,
+  ): Promise<{
+    connectorId: string;
+    connectorRevision: number;
+    contentType: string;
+    body: Buffer;
+    headers: Record<string, string>;
+  } | null> {
+    const row = await db.get(
+      `SELECT connector_id, connector_revision, content_type, payload_ciphertext, headers_ciphertext
+       FROM incoming_events WHERE team_id = ? AND id = ?`,
+      [teamId, id],
+    );
+    if (!row?.connector_id || !Number.isSafeInteger(Number(row.connector_revision))) {
+      return null;
+    }
+    return {
+      connectorId: row.connector_id,
+      connectorRevision: Number(row.connector_revision),
+      contentType: String(row.content_type || "application/octet-stream"),
+      body: Buffer.from(this.secrets.decryptValue(row.payload_ciphertext), "base64"),
+      headers: row.headers_ciphertext ? JSON.parse(this.secrets.decryptValue(row.headers_ciphertext)) : {},
     };
   }
 
@@ -172,11 +224,23 @@ export class IncomingEventRepository {
     status: "queued" | "unmatched" | "failed",
     jobIds: number[] = [],
     error: string | null = null,
+    connectorRevision?: number,
+    normalizedEventId?: string,
   ): Promise<void> {
     await db.run(
-      `UPDATE incoming_event_replays SET status = ?, queued_jobs = ?, job_ids = ?, error = ?
+      `UPDATE incoming_event_replays SET status = ?, queued_jobs = ?, job_ids = ?, error = ?,
+          connector_revision = ?, normalized_event_id = ?
        WHERE team_id = ? AND id = ?`,
-      [status, jobIds.length, JSON.stringify(jobIds), error?.slice(0, 1000) || null, teamId, replayId],
+      [
+        status,
+        jobIds.length,
+        JSON.stringify(jobIds),
+        error?.slice(0, 1000) || null,
+        connectorRevision ?? null,
+        normalizedEventId ?? null,
+        teamId,
+        replayId,
+      ],
     );
   }
 
@@ -189,7 +253,9 @@ export class IncomingEventRepository {
     }
     return {
       id: row.id,
-      provider: row.provider,
+      connectorId: row.connector_id || "unknown",
+      connectorRevision:
+        row.connector_revision === null || row.connector_revision === undefined ? null : Number(row.connector_revision),
       deliveryId: row.delivery_id || null,
       eventType: row.event_type || null,
       contentType: row.content_type || null,

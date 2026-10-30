@@ -8,14 +8,14 @@ how-to guides, and references listed in `docs/README.md`.
 ### Your First Workflow
 
 Create a workflow draft in the editor, validate it, and use **Run now** to test the saved draft. Publish and enable
-it before expecting webhook or schedule triggers to start new runs.
+it before expecting domain-event or schedule triggers to start new runs. Configure HTTP ingress with a
+[connector](how-to/connectors.md).
 
 ```yaml
 id: hello
 name: Hello
 on:
-  github:
-    events: [push]
+  events: [sample.received]
 steps:
   - id: greet
     env:
@@ -28,9 +28,13 @@ steps:
 Use `${...}` expressions in supported value fields such as `env`, and pass values to shell scripts through
 environment variables. `run:` is sent to the shell unchanged.
 
+Connector receipts record ingress processing. Replaying a receipt evaluates the stored request through the current
+connector revision and publishes a new domain event; it is not a workflow rerun. Use **Run now** or the workflow run
+API to run a workflow again. See [connector ingress and replay](how-to/connectors.md#receipts-and-replay).
+
 | Scope     | Available data                                    |
 | --------- | ------------------------------------------------- |
-| `inputs`  | Normalized webhook or manual-run input values.    |
+| `inputs`  | Domain-event or manual-run input values.          |
 | `env`     | Runner, workflow, and earlier environment values. |
 | `secrets` | Secrets authorized for the workspace and job.     |
 | `steps`   | Earlier step status and outputs.                  |

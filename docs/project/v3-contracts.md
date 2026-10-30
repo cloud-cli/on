@@ -35,7 +35,7 @@ envelope is:
 | ---------------- | ----------------------------------------------------------------------------------------------------- |
 | `id`             | Globally unique occurrence identifier; assigned once and never reused.                                |
 | `workspaceId`    | Authorization and event namespace. In the current implementation this is `teamId`.                    |
-| `type`           | Stable, namespaced event type, for example `git.push` or `workflow.completed`.                        |
+| `type`           | Stable, namespaced event type, for example `connector.received` or `workflow.completed`.              |
 | `schemaVersion`  | Positive integer identifying the payload contract for this type.                                      |
 | `source`         | Producer identity; descriptive provenance, not an authorization principal or deduplication namespace. |
 | `occurredAt`     | Producer-observed occurrence time, not a delivery ordering key.                                       |
@@ -205,7 +205,7 @@ object is validated against the output schema before the call step publishes
 `steps.<call-id>.outputs`. If there is no `returns` map and no required output
 properties, the function returns an empty object. The initial expression subset
 is a single property path rooted at `inputs`, `steps`, `job`, `matrix`, or
-`github`; string interpolation and secret reads are rejected. Runtime validates
+`event`; string interpolation and secret reads are rejected. Runtime validates
 evaluated call inputs and returned values against their declared schemas.
 
 Calls execute inline, serially, in the parent run's sandbox and captured input
@@ -363,8 +363,8 @@ reproduction.
 - Legacy recipe step sequences receive a compatibility `main` entry point for
   their existing published version; migration must not resolve old runs to a
   newly published recipe version.
-- Existing provider-triggered workflow behavior must remain supported while
-  provider adaptation is migrated to normalized events. Do not convert or
+- Existing connector-triggered workflow behavior must remain supported while
+  connector adaptation is migrated to normalized events. Do not convert or
   disable triggers until equivalent authorization, filtering, and identity
   semantics are covered by tests.
 - Preserve existing queue semantics and API behavior while additive event,

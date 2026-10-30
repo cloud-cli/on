@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 function requestPath(req: IncomingMessage): string {
   const path = (req.url || "/").split("?", 1)[0];
-  return path.replace(/^\/webhooks\/team\/[^/]+/, "/webhooks/team/[REDACTED]");
+  return path.replace(/^\/webhooks\/connectors\/[^/]+/, "/webhooks/connectors/[REDACTED]");
 }
 
 export function startHttpRequestLog(req: IncomingMessage, res: ServerResponse): string {

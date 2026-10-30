@@ -51,10 +51,10 @@ describe("main server HTTP request logging", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const res = makeResponse();
 
-    startHttpRequestLog(makeRequest("POST", "/webhooks/team/private-webhook-token/build?ref=main"), res);
+    startHttpRequestLog(makeRequest("POST", "/webhooks/connectors/private-webhook-token?ref=main"), res);
     res.emit("finish");
 
-    expect(info.mock.calls[0][0]).toContain("POST /webhooks/team/[REDACTED]/build");
+    expect(info.mock.calls[0][0]).toContain("POST /webhooks/connectors/[REDACTED]");
     expect(info.mock.calls[0][0]).not.toContain("private-webhook-token");
   });
 

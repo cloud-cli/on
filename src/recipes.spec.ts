@@ -43,7 +43,7 @@ describe("recipe documents", () => {
 
   it("parses separate input and secret declarations plus shared recipe env", () => {
     const parsed = parseRecipe(
-      'inputs:\n  image:\n    type: string\n    required: true\n  imageTag:\n    type: string\n    default: latest\nsecrets:\n  githubToken:\n    type: string\n    required: true\n  credential:\n    type: file\nenv:\n  IMAGE: "${inputs.image}"\nsteps:\n  - id: build\n    run: build\n',
+      'inputs:\n  image:\n    type: string\n    required: true\n  imageTag:\n    type: string\n    default: latest\nsecrets:\n  serviceToken:\n    type: string\n    required: true\n  credential:\n    type: file\nenv:\n  IMAGE: "${inputs.image}"\nsteps:\n  - id: build\n    run: build\n',
     );
     expect(parsed.functions.main.inputs).toEqual({
       type: "object",
@@ -54,7 +54,7 @@ describe("recipe documents", () => {
       required: ["image"],
     });
     expect(parsed.functions.main.secrets).toEqual({
-      githubToken: { type: "string", required: true },
+      serviceToken: { type: "string", required: true },
       credential: { type: "file" },
     });
     expect(parsed.env).toEqual({ IMAGE: "${inputs.image}" });

@@ -25,13 +25,13 @@ const workflowRow = (id: string, definitionId: string | null = null) => ({
   id,
   team_id: "team-a",
   definition_id: definitionId,
-  source_yaml: "name: Build\non: { generic: {} }\nsteps: [{ run: 'true' }]\n",
+  source_yaml: "name: Build\non: {}\nsteps: [{ run: 'true' }]\n",
 });
 
 const revisionRow = (workflowId: string, id: string) => ({
   workflow_id: workflowId,
   revision: 1,
-  source_yaml: "name: Build\non: { generic: {} }\nsteps: [{ run: 'true' }]\n",
+  source_yaml: "name: Build\non: {}\nsteps: [{ run: 'true' }]\n",
   normalized_json: JSON.stringify({ id, name: "Build", steps: [] }),
 });
 

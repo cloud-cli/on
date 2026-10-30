@@ -7,9 +7,9 @@ Independent API-only Go module. Build with `cd runner && go build -o on-runner .
 Configuration is JSON, for example:
 
 ```json
-{"coordinatorUrl":"https://ci.example.invalid","credential":"<runner bearer credential>","tags":["linux"]}
+{ "coordinatorUrl": "https://ci.example.invalid", "credential": "<runner bearer credential>", "tags": ["linux"] }
 ```
 
 The coordinator URL must be HTTPS except for `localhost`, `127.0.0.1`, or `::1`. Protect credentials using mode 0600. The credential read/write helpers use private permissions and atomic replacement.
 
-This is only a transport/configuration foundation, not a workflow-compatible runner. The client has explicit authenticated heartbeat and lease-claim methods (including the 204 idle response), with a 10-second HTTP timeout, 1 MiB response bound, and redirects disabled. `doctor` uses the read-only update endpoint. It does not enroll, execute or report jobs, renew leases, stream events, or implement expressions, secrets, retries, containers, systemd, self-update, or GitHub integrations. Do not assign production workloads to it.
+This is only a transport/configuration foundation, not a workflow-compatible runner. The client has explicit authenticated heartbeat and lease-claim methods (including the 204 idle response), with a 10-second HTTP timeout, 1 MiB response bound, and redirects disabled. `doctor` uses the read-only update endpoint. It does not enroll, execute or report jobs, renew leases, stream events, or implement expressions, secrets, retries, containers, systemd, or self-update. Do not assign production workloads to it.

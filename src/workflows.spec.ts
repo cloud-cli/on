@@ -1,51 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { matchesWebhookTrigger, parseWorkflow } from "./workflows.js";
+import { parseWorkflow } from "./workflows.js";
 
 describe("parseWorkflow", () => {
-  it("matches generic webhook workflows only during verified webhook ingress and for named event types", () => {
-    const trigger = { provider: "webhook", events: ["push"] };
-    expect(matchesWebhookTrigger(trigger, "github", "push", true)).toBe(true);
-    expect(matchesWebhookTrigger(trigger, "github", "pull_request", true)).toBe(false);
-    expect(matchesWebhookTrigger(trigger, "github", "push", false)).toBe(false);
-    expect(matchesWebhookTrigger(trigger, "webhook", "push", false)).toBe(false);
-    expect(matchesWebhookTrigger({ provider: "github" }, "github", "push", false)).toBe(true);
-  });
-
-  it("parses provider-independent webhook subscriptions", () => {
+  it("parses event subscriptions emitted by connectors", () => {
     const [workflow] = parseWorkflow(`
-id: github-intake
-name: GitHub Intake
+id: generic-intake
+name: Generic Intake
 on:
-  webhook:
-    events: [push]
+  events: [sample.received]
 steps:
   - id: normalize
-    eval: body.toString('utf8')
+    eval: inputs
 `);
-    expect(workflow.on).toMatchObject({ provider: "webhook", events: ["push"] });
+    expect(workflow.on).toEqual({ events: ["sample.received"] });
   });
 
-  it("requires explicit webhook event names for provider-independent subscriptions", () => {
+  it("rejects unknown trigger kinds", () => {
     expect(() =>
       parseWorkflow(`
 id: any-hook
 name: Any Hook
 on:
-  webhook: {}
+  source: {}
 steps:
   - id: noop
     eval: true
 `),
-    ).toThrow("on.webhook.events must contain at least one webhook event name");
+    ).toThrow("on supports only events, schedule, and solar");
   });
 
-  it("keeps webhook and time triggers in a portable DB workflow", () => {
+  it("keeps event and time triggers in a portable DB workflow", () => {
     const [workflow] = parseWorkflow(`
 id: nightly-build
 name: Nightly build
 on:
-  github:
-    events: [push]
+  events: [sample.received]
   schedule:
     - id: nightly
       cron: '0 2 * * *'
@@ -59,12 +48,12 @@ steps:
 `);
 
     expect(workflow.id).toBe("nightly-build");
-    expect(workflow.on.provider).toBe("github");
+    expect(workflow.on.events).toEqual(["sample.received"]);
     expect(workflow.schedule?.[0].cron).toBe("0 2 * * *");
     expect(workflow.solar?.[0].event).toBe("sunrise");
   });
 
-  it("parses declarative domain event subscriptions separately from webhook providers", () => {
+  it("parses declarative event subscriptions", () => {
     const [workflow] = parseWorkflow(`
 id: presence-arrived
 name: Presence arrived
@@ -74,7 +63,6 @@ steps:
   - run: 'echo done'
 `);
     expect(workflow.eventTypes).toEqual(["presence.arrived", "workflow.completed"]);
-    expect(workflow.on.provider).toBe("domain-event");
     expect(() =>
       parseWorkflow(`id: duplicate
 name: Duplicate
@@ -92,7 +80,7 @@ steps: [{ run: 'true' }]
   });
 
   it("rejects workflow includes", () => {
-    expect(() => parseWorkflow("name: Invalid\nincludes: [base.yml]\non: {generic: {}}\nsteps: [{run: true}]")).toThrow(
+    expect(() => parseWorkflow("name: Invalid\nincludes: [base.yml]\non: {}\nsteps: [{run: true}]")).toThrow(
       "includes",
     );
   });
@@ -101,7 +89,7 @@ steps: [{ run: 'true' }]
     const [workflow] = parseWorkflow(`
 id: defaults
 name: Defaults
-on: { generic: {} }
+on: {}
 steps:
   - run: 'true'
 `);
@@ -111,25 +99,25 @@ steps:
   });
 
   it("parses and validates post steps as regular steps", () => {
-    const yaml = `id: post\nname: Post\non: { generic: {} }\nsteps: [{ id: main, run: 'true' }]\npost: [{ id: cleanup, run: 'echo \${job.status}' }]`;
+    const yaml = `id: post\nname: Post\non: {}\nsteps: [{ id: main, run: 'true' }]\npost: [{ id: cleanup, run: 'echo \${job.status}' }]`;
     const [workflow] = parseWorkflow(yaml);
     expect(workflow.post?.[0].timeoutMs).toBe(30_000);
     expect(() => parseWorkflow(yaml.replace("id: cleanup", "id: main"))).toThrow("unique");
     expect(() =>
       parseWorkflow(
-        `id: implicit-id\nname: IDs\non: { generic: {} }\nsteps: [{ run: 'true' }]\npost: [{ id: step-0, run: 'true' }]`,
+        `id: implicit-id\nname: IDs\non: {}\nsteps: [{ run: 'true' }]\npost: [{ id: step-0, run: 'true' }]`,
       ),
     ).toThrow("unique");
-    expect(() =>
-      parseWorkflow(`id: invalid-post\nname: Invalid\non: { generic: {} }\nsteps: [{ run: 'true' }]\npost: {}`),
-    ).toThrow("post must be an array");
+    expect(() => parseWorkflow(`id: invalid-post\nname: Invalid\non: {}\nsteps: [{ run: 'true' }]\npost: {}`)).toThrow(
+      "post must be an array",
+    );
   });
 
   it("normalizes Docker volume and argument options", () => {
     const [workflow] = parseWorkflow(`
 id: container
 name: Container
-on: { generic: {} }
+on: {}
 steps:
   - image: alpine:latest
     run: 'true'
@@ -145,7 +133,7 @@ steps:
     const [workflow] = parseWorkflow(`
 id: stored-files
 name: Stored files
-on: { generic: {} }
+on: {}
 artifacts:
   paths: [dist]
 cache:
@@ -163,7 +151,7 @@ steps:
     const [workflow] = parseWorkflow(`
 id: signing
 name: Signing
-on: { generic: {} }
+on: {}
 secretFiles:
   .config/signing.key: SIGNING_KEY
 steps:
@@ -175,21 +163,15 @@ steps:
 
   it("preserves generic workflow plugin settings", () => {
     const [workflow] = parseWorkflow(`
-id: github-status
-name: GitHub status
-on: { github: { events: [push] } }
-plugins:
-  - name: github-status
-    secrets:
-      GITHUB_TOKEN: \${secrets.GITHUB_TOKEN}
-    context: ci/build
+id: generic-plugin
+name: Generic plugin
+on: {}
+plugins: []
 steps:
   - run: 'true'
 `);
 
-    expect(workflow.plugins).toEqual([
-      { name: "github-status", secrets: { GITHUB_TOKEN: "${secrets.GITHUB_TOKEN}" }, context: "ci/build" },
-    ]);
+    expect(workflow.plugins).toEqual([]);
   });
 
   it("preserves matrix definitions for trigger-time expansion", () => {
@@ -198,7 +180,7 @@ id: matrix-build
 name: Matrix build
 matrix:
   node: [18, 20]
-on: { generic: {} }
+on: {}
 steps:
   - run: 'node --version'
 `);
@@ -210,7 +192,7 @@ steps:
     const [workflow] = parseWorkflow(`
 id: release-pipeline
 name: Release pipeline
-on: { generic: {} }
+on: {}
 steps:
   - run: 'true'
 `);
@@ -220,26 +202,24 @@ steps:
   });
 
   it("requires an explicit id and canonicalizes it independently of the name", () => {
-    expect(() => parseWorkflow(`name: Build\non: { generic: {} }\nsteps: [{run: 'true'}]`)).toThrow(
-      "Workflow id is required",
-    );
-    const [workflow] = parseWorkflow(`id: Release Pipeline\nname: Build\non: { generic: {} }\nsteps: [{run: 'true'}]`);
+    expect(() => parseWorkflow(`name: Build\non: {}\nsteps: [{run: 'true'}]`)).toThrow("Workflow id is required");
+    const [workflow] = parseWorkflow(`id: Release Pipeline\nname: Build\non: {}\nsteps: [{run: 'true'}]`);
     expect(workflow.id).toBe("release-pipeline");
     expect(workflow.name).toBe("Build");
   });
 
   it("rejects IDs that cannot be canonicalized to a stable identifier", () => {
-    expect(() => parseWorkflow(`id: '---'\nname: Build\non: { generic: {} }\nsteps: [{run: 'true'}]`)).toThrow(
+    expect(() => parseWorkflow(`id: '---'\nname: Build\non: {}\nsteps: [{run: 'true'}]`)).toThrow(
       "Workflow id must contain",
     );
   });
 
   it("validates retry and timeout settings", () => {
-    expect(() =>
-      parseWorkflow(`id: invalid\nname: Invalid\non: { generic: {} }\nretries: -1\nsteps: [{run: 'true'}]`),
-    ).toThrow("retries must be a non-negative integer");
-    expect(() =>
-      parseWorkflow(`id: invalid\nname: Invalid\non: { generic: {} }\nsteps: [{run: 'true', timeoutMs: 0}]`),
-    ).toThrow("step.timeoutMs must be a positive integer");
+    expect(() => parseWorkflow(`id: invalid\nname: Invalid\non: {}\nretries: -1\nsteps: [{run: 'true'}]`)).toThrow(
+      "retries must be a non-negative integer",
+    );
+    expect(() => parseWorkflow(`id: invalid\nname: Invalid\non: {}\nsteps: [{run: 'true', timeoutMs: 0}]`)).toThrow(
+      "step.timeoutMs must be a positive integer",
+    );
   });
 });

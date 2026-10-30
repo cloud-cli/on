@@ -11,17 +11,13 @@ import { WorkflowRunAdmissionRepository, type WorkflowRunVariant } from "./workf
 import { DomainEventDispatcher, type DomainEventInvocationRequest } from "./domain-event-dispatcher.js";
 import { planWorkflowInvocation } from "./workflow-invocation-admission.js";
 import { ChannelRepository } from "./channel-repository.js";
-import { GitHubPreprocessor } from "./preprocessors/github.js";
-import { GiteaPreprocessor } from "./preprocessors/gitea.js";
 import { safeWebhookHeaders } from "./webhook-headers.js";
 import { IncomingEventRepository } from "./incoming-event-repository.js";
 import { getAppIcon, serviceWorker, webManifest } from "../ui/pwa.js";
 import { QueueManager } from "./queue.js";
-import { matchesWebhookTrigger } from "./workflows.js";
 import { AgentWorkflowGrantRepository } from "./agent-workflow-grant-repository.js";
 import { buildRunView, renderRunHtml } from "../ui/run-view.js";
-import { SafeExpressionEvaluator } from "./safe-eval.js";
-import { expandMatrix, resolveMatrixTags } from "./parser/matrix-expander.js";
+import { expandMatrix } from "./parser/matrix-expander.js";
 import { SecretRepository } from "./secret-repository.js";
 import { SecretStore } from "./secrets.js";
 import { PushRepository } from "./push.js";
@@ -37,7 +33,7 @@ import appShellTemplate from "../ui/app-shell.html?raw";
 import teamsLandingTemplate from "./teams-landing.html?raw";
 import appRouterTemplate from "../ui/app-router.html?raw";
 import { runTemplate } from "../ui/run-view.js";
-import type { JobPayload, WebhookPreprocessor, WebhookServerOptions } from "./types.js";
+import type { WebhookServerOptions } from "./types.js";
 import { generateWorkflowManagementHtml } from "../ui/workflows-ui.js";
 import { WorkflowRepository } from "./workflows.js";
 import { RecipeRepository, parseRecipe } from "./recipes.js";
@@ -48,7 +44,8 @@ import { OidcUserRepository } from "./oidc-user-repository.js";
 import { UserPreferencesRepository } from "./user-preferences.js";
 import { TeamRepository } from "./teams.js";
 import { isValidWorkspaceLogo, MAX_WORKSPACE_LOGO_BYTES } from "./workspace-logo.js";
-import { WorkspaceWebhookRepository } from "./workspace-webhook-repository.js";
+import { ConnectorRepository } from "./connector-repository.js";
+import { evaluateConnector, parseConnectorDefinition } from "./connector-definition.js";
 import { RunnerRegistry } from "./runner-registry.js";
 import { memberViewForCaller, PrincipalRepository } from "./principals.js";
 import { RequestAuthorizer, deny, type AuthContext, type WorkspaceAuthorization } from "./authorization.js";
@@ -162,9 +159,6 @@ function internalApiPath(pathname: string, method: string): string {
   if (pathname === "/api/v1") {
     return pathname;
   }
-  if (pathname.startsWith("/api/v1/webhooks/")) {
-    return pathname.replace(/^\/api\/v1/, "");
-  }
   const restart = pathname.match(/^\/api\/v1\/jobs\/(\d+)\/restart$/);
   if (restart) {
     return `/restart/${restart[1]}`;
@@ -247,7 +241,6 @@ const SILENT_RESPONSE = {
 } as unknown as http.ServerResponse;
 export class WebhookServer {
   private server: http.Server;
-  private preprocessors = new Map<string, WebhookPreprocessor>();
   private workflows = new WorkflowRepository();
   private recipes = new RecipeRepository();
   private secretRepository = new SecretRepository();
@@ -264,7 +257,7 @@ export class WebhookServer {
   private userPreferences = new UserPreferencesRepository();
   private agentWorkflowGrantRepository = new AgentWorkflowGrantRepository();
   private teams = new TeamRepository();
-  private workspaceWebhooks = new WorkspaceWebhookRepository(this.secretRepository);
+  private connectors = new ConnectorRepository();
   private incomingEvents = new IncomingEventRepository(this.secretRepository);
   private domainEventRepository = new DomainEventRepository();
   private workflowRunAdmissions = new WorkflowRunAdmissionRepository();
@@ -316,13 +309,10 @@ export class WebhookServer {
         this.principals.init(),
         this.userPreferences.init(),
         this.runners.init(),
-        this.workspaceWebhooks.init(),
         this.recipes.init(),
       ]);
     });
 
-    this.registerPreprocessor(new GitHubPreprocessor());
-    this.registerPreprocessor(new GiteaPreprocessor());
     this.server = http.createServer((req, res) => {
       const requestId = startHttpRequestLog(req, res);
       void this.handleRequest(req, res).catch((error: unknown) => {
@@ -355,10 +345,6 @@ export class WebhookServer {
         res.end(JSON.stringify({ error: "Internal server error" }));
       });
     });
-  }
-
-  registerPreprocessor(preprocessor: WebhookPreprocessor) {
-    this.preprocessors.set(preprocessor.name, preprocessor);
   }
 
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
@@ -2101,10 +2087,6 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
     }
 
-    const dispatchMatch = url.pathname.match(/^\/api\/dispatch\/([a-z0-9-]+)$/);
-    if (req.method === "POST" && dispatchMatch) {
-      return this.handleDispatch(req, res, dispatchMatch[1]);
-    }
     const workflowRunMatch = url.pathname.match(/^\/api\/workflows\/([a-z0-9-]+)\/run$/);
     if (req.method === "POST" && workflowRunMatch) {
       return this.handleWorkflowRun(req, res, workflowRunMatch[1]);
@@ -2651,38 +2633,14 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return this.handleSecretReload(req, res);
     }
 
-    if (req.method === "POST" && url.pathname.startsWith("/webhooks/team/")) {
-      const match = url.pathname.match(/^\/webhooks\/team\/([^/]+)\/([a-z0-9-]+)$/);
-      if (!match) {
-        res.writeHead(404).end();
+    const connectorIngress = url.pathname.match(/^\/webhooks\/connectors\/([^/]+)$/);
+    if (req.method === "POST" && connectorIngress) {
+      const connector = await this.connectors.lookupByToken(decodeURIComponent(connectorIngress[1]));
+      if (!connector) {
+        res.writeHead(404, { "Cache-Control": "no-store" }).end();
         return;
       }
-      const team = await this.teams.teamForWebhookToken(decodeURIComponent(match[1]));
-      if (!team) {
-        res.writeHead(404).end();
-        return;
-      }
-      return this.handleWebhook(match[2], req, res, team.id);
-    }
-
-    if (req.method === "POST" && url.pathname.startsWith("/webhooks/workspace/")) {
-      const token = url.pathname.slice("/webhooks/workspace/".length);
-      const webhook = await this.workspaceWebhooks.lookupByToken(decodeURIComponent(token));
-      if (!webhook) {
-        res.writeHead(404).end();
-        return;
-      }
-      return this.handleWebhook(webhook.provider, req, res, webhook.workspaceId, webhook.signingSecret);
-    }
-
-    if (req.method === "POST" && url.pathname.startsWith("/webhooks/")) {
-      const provider = url.pathname.replace("/webhooks/", "");
-      const workspaceId = await this.legacyWebhookWorkspace();
-      if (!workspaceId) {
-        res.writeHead(404).end();
-        return;
-      }
-      return this.handleWebhook(provider, req, res, workspaceId);
+      return this.handleConnectorWebhook(connector, req, res);
     }
 
     // Keep machine-readable errors for APIs, but give browser navigation a helpful not-found page.
@@ -2716,149 +2674,93 @@ sessionStorage.removeItem('runner-pending-team-invite');
   /**
    * Processes incoming HTTP webhooks
    */
-  private async handleWebhook(
-    provider: string,
+  private async handleConnectorWebhook(
+    connector: { id: string; workspaceId: string; name: string; sourceYaml: string; version: number },
     req: http.IncomingMessage,
     res: http.ServerResponse,
-    teamId: string,
-    signingSecret?: string,
   ) {
-    let incomingEventId: string | undefined;
-    let validationStatus: "pending" | "valid" | "invalid" = "pending";
-    let normalizedInputs: unknown = null;
+    let receiptId: string | undefined;
+    let normalizedEvent: { type: string; data: Record<string, unknown> } | null = null;
     try {
       const { rawBuffer, headers } = await this.readRequest(req, res);
-
       if (res.headersSent || !rawBuffer) {
         return;
       }
-
       await this.workflowsLoaded;
-      const { isValid, inputs, secretValues } = await this.preprocess(
-        provider,
-        headers,
-        rawBuffer,
-        teamId,
-        signingSecret,
-      );
-
-      if (!isValid) {
-        validationStatus = "invalid";
-        res.writeHead(401, { "Content-Type": "application/json" });
-        res.end(
-          JSON.stringify({
-            error: "Invalid HMAC signature or authentication failed",
-          }),
-        );
-        return;
-      }
-
-      validationStatus = "valid";
-      normalizedInputs = inputs;
-      incomingEventId = await this.incomingEvents.capture(teamId, provider, headers, rawBuffer);
-      const connector = this.preprocessors.get(provider) as
-        | (WebhookPreprocessor & {
-            toDomainEvent?: (
-              eventHeaders: Record<string, string>,
-              eventInputs: Record<string, any>,
-              receivedAt: string,
-            ) => any;
-          })
-        | undefined;
-      if (connector?.toDomainEvent) {
-        const receivedAt = await this.incomingEvents.receivedAtForTeam(teamId, incomingEventId);
-        const domainEvent = connector.toDomainEvent(headers, inputs, receivedAt || "");
-        if (domainEvent) {
-          const published = await this.domainEventRepository.publish(teamId, domainEvent);
-          await this.domainEventDeliveryRepository.fanout(teamId, published.id);
+      const contentType = String(headers["content-type"] || "application/octet-stream")
+        .split(";", 1)[0]
+        .trim();
+      const text = (() => {
+        try {
+          return new TextDecoder("utf-8", { fatal: true }).decode(rawBuffer);
+        } catch {
+          return undefined;
         }
+      })();
+      let body: unknown;
+      if (text === undefined) {
+        body = { encoding: "base64", data: rawBuffer.toString("base64"), byteLength: rawBuffer.byteLength };
+      } else if (contentType === "application/json" || contentType.endsWith("+json")) {
+        try {
+          body = JSON.parse(text);
+        } catch {
+          body = text;
+        }
+      } else {
+        body = text;
       }
-      const jobs = await this.matchWorkflows(
-        provider,
-        inputs,
-        await this.workflows.publishedForTeam(teamId),
-        secretValues,
-        teamId,
-        { headers: safeWebhookHeaders(headers), body: rawBuffer, webhookIngress: true },
+      const safeHeaders = safeWebhookHeaders(headers);
+      receiptId = await this.incomingEvents.capture(
+        connector.workspaceId,
+        connector.id,
+        connector.version,
+        safeHeaders,
+        rawBuffer,
       );
-      await this.incomingEvents.finish(
-        teamId,
-        incomingEventId,
-        validationStatus,
-        jobs.length ? "queued" : "unmatched",
-        inputs,
-        jobs,
-      );
-
-      res.writeHead(202, {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-store",
+      const input = { contentType, body };
+      normalizedEvent = await evaluateConnector(connector.sourceYaml, { input, headers: safeHeaders });
+      const receivedAt =
+        (await this.incomingEvents.receivedAtForTeam(connector.workspaceId, receiptId)) || new Date().toISOString();
+      const deliveryId = safeHeaders["idempotency-key"] || safeHeaders["x-delivery-id"];
+      const published = await this.domainEventRepository.publish(connector.workspaceId, {
+        type: normalizedEvent.type,
+        schemaVersion: 1,
+        source: `connector/${connector.id}`,
+        occurredAt: receivedAt,
+        correlationId: null,
+        causationId: receiptId,
+        idempotencyKey: deliveryId ? `connector:${connector.id}:delivery:${deliveryId}` : null,
+        data: normalizedEvent.data,
       });
+      const fanout = await this.domainEventDeliveryRepository.fanout(connector.workspaceId, published.id);
+      await this.incomingEvents.finish(
+        connector.workspaceId,
+        receiptId,
+        "valid",
+        fanout.deliveryCount > 0 ? "queued" : "unmatched",
+        { type: normalizedEvent.type, data: normalizedEvent.data },
+      );
+      res.writeHead(202, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
       res.end(
         JSON.stringify({
-          message: "OK",
-          eventId: incomingEventId,
-          queuedJobs: jobs.length,
+          receiptId,
+          eventId: published.id,
+          eventType: published.type,
+          queuedDeliveries: fanout.deliveryCount,
         }),
       );
-    } catch (err: any) {
-      console.error("❌ Webhook Ingress Error:", err);
-      if (incomingEventId) {
+    } catch (error) {
+      console.error("Connector ingress failed", error instanceof Error ? error.message : "unknown error");
+      if (receiptId) {
         await this.incomingEvents
-          .finish(
-            teamId,
-            incomingEventId,
-            validationStatus,
-            "failed",
-            normalizedInputs,
-            [],
-            err?.message || "Ingress processing failed",
-          )
-          .catch((recordError) => console.error("❌ Could not update incoming event status:", recordError));
+          .finish(connector.workspaceId, receiptId, "valid", "failed", normalizedEvent)
+          .catch(() => undefined);
       }
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          error: "Internal Ingress Error",
-          details: err.message,
-        }),
-      );
+      if (!res.headersSent) {
+        res.writeHead(422, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: "Connector processing failed", receiptId }));
+      }
     }
-  }
-
-  /** Keep the legacy provider URL/secret serving the adopted workspace until its webhook is cut over. */
-  private async legacyWebhookWorkspace(): Promise<string | null> {
-    const markerTable = await db.get(
-      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspace_adoptions'",
-    );
-    if (!markerTable) {
-      return null;
-    }
-    const adoption = await db.get(
-      "SELECT target_workspace_id FROM workspace_adoptions WHERE version = ? AND source_workspace_id = 'default'",
-      ["default-to-workspace-v1"],
-    );
-    return adoption?.target_workspace_id || null;
-  }
-
-  private async handleDispatch(req: http.IncomingMessage, res: http.ServerResponse, provider: string) {
-    const teamId = (await this.requireWorkspaceCapability(req, res, "runs.dispatch"))?.teamId;
-    if (!teamId) {
-      return;
-    }
-    const body = await this.readJson(req, res);
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return;
-    }
-    const jobs = await this.matchWorkflows(
-      provider,
-      body,
-      await this.workflows.publishedForTeam(teamId),
-      await this.currentSecrets(teamId),
-      teamId,
-    );
-    res.writeHead(202, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ jobs: jobs.map((id) => ({ id, provider })) }));
   }
 
   /** Resolve/enqueue a child run only from a live, team-owned runner lease. */
@@ -3741,133 +3643,6 @@ sessionStorage.removeItem('runner-pending-team-invite');
     return { rawBuffer, headers };
   }
 
-  private async preprocess(provider: string, headers, rawBuffer: Buffer, teamId: string, signingSecret?: string) {
-    const contentType = String(headers["content-type"] || "")
-      .split(";")[0]
-      .trim()
-      .toLowerCase();
-    const isJson = contentType === "application/json" || contentType.endsWith("+json");
-    let dbSecrets: Record<string, string> = {};
-    try {
-      dbSecrets = await this.secretRepository.getAllForTeam(teamId);
-    } catch (error) {
-      if (process.env.RUNNER_MASTER_KEY || process.env.CREDENTIALS_DIRECTORY) {
-        throw error;
-      }
-    }
-    const secret = signingSecret || dbSecrets[`${provider.toUpperCase()}_WEBHOOK_SECRET`] || undefined;
-    const preprocessor = this.preprocessors.get(provider);
-    try {
-      if (preprocessor && isJson) {
-        const result = preprocessor.parse(headers, rawBuffer, secret);
-        const { inputs: parsedInputs, isValid } = result;
-        const inputs = parsedInputs ? { ...parsedInputs, headers: safeWebhookHeaders(headers) } : parsedInputs;
-        return { inputs, isValid, secretValues: dbSecrets };
-      }
-
-      // Provider registrations are routing labels, not parsers. Verify the
-      // GitHub-compatible signature against the untouched request bytes and
-      // expose the transport envelope for workflow-owned normalization.
-      const signature = headers["x-hub-signature-256"];
-      // A configured secret always makes a signature mandatory, regardless
-      // of whether it came from a per-registration secret or workspace secret.
-      // Alias ingress is an authenticated webhook boundary; never accept an
-      // unsigned request merely because a workspace has not configured a key.
-      let isValid = false;
-      if (secret && signature) {
-        const expected = `sha256=${crypto.createHmac("sha256", secret).update(rawBuffer).digest("hex")}`;
-        const suppliedBytes = Buffer.from(String(signature));
-        const expectedBytes = Buffer.from(expected);
-        isValid = suppliedBytes.length === expectedBytes.length && crypto.timingSafeEqual(suppliedBytes, expectedBytes);
-      }
-      const body = isJson ? JSON.parse(rawBuffer.toString("utf-8")) : undefined;
-      if ((isJson && (!body || typeof body !== "object")) || !isValid) {
-        return { isValid: false, inputs: null, secretValues: dbSecrets };
-      }
-      const safeHeaders = safeWebhookHeaders(headers);
-      const inputs = {
-        ...(body && typeof body === "object" && !Array.isArray(body) ? body : {}),
-        body,
-        raw: body,
-        headers: safeHeaders,
-        request: { body, headers: safeHeaders },
-      };
-      return { isValid, inputs, secretValues: dbSecrets };
-    } catch {
-      return { isValid: false, inputs: null, secretValues: dbSecrets };
-    }
-  }
-
-  private async matchWorkflows(
-    provider: string,
-    inputs: any,
-    workflows: import("./types.js").WorkflowRevision[],
-    secretValues: Record<string, string> = {},
-    teamId: string,
-    requestContext: { headers?: Record<string, string>; body?: Buffer; webhookIngress?: boolean } = {},
-  ) {
-    const jobIds: number[] = [];
-    for (const { workflowId, definition: workflow, revision } of workflows) {
-      const eventName = String(inputs?.event || inputs?.headers?.["x-github-event"] || "");
-      if (!matchesWebhookTrigger(workflow.on, provider, eventName, requestContext.webhookIngress === true)) {
-        continue;
-      }
-
-      const preprocessor = this.preprocessors.get(provider);
-      if (preprocessor?.filter && !preprocessor.filter(inputs, workflow.on).isValid) {
-        debug(`⏩ Skipped ${workflow.id} based on ${provider} webhook filters`, { inputs });
-        continue;
-      }
-
-      if (workflow.on.if) {
-        try {
-          const conditionContext = preprocessor?.conditionContext?.(inputs, secretValues) || {};
-          const shouldRun = await SafeExpressionEvaluator.evaluateConditions(workflow.on.if, {
-            inputs,
-            ...conditionContext,
-          });
-
-          if (!shouldRun) {
-            debug(`⏩ Skipped ${workflow.id} based on conditions: ${workflow.on.if}`, { inputs });
-            continue;
-          }
-        } catch (evalErr: any) {
-          console.error(`⚠️ Condition evaluation error in workflow [${workflow.id}]:`, evalErr.message);
-          continue; // Skip this workflow without crashing server
-        }
-      }
-
-      for (const variant of expandMatrix(workflow)) {
-        const requiredTags = await resolveMatrixTags(variant.tags, variant.matrixContext, inputs);
-        let concurrencyKey = "";
-        if (variant.concurrency?.group) {
-          concurrencyKey = await SafeExpressionEvaluator.evaluateValue(variant.concurrency.group, { inputs });
-        }
-
-        const jobPayload: JobPayload = {
-          inputs,
-          headers: requestContext.headers,
-          body: requestContext.body,
-          matrix: variant.matrixContext,
-        };
-
-        const jobId = await this.queue.enqueue(
-          workflowId,
-          revision,
-          jobPayload,
-          requiredTags,
-          concurrencyKey,
-          variant.concurrency?.cancelInProgress ?? false,
-        );
-        if (jobId) {
-          jobIds.push(jobId);
-        }
-        this.events.publish("jobs.available", { tags: requiredTags, teamId });
-      }
-    }
-    return jobIds;
-  }
-
   private isAdmin(req: http.IncomingMessage): boolean {
     // Cached session role is only used for redirect UX. Every authorization
     // decision resolves the principal from storage.
@@ -4040,11 +3815,6 @@ sessionStorage.removeItem('runner-pending-team-invite');
                 name: team.name,
                 role: "admin",
               },
-              ...(!workspaceApi
-                ? {
-                    webhookPath: `/api/v1/webhooks/team/${encodeURIComponent(team.webhookToken)}/{provider}`,
-                  }
-                : {}),
             }),
           );
       } catch (error: any) {
@@ -4133,6 +3903,121 @@ sessionStorage.removeItem('runner-pending-team-invite');
       return;
     }
 
+    const connectorsPath = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/connectors$`));
+    const connectorPath = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/connectors/([^/]+)$`));
+    if (connectorsPath && ["GET", "POST"].includes(req.method || "")) {
+      const teamId = decodeURIComponent(connectorsPath[1]);
+      const capability = req.method === "GET" ? "webhooks.view" : "webhooks.manage";
+      const authorized = await this.authorizer.workspace(req, res, capability, teamId);
+      if (!authorized) {
+        return;
+      }
+      if (req.method === "GET") {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ connectors: await this.connectors.listForWorkspace(teamId) }));
+        return;
+      }
+      const body = await this.readJson(req, res);
+      if (
+        !body ||
+        typeof body.id !== "string" ||
+        typeof body.name !== "string" ||
+        typeof body.sourceYaml !== "string"
+      ) {
+        if (!res.headersSent) {
+          res.writeHead(400).end(JSON.stringify({ error: "id, name, and sourceYaml are required" }));
+        }
+        return;
+      }
+      try {
+        const definition = parseConnectorDefinition(body.sourceYaml);
+        if (definition.id !== body.id || definition.name !== body.name) {
+          throw new Error("Connector YAML id and name must match the submitted values");
+        }
+        const created = await this.connectors.createForWorkspace(teamId, body.id, body.name, body.sourceYaml);
+        await this.principals.recordAudit({
+          actor: authorized.principal.subject,
+          action: "connector.create",
+          target: created.id,
+          teamId,
+          detail: { revision: created.version },
+        });
+        res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(
+          JSON.stringify({
+            connector: { ...created, token: undefined },
+            url: `/webhooks/connectors/${encodeURIComponent(created.token)}`,
+          }),
+        );
+      } catch (error) {
+        res.writeHead(422, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Invalid connector" }));
+      }
+      return;
+    }
+    if (connectorPath && ["GET", "PUT", "DELETE"].includes(req.method || "")) {
+      const teamId = decodeURIComponent(connectorPath[1]);
+      const connectorId = decodeURIComponent(connectorPath[2]);
+      const capability = req.method === "GET" ? "webhooks.view" : "webhooks.manage";
+      const authorized = await this.authorizer.workspace(req, res, capability, teamId);
+      if (!authorized) {
+        return;
+      }
+      if (req.method === "GET") {
+        const connector = await this.connectors.getForWorkspace(teamId, connectorId);
+        res.writeHead(connector ? 200 : 404, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
+        res.end(JSON.stringify(connector ? { connector } : { error: "Connector not found" }));
+        return;
+      }
+      if (req.method === "DELETE") {
+        const removed = await this.connectors.revokeForWorkspace(teamId, connectorId);
+        if (removed) {
+          await this.principals.recordAudit({
+            actor: authorized.principal.subject,
+            action: "connector.revoke",
+            target: connectorId,
+            teamId,
+          });
+        }
+        res.writeHead(removed ? 204 : 404).end();
+        return;
+      }
+      const body = await this.readJson(req, res);
+      if (!body || typeof body.name !== "string" || typeof body.sourceYaml !== "string") {
+        if (!res.headersSent) {
+          res.writeHead(400).end(JSON.stringify({ error: "name and sourceYaml are required" }));
+        }
+        return;
+      }
+      try {
+        const definition = parseConnectorDefinition(body.sourceYaml);
+        if (definition.id !== connectorId || definition.name !== body.name) {
+          throw new Error("Connector YAML id and name must match the requested connector");
+        }
+        const connector = await this.connectors.updateForWorkspace(teamId, connectorId, body.name, body.sourceYaml);
+        if (!connector) {
+          res.writeHead(404).end(JSON.stringify({ error: "Connector not found" }));
+          return;
+        }
+        await this.principals.recordAudit({
+          actor: authorized.principal.subject,
+          action: "connector.update",
+          target: connectorId,
+          teamId,
+          detail: { revision: connector.version },
+        });
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ connector }));
+      } catch (error) {
+        res.writeHead(422, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Invalid connector" }));
+      }
+      return;
+    }
+
     const incomingEvents = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/events$`));
     const incomingEvent = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/events/([0-9a-f-]+)(/retrigger)?$`));
     if (incomingEvents && req.method === "GET") {
@@ -4195,131 +4080,106 @@ sessionStorage.removeItem('runner-pending-team-invite');
         res.end(JSON.stringify({ error: "Incoming event not found" }));
         return;
       }
-      if (event.validationStatus !== "valid" || event.inputs === null) {
+      const replayContext = await this.incomingEvents.getReplayContextForTeam(teamId, eventId);
+      const connector =
+        event.connectorId === "unknown" ? null : await this.connectors.getForWorkspace(teamId, event.connectorId);
+      const replayYaml = replayContext?.connectorRevision
+        ? await this.connectors.getRevisionForWorkspace(
+            teamId,
+            replayContext.connectorId,
+            replayContext.connectorRevision,
+          )
+        : null;
+      if (event.validationStatus !== "valid" || !replayContext || !connector || !connector.enabled || !replayYaml) {
         res.writeHead(409, {
           "Content-Type": "application/json; charset=utf-8",
           "Cache-Control": "no-store",
         });
         res.end(
           JSON.stringify({
-            error: "Only signature-validated events can be retriggered",
+            error: "Only receipts for an active connector can be replayed",
           }),
         );
         return;
       }
       const replayId = await this.incomingEvents.createReplay(teamId, eventId, authorized.principal.subject);
       try {
-        const jobs = await this.matchWorkflows(
-          event.provider,
-          event.inputs,
-          await this.workflows.publishedForTeam(teamId),
-          await this.secretRepository.getAllForTeam(teamId),
-          teamId,
-        );
-        const status = jobs.length ? "queued" : "unmatched";
-        await this.incomingEvents.finishReplay(teamId, replayId, status, jobs);
+        const contentType = replayContext.contentType.split(";", 1)[0].trim().toLowerCase();
+        const text = (() => {
+          try {
+            return new TextDecoder("utf-8", { fatal: true }).decode(replayContext.body);
+          } catch {
+            return undefined;
+          }
+        })();
+        let rawBody: unknown;
+        if (text === undefined) {
+          rawBody = {
+            encoding: "base64",
+            data: replayContext.body.toString("base64"),
+            byteLength: replayContext.body.byteLength,
+          };
+        } else if (contentType === "application/json" || contentType.endsWith("+json")) {
+          try {
+            rawBody = JSON.parse(text);
+          } catch {
+            rawBody = text;
+          }
+        } else {
+          rawBody = text;
+        }
+        const normalizedEvent = await evaluateConnector(replayYaml, {
+          input: { contentType, body: rawBody },
+          headers: replayContext.headers,
+        });
+        const published = await this.domainEventRepository.publish(teamId, {
+          type: normalizedEvent.type,
+          schemaVersion: 1,
+          source: `connector/${connector.id}`,
+          occurredAt: event.receivedAt,
+          correlationId: null,
+          causationId: eventId,
+          idempotencyKey: `connector:${connector.id}:replay:${replayId}`,
+          data: normalizedEvent.data,
+        });
+        const fanout = await this.domainEventDeliveryRepository.fanout(teamId, published.id);
+        const status = fanout.deliveryCount ? "queued" : "unmatched";
+        await this.incomingEvents.finishReplay(teamId, replayId, status, [], null, connector.version, published.id);
         await this.principals
           .recordAudit({
             actor: authorized.principal.subject,
-            action: "webhook_event.retrigger",
+            action: "connector_receipt.replay",
             target: eventId,
             teamId,
-            detail: { replayId, queuedJobs: jobs.length },
+            detail: {
+              replayId,
+              eventId: published.id,
+              connectorRevision: connector.version,
+              queuedDeliveries: fanout.deliveryCount,
+            },
           })
           .catch((error) => console.error("Could not audit incoming event replay:", error));
         res.writeHead(202, {
           "Content-Type": "application/json; charset=utf-8",
           "Cache-Control": "no-store",
         });
-        res.end(JSON.stringify({ eventId, replayId, queuedJobs: jobs.length, jobs }));
+        res.end(
+          JSON.stringify({
+            eventId,
+            replayId,
+            connectorRevision: connector.version,
+            normalizedEventId: published.id,
+            queuedDeliveries: fanout.deliveryCount,
+          }),
+        );
       } catch (error: any) {
-        await this.incomingEvents.finishReplay(teamId, replayId, "failed", [], "Could not match event to workflows");
+        await this.incomingEvents.finishReplay(teamId, replayId, "failed", [], "Connector replay failed");
         res.writeHead(500, {
           "Content-Type": "application/json; charset=utf-8",
           "Cache-Control": "no-store",
         });
-        res.end(JSON.stringify({ error: "Could not retrigger incoming event" }));
+        res.end(JSON.stringify({ error: "Could not replay receipt through connector" }));
       }
-      return;
-    }
-
-    const webhooks = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/webhooks$`));
-    const webhook = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/webhooks/([^/]+)$`));
-    if (webhooks && ["GET", "POST"].includes(req.method || "")) {
-      const teamId = decodeURIComponent(webhooks[1]);
-      const capability = req.method === "GET" ? "webhooks.view" : "webhooks.manage";
-      const authorized = await this.authorizer.workspace(req, res, capability, teamId);
-      if (!authorized) {
-        return;
-      }
-      if (req.method === "GET") {
-        res.writeHead(200, {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "no-store",
-        });
-        res.end(
-          JSON.stringify({
-            webhooks: await this.workspaceWebhooks.list(teamId),
-          }),
-        );
-        return;
-      }
-      const body = await this.readJson(req, res);
-      if (!body || typeof body.provider !== "string") {
-        if (!res.headersSent) {
-          res.writeHead(400).end(JSON.stringify({ error: "provider is required" }));
-        }
-        return;
-      }
-      try {
-        const created = await this.workspaceWebhooks.create(teamId, body.provider);
-        await this.principals.recordAudit({
-          actor: authorized.principal.subject,
-          action: "workspace.webhook.create",
-          target: created.id,
-          teamId,
-          detail: { provider: created.provider },
-        });
-        res.writeHead(201, {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "no-store",
-        });
-        res.end(
-          JSON.stringify({
-            webhook: {
-              id: created.id,
-              provider: created.provider,
-              createdAt: created.createdAt,
-            },
-            url: `/api/v1/webhooks/workspace/${encodeURIComponent(created.token)}`,
-            signingSecret: created.signingSecret,
-          }),
-        );
-      } catch (error: any) {
-        res.writeHead(422, {
-          "Content-Type": "application/json; charset=utf-8",
-        });
-        res.end(JSON.stringify({ error: error.message }));
-      }
-      return;
-    }
-    if (webhook && req.method === "DELETE") {
-      const teamId = decodeURIComponent(webhook[1]);
-      const authorized = await this.authorizer.workspace(req, res, "webhooks.manage", teamId);
-      if (!authorized) {
-        return;
-      }
-      const webhookId = decodeURIComponent(webhook[2]);
-      const removed = await this.workspaceWebhooks.revoke(teamId, webhookId);
-      if (removed) {
-        await this.principals.recordAudit({
-          actor: authorized.principal.subject,
-          action: "workspace.webhook.revoke",
-          target: webhookId,
-          teamId,
-        });
-      }
-      res.writeHead(removed ? 204 : 404).end();
       return;
     }
 
@@ -4468,29 +4328,6 @@ sessionStorage.removeItem('runner-pending-team-invite');
       } catch (e: any) {
         res.writeHead(422).end(JSON.stringify({ error: e.message }));
       }
-      return;
-    }
-    const rotateWebhook = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/webhook-token$`));
-    if (rotateWebhook && req.method === "POST") {
-      const teamId = decodeURIComponent(rotateWebhook[1]);
-      if (!(await this.authorizer.workspace(req, res, "settings.manage", teamId))) {
-        return;
-      }
-      const token = await this.teams.rotateWebhookToken(teamId);
-      if (!token) {
-        res.writeHead(404).end();
-        return;
-      }
-      res
-        .writeHead(200, {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-store",
-        })
-        .end(
-          JSON.stringify({
-            webhookPath: `/api/v1/webhooks/team/${encodeURIComponent(token)}/{provider}`,
-          }),
-        );
       return;
     }
     if ((url.pathname === "/api/teams/accept" || url.pathname === "/api/workspaces/accept") && req.method === "POST") {

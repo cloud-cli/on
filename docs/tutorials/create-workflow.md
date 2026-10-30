@@ -1,7 +1,7 @@
 # Create and test a workflow
 
-This tutorial creates a workflow that accepts GitHub push events and runs a small shell step. It assumes the
-control plane and a runner are available. For webhook delivery, follow [Connect a GitHub or Gitea webhook](../how-to/connect-git-webhooks.md).
+This tutorial creates an event-driven workflow that runs a small shell step. It assumes the control plane and a
+runner are available. To receive HTTP requests and publish domain events, configure a [connector](../how-to/connectors.md).
 
 ## 1. Create a draft
 
@@ -12,48 +12,43 @@ id: build
 name: Build
 
 on:
-  github:
-    events: [push]
-    owner: acme
-    repo: web-app
-    branches: [main]
+  events: [sample.received]
 
 tags: [linux]
 
 steps:
   - id: summarize
-    name: Summarize push
+    name: Summarize event
     env:
-      EVENT: ${inputs.event}
-      REPOSITORY: ${inputs.full_name}
-      COMMIT_SHA: ${inputs.commit_sha}
+      EVENT_TYPE: ${inputs.type}
+      SOURCE: ${inputs.source}
     run: |
-      printf 'Event: %s\n' "$EVENT"
-      printf 'Repository: %s\n' "$REPOSITORY"
-      printf 'Commit: %s\n' "$COMMIT_SHA"
+      printf 'Event type: %s\n' "$EVENT_TYPE"
+      printf 'Source: %s\n' "$SOURCE"
 ```
 
-Change `acme/web-app` and the branch to match your repository. The `linux` tag must match an authorized runner. In
-`env`, workflow expressions pass values from the webhook payload to the step. The `run` script itself is passed to
-the shell unchanged and reads those values as ordinary shell variables.
+The `linux` tag must match an authorized runner. Domain-event data is available under `inputs`; adjust the fields to
+match the event contract. In `env`, workflow expressions pass values to the step. The `run` script itself is passed
+to the shell unchanged and reads those values as ordinary shell variables.
 
 ## 2. Validate and run the draft
 
 Use **Validate** in the editor, correct any reported errors, and save the draft. Select **Run now** to queue the
-saved draft immediately; a matching runner must be online. A manual run has no GitHub push payload, so the summary
-values may be empty, but the step should still complete.
+saved draft immediately; a matching runner must be online. A manual run does not include domain-event data, so the
+summary values may be empty, but the step should still complete.
 
 Open the run from the dashboard to inspect status, step output, and logs.
 
 ## 3. Publish it for automatic events
 
-When the manual run succeeds, publish and enable the workflow. Only published, enabled revisions receive webhook
-and scheduled events. Add the configured workspace webhook URL and signing secret to GitHub, then push to the
-configured branch. The dashboard and incoming-event view show whether the delivery was accepted and which jobs it
-queued.
+When the manual run succeeds, publish and enable the workflow. Only published, enabled revisions receive domain
+events and scheduled events. Configure an ingress connector following the [connector guide](../how-to/connectors.md).
+Incoming-event receipts record ingress processing; replaying a receipt re-evaluates the stored request through the
+connector's current revision and publishes a new event. Use **Run now** or the workflow run API to rerun a workflow;
+receipt replay is not a workflow rerun.
 
 ## Next steps
 
-- Add filters such as `paths`, `tag`, or a workflow `if` condition; see the [workflow syntax reference](../reference/workflow-syntax.md).
+- Add a workflow `if` condition; see the [workflow syntax reference](../reference/workflow-syntax.md).
 - Store credentials as [workspace secrets](../how-to/manage-secrets.md), not in YAML or shell source.
 - Reuse a published immutable recipe with [the recipe tutorial](create-recipe.md).

@@ -477,10 +477,9 @@ export async function processJob(p: Processable) {
     body: payload.body,
     env: {
       ...config.env,
-      CI: "true",
-      CI_JOB_ID: String(job.id),
-      CI_JOB_NAME: resolvedWorkflow.name,
-      CI_JOB_URL: runUrl,
+      RUN_ID: String(job.id),
+      RUN_NAME: resolvedWorkflow.name,
+      RUN_URL: runUrl,
     },
     secrets: secrets.getAll(),
     steps: {},
@@ -521,10 +520,9 @@ export async function processJob(p: Processable) {
     try {
       Object.assign(executionContext.env, await evaluateEnv(resolvedWorkflow.env, executionContext));
       Object.assign(executionContext.env, {
-        CI: "true",
-        CI_JOB_ID: String(job.id),
-        CI_JOB_NAME: resolvedWorkflow.name,
-        CI_JOB_URL: runUrl,
+        RUN_ID: String(job.id),
+        RUN_NAME: resolvedWorkflow.name,
+        RUN_URL: runUrl,
       });
       if (resolvedWorkflow._recipeInputs) {
         const evaluateRecipeValue = async (value: unknown): Promise<unknown> => {
@@ -651,7 +649,7 @@ export async function processJob(p: Processable) {
     }
 
     // Lifecycle hooks begin only after setup succeeds, and post-step failures are non-fatal.
-    executionContext.env.CI_JOB_STATUS = finalStatus;
+    executionContext.env.RUN_STATUS = finalStatus;
     executionContext.job = { status: finalStatus, runUrl };
     if (postSteps.length) {
       const postContext = { ...context, steps: postSteps };
@@ -970,7 +968,7 @@ async function executeSingleStep(params: {
       }
       const evaluateBinding = async (value: unknown): Promise<unknown> => {
         if (typeof value === "string") {
-          const expression = value.match(/^\$\{((?:inputs|steps|job|matrix|github)(?:\.[A-Za-z_$][\w$]*)+)\}$/);
+          const expression = value.match(/^\$\{((?:inputs|steps|job|matrix)(?:\.[A-Za-z_$][\w$]*)+)\}$/);
           if (expression) {
             const inputProperty = expression[1].match(/^inputs\.([A-Za-z_$][\w$]*)/)?.[1];
             if (inputProperty && params.processable.writeOnlyInputNames?.includes(inputProperty)) {
@@ -1074,7 +1072,7 @@ async function executeSingleStep(params: {
 
       const outputs: Record<string, unknown> = {};
       for (const [name, expression] of Object.entries(fn.returns || {})) {
-        const path = expression.match(/^\$\{((?:inputs|steps|job|matrix|github)(?:\.[A-Za-z_$][\w$]*)+)\}$/)?.[1];
+        const path = expression.match(/^\$\{((?:inputs|steps|job|matrix)(?:\.[A-Za-z_$][\w$]*)+)\}$/)?.[1];
         if (!path) {
           throw new Error(`Unsupported nested recipe return expression: ${expression}`);
         }
@@ -1219,9 +1217,8 @@ async function executeSingleStep(params: {
         ...stepExecutionContext.env,
         ...evaluatedStepEnv,
         WORKING_DIR: executionContext.workingDir,
-        CI: "true",
-        CI_JOB_ID: String(params.jobId),
-        CI_JOB_NAME: stepExecutionContext.env.CI_JOB_NAME || step.name || step.id || `step-${stepIndex}`,
+        RUN_ID: String(params.jobId),
+        RUN_NAME: stepExecutionContext.env.RUN_NAME || step.name || step.id || `step-${stepIndex}`,
       },
     };
 

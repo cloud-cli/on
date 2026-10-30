@@ -1,6 +1,6 @@
-# 🚀 Systemd-Native Distributed CI/CD Runner Engine
+# 🚀 Systemd-Native Distributed Automation Runner
 
-A lightweight, stateless, distributed CI/CD runner engine built with **Node.js**, **SQLite**, and **systemd transient units (`systemd-run`)**.
+A lightweight, stateless, distributed automation runner engine built with **Node.js**, **SQLite**, and **systemd transient units (`systemd-run`)**.
 
 Designed with a decoupled **Control Plane (Server)** and **Stateless Workers** architecture, it allows centralized workflow management, label-based task dispatching, and secure process isolation on Linux hosts.
 
@@ -73,7 +73,7 @@ When invoking `systemd-run`:
 
 - **Unique Unit Names:** Unit names must be dynamic per attempt (`job-${jobId}-${stepId}-${Date.now()}`) to bypass systemd's in-memory transient unit cache.
 - **Garbage Collection (`--collect`):** Always pass `--collect` so systemd unloads the unit definition immediately upon exit.
-- **Service Type (`--property=Type=exec`):** Prevents systemd from misinterpreting short-lived CLI tools (`git`, `npm`) as failing background daemons.
+- **Service Type (`--property=Type=exec`):** Prevents systemd from misinterpreting short-lived CLI tools as failing background daemons.
 
 ### 2. Environment & `PATH` Propagation
 
@@ -85,12 +85,12 @@ const envFlags = [`--setenv=PATH=${process.env.PATH || "/usr/local/bin:/usr/bin:
 
 ### 3. Exit Code vs. `stderr` Parsing
 
-- **Do NOT treat `stderr` content as process failure.** Command-line tools (such as `git clone`, `git checkout`, `npm`, and `systemd-run` itself) write standard diagnostic logs and memory summaries to `stderr`.
+- **Do NOT treat `stderr` content as process failure.** Command-line tools write standard diagnostic logs and memory summaries to `stderr`.
 - Step success or failure **must be derived strictly from `exitCode !== 0**`.
 
 ### 4. Workspace Permissions (`/wd`)
 
-To prevent `status=200/CHDIR` or `Permission Denied` errors when non-root users/git operate inside root-created workspace folders, explicitly set permissions when creating step workspaces:
+To prevent `status=200/CHDIR` or `Permission Denied` errors when non-root processes operate inside root-created workspace folders, explicitly set permissions when creating step workspaces:
 
 ```typescript
 fs.mkdirSync(targetWd, { recursive: true });
@@ -152,7 +152,7 @@ _(Deployed on the Primary Node)_
 
 ```ini
 [Unit]
-Description=CI/CD Runner Control Plane Server
+Description=Automation Runner Control Plane Server
 After=network.target
 
 [Service]
@@ -175,7 +175,7 @@ _(Deployed on Main Server and All Worker Nodes)_
 
 ```ini
 [Unit]
-Description=CI/CD Stateless Execution Worker
+Description=Stateless Automation Execution Worker
 After=network.target runner-server.service
 
 [Service]
@@ -226,9 +226,9 @@ The authoritative product proposal is `v3.md` on the `v3` branch. Before impleme
 This is a working-tree status snapshot, not a completion claim. Recalculate it from source and fresh checks at the end of each v3 turn. The fixed weights and acceptance criteria in `docs/project/v3-implementation-plan.md` remain authoritative.
 
 - **Overall estimate: 73.55%** (report as 74%; evidence fractions sum to 73.55%). Milestone credits: M1 contracts/compatibility/migrations **7.2/10**; M2 durable events/common admission **19.5/20**; M3 callable recipe functions/workflow contracts **13.25/15**; M4 Streams/history/live experience **14.85/15**; M5 attempts/checkpoints/replay/follow-ups **10/20**; M6 connectors/agents/E2E **8.75/20**. This remains a partial-evidence estimate; no milestone is fully accepted. New M1 evidence adds migration-033 same-workspace backfill/idempotency characterization and interrupted-marker retry coverage for additive migrations 031–035. Migration tests do not establish a production backup/restore procedure or older-binary compatibility. M2 persists `matched`, `repeat`, and `unmatched` fanout outcomes and uses durable per-variant admission plans for API and internal-dispatch requests; full cross-path accepted/rejected/filtered/duplicate/unmatched/failed parity remains open. M3 has exact-pinned nested recipe calls, bounded redacted contexts, child-step links, legacy-row compatibility evidence, and run-detail UI coverage; broader compatibility remains incomplete. M4 now uses canonical Stream/Thread APIs in the UI, including workspace navigation, Stream/Thread list/create/read/write, cursor-paginated Thread messages, and existing Stream event-history cursor behavior. Local Playwright covers reconnect/history, Thread pagination, and desktop/mobile presentation; integrated authenticated Streams/history acceptance remains incomplete. M6 has exact-commit checkout and Agent invocation/result correlation evidence, but the latter uses a terminal-job fixture rather than a real executing worker; centralized mirror selection and complete agent journeys remain open.
-- **Implemented evidence:** additive migrations; durable typed events, delivery fanout outcomes and workflow-run admission with fencing/recovery; explicit workspace-scoped Stream/event bindings; agent workflow grants; exact-pinned nested recipe calls with additive call-instance reports; separate Threads; immutable step-attempt identities and bounded redacted snapshots. GitHub and Gitea now normalize verified push payloads to the same `git.push` data shape, with provider-specific provenance and delivery idempotency. Stream live notifications are wake-ups only; durable event history/cursors remain authoritative. Nested calls remain inline in the parent job; attempt evidence is not checkpoint/replay support.
+- **Implemented evidence:** additive migrations; durable typed events, delivery fanout outcomes and workflow-run admission with fencing/recovery; explicit workspace-scoped Stream/event bindings; agent workflow grants; exact-pinned nested recipe calls with additive call-instance reports; separate Threads; immutable step-attempt identities and bounded redacted snapshots. Workspace Connectors now store versioned YAML mappings and use a restricted ingress evaluator to publish normalized domain events; durable event history/cursors remain authoritative. Nested calls remain inline in the parent job; attempt evidence is not checkpoint/replay support.
 - **Latest observed checks:** `pnpm lint`; `pnpm test` — **110 files, 613 tests passed**; `pnpm build`; `git diff --check`; and local Playwright without production-auth test — **15/15 passed**, including Stream history, reconnect, Thread pagination, and desktop/mobile paths. Authenticated OIDC browser test timed out on the most recent attempt; this is not passing evidence for integrated Streams/history. Earlier OIDC Agent login and workspace-shell journey passed against an isolated SQLite fixture using synthetic data, including quick-switch keyboard navigation, logout, and unauthorized access; its temporary client cleanup path completed. The UI/layout changes include explicit narrow grid track constraints, rounded profile container, and deferred focus for Cmd/Ctrl+K input.
 - **Visual/auth evidence:** prior synthetic Stream, invocation, run-detail, and quick-switch screenshots were reviewed. The 320px shell overflow was corrected and a narrow screenshot showed the shell within viewport; the latest authenticated browser retry timed out, so do not count it as complete acceptance. No production data was used. No outstanding local OIDC SQLite fixture directory remained during cleanup.
 - **Remaining acceptance blockers:** M1 needs full compatibility/rollback evidence, contract review, and demonstrated operational backup/restore. M2 needs common admission parity and complete cross-path accepted/rejected/filtered/duplicate/unmatched/failed semantics. M3 needs broader legacy compatibility and full nested parent/child call-tree acceptance. M4 needs authenticated Streams/history journeys in the integrated workspace experience. M5 lacks durable checkpoint storage/retention, isolated replay/resume, and side-effect-safe recovery. M6 lacks verified mirror selection, complete agent subscription/tool/result journeys, and integrated provider-neutral browser acceptance.
-- **Repository/delivery state:** commits through `fce2a08` are pushed to `main`; the worktree is clean. No matching CI workflow or deployment details were available, so CI/deployment checks are unavailable and no deployment smoke test was attempted. Generated failed OIDC error-context files were removed; successful screenshots and ordinary local Playwright artifacts remain as test evidence.
+- **Repository/delivery state:** commits through `fce2a08` are pushed to `main`; the worktree is clean. No build automation workflow or deployment details were available, so automated build/deployment checks are unavailable and no deployment smoke test was attempted. Generated failed OIDC error-context files were removed; successful screenshots and ordinary local Playwright artifacts remain as test evidence.
 - **Next actions:** diagnose/stabilize the authenticated OIDC journey, then add integrated authenticated Streams/history acceptance; complete common admission outcome parity and broader nested-call compatibility; define checkpoint storage/retention and side-effect contracts before replay; review the contract/rollback evidence and operational backup/restore; continue verified mirror selection and full Agent journeys, then recalculate milestone evidence.

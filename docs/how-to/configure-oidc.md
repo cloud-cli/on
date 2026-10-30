@@ -8,7 +8,7 @@ users or exposing the web app.
 Register an authorization-code client with a client secret. Add the exact public redirect URI:
 
 ```text
-https://ci.example.net/auth/callback
+https://on.example.net/auth/callback
 ```
 
 On requests `openid profile email offline_access`, uses PKCE with `S256`, and refreshes access tokens. The client

@@ -20,7 +20,9 @@
             "type": "object",
             "required": ["type"],
             "properties": {
-              "type": { "enum": ["string", "number", "integer", "boolean", "object", "array", "null"] },
+              "type": {
+                "enum": ["string", "number", "integer", "boolean", "object", "array", "null"]
+              },
               "required": { "type": "boolean" }
             },
             "additionalProperties": true

@@ -88,7 +88,7 @@ export class QueueManager {
 
   /**
    * Enqueues a new job into the database.
-   * Includes simple GitHub-style concurrency cancellation.
+   * Includes optional same-group concurrency cancellation.
    */
   async enqueue(
     workflowId: string,

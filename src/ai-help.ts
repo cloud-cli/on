@@ -25,7 +25,7 @@ export function buildAiHelpMessages(
     {
       role: "system",
       content:
-        "You are an expert assistant helping diagnose an On CI workflow runner failure. Explain the likely root cause using only the supplied workflow and logs. Suggest concrete, safe next steps. Never invent hidden values or secrets.",
+        "You are an expert assistant helping diagnose an automation workflow run failure. Explain the likely root cause using only the supplied workflow and logs. Suggest concrete, safe next steps. Never invent hidden values or secrets.",
     },
     {
       role: "user",

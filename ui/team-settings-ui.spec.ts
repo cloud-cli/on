@@ -14,8 +14,9 @@ describe("team settings UI", () => {
     expect(html).toContain("Invite by OIDC subject");
     expect(html).toContain('aria-label="OIDC subject"');
     expect(html).toContain("member.kind === 'agent' ? 'Agent' : 'Person'");
-    expect(html).toContain("Create webhook");
-    expect(html).toContain("Webhook URL slug.");
+    expect(html).toContain("YAML Connectors");
+    expect(html).toContain("Create connector");
+    expect(html).toContain('aria-label="Workspace connectors"');
     expect(html).toContain('for="member of members"');
     expect(html).toContain('class-hidden="!isAdmin"');
     expect(html).toContain('script setup src="/assets/team-settings-ui.mjs"');
@@ -29,7 +30,7 @@ describe("team settings UI", () => {
       html.match(/rounded-md border border-app-border bg-white px-2\.5 py-1\.5 text-xs font-medium/g),
     ).toHaveLength(6);
     expect(html).toContain('href="#team-members"');
-    expect(html).toContain('href="#team-webhooks"');
+    expect(html).toContain('href="#team-connectors"');
     expect(html).toContain('href="#team-runners"');
     expect(html).toContain('href="#workspace-permissions"');
     expect(html).toContain('href="#workspace-secrets"');
@@ -37,14 +38,15 @@ describe("team settings UI", () => {
     expect(html).toContain('<h2 id="workspace-secrets-title" class="text-lg font-semibold">Task Runner Secrets</h2>');
     expect(html).toContain("bg-app-warning/10");
     expect(html).toContain("text-app-warning");
-    expect(html).not.toContain('value="github"');
     expect(html).toContain('on-change="setFileMode($event)"');
-    expect(html).toContain('on-input="setWebhookProvider($event)"');
-    expect(setup).toContain("webhookProvider.value = event.target.value");
-    expect(setup).toContain("const provider = webhookProvider.value.trim()");
-    expect(setup).toContain("JSON.stringify({ provider })");
-    expect(setup).toContain("/^[a-z0-9-]+$/.test(provider)");
-    expect(html).not.toContain('on-input="webhookProvider = $event.target.value"');
+    expect(html).toContain('on-input="setConnectorYaml($event)"');
+    expect(setup).toContain('workspaceUrl("/connectors")');
+    expect(setup).toContain('method: updating ? "PUT" : "POST"');
+    expect(setup).toContain('method: "DELETE"');
+    expect(setup).toContain("sourceYaml");
+    expect(setup).not.toContain("signingSecret");
+    expect(setup).not.toContain("webhookProvider");
+    expect(html).not.toContain("signing secret");
     expect(html).not.toContain("fileMode = $event.target.checked");
     expect(setup).toContain("const setFileMode = (event) =>");
     expect(setup).toContain("fileMode.value = event.target.checked");
@@ -59,7 +61,7 @@ describe("team settings UI", () => {
     const members = html.indexOf('id="team-members"');
     const invitationForm = html.indexOf('on-submit.prevent="createInvitation()"');
     const invitationSection = html.lastIndexOf('class="mt-6 border-t border-app-border pt-5"', invitationForm);
-    const webhooks = html.indexOf('id="team-webhooks"');
+    const webhooks = html.indexOf('id="team-connectors"');
     const secrets = html.indexOf('id="workspace-secrets"');
     const tokens = html.indexOf('id="workspace-tokens"');
     const permissions = html.indexOf('id="workspace-permissions"');
@@ -74,17 +76,17 @@ describe("team settings UI", () => {
     expect(tokens).toBe(-1);
   });
 
-  it("puts webhooks in their own section after workspace members", () => {
+  it("puts connectors in their own section after workspace members", () => {
     const html = generateTeamSettingsHtml();
     const membersSection = html.indexOf('id="team-members"');
-    const webhooksSection = html.indexOf('id="team-webhooks"');
+    const webhooksSection = html.indexOf('id="team-connectors"');
     const runnersSection = html.indexOf('id="team-runners"');
 
     expect(membersSection).toBeGreaterThan(-1);
     expect(webhooksSection).toBeGreaterThan(membersSection);
     expect(runnersSection).toBeGreaterThan(webhooksSection);
-    expect(html.slice(membersSection, webhooksSection)).not.toContain("createWebhook()");
-    expect(html.slice(webhooksSection, runnersSection)).toContain("createWebhook()");
+    expect(html.slice(membersSection, webhooksSection)).not.toContain("saveConnector()");
+    expect(html.slice(webhooksSection, runnersSection)).toContain("saveConnector()");
   });
 
   it("loads and mutates only the team identified by the route", () => {
@@ -94,7 +96,7 @@ describe("team settings UI", () => {
     expect(setup).toContain('workspaceUrl("/invitations")');
     expect(setup).toContain("JSON.stringify({ subject })");
     expect(setup).toContain("createSubjectInvitation");
-    expect(setup).toContain('workspaceUrl("/webhooks")');
+    expect(setup).toContain('workspaceUrl("/connectors")');
     expect(setup).toContain('"X-Workspace-ID": teamId');
     expect(setup).toContain("You are not a member of this workspace.");
   });

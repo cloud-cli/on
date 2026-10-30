@@ -59,8 +59,8 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api/v1/workflows/{workflowId}"]).toHaveProperty("put");
     expect(spec.paths["/api/v1/workflows/{workflowId}"]).toHaveProperty("delete");
     expect(spec.paths["/api/v1/runs/{jobId}/artifacts/{path}"]).toHaveProperty("get");
-    expect(spec.paths["/api/v1/webhooks/{provider}"]).toHaveProperty("post");
-    expect(spec.paths["/api/v1/webhooks/team/{webhookToken}/{provider}"]).toHaveProperty("post");
+    expect(spec.paths["/webhooks/connectors/{token}"]).toHaveProperty("post");
+    expect(spec.paths["/api/v1/workspaces/{workspaceId}/connectors"].post).toBeDefined();
     expect(spec.paths["/api/v1/teams"].get.security).toEqual([{ oidcSessionCookie: [] }, { oidcAdminBearer: [] }]);
     expect(spec.paths["/api/v1/teams/{teamId}/invitations"]).toHaveProperty("post");
     expect(
@@ -70,19 +70,22 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api/v1/teams/{teamId}/members/{subject}"]).toHaveProperty("delete");
     expect(spec.paths["/api/v1/teams/{teamId}/members/{subject}"]).toHaveProperty("put");
     expect(spec.paths["/api/v1/workspaces/{workspaceId}/members/{subject}"]).toHaveProperty("put");
-    expect(spec.paths["/api/v1/workspaces/{workspaceId}/webhooks"].post).toBeDefined();
-    expect(spec.paths["/api/v1/workspaces/{workspaceId}/webhooks"].post.security).toContainEqual({
+    expect(spec.paths["/api/v1/workspaces/{workspaceId}/connectors"].post).toBeDefined();
+    expect(spec.paths["/api/v1/workspaces/{workspaceId}/connectors"].post.security).toContainEqual({
       oidcAdminBearer: [],
     });
-    expect(spec.paths["/api/v1/workspaces/{workspaceId}/webhooks/{webhookId}"].delete).toBeDefined();
-    expect(spec.paths["/api/v1/webhooks/workspace/{token}"]).toHaveProperty("post");
+    expect(spec.paths["/api/v1/workspaces/{workspaceId}/connectors/{connectorId}"].delete).toBeDefined();
     expect(spec.paths["/api/v1/recipes/validate"]).toHaveProperty("post");
     expect(spec.paths["/api/v1/recipes"]).not.toHaveProperty("delete");
     expect(spec.paths["/api/v1/recipes/{namespace}/{slug}/versions/{version}"]).not.toHaveProperty("delete");
   });
 
   it("documents only canonical application API routes and runner rename", () => {
-    expect(Object.keys(spec.paths).every((path) => path === "/api/v1" || path.startsWith("/api/v1/"))).toBe(true);
+    expect(
+      Object.keys(spec.paths).every(
+        (path) => path === "/api/v1" || path.startsWith("/api/v1/") || path === "/webhooks/connectors/{token}",
+      ),
+    ).toBe(true);
     expect(Object.keys(spec.paths).some((path) => /system-users|api-keys|workspace.+\/tokens/.test(path))).toBe(false);
     expect(spec.paths["/api/v1/auth/session"].get.security).toEqual([
       { oidcSessionCookie: [] },

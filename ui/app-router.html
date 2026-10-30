@@ -68,9 +68,6 @@
           <template if="onboardingError"
             ><p class="text-sm text-rose-700" role="alert">{{ onboardingError }}</p></template
           >
-          <template if="createdWebhookPath">
-            <p class="break-all rounded-lg bg-app-hover p-3">Webhook endpoint: {{ createdWebhookPath }}</p>
-          </template>
           <template if="!onboardingError"
             ><button
               class="rounded-lg bg-app-primary px-4 py-2 font-semibold text-white"

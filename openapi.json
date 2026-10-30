@@ -3,7 +3,7 @@
   "info": {
     "title": "On Workflow Runner API",
     "version": "1.0.0",
-    "description": "Control-plane, job, workflow, webhook, event, secret, artifact, and notification APIs. All application APIs are under /api/v1; /api is a compatibility alias. The OpenAPI document at /api/v1 is public. OIDC browser flows are handled separately. Active OIDC access tokens with the exact `admin` scope have platform-wide administrator authority on authenticated management APIs."
+    "description": "Control-plane, job, workflow, connector, event, secret, artifact, and notification APIs. All application APIs are under /api/v1; /api is a compatibility alias. The OpenAPI document at /api/v1 is public. OIDC browser flows are handled separately. Active OIDC access tokens with the exact `admin` scope have platform-wide administrator authority on authenticated management APIs."
   },
   "servers": [
     {
@@ -36,9 +36,6 @@
     },
     {
       "name": "events"
-    },
-    {
-      "name": "webhooks"
     },
     {
       "name": "notifications"
@@ -2065,18 +2062,34 @@
         "tags": ["events"],
         "summary": "Inspect a durable event fanout outcome",
         "description": "Returns matched, repeat, or unmatched fanout status within the authenticated workspace. Event payload data is not returned.",
-        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "eventId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
-          "200": { "description": "Durable workspace-scoped fanout result" },
-          "404": { "description": "Outcome not found in workspace" }
+          "200": {
+            "description": "Durable workspace-scoped fanout result"
+          },
+          "404": {
+            "description": "Outcome not found in workspace"
+          }
         }
       }
     },
@@ -2085,13 +2098,25 @@
         "tags": ["events"],
         "summary": "Inspect normalized event fanout and delivery outcomes",
         "description": "Requires webhooks.view. Returns workspace-scoped delivery outcome statuses without event payloads or delivery error details. `repeatSemantics` identifies an idempotent repeated fanout; unmatched means no subscription matched, distinct from filtered delivery.",
-        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "eventId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2103,7 +2128,9 @@
                   "type": "object",
                   "required": ["eventId", "fanout", "repeatSemantics", "deliveries"],
                   "properties": {
-                    "eventId": { "type": "string" },
+                    "eventId": {
+                      "type": "string"
+                    },
                     "fanout": {
                       "type": "string",
                       "nullable": true,
@@ -2132,8 +2159,12 @@
               }
             }
           },
-          "403": { "description": "Missing webhooks.view capability" },
-          "404": { "description": "Outcome not found in workspace" }
+          "403": {
+            "description": "Missing webhooks.view capability"
+          },
+          "404": {
+            "description": "Outcome not found in workspace"
+          }
         }
       }
     },
@@ -2142,20 +2173,41 @@
         "tags": ["workflows"],
         "summary": "Inspect a workflow invocation and its execution variants",
         "description": "Requires runs.view. Returns a distinct invocation ID and its addressed request-event ID, per-variant admission lifecycle and accepted/rejected decision, and run IDs without exposing captured request inputs. The invocation view reads current run status from the canonical run-detail API and refreshes it on workspace job-change notifications and stream reconnects.",
-        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "invocationId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "minLength": 1 }
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           },
-          { "$ref": "#/components/parameters/WorkspaceId" }
+          {
+            "$ref": "#/components/parameters/WorkspaceId"
+          }
         ],
         "responses": {
-          "200": { "description": "Invocation revision, variant admission states, and related run IDs" },
-          "403": { "description": "Missing runs.view capability" },
-          "404": { "description": "Invocation not found in workspace" }
+          "200": {
+            "description": "Invocation revision, variant admission states, and related run IDs"
+          },
+          "403": {
+            "description": "Missing runs.view capability"
+          },
+          "404": {
+            "description": "Invocation not found in workspace"
+          }
         }
       }
     },
@@ -2371,26 +2423,77 @@
       "get": {
         "tags": ["workspaces"],
         "summary": "Get the workspace logo",
-        "security": [{ "oidcSessionCookie": [] }, { "oidcAdminBearer": [] }],
-        "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Validated PNG, JPEG, or WebP image",
             "content": {
-              "image/png": { "schema": { "type": "string", "format": "binary" } },
-              "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
-              "image/webp": { "schema": { "type": "string", "format": "binary" } }
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
             }
           },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       },
       "put": {
         "tags": ["workspaces"],
         "summary": "Set or replace the workspace logo",
-        "security": [{ "oidcSessionCookie": [] }, { "oidcAdminBearer": [] }],
-        "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2399,17 +2502,29 @@
                 "type": "object",
                 "required": ["mimeType", "data"],
                 "properties": {
-                  "mimeType": { "type": "string", "enum": ["image/png", "image/jpeg", "image/webp"] },
-                  "data": { "type": "string", "description": "Base64 encoded image, at most 256 KiB decoded" }
+                  "mimeType": {
+                    "type": "string",
+                    "enum": ["image/png", "image/jpeg", "image/webp"]
+                  },
+                  "data": {
+                    "type": "string",
+                    "description": "Base64 encoded image, at most 256 KiB decoded"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "204": { "description": "Logo stored" },
-          "400": { "description": "Invalid image type, signature, encoding, or size" },
-          "403": { "$ref": "#/components/responses/Forbidden" }
+          "204": {
+            "description": "Logo stored"
+          },
+          "400": {
+            "description": "Invalid image type, signature, encoding, or size"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
         }
       }
     },
@@ -2617,119 +2732,6 @@
         }
       }
     },
-    "/api/v1/workspaces/{workspaceId}/webhook-token": {
-      "post": {
-        "tags": ["workspaces"],
-        "summary": "Rotate and reveal a team's webhook path (team admin only)",
-        "security": [
-          {
-            "oidcSessionCookie": []
-          },
-          {
-            "oidcAdminBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "teamId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "One-time webhook path"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          }
-        }
-      }
-    },
-    "/api/v1/workspaces/{workspaceId}/webhooks": {
-      "get": {
-        "tags": ["workspaces"],
-        "summary": "List webhook registrations for a workspace",
-        "security": [
-          {
-            "oidcSessionCookie": []
-          },
-          {
-            "oidcAdminBearer": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Webhook metadata; signing secrets are never returned"
-          }
-        }
-      },
-      "post": {
-        "tags": ["workspaces"],
-        "summary": "Create a workspace webhook and return its URL and signing secret once",
-        "security": [
-          {
-            "oidcSessionCookie": []
-          },
-          {
-            "oidcAdminBearer": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["provider"],
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "pattern": "^[a-z0-9-]+$"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Webhook URL and signing secret; save both immediately"
-          },
-          "400": {
-            "description": "Invalid provider"
-          },
-          "404": {
-            "description": "Workspace not found"
-          }
-        }
-      }
-    },
-    "/api/v1/workspaces/{workspaceId}/webhooks/{webhookId}": {
-      "delete": {
-        "tags": ["workspaces"],
-        "summary": "Revoke one workspace webhook registration",
-        "security": [
-          {
-            "oidcSessionCookie": []
-          },
-          {
-            "oidcAdminBearer": []
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Revoked"
-          },
-          "404": {
-            "description": "Workspace or webhook not found"
-          }
-        }
-      }
-    },
     "/api/v1": {
       "get": {
         "tags": ["discovery"],
@@ -2786,45 +2788,6 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
-          }
-        }
-      }
-    },
-    "/api/v1/webhooks/{provider}": {
-      "post": {
-        "tags": ["webhooks"],
-        "summary": "Receive a provider webhook",
-        "description": "GitHub and Gitea push providers verify provider-specific HMAC signatures and publish the same normalized git.push event contract; provider provenance and delivery idempotency remain distinct.",
-        "security": [],
-        "parameters": [
-          {
-            "name": "provider",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Webhook accepted"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "413": {
-            "$ref": "#/components/responses/PayloadTooLarge"
           }
         }
       }
@@ -3191,103 +3154,6 @@
         }
       }
     },
-    "/api/v1/teams/{teamId}/webhook-token": {
-      "get": {
-        "tags": ["teams"],
-        "summary": "Get team webhook token",
-        "security": [
-          {
-            "oidcSessionCookie": []
-          },
-          {
-            "oidcAdminBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "teamId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Webhook token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "webhookToken": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/webhooks/team/{webhookToken}/{provider}": {
-      "post": {
-        "tags": ["webhooks"],
-        "summary": "Configure webhook for a team",
-        "security": [
-          {
-            "oidcSessionCookie": []
-          },
-          {
-            "oidcAdminBearer": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "url": {
-                    "type": "string"
-                  },
-                  "secret": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Webhook configured"
-          }
-        }
-      }
-    },
-    "/api/v1/webhooks/workspace/{token}": {
-      "post": {
-        "tags": ["webhooks"],
-        "summary": "Receive a registered workspace webhook",
-        "description": "The provider and independent signing secret are resolved from the opaque registration token.",
-        "security": [],
-        "responses": {
-          "202": {
-            "description": "Webhook accepted"
-          },
-          "401": {
-            "description": "Invalid provider signature"
-          },
-          "404": {
-            "description": "Unknown registration"
-          }
-        }
-      }
-    },
     "/api/v1/auth/session": {
       "get": {
         "tags": ["discovery"],
@@ -3627,22 +3493,55 @@
     },
     "/api/v1/channels/{channelId}/threads": {
       "parameters": [
-        { "name": "channelId", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "$ref": "#/components/parameters/WorkspaceId" }
+        {
+          "name": "channelId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "$ref": "#/components/parameters/WorkspaceId"
+        }
       ],
       "get": {
         "tags": ["events"],
         "summary": "List Threads in a workspace Stream",
-        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
         "responses": {
-          "200": { "description": "Threads scoped to the authenticated workspace and Stream" },
-          "404": { "description": "Stream not found in workspace" }
+          "200": {
+            "description": "Threads scoped to the authenticated workspace and Stream"
+          },
+          "404": {
+            "description": "Stream not found in workspace"
+          }
         }
       },
       "post": {
         "tags": ["events"],
         "summary": "Create a Thread in a workspace Stream",
-        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3651,51 +3550,111 @@
                 "type": "object",
                 "required": ["title"],
                 "additionalProperties": false,
-                "properties": { "title": { "type": "string", "minLength": 1, "maxLength": 160 } }
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  }
+                }
               }
             }
           }
         },
         "responses": {
-          "201": { "description": "Created Thread with server-derived author" },
-          "400": { "description": "Invalid Thread title or untrusted properties" },
-          "404": { "description": "Stream not found in workspace" }
+          "201": {
+            "description": "Created Thread with server-derived author"
+          },
+          "400": {
+            "description": "Invalid Thread title or untrusted properties"
+          },
+          "404": {
+            "description": "Stream not found in workspace"
+          }
         }
       }
     },
     "/api/v1/channels/{channelId}/threads/{threadId}/messages": {
       "parameters": [
-        { "name": "channelId", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "name": "threadId", "in": "path", "required": true, "schema": { "type": "string" } },
-        { "$ref": "#/components/parameters/WorkspaceId" }
+        {
+          "name": "channelId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "threadId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "$ref": "#/components/parameters/WorkspaceId"
+        }
       ],
       "get": {
         "tags": ["events"],
         "summary": "List messages in a Thread",
-        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "limit",
             "in": "query",
-            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
           },
           {
             "name": "after",
             "in": "query",
             "description": "Opaque Thread-message cursor",
-            "schema": { "type": "string", "maxLength": 256 }
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            }
           }
         ],
         "responses": {
-          "200": { "description": "Ascending Thread message page with next cursor" },
-          "404": { "description": "Thread not found in workspace Stream" }
+          "200": {
+            "description": "Ascending Thread message page with next cursor"
+          },
+          "404": {
+            "description": "Thread not found in workspace Stream"
+          }
         }
       },
       "post": {
         "tags": ["events"],
         "summary": "Append a message to a Thread",
         "description": "Body is limited to 256 KiB and depth 32. Secret-like property names are rejected. Author and workspace are derived from authentication.",
-        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3704,15 +3663,25 @@
                 "type": "object",
                 "required": ["body"],
                 "additionalProperties": false,
-                "properties": { "body": { "description": "Safe JSON message value" } }
+                "properties": {
+                  "body": {
+                    "description": "Safe JSON message value"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
-          "201": { "description": "Appended Thread message with server-derived author metadata" },
-          "400": { "description": "Invalid or unsafe body" },
-          "404": { "description": "Thread not found in workspace Stream" }
+          "201": {
+            "description": "Appended Thread message with server-derived author metadata"
+          },
+          "400": {
+            "description": "Invalid or unsafe body"
+          },
+          "404": {
+            "description": "Thread not found in workspace Stream"
+          }
         }
       }
     },
@@ -3825,35 +3794,67 @@
           "name": "channelId",
           "in": "path",
           "required": true,
-          "schema": { "type": "string" }
+          "schema": {
+            "type": "string"
+          }
         },
-        { "$ref": "#/components/parameters/WorkspaceId" }
+        {
+          "$ref": "#/components/parameters/WorkspaceId"
+        }
       ],
       "get": {
         "tags": ["events"],
         "summary": "List workspace events for a channel",
         "description": "Returns events in stable ascending storage-sequence order using explicit workspace-scoped Stream bindings. Legacy channelId event references are backfilled during migration. The opaque cursor is scoped to the authenticated workspace and channel.",
-        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "limit",
             "in": "query",
-            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
           },
           {
             "name": "cursor",
             "in": "query",
             "description": "Opaque continuation cursor scoped to this authenticated workspace and channel",
-            "schema": { "type": "string", "maxLength": 512 }
+            "schema": {
+              "type": "string",
+              "maxLength": 512
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "Ascending persisted event page. resumeCursor identifies the last event included and is suitable for reconnect reconciliation; nextCursor is present only when older history remains.",
-            "content": { "application/json": { "schema": { "type": "object" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           },
-          "400": { "description": "Invalid limit or cursor" },
-          "404": { "description": "Channel not found in workspace" }
+          "400": {
+            "description": "Invalid limit or cursor"
+          },
+          "404": {
+            "description": "Channel not found in workspace"
+          }
         }
       }
     },
@@ -3862,13 +3863,25 @@
         "tags": ["events"],
         "summary": "Bind a workspace event to a Stream",
         "description": "Requires workflows.edit. Adds a visibility-only binding; it does not duplicate the event or cause workflow execution. Event and Stream are resolved within the authenticated workspace.",
-        "security": [{ "oidcSessionCookie": [] }, { "bearerAuth": [] }, { "oidcAdminBearer": [] }],
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "channelId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -3879,15 +3892,26 @@
                 "type": "object",
                 "additionalProperties": false,
                 "required": ["eventId"],
-                "properties": { "eventId": { "type": "string", "minLength": 1 } }
+                "properties": {
+                  "eventId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Event is bound to the Stream" },
-          "400": { "description": "Invalid binding request" },
-          "404": { "description": "Stream or workspace event not found" }
+          "200": {
+            "description": "Event is bound to the Stream"
+          },
+          "400": {
+            "description": "Invalid binding request"
+          },
+          "404": {
+            "description": "Stream or workspace event not found"
+          }
         }
       }
     },
@@ -3936,7 +3960,9 @@
                                 "type": "string",
                                 "enum": ["available", "omitted", "invalid", "missing", "interrupted"]
                               },
-                              "available": { "type": "boolean" }
+                              "available": {
+                                "type": "boolean"
+                              }
                             }
                           }
                         }
@@ -4060,11 +4086,21 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "teamId": { "type": "string" },
-                          "agentPrincipalId": { "type": "string" },
-                          "workflowId": { "type": "string" },
-                          "grantedBy": { "type": "string" },
-                          "createdAt": { "type": "string" }
+                          "teamId": {
+                            "type": "string"
+                          },
+                          "agentPrincipalId": {
+                            "type": "string"
+                          },
+                          "workflowId": {
+                            "type": "string"
+                          },
+                          "grantedBy": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
                         }
                       }
                     }
@@ -4390,6 +4426,237 @@
           },
           "404": {
             "description": "Thread not found in workspace Stream"
+          }
+        }
+      }
+    },
+    "/webhooks/connectors/{token}": {
+      "post": {
+        "tags": ["events"],
+        "summary": "Receive an HTTP request through a connector",
+        "description": "Public tokenized ingress evaluates the connector YAML and publishes the normalized typed domain event for asynchronous fanout. Keep the URL private.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            },
+            "text/plain": {
+              "schema": {
+                "type": "string"
+              }
+            },
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Request accepted for asynchronous event fanout"
+          },
+          "404": {
+            "description": "Unknown connector token"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "422": {
+            "description": "Connector evaluation or event validation failed"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/connectors": {
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": ["workspaces"],
+        "summary": "List workspace connectors",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector metadata; ingress tokens are not returned"
+          }
+        }
+      },
+      "post": {
+        "tags": ["workspaces"],
+        "summary": "Create a workspace connector",
+        "description": "Requires webhooks.manage. Submitted YAML id and name must match request values. Response includes a private ingress URL.",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["id", "name", "sourceYaml"],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "sourceYaml": {
+                    "type": "string",
+                    "description": "Connector definition YAML."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Connector metadata and tokenized ingress URL"
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "422": {
+            "description": "Invalid connector YAML"
+          }
+        }
+      }
+    },
+    "/api/v1/workspaces/{workspaceId}/connectors/{connectorId}": {
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "connectorId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": ["workspaces"],
+        "summary": "Get connector and YAML source",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector definition"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": ["workspaces"],
+        "summary": "Update connector",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "sourceYaml"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "sourceYaml": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Connector updated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "description": "Invalid YAML"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["workspaces"],
+        "summary": "Revoke connector",
+        "security": [
+          {
+            "oidcSessionCookie": []
+          },
+          {
+            "oidcAdminBearer": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }

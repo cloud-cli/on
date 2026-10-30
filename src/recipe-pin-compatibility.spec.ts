@@ -45,7 +45,7 @@ describe("queued recipe pin compatibility", () => {
       workflow: {
         id: "legacy-recipe",
         name: "Legacy recipe",
-        on: { provider: "generic" },
+        on: {},
         steps: [{ id: "invoke", call: "other/legacy@7#main", with: {} }],
         _pinnedReferences: [{ namespace: "other", slug: "legacy", version: 7, function: "main" }],
         _pinnedRecipeFunctions: { "other/legacy@7#main": pinnedFunction },
@@ -109,7 +109,7 @@ describe("queued recipe pin compatibility", () => {
       workflow: {
         id: "pinned-recipe",
         name: "Pinned recipe",
-        on: { provider: "generic" },
+        on: {},
         steps: [{ id: "invoke", call: "team/release@1#publish", with: {} }],
         _pinnedReferences: [{ namespace: "team", slug: "release", version: 1, function: "publish" }],
         _pinnedRecipeFunctions: { "team/release@1#publish": capturedFunction },

@@ -4,7 +4,7 @@ This tutorial sets up a small self-hosted deployment with an HTTPS ingress/contr
 workspace-scoped Linux runner. It assumes you have a Linux systemd host for the control plane, a separate or
 co-located runner host, a public HTTPS hostname, an OIDC provider, and a compatible database module.
 
-The HTTP server is both the webhook ingress and the web/API endpoint; it is not a separate ingress product. The
+The HTTP server is both connector ingress and the web/API endpoint; it is not a separate ingress product. The
 scheduler is a separate process. API-only runners connect to the server over HTTPS and do not receive the database
 URL.
 
@@ -15,7 +15,7 @@ database methods `get`, `run`, `all`, and `exec`; the server also relies on data
 Use a database service/module compatible with this interface, and take a backup before upgrading an existing
 database. The control plane applies pending schema migrations when it starts.
 
-Point a public hostname such as `ci.example.net` at a reverse proxy that forwards requests to the control-plane
+Point a public hostname such as `on.example.net` at a reverse proxy that forwards requests to the control-plane
 host on port `11235` (the default). Terminate TLS at the proxy and configure it to overwrite and forward the
 original `Host` and `X-Forwarded-Proto: https` headers. Do not expose the service directly to the public internet
 without HTTPS.
@@ -23,7 +23,7 @@ without HTTPS.
 Register an OIDC client with this redirect URI:
 
 ```text
-https://ci.example.net/auth/callback
+https://on.example.net/auth/callback
 ```
 
 See [Configure OIDC sign-in](../how-to/configure-oidc.md) for provider and proxy details.
@@ -48,7 +48,7 @@ Create `/etc/on/server.env` with owner-only permissions. Use your database modul
 ```ini
 DATABASE_URL=https://db.example.net/db~<database-id>/index.mjs
 PORT=11235
-RUNNER_SERVER_URL=https://ci.example.net
+RUNNER_SERVER_URL=https://on.example.net
 OIDC_ISSUER=https://auth.example.net
 OIDC_CLIENT_ID=<client-id>
 OIDC_CLIENT_SECRET=<client-secret>
@@ -76,10 +76,10 @@ Check the services and public API:
 
 ```sh
 sudo systemctl status runner-server.service runner-scheduler.service
-curl -fsS https://ci.example.net/api/v1 > /dev/null
+curl -fsS https://on.example.net/api/v1 > /dev/null
 ```
 
-Sign in at `https://ci.example.net/ui/runs`. On first sign-in, create a workspace when prompted. The account that
+Sign in at `https://on.example.net/ui/runs`. On first sign-in, create a workspace when prompted. The account that
 creates it becomes that workspace's administrator.
 
 ## 3. Enroll a workspace runner
@@ -98,7 +98,7 @@ sudo install -d -m 0750 /var/lib/on/workspaces
 Create `/etc/on/worker.env` as a root-owned mode-`0600` file:
 
 ```ini
-RUNNER_SERVER_URL=https://ci.example.net
+RUNNER_SERVER_URL=https://on.example.net
 RUNNER_NAME=linux-builder-01
 RUNNER_TAGS=linux,docker
 RUNNER_WORKERS=2
@@ -131,10 +131,10 @@ copy those values to runner hosts.
 ## 4. Create and run a workflow
 
 Follow [Create and test a workflow](create-workflow.md). Use a `tags` list that matches the runner, save a draft,
-and use **Run now** to test it. Publishing and enabling the workflow is required before webhook or schedule
+and use **Run now** to test it. Publishing and enabling the workflow is required before connector or schedule
 triggers can start new runs.
 
-For source-control events, configure a workspace webhook by following [Connect a GitHub or Gitea webhook](../how-to/connect-git-webhooks.md).
+For external events, configure a workspace connector using the [connectors guide](../how-to/connectors.md).
 
 ## 5. Choose the right execution environment
 

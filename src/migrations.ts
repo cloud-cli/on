@@ -103,7 +103,7 @@ const migrations: Migration[] = [
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS teams (
-          id TEXT PRIMARY KEY, name TEXT NOT NULL, webhook_token TEXT NOT NULL UNIQUE,
+          id TEXT PRIMARY KEY, name TEXT NOT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS team_members (
@@ -1012,6 +1012,69 @@ const migrations: Migration[] = [
         data TEXT NOT NULL CHECK (length(data) BETWEEN 4 AND 349528),
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )`);
+    },
+  },
+  {
+    version: "038_yaml_connectors",
+    async apply() {
+      const incomingColumns = await db.all("PRAGMA table_info(incoming_events)");
+      if (incomingColumns.length) {
+        if (!incomingColumns.some((column: any) => column.name === "connector_id")) {
+          await db.exec("ALTER TABLE incoming_events ADD COLUMN connector_id TEXT");
+        }
+        if (!incomingColumns.some((column: any) => column.name === "connector_revision")) {
+          await db.exec("ALTER TABLE incoming_events ADD COLUMN connector_revision INTEGER");
+        }
+        if (!incomingColumns.some((column: any) => column.name === "headers_ciphertext")) {
+          await db.exec("ALTER TABLE incoming_events ADD COLUMN headers_ciphertext TEXT");
+        }
+      }
+      const replayColumns = await db.all("PRAGMA table_info(incoming_event_replays)");
+      if (replayColumns.length) {
+        if (!replayColumns.some((column: any) => column.name === "connector_revision")) {
+          await db.exec("ALTER TABLE incoming_event_replays ADD COLUMN connector_revision INTEGER");
+        }
+        if (!replayColumns.some((column: any) => column.name === "normalized_event_id")) {
+          await db.exec("ALTER TABLE incoming_event_replays ADD COLUMN normalized_event_id TEXT");
+        }
+      }
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS connectors (
+          team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+          connector_id TEXT NOT NULL CHECK (connector_id GLOB '[a-z0-9]*' AND connector_id NOT GLOB '*[^a-z0-9-]*'),
+          name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 200),
+          source_yaml TEXT NOT NULL CHECK (length(source_yaml) BETWEEN 1 AND 256000),
+          revision INTEGER NOT NULL CHECK (revision > 0),
+          webhook_token_hash TEXT UNIQUE,
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (team_id, connector_id)
+        );
+        CREATE TABLE IF NOT EXISTS connector_revisions (
+          team_id TEXT NOT NULL,
+          connector_id TEXT NOT NULL,
+          revision INTEGER NOT NULL CHECK (revision > 0),
+          source_yaml TEXT NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (team_id, connector_id, revision),
+          FOREIGN KEY (team_id, connector_id) REFERENCES connectors(team_id, connector_id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS connectors_webhook_token ON connectors(webhook_token_hash) WHERE webhook_token_hash IS NOT NULL;
+        CREATE TRIGGER IF NOT EXISTS connectors_revision_after_insert
+          AFTER INSERT ON connectors
+          BEGIN
+            INSERT INTO connector_revisions (team_id, connector_id, revision, source_yaml)
+            VALUES (NEW.team_id, NEW.connector_id, NEW.revision, NEW.source_yaml);
+          END;
+        CREATE TRIGGER IF NOT EXISTS connectors_revision_after_update
+          AFTER UPDATE OF source_yaml, revision ON connectors
+          WHEN NEW.revision <> OLD.revision OR NEW.source_yaml <> OLD.source_yaml
+          BEGIN
+            INSERT INTO connector_revisions (team_id, connector_id, revision, source_yaml)
+            VALUES (NEW.team_id, NEW.connector_id, NEW.revision, NEW.source_yaml);
+          END;
+      `);
     },
   },
 ];

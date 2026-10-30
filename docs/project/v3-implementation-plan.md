@@ -71,11 +71,11 @@ For each milestone, award its weight only after all acceptance criteria are impl
 
 ### 6. Connectors, agents, integrations, and end-to-end acceptance — 20%
 
-**Scope:** Implement normalized provider connectors (begin with one end-to-end source), agent subscriptions and explicitly authorized workflow tools, durable correlated results, and remaining integration breadth. Validate the Stream-first workspace journeys and the v3 acceptance criteria in §14.
+**Scope:** Implement workspace-owned YAML Connectors with restricted ingress evaluation and event normalization, agent subscriptions and explicitly authorized workflow tools, durable correlated results, and remaining integration breadth. Validate the Stream-first workspace journeys and the v3 acceptance criteria in §14.
 
 **Likely code areas:** `src/server.ts`, `src/preprocessors/`, `src/ai-help.ts`, connector/event APIs, and Stream/Thread UI paths.
 
-**Acceptance:** Provider-specific verification/normalization stays in connectors; a workflow can consume equivalent normalized events across sources; immutable commit/mirror selection is verified; agent requests are scoped, auditable, resumable, and correlated with outcomes; authorization, duplicate/replay, failure, and recovery paths have tests. Browser E2E exercises implemented user journeys, checks console/network errors, and saves reviewed screenshots at relevant viewport sizes.
+**Acceptance:** Configurable connectors safely normalize arbitrary input without runner execution capabilities; workflows consume normalized typed events; agent requests are scoped, auditable, resumable, and correlated with outcomes; authorization, duplicate/replay, failure, and recovery paths have tests. Browser E2E exercises implemented user journeys, checks console/network errors, and saves reviewed screenshots at relevant viewport sizes.
 
 **Dependencies:** Durable events/admission, workflow contracts, Stream/Thread history, and reliable execution primitives.
 

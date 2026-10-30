@@ -42,8 +42,8 @@ Reviewed all tracked `.ts` files in `src/`, its subdirectories, `ui/`, and the t
 
 - `src/server.ts`, `src/queue.ts`, `src/runner-registry.ts`, and `src/events.ts` define the real lease protocol. They are the integration targets, not code to link into the worker.
 - `src/workflows.ts`, `src/migrations.ts`, `src/team-data-schema.ts`, and `src/db-client.ts` own normalized revisions and database access. `DATABASE_URL` currently identifies an imported JS database module; it is not a portable SQL DSN to carry into Go.
-- `src/scheduler.ts` and `src/preprocessors/github.ts` remain coordinator-side. They also use expression evaluation, directly or via matrix tags, so a language migration reaches beyond the worker.
-- Secret/API-key/workspace-webhook repositories, teams, OIDC, user preferences, push, AI help, and safe-return-URL handling remain coordinator responsibilities.
+- `src/scheduler.ts` remains coordinator-side and also uses expression evaluation, directly or via matrix tags, so a language migration reaches beyond the worker.
+- Secret/API-key/connector repositories, teams, OIDC, user preferences, notifications, AI help, and safe-return-URL handling remain coordinator responsibilities.
 - `ui/run-view.ts` consumes reports, outputs, timestamps, parent IDs, and artifact paths. Dashboard and runner-management pages consume status, runtime, capabilities, and versions. Preserve these contracts rather than rewriting the UI.
 - UI templates and authoring help need runtime-aware examples/diagnostics when a new expression profile is introduced. The AI authoring prompt includes the [workflow syntax reference](../reference/workflow-syntax.md), so stale syntax documentation also generates incorrect workflows.
 - Existing tests cover useful examples, transport boundaries, and authorization, but many are SQL/source-string assertions. They are not a complete behavioral specification for a new runner.
@@ -88,7 +88,7 @@ Preserve or explicitly version these details:
 - Dispatch takes precedence over `eval`, which takes precedence over `run`. The YAML parser does not actually enforce exactly one execution kind. New revisions should reject ambiguity; inventory existing revisions first.
 - Matrix values become `MATRIX_*` environment entries and affect the workflow name. Worker context does not expose `matrix` directly. Matching currently relies on JSON serialization order; Go must compare the assigned dimensions structurally.
 - Retry logs append locally and upload a replacement snapshot. The final step report contains the last attempt's result; it is not a complete attempt history.
-- Plugin initialization/hook failures are logged without failing the job. The built-in integration sends GitHub commit statuses.
+- Plugin initialization/hook failures are logged without failing the job.
 
 ### 3.3 Important wire details
 
@@ -211,7 +211,7 @@ Keep existing worker environment names where meaningful. Add declarative JSON or
 
 For v1 compatibility, use an ordered decoder for environment JSON objects, matching JS property enumeration (integer-like keys first, then insertion order), or have the coordinator emit an ordered-entry extension. A plain `map[string]string` port will break valid configurations.
 
-Port `github-status` as a built-in Go integration with explicit credential mapping and HTTP deadlines. Inventory user-supplied JS plugin factories and direct `config.plugins` objects; arbitrary JS callbacks cannot run inside a no-Node Go runner automatically. Offer compiled-in integrations or coordinator-owned webhooks, and fail unsupported plugin configuration clearly. Do not turn the expression runtime into a hidden plugin/module loader.
+Inventory user-supplied JS plugin factories and direct `config.plugins` objects; arbitrary JS callbacks cannot run inside a no-Node Go runner automatically. Offer explicit integrations or coordinator-owned connectors, and fail unsupported plugin configuration clearly. Do not turn the expression runtime into a hidden plugin/module loader.
 
 ### 4.6 Binary releases and updates
 
@@ -233,7 +233,7 @@ Current coordinator update requests have no artifact digest or platform metadata
 
 Supported forms are literals, identifiers, member access, calls, selected arithmetic/comparison/logical/unary operators, template literals, arrays, object literals, optional-chain wrappers, and ternaries. Statements, declarations, arrow functions, assignment, loops, `new`, imports, and `await` are not supported by the walker.
 
-The four built-in names already match the requested list: `String`, `Number`, `Boolean`, and `JSON`. Job data and `files` are separately injected context names. GitHub trigger evaluation additionally injects `github.fileExists`, an asynchronous coordinator helper. There is no shipped general-purpose helper such as `slack_notify`; that appears only as an illustrative comment.
+The four built-in names already match the requested list: `String`, `Number`, `Boolean`, and `JSON`. Job data and `files` are separately injected context names. There is no shipped general-purpose helper such as `slack_notify`; that appears only as an illustrative comment.
 
 The exposed behavior is larger than those four names suggest: method calls resolve actual JavaScript methods from values, including inherited string/array/object methods. A small global dictionary is not the same as a small callable surface.
 
@@ -343,8 +343,8 @@ CEL and Expr's constrained core languages do not make arbitrary host callbacks s
 Proposed new fields, not supported by the current parser:
 
 ```yaml
-id: github-intake
-name: GitHub intake
+id: connector-intake
+name: Connector intake
 expressionRuntime: cel-v1
 executionSemantics: v2
 on:
@@ -356,7 +356,7 @@ steps:
     eval: |
       {
         "repository": inputs.body.repository.full_name,
-        "event": inputs.request.headers["x-github-event"]
+        "event": inputs.request.headers["x-event-type"]
       }
   - id: handoff
     dispatch: build-and-test
@@ -397,18 +397,18 @@ purity / external effects
 deadline, byte and call-count limits
 ```
 
-Initial helpers are conversions, JSON encode/decode, workspace exists/read/join, and the existing GitHub contents predicate in trigger context. Use context-specific capability sets: a trigger evaluator has no workspace; a worker should not receive the coordinator's GitHub token merely to evaluate expressions.
+Initial helpers are conversions, JSON encode/decode, and workspace exists/read/join. Use context-specific capability sets: a trigger evaluator has no workspace; a worker should not receive coordinator credentials merely to evaluate expressions.
 
 For CEL, prefer explicit namespaced custom functions such as `files.exists(path)` over exposing Go objects with methods. Bind them through a deliberately narrow adapter and verify the selected engine's function-overload conventions in the spike. Preserve synchronous expression results even if a Go helper performs cancellable I/O internally; there is no need for user-visible promises or `await`.
 
-Long term, move network checks into explicit acquisition/preprocessing steps and pass their results as data. This makes conditions predictable and allows pure evaluation to be cached. It is a workflow change, not a transparent replacement of `github.fileExists`.
+Move network checks into explicit acquisition steps and pass their results as data. This makes conditions predictable and allows pure evaluation to be cached.
 
 ### 6.6 The coordinator consistency problem
 
 Changing only the worker is insufficient. Expressions run in:
 
-- Webhook `on.if` and concurrency grouping in `src/server.ts`.
-- Matrix tags from webhook, manual run, dispatch and scheduler paths.
+- Connector `on.if` and concurrency grouping in `src/server.ts`.
+- Matrix tags from connector, manual run, dispatch and scheduler paths.
 - Workflow/step environments, cache keys, plugin credentials, step conditions, `eval:`, and dispatch `with` on the worker.
 
 For the legacy profile, keep the TS evaluator as an oracle until parity tests pass. For CEL or another new profile, make the Go implementation authoritative and invoke the same executable in a restricted coordinator-side evaluator mode. This can start as bounded one-shot IPC and become a supervised process pool if benchmarks justify it. The server remains Node; only expression evaluation is delegated.
@@ -445,7 +445,7 @@ Exit: bounded concurrent dummy leases, revoke/cancel/reconnect correctness, star
 
 ### Phase 3: execution parity, 3–4 engineer-weeks
 
-Implement process/systemd/Docker drivers, ordered environments, job and report state machines, retries, workspace/helpers, chosen evaluator, files and built-in GitHub status integration. Feed existing TS worker fixtures and new behavioral cases into both implementations.
+Implement process/systemd/Docker drivers, ordered environments, job and report state machines, retries, workspace/helpers, chosen evaluator, and files. Feed existing TS worker fixtures and new behavioral cases into both implementations.
 
 Exit: equivalent results for the agreed legacy corpus or approved CEL rewrites; no process/container left running after cancellation; correct final reports and uploads.
 
@@ -524,18 +524,18 @@ Recommended default: API-only Go runner, versioned runtime interface, compatibil
 
 Upstream documentation consulted during this design review; pin and revalidate exact versions during the spike:
 
-- [Goja](https://github.com/dop251/goja): pure Go, runtime concurrency constraints, host bindings, interrupt API, and documented Unicode/JSON caveats.
+- [Goja](https://pkg.go.dev/github.com/dop251/goja): pure Go, runtime concurrency constraints, host bindings, interrupt API, and documented Unicode/JSON caveats.
 - [QuickJS manual](https://bellard.org/quickjs/quickjs.html): runtime/context model, native integration, memory/stack limits and interrupts.
-- [CEL Go](https://github.com/cel-expr/cel-go), canonical import path `cel.dev/cel-go`: typed expression compilation, stateless evaluation and language semantics. The former `github.com/google/cel-go` repository now directs new integrations to the canonical path.
-- [Expr](https://github.com/expr-lang/expr): Go-oriented expression evaluation and compile-time checking.
-- [Starlark Go](https://github.com/google/starlark-go): expression/script embedding, cancellation/step budgets, and explicit warning that hard memory isolation requires operating-system support.
+- [CEL Go](https://pkg.go.dev/cel.dev/expr): typed expression compilation, stateless evaluation and language semantics.
+- [Expr](https://pkg.go.dev/github.com/expr-lang/expr): Go-oriented expression evaluation and compile-time checking.
+- [Starlark Go](https://pkg.go.dev/go.starlark.net): expression/script embedding, cancellation/step budgets, and explicit warning that hard memory isolation requires operating-system support.
 
 ## 11. Release and distribution model
 
 The primary motivation for a Go runner is a single, dependency-free executable per platform.
 
 - Build with `CGO_ENABLED=0` and cross-compile one artifact per `GOOS/GOARCH` (Linux amd64/arm64, macOS, Windows as needed).
-- Publish artifacts directly to GitHub Releases. No npm registry, no package manifest, no registry credentials, and no dependency on Node.js or npm at runtime.
+- Publish artifacts through a release channel. No npm registry, no package manifest, no registry credentials, and no dependency on Node.js or npm at runtime.
 - Operators download the matching binary, place it on a machine, and start it. Version upgrades are a binary replacement plus service restart.
 - Node.js is an optional external tool only on machines where workflows use `eval:`. Runners advertise `node-eval` capability in heartbeats; only runners with that capability may claim `eval:` jobs.
 - Systemd unit files and container image definitions are separate, versioned alongside the binary but not embedded in it.
@@ -545,13 +545,12 @@ The primary motivation for a Go runner is a single, dependency-free executable p
 Keep the runner core lean and generic. The binary must not contain:
 
 - A JS plugin registry (`registerWorkflowPlugin`, `PluginManager`).
-- A webhook preprocessor registry (`GitHubPreprocessor`).
+- A connector preprocessor registry.
 - OIDC, user, team, or secret management.
 
 Plugins become explicit workflow steps:
 
-- GitHub commit statuses are emitted by a `run:` step calling `curl`/`gh`, or a dedicated lightweight step. Secret mapping remains explicit in the workflow definition.
-- Webhook signature validation stays on the coordinator. Normalization, filtering, and field extraction move into workflow expressions or dedicated intake steps.
+- Connector authentication stays on the coordinator. Normalization, filtering, and field extraction are handled by connectors or dedicated intake steps.
 - The runner's responsibility is limited to claiming leases, executing steps, reporting results, and uploading logs/artifacts.
 
 The coordinator remains the only process with database access. The runner remains API-only and starts without `DATABASE_URL`.
@@ -563,5 +562,5 @@ Given the single-binary and lean-core goals:
 1. Build an API-only Go runner using the existing authenticated runner lease protocol.
 2. Implement a minimal Go expression interpreter for conditions and `${...}` interpolation, supporting only a fixed set of globals: `String`, `Number`, `Boolean`, `JSON`, and explicit runner helpers.
 3. Drop embedded `eval:` from the core evaluator. Offer `eval:` as an optional Node.js subprocess step, gated by runner capability.
-4. Move GitHub status and webhook normalization out of the runner and into workflow steps or coordinator-side preprocessors.
-5. Release cross-platform binaries through GitHub Releases.
+4. Keep connector authentication and normalization outside the runner.
+5. Release cross-platform binaries through the project's release channel.

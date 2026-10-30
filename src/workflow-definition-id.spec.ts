@@ -5,8 +5,7 @@ vi.mock("./db-client.js", () => ({ default: database }));
 
 import { WorkflowRepository } from "./workflows.js";
 
-const sourceYaml = (id = "release-pipeline") =>
-  `id: ${id}\nname: Release\non: { generic: {} }\nsteps: [{ run: 'true' }]\n`;
+const sourceYaml = (id = "release-pipeline") => `id: ${id}\nname: Release\non: {}\nsteps: [{ run: 'true' }]\n`;
 
 describe("workflow definition IDs", () => {
   beforeEach(() => {

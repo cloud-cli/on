@@ -5,7 +5,6 @@ import "../ui/index.css";
 import { loadFromArgs, printHelp } from "./config.js";
 import { installTimestampedConsole } from "./logger.js";
 
-export { GitHubStatusPlugin } from "./plugins/github-status.plugin.js";
 export { createWorkflowPlugin, registerWorkflowPlugin } from "./plugins/workflow-registry.js";
 
 async function main() {

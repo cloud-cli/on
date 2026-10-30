@@ -60,7 +60,7 @@ function offsetMilliseconds(value?: string): number {
   return (match[1] === "-" ? -1 : 1) * Number(match[2]) * (match[3] === "h" ? 3_600_000 : 60_000);
 }
 
-// NOAA's public-domain sunrise equation. It is accurate enough for minute-level CI triggers.
+// NOAA's public-domain sunrise equation. It is accurate enough for minute-level scheduled triggers.
 function solarEvent(date: Date, trigger: ScheduleTrigger): Date | null {
   const latitude = trigger.latitude!;
   const longitude = trigger.longitude!;

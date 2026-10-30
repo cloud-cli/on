@@ -23,7 +23,6 @@ export default function () {
   const onboardingError = ref("");
   const workspaceCreationComplete = ref(false);
   const createdWorkspaceName = ref("");
-  const createdWebhookPath = ref("");
   const checkTeams = async () => {
     const response = await apiFetch("/api/v1/workspaces", {
       headers: { accept: "application/json" },
@@ -80,7 +79,6 @@ export default function () {
       teamCreated = true;
       workspaceCreationComplete.value = true;
       createdWorkspaceName.value = team.name || name;
-      createdWebhookPath.value = result.webhookPath || "";
       localStorage.setItem("runner-team-id", team.id);
       document.body.dataset.teamless = "false";
       window.dispatchEvent(new Event("runner-teams-updated"));
@@ -252,7 +250,6 @@ export default function () {
     onboardingError,
     workspaceCreationComplete,
     createdWorkspaceName,
-    createdWebhookPath,
     createWorkspace,
     continueToWorkspace,
     retryNavigation,

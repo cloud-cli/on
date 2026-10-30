@@ -28,14 +28,7 @@ describe("default workspace adoption command", () => {
     await adopt(
       { transaction },
       "new-workspace",
-      new Set([
-        "team_push_subscriptions",
-        "workspace_webhooks",
-        "team_invitations",
-        "runner_team_grants",
-        "runner_enrollments",
-        "runners",
-      ]),
+      new Set(["team_push_subscriptions", "team_invitations", "runner_team_grants", "runner_enrollments", "runners"]),
     );
 
     expect(transaction).toHaveBeenCalledOnce();
@@ -46,7 +39,6 @@ describe("default workspace adoption command", () => {
     expect(sql).toContain("UPDATE jobs SET team_id = ? WHERE team_id = ?");
     expect(sql).toContain("UPDATE team_secrets SET team_id = ? WHERE team_id = ?");
     expect(sql).toContain("UPDATE api_keys SET team_id = ? WHERE team_id = ?");
-    expect(sql).toContain("UPDATE workspace_webhooks SET team_id = ? WHERE team_id = ?");
     expect(sql).toContain("UPDATE runners SET team_id = ? WHERE scope = 'team'");
     expect(sql).toContain("UPDATE runner_enrollments SET team_id = ? WHERE scope = 'team'");
     expect(sql).toContain("INSERT OR IGNORE INTO runner_team_grants (runner_id, team_id, created_by, created_at)");

@@ -14,21 +14,6 @@ import {
 
 export { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
 
-export function matchesWebhookTrigger(
-  trigger: Pick<WorkflowDefinition["on"], "provider" | "events">,
-  provider: string,
-  event: string,
-  webhookIngress: boolean,
-): boolean {
-  if (trigger.provider === "webhook") {
-    return webhookIngress && Boolean(event) && Boolean(trigger.events?.includes(event));
-  }
-  if (trigger.provider === provider) {
-    return true;
-  }
-  return false;
-}
-
 export interface StoredWorkflow {
   id: string;
   name: string;
@@ -85,18 +70,8 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
     throw new Error("on.events must contain unique event type names (for example presence.arrived)");
   }
 
-  const webhook = Object.entries(parsed.on).find(([name]) => !["schedule", "solar", "events"].includes(name));
-  const [provider, trigger] = webhook || [eventTypes.length ? "domain-event" : "generic", {}];
-  if (provider === "webhook") {
-    if (
-      !trigger ||
-      typeof trigger !== "object" ||
-      !Array.isArray((trigger as any).events) ||
-      !(trigger as any).events.length ||
-      (trigger as any).events.some((event: unknown) => typeof event !== "string" || !event.trim())
-    ) {
-      throw new Error("on.webhook.events must contain at least one webhook event name");
-    }
+  if (Object.keys(parsed.on).some((name) => !["schedule", "solar", "events"].includes(name))) {
+    throw new Error("Workflow on supports only events, schedule, and solar");
   }
   if (parsed.retries !== undefined && (!Number.isInteger(parsed.retries) || parsed.retries < 0)) {
     throw new Error("retries must be a non-negative integer");
@@ -167,7 +142,7 @@ export function parseWorkflow(sourceYaml: string): WorkflowDefinition[] {
       id: canonicalId,
       name: parsed.name,
       matrix: parsed.matrix,
-      on: { ...(trigger as object), provider },
+      on: { events: eventTypes },
       schedule: Array.isArray(parsed.on.schedule) ? parsed.on.schedule : undefined,
       solar: Array.isArray(parsed.on.solar) ? parsed.on.solar : undefined,
       eventTypes,

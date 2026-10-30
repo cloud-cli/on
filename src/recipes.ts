@@ -106,9 +106,7 @@ function secretSchema(value: unknown): Record<string, SecretDeclaration> {
 }
 
 export function isSafeRecipeExpression(value: unknown): value is string {
-  return (
-    typeof value === "string" && /^\$\{(?:inputs|steps|job|matrix|github)(?:\.[A-Za-z_][A-Za-z0-9_-]*)+\}$/.test(value)
-  );
+  return typeof value === "string" && /^\$\{(?:inputs|steps|job|matrix)(?:\.[A-Za-z_][A-Za-z0-9_-]*)+\}$/.test(value);
 }
 
 export function parseRecipe(sourceYaml: string): ParsedRecipe {

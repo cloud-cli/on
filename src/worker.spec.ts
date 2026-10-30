@@ -41,7 +41,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "no-matrix",
         name: "No matrix",
-        on: { provider: "generic" },
+        on: {},
         steps: [{ id: "assert", eval: "true" }],
       },
     } as Processable);
@@ -88,7 +88,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "webhook-context",
         name: "Webhook context",
-        on: { provider: "generic" },
+        on: {},
         steps: [
           {
             id: "inspect",
@@ -148,7 +148,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "json-webhook-context",
         name: "JSON webhook context",
-        on: { provider: "generic" },
+        on: {},
         steps: [{ id: "inspect", eval: "body.toString('utf8')" }],
       },
     } as Processable);
@@ -193,7 +193,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "legacy-webhook-context",
         name: "Legacy webhook context",
-        on: { provider: "generic" },
+        on: {},
         steps: [{ id: "inspect", eval: "body.toString('utf8')" }],
       },
     } as Processable);
@@ -237,7 +237,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "start-failure",
         name: "Start failure",
-        on: { provider: "generic" },
+        on: {},
         steps: [{ id: "build", run: "true" }],
       },
     } as Processable);
@@ -291,7 +291,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "nested",
         name: "Nested",
-        on: { provider: "generic" },
+        on: {},
         steps: [
           {
             id: "nested-call",
@@ -433,7 +433,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "nested-tree",
         name: "Nested tree",
-        on: { provider: "generic" },
+        on: {},
         steps: [{ id: "outer", call: "team/outer@1#main", with: {} }],
         _pinnedReferences: [
           { namespace: "team", slug: "outer", version: 1, function: "main" },
@@ -541,7 +541,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "nested-invalid",
         name: "Nested invalid",
-        on: { provider: "generic" },
+        on: {},
         steps: [{ id: "call", call: "team/recipe@1#main", with: {} }],
         _pinnedReferences: [{ namespace: "team", slug: "recipe", version: 1, function: "main" }],
         _pinnedRecipeFunctions: pinned,
@@ -588,7 +588,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "unpinned",
         name: "Unpinned",
-        on: { provider: "generic" },
+        on: {},
         steps: [{ id: "call", call: "team/recipe@1#main", with: {} }],
         _pinnedReferences: [],
         _pinnedRecipeFunctions: {
@@ -654,7 +654,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "recipe",
         name: "Recipe",
-        on: { provider: "generic" },
+        on: {},
         steps: [
           {
             id: "recipe-step",
@@ -753,7 +753,7 @@ describe("incremental workflow reports", () => {
         workflow: {
           id: "file-secret",
           name: "File secret",
-          on: { provider: "generic" },
+          on: {},
           steps: [
             {
               id: "sign",
@@ -835,7 +835,7 @@ describe("incremental workflow reports", () => {
         workflow: {
           id: "lease",
           name: "Lease",
-          on: { provider: "generic" },
+          on: {},
           steps: [{ id: "main", run: "echo ok" }],
         },
       } as Processable);
@@ -889,13 +889,13 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "post-success",
         name: "Post success",
-        on: { provider: "generic" },
+        on: {},
         steps: [{ id: "main", eval: "({ ok: true })" }],
         post: [
           { id: "status-failure", run: "false" },
           {
             id: "observe-result",
-            eval: "({ status: job.status, envStatus: env.CI_JOB_STATUS, runUrl: job.runUrl })",
+            eval: "({ status: job.status, envStatus: env.RUN_STATUS, runUrl: job.runUrl })",
           },
         ],
       },
@@ -952,7 +952,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "post-failure",
         name: "Post failure",
-        on: { provider: "generic" },
+        on: {},
         steps: [
           { id: "main", run: "false" },
           { id: "not-run", run: "true" },
@@ -960,7 +960,7 @@ describe("incremental workflow reports", () => {
         post: [
           {
             id: "observe-result",
-            eval: "({ status: job.status, envStatus: env.CI_JOB_STATUS, runUrl: job.runUrl })",
+            eval: "({ status: job.status, envStatus: env.RUN_STATUS, runUrl: job.runUrl })",
           },
         ],
       },
@@ -1015,7 +1015,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "intake",
         name: "Intake",
-        on: { provider: "alias" },
+        on: {},
         steps: [
           {
             id: "normalize",
@@ -1057,7 +1057,7 @@ describe("incremental workflow reports", () => {
     const workflow = {
       id: "incremental",
       name: "Incremental",
-      on: { provider: "generic" },
+      on: {},
       env: {
         image: "${inputs.repo}",
         image_tag: "${env.image}:latest",
@@ -1065,7 +1065,7 @@ describe("incremental workflow reports", () => {
       steps: [
         {
           id: "first",
-          eval: "({ image: env.image, tag: env.image_tag, ci: env.CI, job: env.CI_JOB_ID, name: env.CI_JOB_NAME })",
+          eval: "({ image: env.image, tag: env.image_tag, job: env.RUN_ID, name: env.RUN_NAME })",
         },
         { id: "second", eval: "({ value: 2 })" },
       ],
@@ -1109,7 +1109,6 @@ describe("incremental workflow reports", () => {
       {
         image: "example",
         tag: "example:latest",
-        ci: "true",
         job: "1",
         name: "Incremental",
       },
@@ -1119,7 +1118,7 @@ describe("incremental workflow reports", () => {
       {
         stepId: "first",
         content:
-          '[JS EVAL OUTPUT]:\n{\n  "image": "example",\n  "tag": "example:latest",\n  "ci": "true",\n  "job": "1",\n  "name": "Incremental"\n}',
+          '[JS EVAL OUTPUT]:\n{\n  "image": "example",\n  "tag": "example:latest",\n  "job": "1",\n  "name": "Incremental"\n}',
       },
       { stepId: "second", content: '[JS EVAL OUTPUT]:\n{\n  "value": 2\n}' },
     ]);
@@ -1180,7 +1179,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "retry-workflow",
         name: "Retry workflow",
-        on: { provider: "generic" },
+        on: {},
         retries: 1,
         steps: [{ id: "retry", run: "false" }],
       },
@@ -1235,7 +1234,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "redaction-workflow",
         name: "Redaction workflow",
-        on: { provider: "generic" },
+        on: {},
         steps: [{ id: "emit", eval: '({ token: "sensitive-token-value" })' }],
       },
     } as Processable);
@@ -1355,7 +1354,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "nested-validation",
         name: "Nested validation",
-        on: { provider: "generic" },
+        on: {},
         steps: [
           {
             id: "invoke",
@@ -1417,7 +1416,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "nested-secret",
         name: "Nested secret",
-        on: { provider: "generic" },
+        on: {},
         steps: [
           {
             id: "invoke",
@@ -1502,7 +1501,7 @@ describe("incremental workflow reports", () => {
       workflow: {
         id: "nested-retry",
         name: "Nested retry",
-        on: { provider: "generic" },
+        on: {},
         retries: 1,
         steps: [
           {

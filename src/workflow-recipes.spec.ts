@@ -13,7 +13,7 @@ vi.mock("./db-client.js", () => ({ default: database }));
 import { WorkflowRepository } from "./workflows.js";
 
 const source = (using = "tools/deploy@v2") =>
-  `id: deployment\nname: Deployment\non: { generic: {} }\nusing: ${using}\nwith: { region: eu-west-1 }\nsecrets: { token: "\${secrets.DEPLOY_TOKEN}" }\n`;
+  `id: deployment\nname: Deployment\non: {}\nusing: ${using}\nwith: { region: eu-west-1 }\nsecrets: { token: "\${secrets.DEPLOY_TOKEN}" }\n`;
 const recipeRow = (revoked = 0) => ({
   namespace: "tools",
   slug: "deploy",
@@ -105,7 +105,7 @@ describe("workflow recipe pinning", () => {
     database.get.mockResolvedValue(row);
     const yaml = `id: image-flow
 name: Image flow
-on: { generic: {} }
+on: {}
 using: tools/deploy@v2
 with: { image: ghcr.io/acme/app }
 secrets: { credential: "\u0024{secrets.SIGNING_KEY}" }
@@ -646,7 +646,7 @@ secrets: { credential: "\u0024{secrets.SIGNING_KEY}" }
     await expect(repository.validateForSave(`${source()}steps: [{ run: 'echo legacy' }]`)).rejects.toThrow(
       "either steps or using",
     );
-    await expect(repository.validateForSave("id: missing\nname: Missing\non: { generic: {} }\n")).rejects.toThrow(
+    await expect(repository.validateForSave("id: missing\nname: Missing\non: {}\n")).rejects.toThrow(
       "requires at least one step",
     );
     database.get.mockResolvedValue(null);

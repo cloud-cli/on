@@ -94,7 +94,7 @@ describe("isExemptFromGlobalOidcAuth", () => {
   it("exempts route-specific controls", () => {
     expect(isExemptFromGlobalOidcAuth("/restart/123", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/restart/", "GET")).toBe(true);
-    expect(isExemptFromGlobalOidcAuth("/api/v1/webhooks/gitea", "GET")).toBe(true);
+    expect(isExemptFromGlobalOidcAuth("/webhooks/connectors/token-value", "POST")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/api/v1/webhooks/", "GET")).toBe(true);
     expect(isExemptFromGlobalOidcAuth("/admin/reload-secrets", "POST")).toBe(true);
   });

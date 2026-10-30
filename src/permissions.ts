@@ -96,7 +96,7 @@ export const WORKSPACE_ROLE_LABELS: Readonly<Record<WorkspaceRole, string>> = {
 };
 
 export const WORKSPACE_ROLE_DESCRIPTIONS: Readonly<Record<WorkspaceRole, string>> = {
-  viewer: "Audit CI results: run status, workflow names, and summaries. No logs or changes.",
+  viewer: "Audit automated runs, workflow names, and summaries. No logs or changes.",
   collaborator: "Day-to-day work: logs, artifacts, dispatch and rerun, and workflow editing.",
   admin: "Workspace owner: destructive cleanup, members, secrets, runners, and webhooks.",
 };
@@ -141,7 +141,7 @@ export const WORKSPACE_CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
   {
     id: "runs",
     label: "Runs",
-    description: "CI results and execution controls.",
+    description: "Automation runs and execution controls.",
     capabilities: [
       { capability: "runs.view", label: "View runs", description: "List runs and read status, timing, and steps." },
       { capability: "runs.logs", label: "Read logs", description: "Read step logs, diagnostics, and AI explanations." },

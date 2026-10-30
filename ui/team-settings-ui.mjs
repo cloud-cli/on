@@ -19,10 +19,12 @@ export default function () {
   const inviteEmail = ref("");
   const inviteSubject = ref("");
   const inviteLink = ref("");
-  const webhooks = ref([]);
-  const webhookProvider = ref("");
-  const webhookUrl = ref("");
-  const webhookSecret = ref("");
+  const connectors = ref([]);
+  const connectorId = ref("");
+  const connectorName = ref("");
+  const connectorYaml = ref("");
+  const editingConnector = ref(false);
+  const connectorUrl = ref("");
   const message = ref("");
   const error = ref("");
   const teamRunners = ref([]);
@@ -95,8 +97,8 @@ export default function () {
     roles.value = permissions.roles || {};
     roleLabels.value = permissions.roleLabels || {};
     canManage.value = Boolean(permissions.canManage);
-    const { webhooks: registrations = [] } = await request(workspaceUrl("/webhooks"));
-    webhooks.value = registrations;
+    const { connectors: definitions = [] } = await request(workspaceUrl("/connectors"));
+    connectors.value = definitions;
     const runners = await request(`/api/v1/teams/${encodeURIComponent(teamId)}/runners`);
     teamRunners.value = runners.team || [];
     sharedRunners.value = runners.shared || [];
@@ -188,9 +190,61 @@ export default function () {
   const setInviteSubject = (event) => {
     inviteSubject.value = event.target.value;
   };
-  const setWebhookProvider = (event) => {
-    webhookProvider.value = event.target.value;
+  const setConnectorId = (event) => {
+    connectorId.value = event.target.value;
   };
+  const setConnectorName = (event) => {
+    connectorName.value = event.target.value;
+  };
+  const setConnectorYaml = (event) => {
+    connectorYaml.value = event.target.value;
+  };
+  const clearConnectorForm = () => {
+    connectorId.value = "";
+    connectorName.value = "";
+    connectorYaml.value = "";
+    editingConnector.value = false;
+  };
+  const editConnector = (connector) =>
+    act(async () => {
+      const { connector: definition } = await request(workspaceUrl(`/connectors/${encodeURIComponent(connector.id)}`));
+      connectorId.value = definition.id;
+      connectorName.value = definition.name;
+      connectorYaml.value = definition.sourceYaml;
+      editingConnector.value = true;
+      connectorUrl.value = "";
+      document.querySelector("#connector-name")?.focus();
+    });
+  const saveConnector = () =>
+    act(async () => {
+      const updating = editingConnector.value;
+      const id = connectorId.value.trim();
+      const name = connectorName.value.trim();
+      const sourceYaml = connectorYaml.value;
+      if (!id || !name || !sourceYaml.trim()) {
+        throw new Error("Enter a connector ID, name, and YAML definition.");
+      }
+      const result = await request(workspaceUrl(`/connectors${updating ? `/${encodeURIComponent(id)}` : ""}`), {
+        method: updating ? "PUT" : "POST",
+        body: JSON.stringify(updating ? { name, sourceYaml } : { id, name, sourceYaml }),
+      });
+      connectorUrl.value = updating ? "" : new URL(result.url, location.origin).toString();
+      clearConnectorForm();
+      await load();
+      message.value = updating ? "Connector updated." : "Connector created. Copy its private URL now.";
+    });
+  const revokeConnector = (connector) =>
+    act(async () => {
+      if (!confirm(`Revoke connector ${connector.name}? Its ingress URL will stop working.`)) {
+        return;
+      }
+      await request(workspaceUrl(`/connectors/${encodeURIComponent(connector.id)}`), { method: "DELETE" });
+      if (connectorId.value === connector.id) {
+        clearConnectorForm();
+      }
+      await load();
+      message.value = "Connector revoked.";
+    });
   const setSecretName = (event) => {
     secretName.value = event.target.value;
   };
@@ -306,30 +360,6 @@ export default function () {
       inviteSubject.value = "";
       message.value = `OIDC subject invitation expires ${new Date(result.expiresAt).toLocaleString()}. Access is granted when that identity signs in.`;
     });
-  const createWebhook = () =>
-    act(async () => {
-      const provider = webhookProvider.value.trim();
-      if (!/^[a-z0-9-]+$/.test(provider)) {
-        throw new Error("Webhook URL slugs must contain only lowercase letters, numbers, and hyphens.");
-      }
-      const result = await request(workspaceUrl("/webhooks"), {
-        method: "POST",
-        body: JSON.stringify({ provider }),
-      });
-      webhookUrl.value = `${location.origin}${result.url}`;
-      webhookSecret.value = result.signingSecret;
-      message.value = "Webhook created. Copy the URL and signing secret now; the secret is only shown once.";
-      await load();
-    });
-  const revokeWebhook = (registration) =>
-    act(async () => {
-      if (!confirm(`Revoke this ${registration.provider} webhook? Its URL and signing secret will stop working.`)) {
-        return;
-      }
-      await request(workspaceUrl(`/webhooks/${encodeURIComponent(registration.id)}`), { method: "DELETE" });
-      await load();
-      message.value = "Webhook revoked.";
-    });
   const copyValue = async (value) => {
     await navigator.clipboard.writeText(value);
     message.value = "Copied to clipboard.";
@@ -414,19 +444,25 @@ export default function () {
     inviteEmail,
     inviteSubject,
     inviteLink,
-    webhooks,
-    webhookProvider,
-    webhookUrl,
-    webhookSecret,
+    connectors,
+    connectorId,
+    connectorName,
+    connectorYaml,
+    editingConnector,
+    connectorUrl,
+    setConnectorId,
+    setConnectorName,
+    setConnectorYaml,
+    clearConnectorForm,
+    editConnector,
+    saveConnector,
+    revokeConnector,
     message,
     error,
     createInvitation,
     setInviteEmail,
     createSubjectInvitation,
     setInviteSubject,
-    createWebhook,
-    setWebhookProvider,
-    revokeWebhook,
     copyValue,
     removeMember,
     teamRunners,

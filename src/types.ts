@@ -107,21 +107,7 @@ export interface ExecutionDriver {
   readLog(file: string): Promise<string>;
 }
 
-export interface PreprocessedWebhook {
-  isValid: boolean;
-  inputs: Record<string, any>;
-}
-
-export interface WebhookPreprocessor {
-  name: string;
-  parse(headers: Record<string, string>, rawBodyBuffer: Buffer, secret?: string): PreprocessedWebhook;
-  filter?(inputs: Record<string, any>, trigger: WorkflowTrigger): PreprocessedWebhook;
-  conditionContext?(inputs: Record<string, any>, secrets?: Record<string, string>): Record<string, any>;
-}
-
 export interface WorkflowTrigger {
-  provider: string; // Provider name, or 'webhook' for provider-independent webhook subscriptions.
-  if?: string | string[];
   events?: string[];
 }
 

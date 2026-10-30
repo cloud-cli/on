@@ -47,10 +47,10 @@
               >Members</a
             >
             <a
-              href="#team-webhooks"
+              href="#team-connectors"
               class-hidden="!isAdmin"
               class="rounded-md border border-app-border bg-white px-2.5 py-1.5 text-xs font-medium"
-              >Webhooks</a
+              >Connectors</a
             >
             <a
               href="#team-runners"
@@ -84,7 +84,7 @@
           >
             <h2 id="team-members-title" class="text-lg font-semibold">Workspace members</h2>
             <p class="mt-1 text-sm text-app-muted">
-              Viewers audit CI results. Collaborators can read logs, inputs, and artifacts, dispatch runs, and edit
+              Viewers audit automation runs. Collaborators can read logs, inputs, and artifacts, dispatch runs, and edit
               workflows. Admins add destructive actions, membership, secrets, and runners.
             </p>
             <p class="mt-3 text-sm text-app-muted" role="status">{{ message }}</p>
@@ -184,68 +184,93 @@
             </div>
           </section>
           <section
-            id="team-webhooks"
+            id="team-connectors"
             class="scroll-mt-6 rounded-xl border border-app-border bg-app-card p-5"
             class-hidden="!isAdmin"
-            aria-labelledby="team-webhooks-title"
+            aria-labelledby="team-connectors-title"
           >
-            <h2 id="team-webhooks-title" class="text-lg font-semibold">Webhooks</h2>
+            <h2 id="team-connectors-title" class="text-lg font-semibold">YAML Connectors</h2>
             <p class="mt-1 text-sm text-app-muted">
-              Each registration has its own URL and signing secret. Copy both when created; the signing secret is only
-              shown once.
+              Create and manage workspace event connectors using YAML definitions.
             </p>
-            <div class="mt-4 flex gap-2">
-              <input
-                bind-value="webhookProvider"
-                on-input="setWebhookProvider($event)"
-                aria-label="Webhook URL slug"
-                placeholder="Webhook URL slug."
-                maxlength="64"
-                pattern="[a-z0-9-]+"
-                class="min-w-0 flex-1 rounded-lg border border-app-border px-3 py-2 text-sm"
-              />
-              <button
-                type="button"
-                on-click="createWebhook()"
-                class="rounded-lg border border-app-border px-4 py-2 text-sm"
-              >
-                Create webhook
-              </button>
-            </div>
-            <ul class="mt-3 space-y-2">
-              <template for="registration of webhooks"
-                ><li class="flex items-center justify-between rounded-lg border border-app-border px-3 py-2 text-sm">
-                  <span>{{ registration.provider }} · created {{ registration.createdAt }}</span>
-                  <button type="button" on-click="revokeWebhook(registration)" class="text-xs text-rose-700 underline">
-                    Revoke
-                  </button>
+            <ul class="mt-3 space-y-2" aria-label="Workspace connectors">
+              <template for="connector of connectors"
+                ><li
+                  class="flex items-center justify-between gap-3 rounded-lg border border-app-border px-3 py-2 text-sm"
+                >
+                  <span
+                    >{{ connector.name }} · {{ connector.id }} · v{{ connector.version }} · {{ connector.enabled ?
+                    'Enabled' : 'Disabled' }}</span
+                  >
+                  <span class="flex gap-2">
+                    <button type="button" on-click="editConnector(connector)" class="text-xs underline">Edit</button>
+                    <button type="button" on-click="revokeConnector(connector)" class="text-xs text-rose-700 underline">
+                      Revoke
+                    </button>
+                  </span>
                 </li></template
               >
             </ul>
-            <template if="webhookUrl"
-              ><div class="mt-3 space-y-2 break-all rounded-lg bg-app-panel p-3 text-xs">
-                <p>
-                  URL: <code>{{ webhookUrl }}</code
-                  ><button
-                    type="button"
-                    on-click="copyValue(webhookUrl)"
-                    aria-label="Copy webhook URL"
-                    class="ml-3 underline"
-                  >
-                    Copy
-                  </button>
-                </p>
-                <p>
-                  Signing secret: <code>{{ webhookSecret }}</code
-                  ><button
-                    type="button"
-                    on-click="copyValue(webhookSecret)"
-                    aria-label="Copy webhook signing secret"
-                    class="ml-3 underline"
-                  >
-                    Copy
-                  </button>
-                </p>
+            <form class="mt-4 grid gap-3" on-submit.prevent="saveConnector()">
+              <label class="block text-sm font-medium" for="connector-id">Connector ID</label>
+              <input
+                id="connector-id"
+                bind-value="connectorId"
+                on-input="setConnectorId($event)"
+                required
+                maxlength="64"
+                pattern="[a-z0-9-]+"
+                autocomplete="off"
+                class="rounded-lg border border-app-border px-3 py-2 text-sm"
+                bind-disabled="editingConnector"
+              />
+              <label class="block text-sm font-medium" for="connector-name">Name</label>
+              <input
+                id="connector-name"
+                bind-value="connectorName"
+                on-input="setConnectorName($event)"
+                required
+                maxlength="100"
+                class="rounded-lg border border-app-border px-3 py-2 text-sm"
+              />
+              <label class="block text-sm font-medium" for="connector-yaml">Connector YAML</label>
+              <textarea
+                id="connector-yaml"
+                bind-value="connectorYaml"
+                on-input="setConnectorYaml($event)"
+                required
+                rows="12"
+                spellcheck="false"
+                class="w-full rounded-lg border border-app-border px-3 py-2 font-mono text-sm"
+              ></textarea>
+              <div class="flex gap-2">
+                <button
+                  type="submit"
+                  class="rounded-lg border border-app-primary/60 px-4 py-2 text-sm font-medium text-app-primary"
+                >
+                  {{ editingConnector ? 'Update connector' : 'Create connector' }}
+                </button>
+                <button
+                  type="button"
+                  on-click="clearConnectorForm()"
+                  class="rounded-lg border border-app-border px-4 py-2 text-sm"
+                >
+                  Clear
+                </button>
+              </div>
+            </form>
+            <template if="connectorUrl"
+              ><div class="mt-3 break-all rounded-lg bg-app-panel p-3 text-sm" role="status">
+                <p>Copy this private ingress URL now. It will not be shown again.</p>
+                <code>{{ connectorUrl }}</code>
+                <button
+                  type="button"
+                  on-click="copyValue(connectorUrl)"
+                  aria-label="Copy one-time connector ingress URL"
+                  class="ml-3 underline"
+                >
+                  Copy
+                </button>
               </div></template
             >
           </section>
@@ -520,7 +545,8 @@
               <div>
                 <h3 class="font-medium text-rose-700">Delete workspace</h3>
                 <p class="mt-1 text-xs text-app-muted">
-                  Permanently removes every workflow, run, log, artifact, secret, webhook, and runner in this workspace.
+                  Permanently removes every workflow, run, log, artifact, secret, connector, and runner in this
+                  workspace.
                 </p>
                 <button
                   type="button"
