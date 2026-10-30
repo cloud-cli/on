@@ -25,4 +25,54 @@ describe("IncomingEventRepository", () => {
     await expect(repository.receivedAtForTeam("team-a", "missing")).resolves.toBeNull();
     await expect(repository.receivedAtForTeam("team-a", "invalid")).resolves.toBeNull();
   });
+
+  it("returns UTF-8 JSON as text for incoming event details", async () => {
+    const bytes = Buffer.from('{"ok":true}', "utf8");
+    database.get.mockResolvedValue({
+      id: "event-1",
+      provider: "generic",
+      received_at: "2026-10-24 13:00:00",
+      content_type: "application/json; charset=utf-8",
+      payload_ciphertext: "encrypted-payload",
+      payload_sha256: "hash",
+      payload_bytes: bytes.length,
+      validation_status: "valid",
+      processing_status: "received",
+      queued_jobs: 0,
+      job_ids: "[]",
+      replay_count: 0,
+    });
+    const secrets = { decryptValue: () => bytes.toString("base64") };
+
+    const event = await new IncomingEventRepository(secrets as any).getForTeam("team-a", "event-1");
+
+    expect(event?.payload).toBe('{"ok":true}');
+    expect(event?.payloadEncoding).toBe("utf8");
+    expect(event?.payloadBase64).toBeUndefined();
+  });
+
+  it("preserves binary incoming event details as base64 instead of lossy UTF-8", async () => {
+    const bytes = Buffer.from([0, 255, 1, 128]);
+    database.get.mockResolvedValue({
+      id: "event-2",
+      provider: "generic",
+      received_at: "2026-10-24 13:00:00",
+      content_type: "application/octet-stream",
+      payload_ciphertext: "encrypted-payload",
+      payload_sha256: "hash",
+      payload_bytes: bytes.length,
+      validation_status: "valid",
+      processing_status: "received",
+      queued_jobs: 0,
+      job_ids: "[]",
+      replay_count: 0,
+    });
+    const secrets = { decryptValue: () => bytes.toString("base64") };
+
+    const event = await new IncomingEventRepository(secrets as any).getForTeam("team-a", "event-2");
+
+    expect(event?.payload).toBe("");
+    expect(event?.payloadEncoding).toBe("base64");
+    expect(event?.payloadBase64).toBe(bytes.toString("base64"));
+  });
 });

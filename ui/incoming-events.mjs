@@ -1,12 +1,11 @@
 import { computed, getElement, onDestroy, onInit, ref } from "@li3/web";
 import { apiFetch } from "@app/api-client.mjs";
+import { formatIncomingPayload } from "./incoming-event-payload.mjs";
+export { formatIncomingPayload } from "./incoming-event-payload.mjs";
 
 export default function setup() {
   const routeParams = getElement().routeParams || {};
-  const workspaceId =
-    routeParams.workspaceId ||
-    new URLSearchParams(window.location.search).get("workspaceId") ||
-    "";
+  const workspaceId = routeParams.workspaceId || new URLSearchParams(window.location.search).get("workspaceId") || "";
   const events = ref([]);
   const listState = ref("loading");
   const listError = ref("");
@@ -19,9 +18,7 @@ export default function setup() {
   let listController;
   let detailController;
 
-  const runsUrl = computed(
-    () => `/ui/workspaces/${encodeURIComponent(workspaceId)}/runs`,
-  );
+  const runsUrl = computed(() => `/ui/workspaces/${encodeURIComponent(workspaceId)}/runs`);
   const eventRows = computed(() =>
     events.value.map((event) => ({
       ...event,
@@ -41,29 +38,11 @@ export default function setup() {
       ? `${event.eventType || "unknown event"} · ${event.deliveryId || event.id} · ${formatDate(event.receivedAt)}`
       : "";
   });
-  const detailTitle = computed(() =>
-    currentEvent.value
-      ? `${currentEvent.value.provider} event`
-      : "Event details",
-  );
-  const displayPayload = computed(() => {
-    const value = currentEvent.value?.payload;
-    if (typeof value !== "string") {
-      return value == null ? "" : JSON.stringify(value, null, 2);
-    }
-    try {
-      return JSON.stringify(JSON.parse(value), null, 2);
-    } catch {
-      return value;
-    }
-  });
-  const canRetrigger = computed(
-    () => currentEvent.value?.validationStatus === "valid",
-  );
+  const detailTitle = computed(() => (currentEvent.value ? `${currentEvent.value.provider} event` : "Event details"));
+  const displayPayload = computed(() => formatIncomingPayload(currentEvent.value));
+  const canRetrigger = computed(() => currentEvent.value?.validationStatus === "valid");
   const validationMessage = computed(() =>
-    canRetrigger.value
-      ? "Only this verified delivery will be replayed."
-      : "Unverified payloads cannot be replayed.",
+    canRetrigger.value ? "Only this verified delivery will be replayed." : "Unverified payloads cannot be replayed.",
   );
 
   const request = async (url, options = {}) => {
@@ -98,11 +77,7 @@ export default function setup() {
         listState.value = result.length ? "ready" : "empty";
       }
     } catch (error) {
-      if (
-        !destroyed &&
-        listController === controller &&
-        error.name !== "AbortError"
-      ) {
+      if (!destroyed && listController === controller && error.name !== "AbortError") {
         listError.value = error.message || "Unable to load incoming events";
         listState.value = "error";
       }
@@ -127,11 +102,7 @@ export default function setup() {
         detailState.value = "ready";
       }
     } catch (error) {
-      if (
-        !destroyed &&
-        detailController === controller &&
-        error.name !== "AbortError"
-      ) {
+      if (!destroyed && detailController === controller && error.name !== "AbortError") {
         detailError.value = error.message || "Unable to load event details";
         detailState.value = "error";
       }
@@ -151,8 +122,7 @@ export default function setup() {
       return;
     }
     retriggering.value = true;
-    retriggerStatus.value =
-      "Matching this event against current published workflows…";
+    retriggerStatus.value = "Matching this event against current published workflows…";
     try {
       const result = await request(
         `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/events/${encodeURIComponent(event.id)}/retrigger`,
@@ -167,8 +137,7 @@ export default function setup() {
       await loadEvents();
     } catch (error) {
       if (!destroyed) {
-        retriggerStatus.value =
-          error.message || "Could not retrigger this event";
+        retriggerStatus.value = error.message || "Could not retrigger this event";
       }
     } finally {
       if (!destroyed) {

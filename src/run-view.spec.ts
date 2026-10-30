@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { buildRunView, renderRunHtml, type RunView } from "../ui/run-view.js";
+import { buildRunView, formatInputsDisplayJson, renderRunHtml, type RunView } from "../ui/run-view.js";
 import type { WorkflowExecutionReport } from "./types.js";
 import runSetup from "../ui/run.mjs?raw";
 
@@ -55,6 +55,18 @@ function view(status: RunView["status"]): RunView {
 }
 
 describe("run view", () => {
+  it("formats JSON inputs normally and represents Buffer JSON as bounded hex", () => {
+    expect(formatInputsDisplayJson({ branch: "main", options: { shallow: true } })).toBe(
+      '{\n  "branch": "main",\n  "options": {\n    "shallow": true\n  }\n}',
+    );
+    const displayed = formatInputsDisplayJson({ binary: { type: "Buffer", data: [0, 15, 255] } });
+    expect(displayed).toContain("Binary payload: 3 bytes; hex: 00 0f ff");
+
+    const long = formatInputsDisplayJson({ binary: { type: "Buffer", data: Array(257).fill(171) } });
+    expect(long).toContain("Binary payload: 257 bytes; hex (first 256 bytes)");
+    expect(long.match(/ab/g)).toHaveLength(256);
+  });
+
   it("removes private report fields and redacts exposed values", () => {
     const storedReport = report("success");
     storedReport.inputs = {
@@ -322,7 +334,7 @@ describe("run view", () => {
     expect(source).toContain("marked.parse(content)");
     expect(source).toContain("downloadArtifact($event, artifact)");
     expect(source).toContain("https://sodium.static.apphor.de/code-block.html");
-    expect(source).toContain('bind-source="inputsJson"');
+    expect(source).toContain('bind-source="report.inputsDisplayJson || inputsJson"');
     expect(source).toContain("'circle-check'");
     expect(source).toContain("{{ report.workerName || report.workerId || 'Awaiting worker' }}");
     expect(source).toContain("formatTimestampedLogLine");

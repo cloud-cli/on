@@ -257,7 +257,7 @@ export type WorkflowInputs = Record<string, any>;
 export interface JobPayload {
   inputs: WorkflowInputs;
   headers?: Record<string, string>;
-  inputsRaw?: Buffer;
+  body?: Buffer;
   matrix?: Record<string, string | number | boolean>;
 }
 
@@ -393,7 +393,7 @@ export interface ContextualizedProcessable extends Processable {
 export interface JobExecutionContext {
   inputs: any;
   headers: Record<string, string>;
-  inputsRaw?: Buffer;
+  body?: Buffer;
   env: Record<string, string>;
   secrets: Record<string, string>;
   steps: Record<string, { status: string; exitCode: number; outputs: any }>;

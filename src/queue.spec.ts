@@ -270,6 +270,28 @@ describe("QueueManager.enqueueDispatch", () => {
   });
 });
 
+describe("QueueManager concurrency groups", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([
+    [false, "pending only"],
+    [true, "pending and running"],
+  ])("cancels older %s concurrency jobs according to cancel-in-progress", async (cancelInProgress) => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ lastInsertRowid: 42 }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ changes: 1 }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await new QueueManager("test").enqueue("flow", 1, { inputs: {} }, [], "cloud-cli/on/main", cancelInProgress);
+
+    const update = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+    expect(update.s).toContain("WHERE id < ?");
+    expect(update.s).toContain("status = 'pending' OR (? = 1 AND status = 'running')");
+    expect(update.d).toEqual([42, 42, "cloud-cli/on/main", cancelInProgress ? 1 : 0]);
+  });
+});
+
 describe("QueueManager.claimNextJob", () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -286,6 +308,7 @@ describe("QueueManager.claimNextJob", () => {
     expect(request.m).toBe("get");
     expect(request.s).toContain("json_each(COALESCE(jobs.required_tags, '[]'))");
     expect(request.s).toContain("required_tag.value NOT IN (SELECT value FROM json_each(?))");
+    expect(request.s).toContain("active.concurrency_key = jobs.concurrency_key AND active.status = 'running'");
     expect(request.d).toEqual(["build-node", '["linux","docker"]']);
   });
 
@@ -381,6 +404,7 @@ describe("API runner lease fencing", () => {
     expect(query.s).toContain("team_id IN (SELECT value FROM json_each(?))");
     expect(query.s).toContain("claiming_runner.revoked_at IS NULL");
     expect(query.s).toContain("active.worker_id = ?");
+    expect(query.s).toContain("active.concurrency_key = jobs.concurrency_key AND active.status = 'running'");
     expect(query.s).toContain("lease_fenced = 0");
     expect(query.d).toEqual([
       "runner-1",

@@ -30,7 +30,7 @@ on:
     events: [push]
 steps:
   - id: normalize
-    eval: "({ repository: JSON.parse(inputsRaw.toString('utf8')).repository.full_name, clone_url: JSON.parse(inputsRaw.toString('utf8')).repository.clone_url, commit_sha: JSON.parse(inputsRaw.toString('utf8')).after, ref: JSON.parse(inputsRaw.toString('utf8')).ref })"
+    eval: "({ repository: JSON.parse(body.toString('utf8')).repository.full_name, clone_url: JSON.parse(body.toString('utf8')).repository.clone_url, commit_sha: JSON.parse(body.toString('utf8')).after, ref: JSON.parse(body.toString('utf8')).ref })"
   - id: dispatch-build
     dispatch: docker-build
     with: "({ repository: steps.normalize.outputs.repository, clone_url: steps.normalize.outputs.clone_url, commit_sha: steps.normalize.outputs.commit_sha, ref: steps.normalize.outputs.ref })"
@@ -120,7 +120,7 @@ try {
       {
         inputs: {},
         headers: { "x-github-event": "push" },
-        inputsRaw: rawRequest,
+        body: rawRequest,
       },
       intakeQueue,
     ),

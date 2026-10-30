@@ -2779,7 +2779,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         await this.workflows.publishedForTeam(teamId),
         secretValues,
         teamId,
-        { headers: safeWebhookHeaders(headers), inputsRaw: rawBuffer, webhookIngress: true },
+        { headers: safeWebhookHeaders(headers), body: rawBuffer, webhookIngress: true },
       );
       await this.incomingEvents.finish(
         teamId,
@@ -3804,7 +3804,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
     workflows: import("./types.js").WorkflowRevision[],
     secretValues: Record<string, string> = {},
     teamId: string,
-    requestContext: { headers?: Record<string, string>; inputsRaw?: Buffer; webhookIngress?: boolean } = {},
+    requestContext: { headers?: Record<string, string>; body?: Buffer; webhookIngress?: boolean } = {},
   ) {
     const jobIds: number[] = [];
     for (const { workflowId, definition: workflow, revision } of workflows) {
@@ -3847,11 +3847,18 @@ sessionStorage.removeItem('runner-pending-team-invite');
         const jobPayload: JobPayload = {
           inputs,
           headers: requestContext.headers,
-          inputsRaw: requestContext.inputsRaw,
+          body: requestContext.body,
           matrix: variant.matrixContext,
         };
 
-        const jobId = await this.queue.enqueue(workflowId, revision, jobPayload, requiredTags, concurrencyKey);
+        const jobId = await this.queue.enqueue(
+          workflowId,
+          revision,
+          jobPayload,
+          requiredTags,
+          concurrencyKey,
+          variant.concurrency?.cancelInProgress ?? false,
+        );
         if (jobId) {
           jobIds.push(jobId);
         }

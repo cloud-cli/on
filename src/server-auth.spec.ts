@@ -457,9 +457,10 @@ describe("incoming workflow webhook dispatch", () => {
     expect(queue.enqueue).toHaveBeenCalledWith(
       "wf-docker-publish",
       3,
-      { inputs: { event: "push" }, matrix: undefined },
+      { inputs: { event: "push" }, matrix: undefined, body: undefined, headers: undefined },
       ["alpha"],
       "",
+      false,
     );
     expect(jobs).toEqual([42]);
   });

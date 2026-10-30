@@ -24,6 +24,8 @@ export type IncomingEventSummary = {
 
 export type IncomingEventDetail = IncomingEventSummary & {
   payload: string;
+  payloadEncoding: "utf8" | "base64";
+  payloadBase64?: string;
 };
 
 /** Workspace-scoped, encrypted storage for complete inbound request bodies. */
@@ -115,9 +117,40 @@ export class IncomingEventRepository {
     if (!row) {
       return null;
     }
-    const payload = Buffer.from(this.secrets.decryptValue(row.payload_ciphertext), "base64").toString("utf8");
+    const payloadBytes = Buffer.from(this.secrets.decryptValue(row.payload_ciphertext), "base64");
+    const contentType = String(row.content_type || "")
+      .split(";", 1)[0]
+      .trim()
+      .toLowerCase();
+    const explicitlyText =
+      contentType.startsWith("text/") ||
+      contentType === "application/json" ||
+      contentType.endsWith("+json") ||
+      [
+        "application/xml",
+        "application/javascript",
+        "application/x-www-form-urlencoded",
+        "application/graphql",
+        "application/yaml",
+        "application/toml",
+      ].includes(contentType);
+    let textPayload: string | undefined;
+    if (!contentType || explicitlyText) {
+      try {
+        textPayload = new TextDecoder("utf-8", { fatal: true }).decode(payloadBytes);
+      } catch {
+        // Preserve invalid UTF-8 byte sequences as base64 below.
+      }
+    }
+    const payloadEncoding = textPayload === undefined ? "base64" : "utf8";
     const inputs = row.inputs_ciphertext ? JSON.parse(this.secrets.decryptValue(row.inputs_ciphertext)) : null;
-    return { ...this.summary(row), payload, inputs };
+    return {
+      ...this.summary(row),
+      payload: textPayload ?? "",
+      payloadEncoding,
+      ...(payloadEncoding === "base64" ? { payloadBase64: payloadBytes.toString("base64") } : {}),
+      inputs,
+    };
   }
 
   async createReplay(teamId: string, eventId: string, actor: string): Promise<string> {

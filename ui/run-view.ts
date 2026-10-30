@@ -28,6 +28,7 @@ export interface RunView {
   startedAt: string;
   finishedAt?: string;
   inputs: Record<string, unknown>;
+  inputsDisplayJson?: string;
   steps: StepReport[];
   callInstances?: Array<{
     callId: string;
@@ -76,6 +77,7 @@ export function buildRunView(
     ? (JSON.parse(job.report) as WorkflowExecutionReport)
     : buildPendingReport(job, payload, steps);
   const status = job.status;
+  const visibleInputs = canViewInputs ? (sanitizeValue(report.inputs || {}, redact) as Record<string, unknown>) : {};
 
   return {
     jobId: String(job.id),
@@ -92,7 +94,8 @@ export function buildRunView(
         : report.durationMs,
     startedAt: normalizeTimestamp(report.startedAt),
     finishedAt: report.finishedAt,
-    inputs: canViewInputs ? (sanitizeValue(report.inputs || {}, redact) as Record<string, unknown>) : {},
+    inputs: visibleInputs,
+    inputsDisplayJson: canViewInputs ? formatInputsDisplayJson(visibleInputs) : "{}",
     steps: (report.steps || []).map((step) => {
       const savedLog = Object.hasOwn(logs, step.id) && typeof logs[step.id] === "string" ? logs[step.id] : "";
       return {
@@ -133,6 +136,50 @@ export function buildRunView(
 
 export function renderRunHtml(report: RunView): string {
   return runTemplate;
+}
+
+const BINARY_PREVIEW_BYTES = 256;
+
+export function formatInputsDisplayJson(inputs: unknown): string {
+  return JSON.stringify(formatBinaryValues(inputs), null, 2);
+}
+
+function formatBinaryValues(value: unknown): unknown {
+  if (isBufferJson(value)) {
+    const preview = value.data.slice(0, BINARY_PREVIEW_BYTES);
+    const hex = preview.map((byte) => byte.toString(16).padStart(2, "0")).join(" ");
+    const byteLength = value.byteLength ?? value.data.length;
+    const truncated = value.truncated === true || byteLength > preview.length;
+    return `[Binary payload: ${byteLength} bytes; hex${truncated ? ` (first ${preview.length} bytes)` : ""}: ${hex || "(empty)"}]`;
+  }
+  if (Array.isArray(value)) {
+    return value.map(formatBinaryValues);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, formatBinaryValues(entry)]));
+  }
+  return value;
+}
+
+function isBufferJson(
+  value: unknown,
+): value is { type: "Buffer"; data: number[]; byteLength?: number; truncated?: boolean } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as { type?: unknown; data?: unknown; byteLength?: unknown };
+  if (candidate.type !== "Buffer" || !Array.isArray(candidate.data)) {
+    return false;
+  }
+  if (
+    candidate.byteLength !== undefined &&
+    (!Number.isSafeInteger(candidate.byteLength) || (candidate.byteLength as number) < candidate.data.length)
+  ) {
+    return false;
+  }
+  return candidate.data.every(
+    (byte: unknown) => typeof byte === "number" && Number.isInteger(byte) && byte >= 0 && byte <= 255,
+  );
 }
 
 function buildPendingReport(

@@ -101,10 +101,10 @@ steps:
   - id: normalize
     eval: |
       ({
-        repository: JSON.parse(inputsRaw.toString('utf8')).repository.full_name,
-        clone_url: JSON.parse(inputsRaw.toString('utf8')).repository.clone_url,
-        commit_sha: JSON.parse(inputsRaw.toString('utf8')).after,
-        ref: JSON.parse(inputsRaw.toString('utf8')).ref
+        repository: JSON.parse(body.toString('utf8')).repository.full_name,
+        clone_url: JSON.parse(body.toString('utf8')).repository.clone_url,
+        commit_sha: JSON.parse(body.toString('utf8')).after,
+        ref: JSON.parse(body.toString('utf8')).ref
       })
   - id: build
     dispatch: docker-build
@@ -192,11 +192,11 @@ Strings without `${...}` are literal. Supported value fields such as workflow/st
 groups, and recipe input bindings evaluate `${...}` as a JavaScript-style expression. `if` and `eval` accept
 expressions directly. The evaluator is a restricted AST interpreter, not a full JavaScript runtime.
 
-Available data roots include `inputs`, `headers`, `inputsRaw`, `env`, `secrets`, `steps`, and (in supported contexts)
-`files` and `github`. For webhooks, `headers` contains the sanitized request headers and `inputsRaw` is the original
+Available data roots include `inputs`, `headers`, `body`, `env`, `secrets`, `steps`, and (in supported contexts)
+`files` and `github`. For webhooks, `headers` contains the sanitized request headers and `body` is the original
 request body as a Node.js `Buffer`, preserving binary payloads. Ingress parses `inputs` as JSON only when the request
 content type is `application/json` or a `+json` media type; for other content types, workflows can inspect
-`inputsRaw` directly.
+`body` directly.
 `files.exists`, `files.readFile`, and `files.join` are limited to the job workspace. Built-ins include `String`,
 `Number`, `Boolean`, and `JSON.parse`/`JSON.stringify`.
 

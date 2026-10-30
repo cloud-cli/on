@@ -20,7 +20,7 @@ on:
     events: [push]
 steps:
   - id: normalize
-    eval: inputsRaw.toString('utf8')
+    eval: body.toString('utf8')
 `);
     expect(workflow.on).toMatchObject({ provider: "webhook", events: ["push"] });
   });

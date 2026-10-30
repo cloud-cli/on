@@ -15,9 +15,14 @@ const decryptPayload = (payload: unknown): JobPayload => {
   } else {
     decoded = JSON.parse(payloadSecrets.decryptValue(payload.slice("enc:v1:".length))) as JobPayload;
   }
-  const raw = decoded?.inputsRaw as unknown;
-  if (raw && typeof raw === "object" && (raw as { type?: unknown }).type === "Buffer") {
-    decoded.inputsRaw = Buffer.from((raw as { data: number[] }).data);
+  if (decoded && typeof decoded === "object") {
+    // Preserve already-queued webhook jobs created before the context rename.
+    const legacy = decoded as JobPayload & { inputsRaw?: unknown };
+    const raw = (decoded.body ?? legacy.inputsRaw) as unknown;
+    if (raw && typeof raw === "object" && (raw as { type?: unknown }).type === "Buffer") {
+      decoded.body = Buffer.from((raw as { data: number[] }).data);
+    }
+    delete legacy.inputsRaw;
   }
   return decoded;
 };
@@ -91,6 +96,7 @@ export class QueueManager {
     payload: JobPayload,
     requiredTags: string[] = [],
     concurrencyKey?: string,
+    cancelInProgress = false,
   ) {
     const res = await db.run(
       `INSERT INTO jobs (workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id)
@@ -122,9 +128,9 @@ export class QueueManager {
     if (concurrencyKey) {
       await db.run(
         `UPDATE jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
-         WHERE id <> ? AND team_id = (SELECT team_id FROM jobs WHERE id = ?)
-           AND concurrency_key = ? AND status IN ('pending', 'running')`,
-        [jobId, jobId, concurrencyKey],
+         WHERE id < ? AND team_id = (SELECT team_id FROM jobs WHERE id = ?)
+           AND concurrency_key = ? AND (status = 'pending' OR (? = 1 AND status = 'running'))`,
+        [jobId, jobId, concurrencyKey, cancelInProgress ? 1 : 0],
       );
     }
     return jobId;
@@ -209,6 +215,11 @@ export class QueueManager {
         WHERE status = 'pending'
          AND EXISTS (SELECT 1 FROM teams WHERE teams.id = jobs.team_id AND teams.deleting_at IS NULL)
          AND NOT EXISTS (
+           SELECT 1 FROM jobs AS active
+           WHERE jobs.concurrency_key <> '' AND active.id <> jobs.id AND active.team_id = jobs.team_id
+             AND active.concurrency_key = jobs.concurrency_key AND active.status = 'running'
+         )
+         AND NOT EXISTS (
             SELECT 1
             FROM json_each(COALESCE(jobs.required_tags, '[]')) AS required_tag
             WHERE required_tag.value NOT IN (SELECT value FROM json_each(?))
@@ -257,7 +268,12 @@ export class QueueManager {
             )
             AND (SELECT COUNT(*) FROM jobs active WHERE active.worker_id = ? AND
               (active.status = 'running' OR (active.status = 'cancelled' AND active.lease_completed = 0))) < ?
-           AND NOT EXISTS (
+            AND NOT EXISTS (
+              SELECT 1 FROM jobs AS active
+              WHERE jobs.concurrency_key <> '' AND active.id <> jobs.id AND active.team_id = jobs.team_id
+                AND active.concurrency_key = jobs.concurrency_key AND active.status = 'running'
+            )
+            AND NOT EXISTS (
              SELECT 1 FROM json_each(COALESCE(jobs.required_tags, '[]')) AS required_tag
              WHERE required_tag.value NOT IN (SELECT value FROM json_each(?))
            )
