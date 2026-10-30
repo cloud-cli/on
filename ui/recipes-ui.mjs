@@ -27,6 +27,10 @@ function initializeRecipesPage() {
   const list = root.querySelector("[data-list]");
   const form = root.querySelector("[data-form]");
   const source = root.querySelector("[data-source]");
+  const getSource = () => source.value ?? "";
+  const setSource = (value) => {
+    source.value = value;
+  };
   const validation = root.querySelector("[data-validation]");
   const saveButton = root.querySelector("[data-save]");
   const error = root.querySelector("[data-error]");
@@ -91,7 +95,7 @@ function initializeRecipesPage() {
       const draft = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "{}");
       root.querySelector("[data-editor-title]").textContent = draft.slug ? "Publish recipe version" : "New recipe";
       root.querySelector("[data-editor-reference]").textContent = draft.slug ? `${draft.slug} · ${draft.name}` : "";
-      source.value = draft.sourceYaml || "";
+      setSource(draft.sourceYaml || "");
       void validateSource();
       source.focus();
     }
@@ -133,7 +137,7 @@ function initializeRecipesPage() {
       const response = await apiFetch("/api/v1/recipes/validate", {
         method: "POST",
         headers: { accept: "application/json", "content-type": "application/json" },
-        body: JSON.stringify({ sourceYaml: source.value }),
+        body: JSON.stringify({ sourceYaml: getSource() }),
       });
       const result = await response.json();
       if (generation !== validationGeneration) {
@@ -153,7 +157,10 @@ function initializeRecipesPage() {
       validation.className = "text-sm text-rose-700";
     }
   };
-  source.addEventListener("input", () => {
+  source.addEventListener("change", (event) => {
+    if (typeof event.detail === "string") {
+      setSource(event.detail);
+    }
     clearTimeout(validationTimer);
     saveButton.disabled = true;
     validationTimer = setTimeout(() => void validateSource(), 350);
@@ -168,7 +175,7 @@ function initializeRecipesPage() {
       const response = await apiFetch("/api/v1/recipes", {
         method: "POST",
         headers: { accept: "application/json", "content-type": "application/json" },
-        body: JSON.stringify({ slug: metadata.slug, name: metadata.name, sourceYaml: source.value }),
+        body: JSON.stringify({ slug: metadata.slug, name: metadata.name, sourceYaml: getSource() }),
       });
       const result = await response.json();
       if (!response.ok) {

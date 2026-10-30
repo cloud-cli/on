@@ -79,14 +79,16 @@ describe("workflow management UI", () => {
     expect(source).not.toContain("derivedId");
     expect(source).toContain("Save draft");
     expect(source).toContain("/ui/workspaces/' + encodeURIComponent(routedWorkspaceId) + '/workflows/new");
-    expect(source).toContain('id="workflow-workspace"');
-    expect(source).toContain('class-hidden="selectedId || routedWorkspaceId"');
-    expect(source).toContain('bind-value="selectedWorkspaceId"');
-    expect(source).toContain('on-change="setWorkspace($event)"');
-    expect(source).toContain('<label for="workflow-workspace" class="sr-only">Workspace</label>');
-    expect(source).not.toContain('id="workflow-workspace-help"');
+    expect(source).not.toContain('id="workflow-workspace"');
+    expect(source).not.toContain('on-change="setWorkspace($event)"');
+    expect(source).toContain('class-hidden="!workspaceRequired"');
+    expect(source).toContain('href="/ui/workspaces"');
     expect(source).not.toContain("Workflows stay top-level and remain visible across workspaces.");
-    expect(source.indexOf('id="workflow-workspace"')).toBeLessThan(source.indexOf('aria-label="Save workflow draft"'));
+    expect(source).toContain('class="flex flex-wrap items-center justify-between gap-3"');
+    expect(source).toContain('class="editor-panel overflow-hidden"');
+    expect(source).toContain('class="p-0"');
+    const editorHtml = readFileSync(join(process.cwd(), "ui/workflows-ui.html"), "utf8");
+    expect(editorHtml.indexOf('aria-label="Delete workflow"')).toBeLessThan(editorHtml.indexOf("Insert recipe"));
     expect(source).not.toContain('aria-label="Workflow count"');
     expect(source).toContain("text-base font-semibold text-app-foreground");
     expect(source).toContain('type="checkbox"');
@@ -115,8 +117,6 @@ describe("workflow management UI", () => {
     expect(source).toContain("Accept suggestion");
     expect(source).toContain('aria-label="Save workflow draft"');
     expect(source).toContain('bind-disabled="busy || !selectedId || source !== savedSource"');
-    expect(workflowsSetup).toContain("/api/v1/workflows/${selectedId.value}/transfer");
-    expect(workflowsSetup).toContain("targetWorkspaceId: workspaceId");
     expect(workflowsSetup).toContain("/api/v1/workflows/${selectedId.value}/enabled");
     expect(workflowsSetup).toContain('method: "PATCH"');
     expect(source).toContain('aria-labelledby="workflow-list-title"');
@@ -134,12 +134,14 @@ describe("workflow management UI", () => {
     expect(workflowsSetup).not.toContain('"/api/workflows');
     expect(workflowsSetup).toContain("Choose a workspace before saving this workflow.");
     expect(workflowsSetup).toContain("persistWorkspaceSelection(selectedWorkspaceId.value)");
-    expect(workflowsSetup).toContain("if (initialId && !selectedId.value)");
     expect(workflowsSetup).toContain("await openWorkflow(initialId)");
     expect(source).toContain("routedWorkspaceId ? '/ui/workspaces/'");
     expect(source).toContain("Back to workflows");
-    expect(source).toContain('class="border-b border-app-border px-4 pb-3 pt-3 sm:px-5"');
+    expect(source).toContain('class="px-0 pb-2 pt-0"');
     expect(source).toContain('theme="googlecode"');
+    expect(source).toContain(
+      'class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-hidden rounded-lg border border-app-border bg-app-card"',
+    );
     expect(source).not.toContain("border-b border-app-border pb-4");
     expect(source).not.toContain("<app-header");
     expect(source).not.toContain("Workflow control room");

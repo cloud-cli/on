@@ -2038,9 +2038,19 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return res.end(JSON.stringify(workflow));
       }
       if (workflowId && req.method === "PUT") {
-        const teamId = (await this.requireWorkspaceCapability(req, res, "workflows.edit"))?.teamId;
-        if (!teamId) {
+        const authorized = await this.requireWorkspaceCapability(req, res, "workflows.edit");
+        if (!authorized) {
           return;
+        }
+        // Workspace authorization normally proves existence through membership.
+        // Platform admins bypass membership checks, so validate their selected
+        // workspace explicitly before creating a workflow there.
+        if (authorized.role === "admin") {
+          const workspaces = await this.principals.allWorkspaces();
+          if (!workspaces.some((workspace: { id: string }) => workspace.id === authorized.teamId)) {
+            res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+            return res.end(JSON.stringify({ error: "Workspace not found" }));
+          }
         }
         const body = await this.readJson(req, res);
         if (!body || typeof body.sourceYaml !== "string") {
@@ -2055,7 +2065,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         }
         try {
           const workflow = await this.workflows.saveDraftForTeam(
-            teamId,
+            authorized.teamId,
             workflowId,
             body.sourceYaml,
             body.enabled !== false,

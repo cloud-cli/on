@@ -22,6 +22,12 @@ describe("recipe marketplace UI", () => {
   it("keeps the editor focused on YAML, validates its schema, and offers no deletion action", () => {
     expect(template).toContain("data-slug");
     expect(template).toContain("data-source");
+    expect(template).toContain("<code-editor");
+    expect(template).toContain('language="yaml"');
+    expect(template).toContain('theme="googlecode"');
+    expect(template).toContain('aria-label="Recipe YAML source"');
+    expect(template).toContain("bg-app-card");
+    expect(template).not.toContain("<textarea");
     expect(template).toContain("data-validation");
     expect(template).toContain("data-editor-page");
     const editor = template.split("data-editor-page")[1].split("data-create-dialog")[0];
@@ -30,6 +36,9 @@ describe("recipe marketplace UI", () => {
     expect(template).not.toContain('name="id"');
     expect(setup).toContain('method: "POST"');
     expect(setup).toContain("/api/v1/recipes/validate");
+    expect(setup).toContain('source.addEventListener("change"');
+    expect(setup).toContain("event.detail");
+    expect(setup).toContain("getSource()");
     expect(setup).toContain("Create a new version or fork");
     expect(setup).toContain("/ui/recipes/new");
     expect(setup).toContain('searchParams.get("editor")');

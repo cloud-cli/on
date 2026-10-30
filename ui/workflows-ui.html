@@ -19,14 +19,14 @@
       }
     </script>
   </head>
-  <body data-page="__WORKFLOW_PAGE__" class="min-h-screen bg-app-background p-4 text-app-foreground font-sans md:p-6">
+  <body data-page="__WORKFLOW_PAGE__" class="min-h-screen bg-app-background text-app-foreground font-sans">
     <link rel="stylesheet" href="/assets/on.css" />
     <link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />
     <link rel="component" href="https://sodium.static.apphor.de/code-block.html" />
     <link rel="component" href="https://sodium.static.apphor.de/lucide-icon.html" />
 
     <template app>
-      <main class="w-full space-y-5 py-2">
+      <main class="w-full space-y-5">
         <template if="notice">
           <div
             role="status"
@@ -106,10 +106,10 @@
           </nav>
 
           <section
-            class="editor-panel overflow-hidden rounded-2xl border border-app-border bg-app-card shadow-sm shadow-app-foreground/5"
+            class="editor-panel overflow-hidden"
             class-hidden="page === 'list' || page === 'workflows' || page === 'secrets'"
           >
-            <div class="border-b border-app-border px-4 pb-3 pt-3 sm:px-5">
+            <div class="px-0 pb-2 pt-0">
               <a
                 attr-href="routedWorkspaceId ? '/ui/workspaces/' + encodeURIComponent(routedWorkspaceId) + '/workflows' : '/ui/workflows'"
                 class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-app-secondary outline-none transition hover:bg-app-hover hover:text-app-foreground focus-visible:ring-2 focus-visible:ring-app-primary/40"
@@ -118,23 +118,8 @@
                 Back to workflows
               </a>
             </div>
-            <div class="border-b border-app-border bg-app-panel px-4 py-4 sm:px-5">
-              <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div class="w-full lg:max-w-xs" class-hidden="selectedId || routedWorkspaceId">
-                  <label for="workflow-workspace" class="sr-only">Workspace</label>
-                  <select
-                    id="workflow-workspace"
-                    bind-value="selectedWorkspaceId"
-                    on-change="setWorkspace($event)"
-                    bind-disabled="workspacesLoading"
-                    class="w-full rounded-lg border border-app-border bg-app-card px-3 py-2.5 text-sm text-app-foreground outline-none focus:border-app-primary disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    <option value="">Select a workspace</option>
-                    <template for="workspace of availableWorkspaces"
-                      ><option attr-value="workspace.id">{{ workspace.name }}</option></template
-                    >
-                  </select>
-                </div>
+            <div class="py-2">
+              <div class="flex flex-wrap items-center justify-between gap-3">
                 <div class="flex flex-wrap items-center gap-2">
                   <label class="inline-flex items-center gap-2 text-sm text-app-secondary">
                     <input
@@ -146,65 +131,76 @@
                     />
                     Enabled
                   </label>
-                  <div class="flex flex-wrap gap-2" class-hidden="readOnly">
-                    <button
-                      type="button"
-                      aria-label="Get AI workflow help"
-                      title="Get AI workflow help"
-                      on-click="openAiHelp()"
-                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-primary/50 px-3 py-2.5 text-sm font-medium text-app-primary outline-none hover:bg-app-primary/10 focus-visible:ring-2 focus-visible:ring-app-primary/40"
-                    >
-                      <lucide-icon icon="sparkles" size="16"></lucide-icon><span class="hidden md:inline">AI help</span>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Save workflow draft"
-                      title="Save workflow draft"
-                      on-click="save()"
-                      bind-disabled="busy || workspacesLoading || !selectedWorkspaceId"
-                      class="inline-flex items-center justify-center gap-2 rounded-lg bg-app-primary px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-app-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <lucide-icon icon="save" size="16"></lucide-icon>
-                      <span class="hidden md:inline">Save draft</span>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Publish workflow"
-                      title="Publish workflow"
-                      on-click="publish()"
-                      bind-disabled="busy || !selectedId || source !== savedSource"
-                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-success/50 px-3 py-2.5 text-sm font-medium text-app-success transition hover:bg-app-success/10 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <lucide-icon icon="rocket" size="16"></lucide-icon>
-                      <span class="hidden md:inline">Publish</span>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Run workflow now"
-                      title="Run saved workflow draft now"
-                      on-click="runNow()"
-                      bind-disabled="busy || !selectedId || source !== savedSource || !validation.valid"
-                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-info/50 px-3 py-2.5 text-sm font-medium text-app-info transition hover:bg-app-info/10 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <lucide-icon icon="play" size="16"></lucide-icon>
-                      <span class="hidden md:inline">Run now</span>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Delete workflow"
-                      title="Delete workflow"
-                      on-click="remove()"
-                      bind-disabled="busy"
-                      class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-error/50 px-3 py-2.5 text-sm font-medium text-app-error transition hover:bg-app-error/10 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <lucide-icon icon="trash" size="16"></lucide-icon>
-                      <span class="hidden md:inline">Delete</span>
-                    </button>
-                  </div>
+                </div>
+                <div class="flex flex-wrap gap-2" class-hidden="readOnly">
+                  <button
+                    type="button"
+                    aria-label="Get AI workflow help"
+                    title="Get AI workflow help"
+                    on-click="openAiHelp()"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-primary/50 px-3 py-2.5 text-sm font-medium text-app-primary outline-none hover:bg-app-primary/10 focus-visible:ring-2 focus-visible:ring-app-primary/40"
+                  >
+                    <lucide-icon icon="sparkles" size="16"></lucide-icon><span class="hidden md:inline">AI help</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Save workflow draft"
+                    title="Save workflow draft"
+                    on-click="save()"
+                    bind-disabled="busy || workspacesLoading || !selectedWorkspaceId"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg bg-app-primary px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-app-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <lucide-icon icon="save" size="16"></lucide-icon>
+                    <span class="hidden md:inline">Save draft</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Publish workflow"
+                    title="Publish workflow"
+                    on-click="publish()"
+                    bind-disabled="busy || !selectedId || source !== savedSource"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-success/50 px-3 py-2.5 text-sm font-medium text-app-success transition hover:bg-app-success/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <lucide-icon icon="rocket" size="16"></lucide-icon>
+                    <span class="hidden md:inline">Publish</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Run workflow now"
+                    title="Run saved workflow draft now"
+                    on-click="runNow()"
+                    bind-disabled="busy || !selectedId || source !== savedSource || !validation.valid"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-info/50 px-3 py-2.5 text-sm font-medium text-app-info transition hover:bg-app-info/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <lucide-icon icon="play" size="16"></lucide-icon>
+                    <span class="hidden md:inline">Run now</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Delete workflow"
+                    title="Delete workflow"
+                    on-click="remove()"
+                    bind-disabled="busy"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-app-error/50 px-3 py-2.5 text-sm font-medium text-app-error transition hover:bg-app-error/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <lucide-icon icon="trash" size="16"></lucide-icon>
+                    <span class="hidden md:inline">Delete</span>
+                  </button>
+                  <button
+                    type="button"
+                    on-click="openRecipePicker()"
+                    class="rounded-lg border border-app-border px-3 py-2.5 text-sm font-medium text-app-primary hover:bg-app-hover"
+                  >
+                    Insert recipe
+                  </button>
                 </div>
               </div>
             </div>
-            <div class="p-3 sm:p-5">
+            <p class="py-2 text-sm text-app-secondary" class-hidden="!workspaceRequired">
+              Select a workspace from <a href="/ui/workspaces" class="text-app-primary underline">workspace settings</a>
+              before creating or editing workflows.
+            </p>
+            <div class="p-0">
               <div class="mb-2 flex items-center justify-between px-1 text-xs text-app-secondary">
                 <div class="flex items-center gap-2">
                   <button
@@ -238,20 +234,11 @@
                 </template>
                 <template if="!revision"><span class="font-mono">Unsaved draft</span></template>
               </div>
-              <div class="mb-2 flex justify-end" class-hidden="readOnly">
-                <button
-                  type="button"
-                  on-click="openRecipePicker()"
-                  class="rounded-lg border border-app-border px-3 py-2 text-sm font-medium text-app-primary hover:bg-app-hover"
-                >
-                  Insert recipe
-                </button>
-              </div>
               <template if="readOnly">
                 <code-block
                   language="yaml"
                   theme="googlecode"
-                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-auto rounded-lg border border-app-border bg-app-foreground p-4"
+                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-auto rounded-lg border border-app-border bg-app-card p-4"
                   bind-source="source"
                 ></code-block>
               </template>
@@ -261,7 +248,7 @@
                   language="yaml"
                   theme="googlecode"
                   nostatus="true"
-                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-hidden rounded-lg border border-app-border bg-app-foreground"
+                  class="block h-[calc(100vh-23rem)] min-h-[28rem] overflow-hidden rounded-lg border border-app-border bg-app-card"
                   bind-value="source"
                   on-change="setSource($event.detail)"
                 ></code-editor>
@@ -280,7 +267,7 @@
                 </summary>
                 <div
                   ref="helpContent"
-                  class="max-h-[38rem] overflow-y-auto border-t border-app-border bg-app-foreground px-4 py-5"
+                  class="max-h-[38rem] overflow-y-auto border-t border-app-border bg-app-card px-4 py-5"
                   role="region"
                   aria-label="Workflow syntax help"
                   aria-live="polite"

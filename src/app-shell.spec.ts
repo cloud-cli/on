@@ -68,6 +68,7 @@ describe("On application shell", () => {
     expect(html).toContain('href="#main-content"');
     expect(html).toContain("data-skip-to-content");
     expect(html).toContain('id="main-content"');
+    expect(html).toContain('class="min-h-full min-w-0 p-4"');
     expect(html).toContain('tabindex="-1"');
     expect(html).toContain('class="min-h-dvh bg-app-background');
     expect(html).toContain("grid-cols-[4rem_14rem_minmax(0,1fr)]");

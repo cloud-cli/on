@@ -16,7 +16,7 @@ function makeServer(scopes: string[] | null = ["workflows:read", "workflows:writ
           res.end(JSON.stringify({ error: `Missing required capability: ${capability}` }));
           return null;
         }
-        return { principal: { subject: "system:test" }, teamId: "workspace-a" };
+        return { principal: { subject: "system:test" }, teamId: "workspace-a", role: "collaborator" };
       }),
     },
     oidc: {
@@ -49,6 +49,7 @@ function makeServer(scopes: string[] | null = ["workflows:read", "workflows:writ
     principals: {
       principal: vi.fn(async () => ({ subject: "system:test", role: "collaborator" })),
       recordAudit: vi.fn(async () => {}),
+      allWorkspaces: vi.fn(async () => [{ id: "workspace-a" }]),
     },
     teams: { createSubjectInvitation: vi.fn(async () => ({ id: "invite-1", expiresAt: "2030-01-01T00:00:00.000Z" })) },
     handleWorkflowPublish: vi.fn(),
@@ -253,6 +254,46 @@ describe("scoped workflow API v1", () => {
       "Content-Type": "application/json; charset=utf-8",
     });
     expect(res.end).toHaveBeenCalledWith(JSON.stringify(saved));
+  });
+
+  it("does not save a draft to a missing workspace when an administrator bypasses membership", async () => {
+    const server = makeServer(["workflows:write"]);
+    server.authorizer.workspace.mockImplementation(async () => ({
+      principal: { subject: "admin:test" },
+      teamId: "missing-workspace",
+      role: "admin",
+    }));
+    server.principals.allWorkspaces.mockResolvedValue([]);
+    const res = makeResponse();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      makeRequest("PUT", "/api/v1/workflows/test", { sourceYaml: "name: Test" }),
+      res,
+    );
+
+    expect(res.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json; charset=utf-8" });
+    expect(res.end).toHaveBeenCalledWith(JSON.stringify({ error: "Workspace not found" }));
+    expect(server.workflows.saveDraftForTeam).not.toHaveBeenCalled();
+  });
+
+  it("does not save a draft when the requested workspace cannot be authorized", async () => {
+    const server = makeServer(["workflows:write"]);
+    server.authorizer.workspace.mockImplementation(async (_req, res) => {
+      res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ error: "Workspace not found" }));
+      return null;
+    });
+    const res = makeResponse();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      makeRequest("PUT", "/api/v1/workflows/test", { sourceYaml: "name: Test" }),
+      res,
+    );
+
+    expect(res.writeHead).toHaveBeenCalledWith(404, { "Content-Type": "application/json; charset=utf-8" });
+    expect(server.workflows.saveDraftForTeam).not.toHaveBeenCalled();
   });
 
   it("deletes workflows with a write-scoped key", async () => {

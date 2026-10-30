@@ -31,6 +31,7 @@ const classes = {
   search: classFrom(/data-quick-switch-open\s+class="([^"]+)"/),
   menu: classFrom(/data-nav-open[\s\S]*?class="([^"]+)"/),
   panel: classFrom(/<section\s+class="(max-h-full min-h-0 min-w-0 overflow-y-auto[^"]+)"/),
+  mainContent: classFrom(/<div id="main-content" tabindex="-1" class="([^"]+)"/),
 };
 
 const fixture = `
@@ -62,7 +63,7 @@ const fixture = `
     </aside>
     <div class="${classes.content}">
       <header class="${classes.header}"><button data-nav-open aria-expanded="false" aria-controls="primary-sidebar" class="${classes.menu}">Menu</button><button data-quick-switch-open class="${classes.search}">Search workspaces, streams, routes…</button></header>
-      <section class="${classes.panel}"><main id="main-content" class="min-h-full min-w-0 p-4 sm:p-6 lg:p-8">
+      <section class="${classes.panel}"><main id="main-content" class="${classes.mainContent}">
         <h1 class="mb-3 text-2xl font-semibold text-app-foreground">Appearance</h1>
         <section class="mb-4 rounded-xl border border-app-border bg-app-card p-4">
           <h2 class="text-lg font-semibold">Choose how the app looks</h2>

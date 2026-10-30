@@ -38,6 +38,7 @@ export default function () {
     (workspaceRoute?.[1] ? decodeURIComponent(workspaceRoute[1]) : "");
   const initialWorkspaceId = routedWorkspaceId || localStorage.getItem("runner-team-id") || "";
   const selectedWorkspaceId = ref(initialWorkspaceId);
+  const workspaceRequired = ref(false);
   const secrets = ref([]);
   const source = ref("");
   const validation = ref({ valid: true });
@@ -219,44 +220,10 @@ export default function () {
       if (!currentSelectionExists) {
         selectedWorkspaceId.value = result.length === 1 ? result[0].id : "";
       }
+      workspaceRequired.value = !selectedWorkspaceId.value;
       persistWorkspaceSelection(selectedWorkspaceId.value);
     } finally {
       workspacesLoading.value = false;
-    }
-  };
-
-  const setWorkspace = async (event) => {
-    const workspaceId = event.target.value;
-    if (!availableWorkspaces.value.some((workspace) => workspace.id === workspaceId)) {
-      event.target.value = selectedWorkspaceId.value;
-      return;
-    }
-    const sourceWorkspaceId = selectedWorkspaceId.value;
-    if (selectedId.value && workspaceId !== sourceWorkspaceId) {
-      await run(async () => {
-        if (readOnly) {
-          throw new Error("Revision snapshots cannot be moved between workspaces.");
-        }
-        await api(`/api/v1/workflows/${selectedId.value}/transfer`, {
-          method: "POST",
-          headers: { "X-Workspace-ID": sourceWorkspaceId },
-          body: JSON.stringify({ targetWorkspaceId: workspaceId }),
-        });
-        selectedWorkspaceId.value = workspaceId;
-        persistWorkspaceSelection(workspaceId);
-        await openWorkflow(selectedId.value);
-        showNotice("Draft moved to the selected workspace.");
-      });
-      return;
-    }
-    selectedWorkspaceId.value = workspaceId;
-    persistWorkspaceSelection(workspaceId);
-    if (initialId && !selectedId.value) {
-      try {
-        await openWorkflow(initialId);
-      } catch (error) {
-        showNotice(error.message, true);
-      }
     }
   };
 
@@ -770,6 +737,7 @@ export default function () {
     availableWorkspaces,
     workspacesLoading,
     selectedWorkspaceId,
+    workspaceRequired,
     secrets,
     source,
     validation,
@@ -805,7 +773,6 @@ export default function () {
     saveSecret,
     removeSecret,
     setSource,
-    setWorkspace,
     setEnabled,
     setSecretName,
     setSecretValue,
