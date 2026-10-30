@@ -80,11 +80,21 @@ export default function setup() {
     const firstSync = lastSyncedPath === "";
     lastSyncedPath = path;
     const previousWorkspaceId = selectedWorkspaceId.value;
-    const workspaceRoute = path.match(/^\/workspaces\/([^/]+)\/(workflows|runs|channels)(?:\/([^/]+))?(?:\/events)?$/);
+    const workspaceRoute = path.match(
+      /^\/workspaces\/([^/]+)\/(workflows|runs|channels|connectors)(?:\/([^/]+))?(?:\/events)?$/,
+    );
     if (workspaceRoute) {
       setSelectedWorkspace(decodeURIComponent(workspaceRoute[1]));
       selectedChannelId.value = workspaceRoute[2] === "channels" ? decodeURIComponent(workspaceRoute[3] || "") : "";
-      activeSection.value = `workspace-${workspaceRoute[2] === "channels" ? "channels" : workspaceRoute[2] === "workflows" ? "workflows" : "runs"}`;
+      activeSection.value = `workspace-${
+        workspaceRoute[2] === "channels"
+          ? "channels"
+          : workspaceRoute[2] === "workflows"
+            ? "workflows"
+            : workspaceRoute[2] === "connectors"
+              ? "connectors"
+              : "runs"
+      }`;
     } else if (
       path === "/settings" ||
       path.startsWith("/settings") ||
@@ -205,7 +215,10 @@ export default function setup() {
   };
   const selectWorkspace = (teamId, page = "runs") => {
     setSelectedWorkspace(teamId);
-    activeSection.value = `workspace-${page === "channels" ? "channels" : page === "workflows" ? "workflows" : "runs"}`;
+    activeSection.value =
+      page === "connectors"
+        ? "workspace-connectors"
+        : `workspace-${page === "channels" ? "channels" : page === "workflows" ? "workflows" : "runs"}`;
     void loadWorkspaceChannels();
   };
   const workspaceInitial = (name) =>
@@ -251,6 +264,10 @@ export default function setup() {
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
   const switchWorkspace = (teamId) => {
+    if (activeSection.value === "workspace-connectors") {
+      navigateShell(workspacePath(teamId, "connectors"));
+      return;
+    }
     const page =
       activeSection.value === "workspace-channels"
         ? "channels"
@@ -272,6 +289,7 @@ export default function setup() {
         ["Streams", "channels"],
         ["Runs", "runs"],
         ["Workflows", "workflows"],
+        ["Connectors", "connectors"],
       ]) {
         items.push({
           label: `${team.name} · ${label}`,

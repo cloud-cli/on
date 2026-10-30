@@ -18,11 +18,12 @@ const classes = {
   workspaceSwitch: classFrom(/attr-data-workspace-switch="team.id"[\s\S]*?class="([^"]+)"/),
   sidebar: classFrom(/id="primary-sidebar"\s+class="([^"]+)"/),
   globalNav: classFrom(/aria-label="Global navigation"\s+class="([^"]+)"/),
-  workspaceNav: classFrom(/aria-label="Workspace navigation"\s+class="([^"]+)"/),
+  workspaceNav: classFrom(/<div\s+class="([^"]+)"\s+class-hidden="!selectedWorkspaceId"/),
   divider: classFrom(/class="([^"]*border-t border-app-border[^"]*)"/),
   workspaceTitle: classFrom(/class="([^"]*basis-full truncate px-3 py-1[^"]*)"[\s\S]*?{{ selectedWorkspaceName }}/),
   globalLink: classFrom(/href="\/ui\/workspaces"\s+on-click="setActive\('workspaces'\)"[\s\S]*?class="([^"]+)"/),
   workflowLink: classFrom(/attr-href="workspacePath\(selectedWorkspaceId, 'workflows'\)"[\s\S]*?class="([^"]+)"/),
+  connectorLink: classFrom(/attr-href="workspacePath\(selectedWorkspaceId, 'connectors'\)"[\s\S]*?class="([^"]+)"/),
   runsLink: classFrom(/attr-href="workspacePath\(selectedWorkspaceId, 'runs'\)"[\s\S]*?class="([^"]+)"/),
   streamsHeading: classFrom(/class="([^"]+)"\s*>\s*Streams</),
   streamLink: classFrom(/for="channel of workspaceChannels"[\s\S]*?class="([^"]+)"/),
@@ -47,18 +48,20 @@ const fixture = `
     <aside id="primary-sidebar" class="${classes.sidebar}">
       <button data-nav-close aria-label="Close navigation">Close</button>
       <nav aria-label="Global navigation" class="${classes.globalNav}">
+        <h2 class="basis-full truncate px-3 py-1 text-lg font-semibold text-app-foreground md:basis-auto md:py-2">cloud-cli</h2>
         <a href="/ui/workspaces" class="${classes.globalLink}">Workspaces</a>
         <a href="/ui/recipes" class="${classes.globalLink}">Recipes</a>
-      </nav>
-      <div class="${classes.divider}"></div>
-      <nav aria-label="Workspace navigation" class="${classes.workspaceNav}">
+        <span class="${classes.divider}"></span>
+        <div aria-label="Workspace navigation" data-workspace-navigation class="${classes.workspaceNav}">
         <span data-workspace-title class="${classes.workspaceTitle}">AppHorde</span>
         <a href="/ui/workflows" data-workflow-link class="${classes.workflowLink}">Workflows</a>
+        <a href="/ui/connectors" data-connectors-link class="${classes.connectorLink}">Connectors</a>
         <a href="/ui/runs" data-runs-link class="${classes.runsLink}">Runs</a>
         <span data-streams-heading class="${classes.streamsHeading}">Streams</span>
         <a href="/ui/stream" data-stream-link title="A synthetic Stream name that is intentionally too long for the sidebar" class="${classes.streamLink}">
           <span class="min-w-0 truncate">A synthetic Stream name that is intentionally too long for the sidebar</span>
         </a>
+        </div>
       </nav>
     </aside>
     <div class="${classes.content}">
@@ -182,9 +185,9 @@ for (const viewport of [
         streamsHeading: box("[data-streams-heading]"),
         stream: box("[data-stream-link]"),
         streamText: getComputedStyle(document.querySelector("[data-stream-link] span")).textOverflow,
-        workspaceDirection: getComputedStyle(document.querySelector('[aria-label="Workspace navigation"]'))
-          .flexDirection,
-        workspaceWrap: getComputedStyle(document.querySelector('[aria-label="Workspace navigation"]')).flexWrap,
+        connectors: box("[data-connectors-link]"),
+        workspaceDirection: getComputedStyle(document.querySelector("[data-workspace-navigation]")).flexDirection,
+        workspaceWrap: getComputedStyle(document.querySelector("[data-workspace-navigation]")).flexWrap,
         titleBasis: getComputedStyle(document.querySelector("[data-workspace-title]")).flexBasis,
       };
     });
@@ -197,6 +200,7 @@ for (const viewport of [
       expect(geometry.workspaceDirection).toBe("column");
       expect(geometry.workspaceWrap).toBe("nowrap");
       expect(geometry.titleBasis).toBe("auto");
+      expect(geometry.connectors.width).toBeCloseTo(geometry.runs.width, 0);
       const headerInnerWidth = geometry.header.width - geometry.headerPadding;
       expect(geometry.search.width).toBeCloseTo(headerInnerWidth / 2, 0);
       expect(geometry.search.x + geometry.search.width / 2).toBeCloseTo(
@@ -222,6 +226,26 @@ for (const viewport of [
       expect(geometry.search.x).toBeGreaterThan(geometry.menu.right);
       await page.locator("[data-nav-open]").click();
       await expect(page.locator("#primary-sidebar")).toBeVisible();
+      const fullWidthNavigation = await page.evaluate(() => {
+        const sidebar = document.querySelector("#primary-sidebar");
+        const workflow = document.querySelector("[data-workflow-link]");
+        const connectors = document.querySelector("[data-connectors-link]");
+        const runs = document.querySelector("[data-runs-link]");
+        const globalLinks = [...document.querySelectorAll('[aria-label="Global navigation"] > a')];
+        return {
+          expectedWidth: sidebar.getBoundingClientRect().width - 32,
+          workflow: workflow.getBoundingClientRect().width,
+          connectors: connectors.getBoundingClientRect().width,
+          runs: runs.getBoundingClientRect().width,
+          globalLinks: globalLinks.map((link) => link.getBoundingClientRect().width),
+        };
+      });
+      expect(fullWidthNavigation.workflow).toBeCloseTo(fullWidthNavigation.expectedWidth, 0);
+      expect(fullWidthNavigation.connectors).toBeCloseTo(fullWidthNavigation.workflow, 0);
+      expect(fullWidthNavigation.runs).toBeCloseTo(fullWidthNavigation.workflow, 0);
+      for (const width of fullWidthNavigation.globalLinks) {
+        expect(width).toBeCloseTo(fullWidthNavigation.expectedWidth, 0);
+      }
       const drawerWidth = await page
         .locator("#primary-sidebar")
         .evaluate((element) => element.getBoundingClientRect().width);

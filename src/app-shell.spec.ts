@@ -8,8 +8,8 @@ const html = readFileSync(new URL("../ui/app-shell.html", import.meta.url), "utf
 const styles = readFileSync(new URL("../ui/index.css", import.meta.url), "utf8");
 
 describe("On application shell", () => {
-  it("renders one workspace navigation outside the per-workspace repeater", () => {
-    const navigationStart = html.indexOf('aria-label="Workspace navigation"');
+  it("renders one global navigation with selected-workspace links outside a repeater", () => {
+    const navigationStart = html.indexOf('aria-label="Global navigation"');
     const navigationEnd = html.indexOf("</nav>", navigationStart);
     const navigation = html.slice(navigationStart, navigationEnd);
 
@@ -19,6 +19,9 @@ describe("On application shell", () => {
     expect(navigation).toContain('class-hidden="!channelsEmpty"');
     expect(navigation).toContain('class-hidden="!channelsStatus"');
     expect(navigation.match(/Create your first Stream/g)).toHaveLength(1);
+    expect(navigation).toContain("Connectors</a");
+    expect(navigation.indexOf("Connectors</a")).toBeLessThan(navigation.indexOf("Runs</a"));
+    expect(html.match(/<nav\b/g)).toHaveLength(1);
   });
 
   it("uses compact vertical spacing on every page main", () => {
@@ -33,8 +36,9 @@ describe("On application shell", () => {
 
   it("provides responsive, accessible navigation around the mounted router", () => {
     expect(shellSetup).toContain('import { apiFetch } from "@app/api-client.mjs"');
-    expect(shellSetup).toContain('page === "channels" ? "channels"');
-    expect(shellSetup).toContain('page === "workflows" ? "workflows"');
+    expect(shellSetup).toContain('page === "channels"');
+    expect(shellSetup).toContain('page === "workflows"');
+    expect(shellSetup).toContain('page === "connectors"');
     expect(shellSetup).toContain('addEventListener("runner-route-changed", syncSection)');
     expect(html).toContain('"@app/": "/assets/"');
     expect(html).toContain('"yaml": "https://esm.sh/yaml@2.9.0"');
@@ -107,7 +111,8 @@ describe("On application shell", () => {
     expect(html).not.toContain("JD");
     expect(html).not.toContain("min-h-screen border-r border-app-border");
     expect(html).toContain('aria-label="Global navigation"');
-    expect(html).toContain('aria-label="Workspace navigation"');
+    expect(html).not.toContain('aria-label="Workspace navigation"');
+    expect(html).toContain("workspacePath(selectedWorkspaceId, 'connectors')");
     expect(html).toContain('class="col-start-1 row-start-1');
     expect(html).toContain("md:col-start-3 md:row-start-1 md:p-4");
     expect(html).toContain("data-nav-open");
@@ -191,8 +196,8 @@ describe("On application shell", () => {
     expect(shellSetup).toContain('addEventListener("runner-teams-updated", loadTeams)');
     expect(shellSetup).toContain('path.startsWith("/workspaces/")');
     expect(shellSetup).not.toContain("syncWorkspaceNavigation");
-    expect(html).toContain("flex min-w-0 flex-wrap items-center gap-1 md:mt-1 md:flex-col md:flex-nowrap");
-    expect(html).toContain("md:flex-col md:flex-nowrap md:items-stretch");
+    expect(html).toContain("flex min-w-0 w-full flex-col items-stretch gap-1 md:mt-1 md:flex-nowrap");
+    expect(html).toContain("flex min-w-0 w-full flex-col items-stretch gap-1 md:flex-nowrap");
     expect(html).toContain("team.isSelected");
     expect(html).toContain('aria-label="Switch workspace"');
     expect(html).toContain('attr-data-workspace-switch="team.id"');
@@ -202,9 +207,7 @@ describe("On application shell", () => {
 
   it("keeps the workflow link current on workspace workflow routes with trailing slashes", () => {
     expect(shellSetup).toContain('.replace(/^\\/ui/, "").replace(/\\/+$/, "") || "/"');
-    expect(shellSetup).toContain(
-      'activeSection.value = `workspace-${workspaceRoute[2] === "channels" ? "channels" : workspaceRoute[2] === "workflows" ? "workflows" : "runs"}`',
-    );
+    expect(shellSetup).toContain('workspaceRoute[2] === "connectors"');
     expect(html).toContain("attr-aria-current=\"activeSection === 'workspace-workflows' ? 'page' : null\"");
     expect(html).toContain("text-xs font-semibold text-app-secondary");
     expect(html).toContain(">Streams</span");
@@ -220,12 +223,13 @@ describe("On application shell", () => {
     expect(shellSetup).toContain("isSelected: team.id === workspaceId");
   });
 
-  it("keeps quick switch outside the inset panel and wraps navigation on mobile", () => {
+  it("keeps quick switch outside the inset panel and fills mobile navigation width", () => {
     expect(html.indexOf("data-quick-switch-open")).toBeLessThan(
       html.indexOf("max-h-full min-h-0 min-w-0 overflow-y-auto"),
     );
     expect(html).toContain("max-h-[40dvh] min-w-0 flex-col items-stretch gap-2 overflow-y-auto");
-    expect(html).toContain("flex min-w-0 flex-wrap items-center gap-1");
+    expect(html).toContain("flex min-w-0 w-full flex-col items-stretch gap-1");
+    expect(html).toContain("min-h-10 w-full shrink-0 items-center");
     expect(html).toContain("basis-full truncate px-3 py-1 text-sm font-semibold");
     expect(html).toContain("text-app-foreground md:basis-auto md:py-2");
     expect(html).toContain("basis-full px-3 pb-1 text-xs font-semibold text-app-secondary");
@@ -236,7 +240,7 @@ describe("On application shell", () => {
     expect(html).toContain('class="mx-auto flex min-h-10 w-full min-w-0 items-center gap-2');
     expect(html).toContain("md:w-1/2");
     expect(html).toContain("p-2 pt-0 sm:p-3 sm:pt-0 md:col-start-3 md:row-start-1 md:p-4 md:pt-0");
-    expect(html.match(/rounded-full px-2 py-2 text-sm text-app-secondary/g)).toHaveLength(5);
+    expect(html.match(/rounded-full px-2 py-2 text-sm text-app-secondary/g)).toHaveLength(6);
     expect(html).toContain(
       "rounded-full border border-app-border bg-app-card p-1 text-left font-semibold text-app-primary",
     );

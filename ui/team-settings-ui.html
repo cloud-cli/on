@@ -47,7 +47,7 @@
               >Members</a
             >
             <a
-              href="#team-connectors"
+              attr-href="'/ui/workspaces/' + encodeURIComponent(teamId) + '/connectors'"
               class-hidden="!isAdmin"
               class="rounded-md border border-app-border bg-white px-2.5 py-1.5 text-xs font-medium"
               >Connectors</a
@@ -183,95 +183,15 @@
               </form>
             </div>
           </section>
-          <section
-            id="team-connectors"
-            class="scroll-mt-6 rounded-xl border border-app-border bg-app-card p-5"
-            class-hidden="!isAdmin"
-            aria-labelledby="team-connectors-title"
-          >
+          <section class="rounded-xl border border-app-border bg-app-card p-5" aria-labelledby="team-connectors-title">
             <h2 id="team-connectors-title" class="text-lg font-semibold">YAML Connectors</h2>
             <p class="mt-1 text-sm text-app-muted">
-              Create and manage workspace event connectors using YAML definitions.
+              Manage workspace event connectors on the dedicated Connectors page.
             </p>
-            <ul class="mt-3 space-y-2" aria-label="Workspace connectors">
-              <template for="connector of connectors"
-                ><li
-                  class="flex items-center justify-between gap-3 rounded-lg border border-app-border px-3 py-2 text-sm"
-                >
-                  <span
-                    >{{ connector.name }} · {{ connector.id }} · v{{ connector.version }} · {{ connector.enabled ?
-                    'Enabled' : 'Disabled' }}</span
-                  >
-                  <span class="flex gap-2">
-                    <button type="button" on-click="editConnector(connector)" class="text-xs underline">Edit</button>
-                    <button type="button" on-click="revokeConnector(connector)" class="text-xs text-rose-700 underline">
-                      Revoke
-                    </button>
-                  </span>
-                </li></template
-              >
-            </ul>
-            <form class="mt-4 grid gap-3" on-submit.prevent="saveConnector()">
-              <label class="block text-sm font-medium" for="connector-id">Connector ID</label>
-              <input
-                id="connector-id"
-                bind-value="connectorId"
-                on-input="setConnectorId($event)"
-                required
-                maxlength="64"
-                pattern="[a-z0-9-]+"
-                autocomplete="off"
-                class="rounded-lg border border-app-border px-3 py-2 text-sm"
-                bind-disabled="editingConnector"
-              />
-              <label class="block text-sm font-medium" for="connector-name">Name</label>
-              <input
-                id="connector-name"
-                bind-value="connectorName"
-                on-input="setConnectorName($event)"
-                required
-                maxlength="100"
-                class="rounded-lg border border-app-border px-3 py-2 text-sm"
-              />
-              <label class="block text-sm font-medium" for="connector-yaml">Connector YAML</label>
-              <textarea
-                id="connector-yaml"
-                bind-value="connectorYaml"
-                on-input="setConnectorYaml($event)"
-                required
-                rows="12"
-                spellcheck="false"
-                class="w-full rounded-lg border border-app-border px-3 py-2 font-mono text-sm"
-              ></textarea>
-              <div class="flex gap-2">
-                <button
-                  type="submit"
-                  class="rounded-lg border border-app-primary/60 px-4 py-2 text-sm font-medium text-app-primary"
-                >
-                  {{ editingConnector ? 'Update connector' : 'Create connector' }}
-                </button>
-                <button
-                  type="button"
-                  on-click="clearConnectorForm()"
-                  class="rounded-lg border border-app-border px-4 py-2 text-sm"
-                >
-                  Clear
-                </button>
-              </div>
-            </form>
-            <template if="connectorUrl"
-              ><div class="mt-3 break-all rounded-lg bg-app-panel p-3 text-sm" role="status">
-                <p>Copy this private ingress URL now. It will not be shown again.</p>
-                <code>{{ connectorUrl }}</code>
-                <button
-                  type="button"
-                  on-click="copyValue(connectorUrl)"
-                  aria-label="Copy one-time connector ingress URL"
-                  class="ml-3 underline"
-                >
-                  Copy
-                </button>
-              </div></template
+            <a
+              class="mt-3 inline-flex min-h-11 items-center rounded-lg bg-app-primary px-4 py-2 text-sm font-semibold text-white"
+              attr-href="'/ui/workspaces/' + encodeURIComponent(teamId) + '/connectors'"
+              >Manage connectors</a
             >
           </section>
           <section

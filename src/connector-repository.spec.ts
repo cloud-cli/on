@@ -71,6 +71,101 @@ describe("ConnectorRepository", () => {
     expect(database.run).toHaveBeenCalledOnce();
   });
 
+  it("saves new connector definitions as unpublished drafts without generating a token", async () => {
+    const sourceYaml =
+      "kind: connector\nid: intake\nname: Intake\nsteps:\n  - id: normalize\n    eval: \"({type: 'sample.received', data: {body}})\"";
+    database.get.mockResolvedValue({
+      connector_id: "intake",
+      team_id: "ws-a",
+      name: "Intake",
+      source_yaml: sourceYaml,
+      revision: 1,
+      enabled: 0,
+      published: 0,
+      draft_yaml: sourceYaml,
+      draft_name: "Intake",
+      created_at: "now",
+      updated_at: "now",
+    });
+
+    const draft = await repository.saveDraft("ws-a", "intake", "Intake", sourceYaml);
+
+    expect(draft).toMatchObject({ id: "intake", enabled: false, published: false, hasDraft: true });
+    expect(database.run.mock.calls[0][0]).toContain("VALUES (?, ?, ?, ?, 1, NULL, 0, ?, ?, 0)");
+    expect(database.run.mock.calls[0][1]).toEqual(["ws-a", "intake", "Intake", sourceYaml, sourceYaml, "Intake"]);
+    expect(database.get).toHaveBeenCalledOnce();
+  });
+
+  it("publishes saved drafts, enables ingress, and returns a fresh token only once", async () => {
+    const sourceYaml =
+      "kind: connector\nid: intake\nname: Intake\nsteps:\n  - id: normalize\n    eval: \"({type: 'sample.received', data: {body}})\"";
+    database.get
+      .mockResolvedValueOnce({
+        connector_id: "intake",
+        team_id: "ws-a",
+        name: "Intake",
+        source_yaml: sourceYaml,
+        revision: 1,
+        enabled: 0,
+        published: 0,
+        draft_yaml: sourceYaml,
+        draft_name: "Intake",
+        created_at: "now",
+        updated_at: "now",
+      })
+      .mockResolvedValueOnce({
+        connector_id: "intake",
+        team_id: "ws-a",
+        name: "Intake",
+        source_yaml: sourceYaml,
+        revision: 2,
+        enabled: 1,
+        published: 1,
+        draft_yaml: null,
+        draft_name: null,
+        created_at: "now",
+        updated_at: "now",
+      });
+
+    const published = await repository.publishDraft("ws-a", "intake");
+
+    expect(published).toMatchObject({ id: "intake", version: 2, enabled: true, published: true, hasDraft: false });
+    expect(published?.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(database.run.mock.calls[0][0]).toContain("published = 1, enabled = 1");
+    expect(database.run.mock.calls[0][1]).toEqual([
+      sourceYaml,
+      expect.stringMatching(/^[a-f0-9]{64}$/),
+      "ws-a",
+      "intake",
+    ]);
+    expect(database.run.mock.calls[0][1]).not.toContain(published?.token);
+  });
+
+  it("requires publication before enablement and creates a replacement token when re-enabled", async () => {
+    const unpublished = {
+      connector_id: "intake",
+      team_id: "ws-a",
+      name: "Intake",
+      source_yaml: "yaml",
+      revision: 1,
+      enabled: 0,
+      published: 0,
+      created_at: "now",
+      updated_at: "now",
+    };
+    database.get.mockResolvedValueOnce(unpublished);
+    await expect(repository.setEnabled("ws-a", "intake", true)).rejects.toThrow("Publish this connector");
+    expect(database.run).not.toHaveBeenCalled();
+
+    database.get
+      .mockResolvedValueOnce({ ...unpublished, published: 1 })
+      .mockResolvedValueOnce({ ...unpublished, published: 1, enabled: 1 });
+    const enabled = await repository.setEnabled("ws-a", "intake", true);
+    expect(enabled?.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(database.run.mock.calls[0][1]).toEqual([expect.stringMatching(/^[a-f0-9]{64}$/), "ws-a", "intake"]);
+    expect(database.run.mock.calls[0][1]).not.toContain(enabled?.token);
+  });
+
   it("lists and gets only the selected workspace", async () => {
     database.all.mockResolvedValue([]);
     expect(await repository.listForWorkspace("ws-a")).toEqual([]);

@@ -42,6 +42,21 @@ const routes = [
     transient: true,
   },
   {
+    pattern: "/workspaces/:workspaceId/connectors",
+    page: "connectors",
+    component: "page-connectors",
+    template: (params) => `/assets/pages/connectors.html?workspaceId=${encodeURIComponent(params.workspaceId)}`,
+    transient: true,
+  },
+  {
+    pattern: "/workspaces/:workspaceId/connectors/:connectorId",
+    page: "connector-editor",
+    component: "page-connectors",
+    template: (params) =>
+      `/assets/pages/connectors.html?workspaceId=${encodeURIComponent(params.workspaceId)}&id=${encodeURIComponent(params.connectorId)}`,
+    transient: true,
+  },
+  {
     pattern: "/workspaces/:workspaceId/runs/events",
     page: "incoming-events",
     component: "page-incoming-events",

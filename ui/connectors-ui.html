@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Workspace Connectors</title>
+  </head>
+  <body class="min-h-screen bg-app-background text-app-foreground">
+    <link rel="stylesheet" href="/assets/on.css" />
+    <link rel="component" href="https://sodium.static.apphor.de/code-editor.html" />
+    <template app>
+      <main class="mx-auto w-full max-w-5xl space-y-5 p-4 sm:p-6">
+        <p role="alert" class="text-sm text-app-error" class-hidden="!error">{{ error }}</p>
+        <p role="status" aria-live="polite" class="text-sm text-app-secondary" class-hidden="!loading">
+          Loading connectors…
+        </p>
+        <template if="oneTimeUrl"
+          ><div role="status" class="break-all rounded-lg border border-app-warning/50 p-4">
+            <p class="font-semibold">Private ingress URL — shown only once</p>
+            <code>{{ oneTimeUrl }}</code>
+            <button type="button" on-click="copyUrl()" class="ml-3 underline">Copy URL</button>
+            <button type="button" on-click="dismissUrl()" class="ml-3 underline">Dismiss</button>
+          </div></template
+        >
+        <section class="grid gap-5 lg:grid-cols-[minmax(15rem,0.8fr)_minmax(0,1.2fr)]">
+          <nav class="rounded-2xl border border-app-border bg-app-card p-4" aria-labelledby="connectors-title">
+            <div class="flex items-center justify-between gap-2">
+              <h1 id="connectors-title" class="text-lg font-semibold">Connectors</h1>
+              <a
+                class="rounded-lg bg-app-primary px-3 py-2 text-sm font-semibold text-white"
+                attr-href="basePath + '/new'"
+                >New</a
+              >
+            </div>
+            <ul class="mt-3 divide-y divide-app-border" aria-label="Workspace connectors">
+              <template for="item of connectors"
+                ><li class="py-2">
+                  <a
+                    class="block rounded p-2 hover:bg-app-hover focus-visible:ring-2 focus-visible:ring-app-primary"
+                    attr-href="basePath + '/' + encodeURIComponent(item.id)"
+                  >
+                    <span class="block font-semibold">{{ item.name }}</span
+                    ><span class="text-xs text-app-secondary"
+                      >{{ item.id }} · v{{ item.version }} · {{ item.enabled ? 'Enabled' : item.published ? 'Disabled' :
+                      'Unpublished' }}<template if="item.hasDraft"> · Draft</template></span
+                    >
+                  </a>
+                </li></template
+              >
+            </ul>
+            <p class="py-6 text-center text-sm text-app-secondary" class-hidden="loading || connectors.length">
+              No connectors yet. Create one to begin.
+            </p>
+          </nav>
+          <section
+            class="min-w-0 rounded-2xl border border-app-border bg-app-card p-4 sm:p-5"
+            aria-labelledby="editor-title"
+            class-hidden="!editing"
+          >
+            <a class="text-sm text-app-primary underline" attr-href="basePath">Back to connectors</a>
+            <h2 id="editor-title" class="mt-3 text-lg font-semibold">
+              {{ selectedId ? 'Edit connector' : 'New connector' }}
+            </h2>
+            <div class="mt-4 grid gap-3 sm:grid-cols-2">
+              <label class="grid gap-1 text-sm"
+                >Connector ID<input
+                  bind-value="id"
+                  on-input="setId($event)"
+                  maxlength="64"
+                  pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+                  required
+                  bind-disabled="Boolean(selectedId)"
+                  class="min-h-11 rounded border border-app-border bg-app-panel px-3"
+              /></label>
+              <label class="grid gap-1 text-sm"
+                >Name<input
+                  bind-value="name"
+                  on-input="setName($event)"
+                  maxlength="200"
+                  required
+                  class="min-h-11 rounded border border-app-border bg-app-panel px-3"
+              /></label>
+            </div>
+            <label class="mt-4 inline-flex min-h-11 items-center gap-2 text-sm"
+              ><input
+                type="checkbox"
+                bind-checked="enabled"
+                on-change="toggleEnabled($event)"
+                bind-disabled="busy || !selectedId || !published"
+                class="h-4 w-4"
+              />Enabled</label
+            >
+            <p class="text-xs text-app-secondary">
+              This controls the published connector. Saving a draft does not change live ingress behavior.
+            </p>
+            <label class="sr-only" for="connector-yaml">Connector YAML</label>
+            <textarea
+              id="connector-yaml"
+              bind-value="source"
+              on-input="setSource($event)"
+              rows="20"
+              spellcheck="false"
+              class="mt-3 min-h-80 w-full resize-y rounded-lg border border-app-border bg-app-panel p-3 font-mono text-sm"
+              aria-label="Connector YAML"
+            ></textarea>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                on-click="save()"
+                bind-disabled="busy"
+                class="min-h-11 rounded-lg border border-app-primary px-4 text-sm font-semibold text-app-primary"
+              >
+                Save draft
+              </button>
+              <button
+                type="button"
+                on-click="publish()"
+                bind-disabled="busy || !selectedId || !hasDraft"
+                class="min-h-11 rounded-lg bg-app-success px-4 text-sm font-semibold text-white"
+              >
+                Publish
+              </button>
+              <button
+                type="button"
+                on-click="remove()"
+                bind-disabled="busy || !selectedId"
+                class="min-h-11 rounded-lg border border-app-error px-4 text-sm text-app-error"
+              >
+                Delete
+              </button>
+            </div>
+          </section>
+        </section>
+      </main>
+      <script setup src="/assets/connectors-ui.mjs"></script>
+    </template>
+    <script type="module">
+      import "@li3/web";
+    </script>
+  </body>
+</html>

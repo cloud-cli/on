@@ -8,8 +8,11 @@ export type Connector = {
   sourceYaml: string;
   version: number;
   enabled: boolean;
+  published: boolean;
   createdAt: string;
   updatedAt: string;
+  draftYaml: string | null;
+  hasDraft: boolean;
 };
 
 export type CreatedConnector = Connector & { token: string };
@@ -62,6 +65,78 @@ export class ConnectorRepository {
     return { ...connector, token };
   }
 
+  async saveDraft(workspaceId: string, id: string, name: string, sourceYaml: string): Promise<Connector> {
+    validate(id, name, sourceYaml);
+    await db.run(
+      `INSERT INTO connectors (team_id, connector_id, name, source_yaml, revision, webhook_token_hash, enabled, draft_yaml, draft_name, published)
+       VALUES (?, ?, ?, ?, 1, NULL, 0, ?, ?, 0)
+       ON CONFLICT(team_id, connector_id) DO UPDATE SET draft_yaml = excluded.draft_yaml,
+         draft_name = excluded.draft_name,
+         updated_at = CURRENT_TIMESTAMP`,
+      [workspaceId, id, name, sourceYaml, sourceYaml, name],
+    );
+    const connector = await this.getForWorkspace(workspaceId, id);
+    if (!connector) {
+      throw new Error("Connector draft could not be stored");
+    }
+    return connector;
+  }
+
+  async publishDraft(workspaceId: string, id: string): Promise<(Connector & { token?: string }) | null> {
+    const current = await this.getForWorkspace(workspaceId, id);
+    if (!current || !current.hasDraft) {
+      return null;
+    }
+    const source = current.draftYaml || current.sourceYaml;
+    const definition = (await import("./connector-definition.js")).parseConnectorDefinition(source);
+    if (definition.id !== id) {
+      throw new Error("Invalid connector YAML");
+    }
+    const token = current.enabled ? null : crypto.randomBytes(32).toString("base64url");
+    await db.run(
+      `UPDATE connectors SET name = COALESCE(draft_name, name), source_yaml = ?, revision = revision + 1, draft_yaml = NULL, draft_name = NULL,
+       published = 1, enabled = 1, webhook_token_hash = COALESCE(webhook_token_hash, ?), updated_at = CURRENT_TIMESTAMP
+       WHERE team_id = ? AND connector_id = ?`,
+      [source, token ? tokenDigest(token) : null, workspaceId, id],
+    );
+    const connector = await this.getForWorkspace(workspaceId, id);
+    return connector ? { ...connector, ...(token ? { token } : {}) } : null;
+  }
+
+  async setEnabled(
+    workspaceId: string,
+    id: string,
+    enabled: boolean,
+  ): Promise<(Connector & { token?: string }) | null> {
+    const current = await this.getForWorkspace(workspaceId, id);
+    if (!current) {
+      return null;
+    }
+    if (enabled && !current.published) {
+      throw new Error("Publish this connector before enabling it");
+    }
+    if (!enabled) {
+      await db.run(
+        `UPDATE connectors SET enabled = 0, webhook_token_hash = NULL, updated_at = CURRENT_TIMESTAMP WHERE team_id = ? AND connector_id = ?`,
+        [workspaceId, id],
+      );
+    } else {
+      const token = current.enabled ? null : crypto.randomBytes(32).toString("base64url");
+      await db.run(
+        `UPDATE connectors SET enabled = 1, webhook_token_hash = COALESCE(webhook_token_hash, ?), updated_at = CURRENT_TIMESTAMP WHERE team_id = ? AND connector_id = ?`,
+        [token ? tokenDigest(token) : null, workspaceId, id],
+      );
+      const connector = await this.getForWorkspace(workspaceId, id);
+      return connector ? { ...connector, ...(token ? { token } : {}) } : null;
+    }
+    return this.getForWorkspace(workspaceId, id);
+  }
+
+  async deleteForWorkspace(workspaceId: string, id: string): Promise<boolean> {
+    const result = await db.run(`DELETE FROM connectors WHERE team_id = ? AND connector_id = ?`, [workspaceId, id]);
+    return Number(result?.changes || 0) > 0;
+  }
+
   async updateForWorkspace(
     workspaceId: string,
     id: string,
@@ -82,7 +157,7 @@ export class ConnectorRepository {
 
   async listForWorkspace(workspaceId: string): Promise<Connector[]> {
     const rows = await db.all(
-      `SELECT connector_id, team_id, name, source_yaml, revision, enabled, created_at, updated_at
+      `SELECT connector_id, team_id, name, source_yaml, revision, enabled, published, created_at, updated_at, draft_yaml, draft_name
        FROM connectors WHERE team_id = ? ORDER BY connector_id`,
       [workspaceId],
     );
@@ -91,7 +166,7 @@ export class ConnectorRepository {
 
   async getForWorkspace(workspaceId: string, id: string): Promise<Connector | null> {
     const row = await db.get(
-      `SELECT connector_id, team_id, name, source_yaml, revision, enabled, created_at, updated_at
+      `SELECT connector_id, team_id, name, source_yaml, revision, enabled, published, created_at, updated_at, draft_yaml, draft_name
        FROM connectors WHERE team_id = ? AND connector_id = ?`,
       [workspaceId, id],
     );
@@ -145,8 +220,12 @@ export class ConnectorRepository {
       sourceYaml: row.source_yaml,
       version: Number(row.revision),
       enabled: Boolean(row.enabled),
+      published: row.published === undefined ? true : Boolean(row.published),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      draftYaml: row.draft_yaml ?? null,
+      hasDraft: row.draft_yaml != null,
+      ...(row.draft_name ? { draftName: row.draft_name } : {}),
     };
   }
 }

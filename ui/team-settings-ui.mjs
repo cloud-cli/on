@@ -19,12 +19,6 @@ export default function () {
   const inviteEmail = ref("");
   const inviteSubject = ref("");
   const inviteLink = ref("");
-  const connectors = ref([]);
-  const connectorId = ref("");
-  const connectorName = ref("");
-  const connectorYaml = ref("");
-  const editingConnector = ref(false);
-  const connectorUrl = ref("");
   const message = ref("");
   const error = ref("");
   const teamRunners = ref([]);
@@ -97,8 +91,6 @@ export default function () {
     roles.value = permissions.roles || {};
     roleLabels.value = permissions.roleLabels || {};
     canManage.value = Boolean(permissions.canManage);
-    const { connectors: definitions = [] } = await request(workspaceUrl("/connectors"));
-    connectors.value = definitions;
     const runners = await request(`/api/v1/teams/${encodeURIComponent(teamId)}/runners`);
     teamRunners.value = runners.team || [];
     sharedRunners.value = runners.shared || [];
@@ -190,61 +182,6 @@ export default function () {
   const setInviteSubject = (event) => {
     inviteSubject.value = event.target.value;
   };
-  const setConnectorId = (event) => {
-    connectorId.value = event.target.value;
-  };
-  const setConnectorName = (event) => {
-    connectorName.value = event.target.value;
-  };
-  const setConnectorYaml = (event) => {
-    connectorYaml.value = event.target.value;
-  };
-  const clearConnectorForm = () => {
-    connectorId.value = "";
-    connectorName.value = "";
-    connectorYaml.value = "";
-    editingConnector.value = false;
-  };
-  const editConnector = (connector) =>
-    act(async () => {
-      const { connector: definition } = await request(workspaceUrl(`/connectors/${encodeURIComponent(connector.id)}`));
-      connectorId.value = definition.id;
-      connectorName.value = definition.name;
-      connectorYaml.value = definition.sourceYaml;
-      editingConnector.value = true;
-      connectorUrl.value = "";
-      document.querySelector("#connector-name")?.focus();
-    });
-  const saveConnector = () =>
-    act(async () => {
-      const updating = editingConnector.value;
-      const id = connectorId.value.trim();
-      const name = connectorName.value.trim();
-      const sourceYaml = connectorYaml.value;
-      if (!id || !name || !sourceYaml.trim()) {
-        throw new Error("Enter a connector ID, name, and YAML definition.");
-      }
-      const result = await request(workspaceUrl(`/connectors${updating ? `/${encodeURIComponent(id)}` : ""}`), {
-        method: updating ? "PUT" : "POST",
-        body: JSON.stringify(updating ? { name, sourceYaml } : { id, name, sourceYaml }),
-      });
-      connectorUrl.value = updating ? "" : new URL(result.url, location.origin).toString();
-      clearConnectorForm();
-      await load();
-      message.value = updating ? "Connector updated." : "Connector created. Copy its private URL now.";
-    });
-  const revokeConnector = (connector) =>
-    act(async () => {
-      if (!confirm(`Revoke connector ${connector.name}? Its ingress URL will stop working.`)) {
-        return;
-      }
-      await request(workspaceUrl(`/connectors/${encodeURIComponent(connector.id)}`), { method: "DELETE" });
-      if (connectorId.value === connector.id) {
-        clearConnectorForm();
-      }
-      await load();
-      message.value = "Connector revoked.";
-    });
   const setSecretName = (event) => {
     secretName.value = event.target.value;
   };
@@ -444,19 +381,6 @@ export default function () {
     inviteEmail,
     inviteSubject,
     inviteLink,
-    connectors,
-    connectorId,
-    connectorName,
-    connectorYaml,
-    editingConnector,
-    connectorUrl,
-    setConnectorId,
-    setConnectorName,
-    setConnectorYaml,
-    clearConnectorForm,
-    editConnector,
-    saveConnector,
-    revokeConnector,
     message,
     error,
     createInvitation,

@@ -222,6 +222,8 @@ import recipesTemplate from "../ui/recipes.html?raw";
 import recipesSetup from "../ui/recipes-ui.mjs?raw";
 import incomingEventsTemplate from "../ui/incoming-events.html?raw";
 import incomingEventsSetup from "../ui/incoming-events.mjs?raw";
+import connectorsTemplate from "../ui/connectors-ui.html?raw";
+import connectorsSetup from "../ui/connectors-ui.mjs?raw";
 import timezoneFormatSource from "../ui/timezone-format.mjs?raw";
 import preferencesSource from "../ui/preferences.mjs?raw";
 import workspacePathSource from "../ui/workspace-path.mjs?raw";
@@ -610,6 +612,16 @@ export class WebhookServer {
         return;
       }
       return this.renderPageComponent(res, "page-incoming-events", incomingEventsTemplate);
+    }
+    if (req.method === "GET" && url.pathname === "/pages/connectors.html") {
+      if (!(await this.requireAuthenticatedUser(req, res))) {
+        return;
+      }
+      return this.renderPageComponent(res, "page-connectors", connectorsTemplate);
+    }
+    if (req.method === "GET" && url.pathname === "/connectors-ui.mjs") {
+      res.writeHead(200, { "Cache-Control": "no-cache", "Content-Type": "text/javascript; charset=utf-8" });
+      return res.end(connectorsSetup);
     }
     if (req.method === "GET" && url.pathname === "/pages/incoming-events-ui.mjs") {
       res.writeHead(200, {
@@ -3915,6 +3927,61 @@ sessionStorage.removeItem('runner-pending-team-invite');
 
     const connectorsPath = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/connectors$`));
     const connectorPath = url.pathname.match(new RegExp(`^/api/${prefix}/([^/]+)/connectors/([^/]+)$`));
+    const connectorOperation = url.pathname.match(
+      new RegExp(`^/api/${prefix}/([^/]+)/connectors/([^/]+)/(draft|publish|enabled)$`),
+    );
+    if (connectorOperation && ["PUT", "POST", "PATCH"].includes(req.method || "")) {
+      const [, rawTeam, rawId, operation] = connectorOperation;
+      const teamId = decodeURIComponent(rawTeam);
+      const connectorId = decodeURIComponent(rawId);
+      const authorized = await this.authorizer.workspace(req, res, "webhooks.manage", teamId);
+      if (!authorized) {
+        return;
+      }
+      try {
+        let connector;
+        let urlValue: string | undefined;
+        if (operation === "draft" && req.method === "PUT") {
+          const body = await this.readJson(req, res);
+          if (!body || typeof body.name !== "string" || typeof body.sourceYaml !== "string") {
+            throw new Error("name and sourceYaml are required");
+          }
+          const definition = parseConnectorDefinition(body.sourceYaml);
+          if (definition.id !== connectorId || definition.name !== body.name) {
+            throw new Error("Connector YAML id and name must match");
+          }
+          connector = await this.connectors.saveDraft(teamId, connectorId, body.name, body.sourceYaml);
+        } else if (operation === "publish" && req.method === "POST") {
+          connector = await this.connectors.publishDraft(teamId, connectorId);
+          if (connector?.token) {
+            urlValue = `/webhooks/connectors/${encodeURIComponent(connector.token)}`;
+          }
+        } else if (operation === "enabled" && req.method === "PATCH") {
+          const body = await this.readJson(req, res);
+          if (!body || typeof body.enabled !== "boolean") {
+            throw new Error("enabled must be a boolean");
+          }
+          connector = await this.connectors.setEnabled(teamId, connectorId, body.enabled);
+          if (connector?.token) {
+            urlValue = `/webhooks/connectors/${encodeURIComponent(connector.token)}`;
+          }
+        } else {
+          res.writeHead(405).end();
+          return;
+        }
+        if (!connector) {
+          res.writeHead(404).end(JSON.stringify({ error: "Connector not found" }));
+          return;
+        }
+        const safeConnector = { ...connector, token: undefined };
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ connector: safeConnector, ...(urlValue ? { url: urlValue } : {}) }));
+      } catch (error) {
+        res.writeHead(422, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: error instanceof Error ? error.message : "Invalid connector" }));
+      }
+      return;
+    }
     if (connectorsPath && ["GET", "POST"].includes(req.method || "")) {
       const teamId = decodeURIComponent(connectorsPath[1]);
       const capability = req.method === "GET" ? "webhooks.view" : "webhooks.manage";
@@ -3983,11 +4050,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
         return;
       }
       if (req.method === "DELETE") {
-        const removed = await this.connectors.revokeForWorkspace(teamId, connectorId);
+        const removed = await this.connectors.deleteForWorkspace(teamId, connectorId);
         if (removed) {
           await this.principals.recordAudit({
             actor: authorized.principal.subject,
-            action: "connector.revoke",
+            action: "connector.delete",
             target: connectorId,
             teamId,
           });

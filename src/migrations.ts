@@ -1077,6 +1077,23 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: "039_connector_drafts",
+    async apply() {
+      const columns = await db.all("PRAGMA table_info(connectors)");
+      if (!columns.some((column: any) => column.name === "draft_yaml")) {
+        await db.exec("ALTER TABLE connectors ADD COLUMN draft_yaml TEXT");
+      }
+      if (!columns.some((column: any) => column.name === "draft_name")) {
+        await db.exec("ALTER TABLE connectors ADD COLUMN draft_name TEXT");
+      }
+      if (!columns.some((column: any) => column.name === "published")) {
+        await db.exec(
+          "ALTER TABLE connectors ADD COLUMN published INTEGER NOT NULL DEFAULT 1 CHECK (published IN (0,1))",
+        );
+      }
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {
