@@ -45,6 +45,30 @@ describe("ConnectorRepository", () => {
     },
   );
 
+  it("accepts lowercase UUIDs for generated connector identities", async () => {
+    const uuid = "123e4567-e89b-42d3-a456-426614174000";
+    database.get.mockResolvedValue({
+      connector_id: uuid,
+      team_id: "ws-a",
+      name: "Generated connector",
+      source_yaml: "run: |\n  emit('sample.received', {})",
+      revision: 1,
+      enabled: 1,
+      created_at: "now",
+      updated_at: "now",
+    });
+
+    const created = await repository.createForWorkspace(
+      "ws-a",
+      uuid,
+      "Generated connector",
+      "run: |\n  emit('sample.received', {})",
+    );
+
+    expect(created.id).toBe(uuid);
+    expect(database.run.mock.calls[0][1][1]).toBe(uuid);
+  });
+
   it("enforces nonempty bounded name and YAML source", async () => {
     await expect(repository.createForWorkspace("ws", "valid", "  ", "yaml")).rejects.toThrow("name");
     await expect(repository.createForWorkspace("ws", "valid", "n".repeat(201), "yaml")).rejects.toThrow("name");

@@ -8,8 +8,8 @@ export default function () {
   const selectedId = ref(parts[4] && parts[4] !== "new" ? parts[4] : "");
   const editing = ref(parts[4] === "new" || Boolean(selectedId.value));
   const connectors = ref([]);
-  const id = ref("example");
-  const name = ref("Example");
+  const id = ref(crypto.randomUUID());
+  const name = ref("");
   const source = ref(`run: |\n  emit("sample.received", inputs);\n`);
   const enabled = ref(false);
   const published = ref(false);
@@ -69,19 +69,16 @@ export default function () {
       busy.value = false;
     }
   };
-  const setId = (event) => {
-    id.value = event.target.value;
-  };
   const setName = (event) => {
     name.value = event.target.value;
   };
-  const setSource = (event) => {
-    source.value = event.target.value;
+  const setSource = (value) => {
+    source.value = value;
   };
   const save = () =>
     act(async () => {
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id.value) || !name.value.trim() || !source.value.trim()) {
-        throw new Error("Enter a valid ID, name, and connector YAML.");
+        throw new Error("Enter a name and connector YAML.");
       }
       const result = await request(`${api}/${encodeURIComponent(id.value)}/draft`, {
         method: "PUT",
@@ -172,12 +169,12 @@ export default function () {
     enabled,
     published,
     hasDraft,
+    hasSigningSecret,
     loading,
     busy,
     error,
     oneTimeUrl,
     oneTimeSigningSecret,
-    setId,
     setName,
     setSource,
     save,
