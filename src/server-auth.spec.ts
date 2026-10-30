@@ -15,6 +15,33 @@ const request = (url: string, method = "GET", headers: Record<string, string> = 
   ({ url, method, headers: { host: "app.test", ...headers } }) as any;
 
 describe("current IAM route authorization", () => {
+  it("routes the documented versioned connector ingress URL to the connector handler", async () => {
+    const connector = {
+      id: "normalize",
+      workspaceId: "team-a",
+      name: "Normalize",
+      sourceYaml: "run: |\\n  emit('ok', {})",
+      version: 1,
+    };
+    const server = {
+      workflowsLoaded: Promise.resolve(),
+      connectors: { lookupByToken: vi.fn(async () => connector) },
+      handleConnectorWebhook: vi.fn(async (_connector, _req, res) => res.writeHead(202).end("accepted")),
+    };
+    const res = response();
+
+    await (WebhookServer.prototype as any).handleRequest.call(
+      server,
+      request("/api/v1/webhooks/connectors/one-time-route-token", "POST"),
+      res,
+    );
+
+    expect(server.connectors.lookupByToken).toHaveBeenCalledWith("one-time-route-token");
+    expect(server.handleConnectorWebhook).toHaveBeenCalledWith(connector, expect.anything(), res);
+    expect(res.writeHead).toHaveBeenCalledWith(202);
+    expect(res.end).toHaveBeenCalledWith("accepted");
+  });
+
   it.each([
     "/ui/channels",
     "/ui/workspaces/team-a/channels",
@@ -398,7 +425,7 @@ describe("current IAM route authorization", () => {
     expect(server.principals.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: "connector.create", teamId: "unrelated", target: "normalize" }),
     );
-    expect(res.end.mock.calls[0][0]).toContain("/webhooks/connectors/one-time-route-token");
+    expect(res.end.mock.calls[0][0]).toContain("/api/v1/webhooks/connectors/one-time-route-token");
     expect(JSON.parse(res.end.mock.calls[0][0]).connector).not.toHaveProperty("token");
   });
 

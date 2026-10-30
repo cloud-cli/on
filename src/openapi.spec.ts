@@ -59,7 +59,7 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api/v1/workflows/{workflowId}"]).toHaveProperty("put");
     expect(spec.paths["/api/v1/workflows/{workflowId}"]).toHaveProperty("delete");
     expect(spec.paths["/api/v1/runs/{jobId}/artifacts/{path}"]).toHaveProperty("get");
-    expect(spec.paths["/webhooks/connectors/{token}"]).toHaveProperty("post");
+    expect(spec.paths["/api/v1/webhooks/connectors/{token}"]).toHaveProperty("post");
     expect(spec.paths["/api/v1/workspaces/{workspaceId}/connectors"].post).toBeDefined();
     expect(spec.paths["/api/v1/teams"].get.security).toEqual([{ oidcSessionCookie: [] }, { oidcAdminBearer: [] }]);
     expect(spec.paths["/api/v1/teams/{teamId}/invitations"]).toHaveProperty("post");
@@ -82,11 +82,7 @@ describe("OpenAPI specification", () => {
   });
 
   it("documents only canonical application API routes and runner rename", () => {
-    expect(
-      Object.keys(spec.paths).every(
-        (path) => path === "/api/v1" || path.startsWith("/api/v1/") || path === "/webhooks/connectors/{token}",
-      ),
-    ).toBe(true);
+    expect(Object.keys(spec.paths).every((path) => path === "/api/v1" || path.startsWith("/api/v1/"))).toBe(true);
     expect(Object.keys(spec.paths).some((path) => /system-users|api-keys|workspace.+\/tokens/.test(path))).toBe(false);
     expect(spec.paths["/api/v1/auth/session"].get.security).toEqual([
       { oidcSessionCookie: [] },

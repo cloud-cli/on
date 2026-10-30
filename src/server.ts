@@ -159,6 +159,10 @@ function internalApiPath(pathname: string, method: string): string {
   if (pathname === "/api/v1") {
     return pathname;
   }
+  const connectorIngress = pathname.match(/^\/api\/v1\/webhooks\/connectors\/([^/]+)$/);
+  if (connectorIngress) {
+    return `/webhooks/connectors/${connectorIngress[1]}`;
+  }
   const restart = pathname.match(/^\/api\/v1\/jobs\/(\d+)\/restart$/);
   if (restart) {
     return `/restart/${restart[1]}`;
@@ -3976,7 +3980,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         } else if (operation === "publish" && req.method === "POST") {
           connector = await this.connectors.publishDraft(teamId, connectorId);
           if (connector?.token) {
-            urlValue = `/webhooks/connectors/${encodeURIComponent(connector.token)}`;
+            urlValue = `/api/v1/webhooks/connectors/${encodeURIComponent(connector.token)}`;
           }
         } else if (operation === "enabled" && req.method === "PATCH") {
           const body = await this.readJson(req, res);
@@ -3985,7 +3989,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
           }
           connector = await this.connectors.setEnabled(teamId, connectorId, body.enabled);
           if (connector?.token) {
-            urlValue = `/webhooks/connectors/${encodeURIComponent(connector.token)}`;
+            urlValue = `/api/v1/webhooks/connectors/${encodeURIComponent(connector.token)}`;
           }
         } else {
           res.writeHead(405).end();
@@ -4042,7 +4046,7 @@ sessionStorage.removeItem('runner-pending-team-invite');
         res.end(
           JSON.stringify({
             connector: { ...created, token: undefined },
-            url: `/webhooks/connectors/${encodeURIComponent(created.token)}`,
+            url: `/api/v1/webhooks/connectors/${encodeURIComponent(created.token)}`,
           }),
         );
       } catch (error) {
