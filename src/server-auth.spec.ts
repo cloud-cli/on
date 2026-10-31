@@ -17,7 +17,7 @@ const request = (url: string, method = "GET", headers: Record<string, string> = 
   ({ url, method, headers: { host: "app.test", ...headers } }) as any;
 
 describe("current IAM route authorization", () => {
-  it("correlates an authorized agent request through a real worker to invocation retrieval", async () => {
+  it("exercises authorized Agent dispatch, worker completion, and the mocked invocation projection", async () => {
     const completed = vi.fn(async (_jobId: string | number, _status: string, _report: unknown) => {});
     const workerQueue = {
       saveReport: vi.fn(async () => {}),
@@ -110,6 +110,8 @@ describe("current IAM route authorization", () => {
       workflow: { id: "workflow-1", name: "Agent workflow", on: {}, steps: [{ id: "complete", eval: "true" }] },
     } as Processable);
     expect(completed).toHaveBeenCalledWith(801, "success", expect.any(Object));
+    // Invocation admission and the completed job are separate projections here:
+    // the invocation repository response below is a fixture, not persisted result linkage.
     terminalStatus = "success";
 
     const fetched = response();

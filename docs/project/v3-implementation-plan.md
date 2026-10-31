@@ -77,6 +77,8 @@ For each milestone, award its weight only after all acceptance criteria are impl
 
 **Acceptance:** Configurable connectors safely normalize arbitrary input without runner execution capabilities; workflows consume normalized typed events; agent requests are scoped, auditable, resumable, and correlated with outcomes; authorization, duplicate/replay, failure, and recovery paths have tests. Browser E2E exercises implemented user journeys, checks console/network errors, and saves reviewed screenshots at relevant viewport sizes.
 
+**Agent result limitation:** Current Agent workflow dispatch persists request provenance and admission state, and the invocation projection links admitted variants to job/run IDs. Terminal execution results are persisted on the generic job/report and retrieved through the ordinary run/status interfaces; there is no Agent-specific result record or result protocol. The worker integration fixture validates generic job completion only, while the authenticated dispatch test uses a mocked invocation projection. Neither establishes durable request-to-worker-result correlation end to end. Do not describe these tests as proving that linkage; implement and test that product contract as a separate, explicitly scoped milestone-6 task.
+
 **Dependencies:** Durable events/admission, workflow contracts, Stream/Thread history, and reliable execution primitives.
 
 ## Delivery order and cross-cutting gates
