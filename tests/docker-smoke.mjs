@@ -45,6 +45,12 @@ const database = http.createServer(async (request, response) => {
   if (query.m === "get" && /COALESCE\(MAX\(revision\)/i.test(query.s)) {
     result = { revision: workflow ? 1 : 0 };
   }
+  if (query.m === "get" && /FROM recipe_publishers WHERE namespace/i.test(query.s)) {
+    result = { owner_subject: "system:built-in-recipes" };
+  }
+  if (query.m === "get" && /FROM recipes WHERE namespace/i.test(query.s)) {
+    result = { owner_subject: "system:built-in-recipes" };
+  }
   if (query.m === "get" && /FROM workflows WHERE id/i.test(query.s)) {
     result = workflow;
   }

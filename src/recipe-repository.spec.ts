@@ -151,6 +151,7 @@ describe("global recipe repository identity and versioning", () => {
     });
     expect(yaml).not.toContain("cloudyToken");
     expect(yaml).toContain('git checkout --detach "$COMMIT_SHA"');
+    expect(yaml).toContain("if [ ! -f Dockerfile ]; then");
     expect(yaml).toContain('cy dx.list --image "$IMAGE_TAG"');
     expect(yaml).toContain("| jq -r '.[].name'");
     expect(yaml).toContain("No services match image $IMAGE_TAG");

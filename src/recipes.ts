@@ -32,6 +32,9 @@ steps:
   - run: |
       set -euo pipefail
       cd source
+      if [ ! -f Dockerfile ]; then
+        printf '%s\\n' 'FROM ghcr.io/cloud-cli/node:latest' 'COPY --chown=node:node . /home/app' > Dockerfile
+      fi
       docker build --label "org.opencontainers.image.revision=$COMMIT_SHA" -t "$IMAGE:$IMAGE_TAG" .
   - run: |
       set -euo pipefail
