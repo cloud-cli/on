@@ -8,6 +8,7 @@ import { StandardProcessDriver } from "./drivers/standard-process.driver.js";
 import { QueueManager } from "./queue.js";
 import { WorkflowRunAdmissionRepository } from "./workflow-run-admission-repository.js";
 import type { JobRecord } from "./types.js";
+import { processJob } from "./worker.js";
 
 const testDb = vi.hoisted(() => ({ database: null as DatabaseSync | null }));
 let temporaryDirectory: string | null = null;
@@ -113,19 +114,24 @@ describe("agent invocation worker integration", () => {
         lease_completed INTEGER NOT NULL DEFAULT 0,
         dispatch_key TEXT UNIQUE
       );
+      CREATE TABLE IF NOT EXISTS step_logs (
+        job_id INTEGER NOT NULL, step_id TEXT NOT NULL, log_content TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(job_id, step_id)
+      );
       CREATE INDEX IF NOT EXISTS idx_jobs_dispatch_key ON jobs(dispatch_key);
       CREATE TABLE IF NOT EXISTS step_execution_attempt_starts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         team_id INTEGER, job_id INTEGER, step_id TEXT, attempt INTEGER, started_at TEXT,
         attempt_id TEXT,
-        UNIQUE(team_id, job_id, step_id, attempt)
+        UNIQUE(job_id, step_id, attempt)
       );
       CREATE TABLE IF NOT EXISTS step_execution_attempts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         team_id INTEGER, job_id INTEGER, step_id TEXT, attempt INTEGER, status TEXT,
         started_at TEXT, completed_at TEXT, duration_ms INTEGER, exit_code INTEGER,
         error TEXT, log_content TEXT, attempt_id TEXT, snapshot_json TEXT,
-        FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
+        FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+        UNIQUE(job_id, step_id, attempt)
       );
       CREATE TABLE IF NOT EXISTS domain_events (
         id TEXT PRIMARY KEY, team_id TEXT NOT NULL, type TEXT NOT NULL, schema_version INTEGER NOT NULL,
@@ -530,6 +536,53 @@ describe("agent invocation worker integration", () => {
       await queue.completeJob(jobId, "success", report);
       const finishedJob = await queue.getJob(jobId);
       expect(finishedJob?.status).toBe("success");
+    });
+  });
+
+  describe("actual worker invocation completion", () => {
+    it("persists worker-produced terminal status and correlates it to the admitted invocation", async () => {
+      const queue = new QueueManager("invocation-worker");
+      const admissions = new WorkflowRunAdmissionRepository();
+      const eventId = `agent-worker-${Date.now()}`;
+      await admissions.persistPlan([{
+        eventId,
+        teamId: "workspace-1",
+        workflowId: "test-workflow",
+        revision: 1,
+        index: 0,
+        matrix: {},
+        tags: [],
+      }]);
+      const admission = await admissions.claimVariant(eventId, 0);
+      expect(admission).not.toBeNull();
+      const jobId = await queue.enqueueDispatch(
+        "test-workflow", 1, { inputs: { message: "synthetic" }, matrix: {} }, [], "workspace-1", eventId,
+        `workflow-run:${eventId}:0`, { eventId, variantIndex: 0, leaseToken: admission!.token },
+      );
+      await admissions.finish(admission!, "admitted", jobId);
+      const job = await queue.claimNextJob([]);
+      expect(job?.id).toBe(jobId);
+
+      await processJob({
+        workerId: "invocation-worker",
+        job: job as JobRecord,
+        queue,
+        secrets: { getAll: () => ({}), redactText: (text: string) => text },
+        config: { storagePath: temporaryDirectory!, serverUrl: "http://runner.test", env: {}, plugins: [] },
+        driver: { execute: vi.fn(), readLog: async () => "" },
+        workflow: {
+          id: "test-workflow", name: "Synthetic workflow", on: {},
+          steps: [{ id: "result", eval: '"worker-result"' }],
+        },
+      } as any);
+
+      const completed = await queue.getJob(jobId);
+      expect(completed?.status).toBe("success");
+      const admissionResult = await admissions.get(eventId, 0);
+      expect(admissionResult).toMatchObject({ status: "admitted", jobId });
+      const report = JSON.parse(String((completed as any).report));
+      expect(report.status).toBe("success");
+      expect(report.steps).toContainEqual(expect.objectContaining({ id: "result", status: "success" }));
     });
   });
 
