@@ -2126,7 +2126,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["eventId", "fanout", "repeatSemantics", "deliveries"],
+                  "required": ["eventId", "fanout", "routingStatus", "repeatSemantics", "deliveries"],
                   "properties": {
                     "eventId": {
                       "type": "string"
@@ -2135,6 +2135,12 @@
                       "type": "string",
                       "nullable": true,
                       "enum": ["matched", "repeat", "unmatched", null]
+                    },
+                    "routingStatus": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Original routing classification, or null when a legacy repeat overwrote it before provenance was stored.",
+                      "enum": ["matched", "unmatched", null]
                     },
                     "repeatSemantics": {
                       "type": "string",

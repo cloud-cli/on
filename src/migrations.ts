@@ -1155,6 +1155,23 @@ const migrations: Migration[] = [
       );
     },
   },
+  {
+    version: "042_domain_event_fanout_routing_provenance",
+    async apply() {
+      const columns = await db.all("PRAGMA table_info(domain_event_fanout_outcomes)");
+      if (!columns.length) {
+        return;
+      }
+      if (!columns.some((column: any) => column.name === "routing_status")) {
+        // Intentionally nullable: legacy rows already marked repeat have lost their original routing result.
+        await db.exec(`ALTER TABLE domain_event_fanout_outcomes ADD COLUMN routing_status TEXT
+          CHECK (routing_status IN ('matched','unmatched'))`);
+      }
+      // Do not infer routing provenance for legacy repeat rows; preserve only still-observable classifications.
+      await db.exec(`UPDATE domain_event_fanout_outcomes SET routing_status = status
+        WHERE routing_status IS NULL AND status IN ('matched','unmatched')`);
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

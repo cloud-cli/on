@@ -36,6 +36,9 @@ describe("typed domain event migration", () => {
           "034_stream_event_binding_integrity",
         ].map((version) => ({ version }));
       }
+      if (sql === "PRAGMA table_info(domain_event_fanout_outcomes)") {
+        return [{ name: "status" }];
+      }
       return [];
     });
   });
@@ -60,6 +63,15 @@ describe("typed domain event migration", () => {
     expect(migration).toContain("PRIMARY KEY(team_id, event_id)");
     expect(migration).toContain("'matched', 'repeat', 'unmatched'");
     expect(migration).toContain("FOREIGN KEY(team_id, event_id) REFERENCES domain_events(team_id, id)");
+  });
+
+  it("adds nullable routing provenance without inventing history for overwritten repeats", async () => {
+    await runMigrations();
+    expect(database.exec).toHaveBeenCalledWith(expect.stringContaining("ADD COLUMN routing_status TEXT"));
+    expect(database.exec).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE routing_status IS NULL AND status IN ('matched','unmatched')"),
+    );
+    expect(database.exec).not.toHaveBeenCalledWith(expect.stringContaining("status = 'repeat'"));
   });
 
   it("adds a safe high-water boundary for future-only subscriptions", async () => {
@@ -168,7 +180,14 @@ describe("typed domain event migration", () => {
         ].map((version) => ({ version }));
       }
       if (sql.includes("GROUP BY team_id, workflow_id, workflow_revision, event_type")) {
-        return [{ team_id: "team-a", workflow_id: "build", workflow_revision: 1, event_type: "build" }];
+        return [
+          {
+            team_id: "team-a",
+            workflow_id: "build",
+            workflow_revision: 1,
+            event_type: "build",
+          },
+        ];
       }
       return [];
     });

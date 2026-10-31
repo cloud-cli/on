@@ -56,11 +56,13 @@ describe("domain event outcome projection in SQLite", () => {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(team_id, event_id, subscription_id)
       );
       CREATE TABLE domain_event_fanout_outcomes (
-        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL,
+        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL, routing_status TEXT,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(team_id, event_id)
       );
       INSERT INTO domain_events VALUES ('event', 'team', 1, 'changed'), ('unmatched', 'team', 2, 'other'),
-        ('recovered-unmatched', 'team', 3, 'unobserved');
+        ('recovered-unmatched', 'team', 3, 'unobserved'), ('legacy-repeat', 'team', 4, 'legacy');
+      INSERT INTO domain_event_fanout_outcomes(team_id, event_id, status, delivery_count)
+        VALUES ('team', 'legacy-repeat', 'repeat', 0);
       INSERT INTO domain_event_subscriptions(id, team_id, workflow_id, workflow_revision, event_type)
         VALUES ('sub-a', 'team', 'wf-a', 1, 'changed'), ('sub-b', 'team', 'wf-b', 1, 'changed');
       `);
@@ -72,9 +74,29 @@ describe("domain event outcome projection in SQLite", () => {
       testDb.database.prepare("SELECT COUNT(*) AS count FROM domain_event_deliveries WHERE event_id = 'event'").get(),
     ).toEqual({ count: 0 });
     testDb.database.exec("DROP TRIGGER reject_fanout_outcome");
-    expect(await repository.fanout("team", "event")).toEqual({ status: "matched", deliveryCount: 2 });
-    expect(await repository.fanout("team", "event")).toEqual({ status: "repeat", deliveryCount: 2 });
-    expect(await repository.fanout("team", "unmatched")).toEqual({ status: "unmatched", deliveryCount: 0 });
+    expect(await repository.fanout("team", "event")).toEqual({
+      status: "matched",
+      deliveryCount: 2,
+      routingStatus: "matched",
+    });
+    const concurrentRepeats = await Promise.all([
+      repository.fanout("team", "event"),
+      repository.fanout("team", "event"),
+    ]);
+    expect(concurrentRepeats).toEqual([
+      { status: "repeat", deliveryCount: 2, routingStatus: "matched" },
+      { status: "repeat", deliveryCount: 2, routingStatus: "matched" },
+    ]);
+    expect(await repository.fanout("team", "unmatched")).toEqual({
+      status: "unmatched",
+      deliveryCount: 0,
+      routingStatus: "unmatched",
+    });
+    expect(await repository.fanout("team", "unmatched")).toEqual({
+      status: "repeat",
+      deliveryCount: 0,
+      routingStatus: "unmatched",
+    });
     // Simulate a published event whose first fanout attempt never persisted an outcome.
     expect(await repository.reconcileFanout()).toBe(1);
     const deliveries = await repository.listForEvent("team", "event");
@@ -102,23 +124,32 @@ describe("domain event outcome projection in SQLite", () => {
     expect(await reopened.getOutcomeProjection("team", "event")).toEqual({
       eventId: "event",
       fanout: "repeat",
+      routingStatus: "matched",
       repeatSemantics: "idempotent-repeat",
       deliveries: [{ status: "filtered" }, { status: "failed" }],
     });
     expect(await reopened.getOutcomeProjection("team", "unmatched")).toEqual({
       eventId: "unmatched",
-      fanout: "unmatched",
-      repeatSemantics: null,
+      fanout: "repeat",
+      routingStatus: "unmatched",
+      repeatSemantics: "idempotent-repeat",
       deliveries: [],
     });
     expect(await reopened.getFanoutOutcome("team", "recovered-unmatched")).toEqual({
       status: "unmatched",
       deliveryCount: 0,
+      routingStatus: "unmatched",
     });
     expect(await reopened.reconcileFanout()).toBe(0);
     expect(await reopened.getFanoutOutcome("team", "recovered-unmatched")).toEqual({
       status: "unmatched",
       deliveryCount: 0,
+      routingStatus: "unmatched",
+    });
+    expect(await reopened.getFanoutOutcome("team", "legacy-repeat")).toEqual({
+      status: "repeat",
+      deliveryCount: 0,
+      routingStatus: null,
     });
     expect(await reopened.getOutcomeProjection("another-team", "recovered-unmatched")).toBeNull();
     await expect(reopened.fanout("another-team", "recovered-unmatched")).rejects.toThrow("Event not found for team");

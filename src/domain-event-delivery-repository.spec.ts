@@ -61,7 +61,11 @@ describe("DomainEventDeliveryRepository", () => {
   });
 
   it("normalizes persisted fanout and delivery states without exposing error data", async () => {
-    database.get.mockResolvedValueOnce({ status: "repeat", delivery_count: 3 });
+    database.get.mockResolvedValueOnce({
+      status: "repeat",
+      delivery_count: 3,
+      routing_status: "matched",
+    });
     database.all.mockResolvedValueOnce([
       { status: "admitted", last_error: "private" },
       { status: "filtered" },
@@ -71,6 +75,7 @@ describe("DomainEventDeliveryRepository", () => {
     await expect(repository.getOutcomeProjection("team-a", "event-a")).resolves.toEqual({
       eventId: "event-a",
       fanout: "repeat",
+      routingStatus: "matched",
       repeatSemantics: "idempotent-repeat",
       deliveries: [{ status: "accepted" }, { status: "filtered" }, { status: "failed" }, { status: "in-progress" }],
     });
@@ -79,10 +84,15 @@ describe("DomainEventDeliveryRepository", () => {
   });
 
   it("keeps unmatched distinct from filtered and returns null for another workspace", async () => {
-    database.get.mockResolvedValueOnce({ status: "unmatched", delivery_count: 0 });
+    database.get.mockResolvedValueOnce({
+      status: "unmatched",
+      delivery_count: 0,
+      routing_status: "unmatched",
+    });
     database.all.mockResolvedValueOnce([]);
     await expect(repository.getOutcomeProjection("team-a", "event-a")).resolves.toMatchObject({
       fanout: "unmatched",
+      routingStatus: "unmatched",
       deliveries: [],
     });
     database.get.mockResolvedValueOnce(null);
@@ -93,29 +103,56 @@ describe("DomainEventDeliveryRepository", () => {
   });
 
   it("fans out only currently matching subscriptions and tolerates duplicates", async () => {
-    database.get
-      .mockResolvedValueOnce({ sequence: 9, type: "order.created" })
-      .mockResolvedValueOnce({ status: "matched", delivery_count: 1 });
-    await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({ status: "matched", deliveryCount: 1 });
+    database.get.mockResolvedValueOnce({ sequence: 9, type: "order.created" }).mockResolvedValueOnce({
+      status: "matched",
+      delivery_count: 1,
+      routing_status: "matched",
+    });
+    await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({
+      status: "matched",
+      deliveryCount: 1,
+      routingStatus: "matched",
+    });
     const statements = database.transaction.mock.calls[0][0];
     expect(statements[0].s).toContain("INSERT OR IGNORE");
     expect(statements[0].s).toContain("? > s.high_water_event_sequence");
     expect(statements[0].d).toEqual(["team-a", "event-a", "team-a", "order.created", 9]);
     expect(statements[1].s).toContain("ON CONFLICT(team_id, event_id)");
-    expect(statements[1].d).toEqual(["team-a", "event-a", "team-a", "event-a", "team-a", "event-a"]);
+    expect(statements[1].d).toEqual([
+      "team-a",
+      "event-a",
+      "team-a",
+      "event-a",
+      "team-a",
+      "event-a",
+      "team-a",
+      "event-a",
+    ]);
     expect(database.get.mock.calls[1][1]).toEqual(["team-a", "event-a"]);
   });
 
   it("records distinct unmatched and repeated fanout outcomes within the workspace", async () => {
-    database.get
-      .mockResolvedValueOnce({ sequence: 10, type: "missing.type" })
-      .mockResolvedValueOnce({ status: "unmatched", delivery_count: 0 });
-    await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({ status: "unmatched", deliveryCount: 0 });
+    database.get.mockResolvedValueOnce({ sequence: 10, type: "missing.type" }).mockResolvedValueOnce({
+      status: "unmatched",
+      delivery_count: 0,
+      routing_status: "unmatched",
+    });
+    await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({
+      status: "unmatched",
+      deliveryCount: 0,
+      routingStatus: "unmatched",
+    });
     expect(database.transaction.mock.calls[0][0][1].s).toContain("THEN 'matched' ELSE 'unmatched'");
-    database.get
-      .mockResolvedValueOnce({ sequence: 10, type: "missing.type" })
-      .mockResolvedValueOnce({ status: "repeat", delivery_count: 0 });
-    await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({ status: "repeat", deliveryCount: 0 });
+    database.get.mockResolvedValueOnce({ sequence: 10, type: "missing.type" }).mockResolvedValueOnce({
+      status: "repeat",
+      delivery_count: 0,
+      routing_status: "unmatched",
+    });
+    await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({
+      status: "repeat",
+      deliveryCount: 0,
+      routingStatus: "unmatched",
+    });
     expect(database.transaction.mock.calls[0][0][1].s).toContain("status = 'repeat'");
     expect(database.get.mock.calls.at(-1)?.[1]).toEqual(["team-a", "event-a"]);
   });
@@ -131,17 +168,21 @@ describe("DomainEventDeliveryRepository", () => {
   });
 
   it("uses a durable event sequence high-water mark rather than timestamps", async () => {
-    database.get
-      .mockResolvedValueOnce({ sequence: 4, type: "order.created" })
-      .mockResolvedValueOnce({ status: "unmatched", delivery_count: 0 });
+    database.get.mockResolvedValueOnce({ sequence: 4, type: "order.created" }).mockResolvedValueOnce({
+      status: "unmatched",
+      delivery_count: 0,
+      routing_status: "unmatched",
+    });
     await repository.fanout("team-a", "before-subscription");
     expect(database.transaction.mock.calls[0][0][0].d.at(-1)).toBe(4);
     database.get.mockReset();
     database.transaction.mockReset();
     database.transaction.mockResolvedValue(undefined);
-    database.get
-      .mockResolvedValueOnce({ sequence: 5, type: "order.created" })
-      .mockResolvedValueOnce({ status: "matched", delivery_count: 1 });
+    database.get.mockResolvedValueOnce({ sequence: 5, type: "order.created" }).mockResolvedValueOnce({
+      status: "matched",
+      delivery_count: 1,
+      routing_status: "matched",
+    });
     await repository.fanout("team-a", "after-subscription");
     expect(database.transaction.mock.calls[0][0][0].d.at(-1)).toBe(5);
   });

@@ -71,7 +71,7 @@ describe("domain event delivery recovery in SQLite", () => {
         UNIQUE(team_id, event_id, subscription_id)
       );
       CREATE TABLE domain_event_fanout_outcomes (
-        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL,
+        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL, routing_status TEXT,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(team_id, event_id)
       );
       CREATE TABLE workflow_run_admissions (
@@ -107,7 +107,11 @@ describe("domain event delivery recovery in SQLite", () => {
       domainEventRepository: events,
       workflowRunAdmissions: admissions,
       workflows: {
-        getRevision: vi.fn(async () => ({ name: "workflow-1", tags: [], steps: [] })),
+        getRevision: vi.fn(async () => ({
+          name: "workflow-1",
+          tags: [],
+          steps: [],
+        })),
       },
       queue: { enqueueDispatch: vi.fn(async () => 71) },
       events: { publish: vi.fn() },
@@ -123,7 +127,12 @@ describe("domain event delivery recovery in SQLite", () => {
       events,
       subscriptions: deliveries,
       deliveries,
-      resolveWorkflow: async () => ({ name: "workflow-1", tags: [], steps: [] }) as unknown as ParsedWorkflow,
+      resolveWorkflow: async () =>
+        ({
+          name: "workflow-1",
+          tags: [],
+          steps: [],
+        }) as unknown as ParsedWorkflow,
       admitInvocation: async (request) => {
         try {
           return await (WebhookServer.prototype as any).admitDomainEventInvocation.call(server, request);
@@ -153,14 +162,26 @@ describe("domain event delivery recovery in SQLite", () => {
     expect(requestEvent).toMatchObject({
       type: "workflow.run.requested",
       source: `domain-event-delivery/${admittedDelivery.id}`,
-      data: { workflowId: "workflow-1", revision: 7, sourceEventId: sourceEvent.id },
+      data: {
+        workflowId: "workflow-1",
+        revision: 7,
+        sourceEventId: sourceEvent.id,
+      },
     });
     expect(JSON.parse(server.secretRepository.decryptValue(requestEvent!.data.inputsCiphertext))).toMatchObject({
       data: { ticket: 1 },
-      event: { id: sourceEvent.id, teamId: "workspace-1", type: "ticket.created" },
+      event: {
+        id: sourceEvent.id,
+        teamId: "workspace-1",
+        type: "ticket.created",
+      },
     });
     const admission = await admissions.get(requestEvent!.id, 0);
-    expect(admission).toMatchObject({ status: "admitted", admissionOutcome: "accepted", jobId: 71 });
+    expect(admission).toMatchObject({
+      status: "admitted",
+      admissionOutcome: "accepted",
+      jobId: 71,
+    });
     expect(server.queue.enqueueDispatch).toHaveBeenCalledOnce();
 
     // Re-running recovery over the same durable request is idempotent: terminal admission is not enqueued twice.
@@ -177,7 +198,10 @@ describe("domain event delivery recovery in SQLite", () => {
     const requestEventAfterRestart = (await reopenedEvents.listWorkflowRunRequests<any>()).find(
       (event) => event.data.invocationId === deliveryAfterRestart.invocationId,
     );
-    expect(deliveryAfterRestart).toMatchObject({ status: "admitted", invocationId: requestEvent!.data.invocationId });
+    expect(deliveryAfterRestart).toMatchObject({
+      status: "admitted",
+      invocationId: requestEvent!.data.invocationId,
+    });
     expect(await reopenedAdmissions.get(requestEventAfterRestart!.id, 0)).toMatchObject({
       status: "admitted",
       admissionOutcome: "accepted",
@@ -190,7 +214,13 @@ describe("domain event delivery recovery in SQLite", () => {
       teamId: "workspace-1",
       workflowId: "workflow-1",
       revision: 7,
-      variants: [{ admissionStatus: "admitted", admissionOutcome: "accepted", runId: "71" }],
+      variants: [
+        {
+          admissionStatus: "admitted",
+          admissionOutcome: "accepted",
+          runId: "71",
+        },
+      ],
     });
     await expect(
       reopenedEvents.getWorkflowInvocationForTeam("workspace-2", deliveryAfterRestart.invocationId!),
@@ -215,7 +245,7 @@ describe("domain event delivery recovery in SQLite", () => {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(team_id, event_id, subscription_id)
       );
       CREATE TABLE domain_event_fanout_outcomes (
-        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL,
+        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL, routing_status TEXT,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(team_id, event_id)
       );
       CREATE TABLE workflow_run_admissions (
@@ -275,7 +305,10 @@ describe("domain event delivery recovery in SQLite", () => {
         const claimedVariant = await admissions.claimVariant(invocationEventId, 0);
         expect(claimedVariant).not.toBeNull();
         expect(await admissions.finish(claimedVariant!, "admitted", 42)).toBe(true);
-        return { eventId: invocationEventId, invocationId: `invocation:${invocationEventId}` };
+        return {
+          eventId: invocationEventId,
+          invocationId: `invocation:${invocationEventId}`,
+        };
       },
     });
     await dispatcher.process(claimed!);
@@ -323,7 +356,7 @@ describe("domain event delivery recovery in SQLite", () => {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(team_id, event_id, subscription_id)
       );
       CREATE TABLE domain_event_fanout_outcomes (
-        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL,
+        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL, routing_status TEXT,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(team_id, event_id)
       );
       INSERT INTO domain_events VALUES
@@ -374,26 +407,32 @@ describe("domain event delivery recovery in SQLite", () => {
     expect(await repository.fanout("team", "admit-event")).toEqual({
       status: "matched",
       deliveryCount: 4,
+      routingStatus: "matched",
     });
     expect(await repository.fanout("team", "admit-event")).toEqual({
       status: "repeat",
       deliveryCount: 4,
+      routingStatus: "matched",
     });
     expect(await repository.fanout("team", "filtered-event")).toEqual({
       status: "matched",
       deliveryCount: 4,
+      routingStatus: "matched",
     });
     expect(await repository.fanout("team", "missing-event")).toEqual({
       status: "matched",
       deliveryCount: 4,
+      routingStatus: "matched",
     });
     expect(await repository.fanout("team", "retry-event")).toEqual({
       status: "matched",
       deliveryCount: 4,
+      routingStatus: "matched",
     });
     expect(await repository.fanout("team", "unmatched-event")).toEqual({
       status: "unmatched",
       deliveryCount: 0,
+      routingStatus: "unmatched",
     });
 
     for (let index = 0; index < 16; index += 1) {
@@ -433,10 +472,12 @@ describe("domain event delivery recovery in SQLite", () => {
     expect(await reopened.getFanoutOutcome("team", "admit-event")).toEqual({
       status: "repeat",
       deliveryCount: 4,
+      routingStatus: "matched",
     });
     expect(await reopened.getFanoutOutcome("team", "unmatched-event")).toEqual({
       status: "unmatched",
       deliveryCount: 0,
+      routingStatus: "unmatched",
     });
     // Admission records admission only, not successful workflow execution.
     expect(
@@ -462,7 +503,7 @@ describe("domain event delivery recovery in SQLite", () => {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(team_id, event_id, subscription_id)
       );
       CREATE TABLE domain_event_fanout_outcomes (
-        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL,
+        team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL, routing_status TEXT,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(team_id, event_id)
       );
       CREATE TABLE admissions (key TEXT PRIMARY KEY, job_id INTEGER);
@@ -474,6 +515,7 @@ describe("domain event delivery recovery in SQLite", () => {
     expect(await repository.fanout("team", "event")).toEqual({
       status: "matched",
       deliveryCount: 2,
+      routingStatus: "matched",
     });
     const initial = await repository.listForEvent("team", "event");
     const [a, b] = initial.sort((left, right) => left.id.localeCompare(right.id));
@@ -535,6 +577,7 @@ describe("domain event delivery recovery in SQLite", () => {
     expect(await restarted.fanout("team", "event")).toEqual({
       status: "repeat",
       deliveryCount: 2,
+      routingStatus: "matched",
     });
     const final = await restarted.listForEvent("team", "event");
     expect(final.find((delivery) => delivery.id === a.id)).toMatchObject({

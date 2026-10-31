@@ -102,7 +102,9 @@ describe("OpenAPI specification", () => {
     expect(restart.responses).toHaveProperty("201");
     expect(restart.requestBody.required).toBe(false);
     expect(restart.requestBody.content["application/json"].schema.properties.inputs.type).toBe("object");
-    expect(restart.parameters).toContainEqual({ $ref: "#/components/parameters/WorkspaceId" });
+    expect(restart.parameters).toContainEqual({
+      $ref: "#/components/parameters/WorkspaceId",
+    });
     const rename = spec.paths["/api/v1/runners/{runnerId}"].put;
     expect(rename.security).toEqual([{ oidcAdminSession: [] }, { oidcAdminBearer: [] }]);
     expect(rename.requestBody.content["application/json"].schema.properties.name).toMatchObject({
@@ -116,8 +118,9 @@ describe("OpenAPI specification", () => {
     const projection = spec.paths["/api/v1/domain-events/{eventId}/outcome-projection"].get;
     expect(projection.security).toEqual([{ oidcSessionCookie: [] }, { bearerAuth: [] }, { oidcAdminBearer: [] }]);
     const schema = projection.responses["200"].content["application/json"].schema;
-    expect(schema.required).toEqual(["eventId", "fanout", "repeatSemantics", "deliveries"]);
+    expect(schema.required).toEqual(["eventId", "fanout", "routingStatus", "repeatSemantics", "deliveries"]);
     expect(schema.properties.fanout.enum).toEqual(["matched", "repeat", "unmatched", null]);
+    expect(schema.properties.routingStatus.enum).toEqual(["matched", "unmatched", null]);
     expect(schema.properties.deliveries.items.properties.status.enum).toEqual([
       "pending",
       "in-progress",
@@ -134,7 +137,10 @@ describe("OpenAPI specification", () => {
       in: "cookie",
       name: "runner_oidc_session",
     });
-    expect(spec.components.securitySchemes.oidcAdminBearer).toMatchObject({ type: "http", scheme: "bearer" });
+    expect(spec.components.securitySchemes.oidcAdminBearer).toMatchObject({
+      type: "http",
+      scheme: "bearer",
+    });
     expect(spec.paths["/api/v1/workflows"].get.security).toEqual([
       { oidcSessionCookie: [] },
       { bearerAuth: [] },
