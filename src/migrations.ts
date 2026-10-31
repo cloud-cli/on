@@ -1194,7 +1194,6 @@ const migrations: Migration[] = [
       await db.exec(`UPDATE domain_event_fanout_outcomes SET routing_status = status
         WHERE routing_status IS NULL AND status IN ('matched','unmatched')`);
     },
-    },
   },
 ];
 
