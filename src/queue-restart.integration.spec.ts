@@ -79,6 +79,12 @@ describe("QueueManager.restartJob SQLite integration", () => {
       2,
       -1,
     ],
+    ["numeric root namespace", '{"_recipeRef":{"namespace":1,"slug":"root","version":1}}', "root", 1, 0],
+    ["numeric root slug", '{"_recipeRef":{"namespace":"on","slug":1,"version":1}}', "root", 1, 0],
+    ["string root version", '{"_recipeRef":{"namespace":"on","slug":"root","version":"1"}}', "root", 1, 0],
+    ["numeric nested namespace", '{"_pinnedReferences":[{"namespace":1,"slug":"nested","version":2}]}', "nested", 2, 0],
+    ["numeric nested slug", '{"_pinnedReferences":[{"namespace":"on","slug":1,"version":2}]}', "nested", 2, 0],
+    ["string nested version", '{"_pinnedReferences":[{"namespace":"on","slug":"nested","version":"2"}]}', "nested", 2, 0],
   ])(
     "rejects restart when the active revision has a %s without creating partial state",
     async (_label, definition, slug, version, revoked) => {
@@ -157,6 +163,14 @@ describe("QueueManager.restartJob SQLite integration", () => {
     ["malformed root pin metadata", '{"_recipeRef":"not-an-object"}'],
     ["malformed nested pin metadata", '{"_pinnedReferences":["not-an-object"]}'],
     ["non-array nested pin metadata", '{"_pinnedReferences":{"namespace":"on"}}'],
+    ["numeric root namespace", '{"_recipeRef":{"namespace":1,"slug":"root","version":1}}'],
+    ["numeric root slug", '{"_recipeRef":{"namespace":"on","slug":1,"version":1}}'],
+    ["string root version", '{"_recipeRef":{"namespace":"on","slug":"root","version":"1"}}'],
+    ["fractional root version", '{"_recipeRef":{"namespace":"on","slug":"root","version":1.5}}'],
+    ["numeric nested namespace", '{"_pinnedReferences":[{"namespace":1,"slug":"nested","version":2}]}'],
+    ["numeric nested slug", '{"_pinnedReferences":[{"namespace":"on","slug":1,"version":2}]}'],
+    ["string nested version", '{"_pinnedReferences":[{"namespace":"on","slug":"nested","version":"2"}]}'],
+    ["fractional nested version", '{"_pinnedReferences":[{"namespace":"on","slug":"nested","version":2.5}]}'],
   ])("rejects admission with %s as a controlled error and leaves no job", async (_label, definition) => {
     testDb.database = new DatabaseSync(":memory:");
     testDb.database.exec(`
@@ -175,6 +189,8 @@ describe("QueueManager.restartJob SQLite integration", () => {
       INSERT INTO teams VALUES ('team-1', NULL);
       INSERT INTO workflows VALUES ('workflow-1', 'team-1', 3);
       INSERT INTO workflow_revisions VALUES ('workflow-1', 3, '${definition}');
+      INSERT INTO recipe_versions VALUES ('on', 'root', '1', 0);
+      INSERT INTO recipe_versions VALUES ('on', 'nested', '2', 0);
     `);
     const queue = new QueueManager("test");
 

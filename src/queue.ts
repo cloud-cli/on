@@ -81,26 +81,37 @@ const PINNED_RECIPES_AVAILABLE = `EXISTS (
     AND json_valid(pinned_revision.normalized_json)
     AND NOT EXISTS (
       SELECT 1 FROM (
-        SELECT CASE WHEN json_type(pinned_revision.normalized_json, '$._recipeRef') = 'object'
+         SELECT CASE WHEN json_type(pinned_revision.normalized_json, '$._recipeRef') = 'object'
                     THEN json_extract(pinned_revision.normalized_json, '$._recipeRef.namespace') END AS namespace,
                CASE WHEN json_type(pinned_revision.normalized_json, '$._recipeRef') = 'object'
                     THEN json_extract(pinned_revision.normalized_json, '$._recipeRef.slug') END AS slug,
                CASE WHEN json_type(pinned_revision.normalized_json, '$._recipeRef') = 'object'
-                    THEN json_extract(pinned_revision.normalized_json, '$._recipeRef.version') END AS version
+                    THEN json_extract(pinned_revision.normalized_json, '$._recipeRef.version') END AS version,
+               CASE WHEN json_type(pinned_revision.normalized_json, '$._recipeRef') = 'object'
+                    AND json_type(pinned_revision.normalized_json, '$._recipeRef.namespace') = 'text'
+                    AND json_type(pinned_revision.normalized_json, '$._recipeRef.slug') = 'text'
+                    AND json_type(pinned_revision.normalized_json, '$._recipeRef.version') = 'integer'
+                    THEN 1 ELSE 0 END AS valid
         WHERE json_type(pinned_revision.normalized_json, '$._recipeRef') IS NOT NULL
           AND json_type(pinned_revision.normalized_json, '$._recipeRef') <> 'null'
         UNION ALL
-        SELECT CASE WHEN reference.type = 'object' THEN json_extract(reference.value, '$.namespace') END,
-               CASE WHEN reference.type = 'object' THEN json_extract(reference.value, '$.slug') END,
-               CASE WHEN reference.type = 'object' THEN json_extract(reference.value, '$.version') END
+         SELECT CASE WHEN reference.type = 'object' THEN json_extract(reference.value, '$.namespace') END,
+                CASE WHEN reference.type = 'object' THEN json_extract(reference.value, '$.slug') END,
+                CASE WHEN reference.type = 'object' THEN json_extract(reference.value, '$.version') END,
+                CASE WHEN reference.type = 'object'
+                      AND json_type(reference.value, '$.namespace') = 'text'
+                      AND json_type(reference.value, '$.slug') = 'text'
+                      AND json_type(reference.value, '$.version') = 'integer'
+                     THEN 1 ELSE 0 END
         FROM json_each(CASE WHEN json_type(pinned_revision.normalized_json, '$._pinnedReferences') = 'array'
                             THEN json_extract(pinned_revision.normalized_json, '$._pinnedReferences') ELSE '[]' END) reference
         UNION ALL
-        SELECT NULL, NULL, NULL
+         SELECT NULL, NULL, NULL, 0
         WHERE json_type(pinned_revision.normalized_json, '$._pinnedReferences') IS NOT NULL
           AND json_type(pinned_revision.normalized_json, '$._pinnedReferences') NOT IN ('array', 'null')
       ) required_pin
-      WHERE required_pin.namespace IS NULL OR required_pin.slug IS NULL OR required_pin.version IS NULL
+       WHERE required_pin.valid = 0
+         OR required_pin.namespace IS NULL OR required_pin.slug IS NULL OR required_pin.version IS NULL
         OR NOT EXISTS (
           SELECT 1 FROM recipe_versions rv
           WHERE rv.namespace = required_pin.namespace AND rv.slug = required_pin.slug
