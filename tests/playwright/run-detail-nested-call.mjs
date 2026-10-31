@@ -56,6 +56,34 @@ for (const viewport of [
   });
 }
 
+for (const viewport of [
+  { width: 1280, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test(`unknown completion notice is careful and responsive at ${viewport.width}px`, async ({ page }, testInfo) => {
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        errors.push(message.text());
+      }
+    });
+    await page.setViewportSize(viewport);
+    await page.goto("/ui/runs/unknown-completion");
+    const notice = page.getByRole("status", { name: "Completion not recorded" });
+    await expect(notice).toContainText("Completion was not recorded");
+    await expect(notice).toContainText("The external outcome may be unknown");
+    await expect(page.getByText("Attempt 1 · Completion not recorded")).toBeVisible();
+    await expect(page.getByRole("button", { name: /replay|retry/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Restart run" })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    await page.screenshot({ path: testInfo.outputPath(`unknown-completion-${viewport.width}.png`), fullPage: true });
+    await page.goto("/ui/runs/logs-only");
+    await expect(page.getByRole("status", { name: "Completion not recorded" })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+}
+
 test("input and log permissions are gated independently", async ({ page }) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));

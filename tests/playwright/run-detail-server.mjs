@@ -86,6 +86,8 @@ const server = createServer(async (request, response) => {
     const visibility = url.pathname.split("/").pop();
     const accessReport = {
       ...report,
+      jobId: visibility === "unknown-completion" ? "unknown-completion" : report.jobId,
+      status: visibility === "unknown-completion" ? "failed" : report.status,
       canViewInputs: visibility !== "logs-only",
       canViewLogs: visibility !== "inputs-only",
     };
@@ -96,10 +98,20 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ attempts: [] }));
     return;
   }
+  if (url.pathname === "/api/v1/jobs/unknown-completion/step-attempts") {
+    response
+      .writeHead(200, { "content-type": "application/json" })
+      .end(JSON.stringify({ attempts: [{ step_id: "parent", attempt: 1, status: "interrupted_or_unknown" }] }));
+    return;
+  }
   let file;
   if (url.pathname === "/assets/on.css") {
     file = resolve(root, "dist/on.css");
-  } else if ([`/ui/runs/${report.jobId}`, "/ui/runs/logs-only", "/ui/runs/inputs-only"].includes(url.pathname)) {
+  } else if (
+    [`/ui/runs/${report.jobId}`, "/ui/runs/logs-only", "/ui/runs/inputs-only", "/ui/runs/unknown-completion"].includes(
+      url.pathname,
+    )
+  ) {
     file = "ui/run.html";
   } else if (url.pathname.startsWith("/assets/")) {
     file = resolve(root, "ui", url.pathname.slice("/assets/".length));
