@@ -211,6 +211,20 @@ function parseProgram(code: string): any {
           validateStatement(child);
         }
         return;
+      case "ForOfStatement":
+        if (
+          statement.await ||
+          statement.left.type !== "VariableDeclaration" ||
+          statement.left.kind !== "const" ||
+          statement.left.declarations.length !== 1 ||
+          statement.left.declarations[0].id.type !== "Identifier" ||
+          statement.left.declarations[0].init !== null
+        ) {
+          throw new Error("Connector for-of loops require one const binding");
+        }
+        validateExpression(statement.right);
+        validateStatement(statement.body);
+        return;
       case "IfStatement":
         validateExpression(statement.test);
         validateStatement(statement.consequent);
@@ -593,7 +607,7 @@ function evaluateExpression(node: any, env: Env): any {
 
 function evaluateProgram(program: any, env: Env): unknown {
   let count = 0;
-  const execute = (statement: any): unknown => {
+  const execute = (statement: any, localEnv: Env = env): unknown => {
     if (++count > MAX_STEPS) {
       throw new Error("Connector program exceeded the execution limit");
     }
@@ -601,25 +615,36 @@ function evaluateProgram(program: any, env: Env): unknown {
       case "Program": {
         let result: unknown;
         for (const item of statement.body) {
-          result = execute(item);
+          result = execute(item, localEnv);
         }
         return result;
       }
       case "BlockStatement": {
         let result: unknown;
         for (const item of statement.body) {
-          result = execute(item);
+          result = execute(item, localEnv);
         }
         return result;
       }
       case "ExpressionStatement":
-        return evaluateExpression(statement.expression, env);
+        return evaluateExpression(statement.expression, localEnv);
       case "IfStatement":
-        return evaluateExpression(statement.test, env)
-          ? execute(statement.consequent)
+        return evaluateExpression(statement.test, localEnv)
+          ? execute(statement.consequent, localEnv)
           : statement.alternate
-            ? execute(statement.alternate)
+            ? execute(statement.alternate, localEnv)
             : undefined;
+      case "ForOfStatement": {
+        const iterable = evaluateExpression(statement.right, localEnv);
+        if ((!Array.isArray(iterable) && typeof iterable !== "string") || iterable.length > 64) {
+          throw new Error("Connector for-of loops require an array or string of at most 64 items");
+        }
+        const name = statement.left.declarations[0].id.name;
+        for (const item of iterable) {
+          execute(statement.body, { ...localEnv, [name]: item });
+        }
+        return undefined;
+      }
       case "ThrowStatement": {
         const thrown = statement.argument;
         if (
@@ -630,7 +655,7 @@ function evaluateProgram(program: any, env: Env): unknown {
         ) {
           throw new Error("Only throw new Error(message) is permitted");
         }
-        const message = evaluateExpression(thrown.arguments[0], env);
+        const message = evaluateExpression(thrown.arguments[0], localEnv);
         throw new Error(String(message));
       }
       default:

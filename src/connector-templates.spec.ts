@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const database = vi.hoisted(() => ({ all: vi.fn(), get: vi.fn(), run: vi.fn(), transaction: vi.fn() }));
 vi.mock("./db-client.js", () => ({ default: database }));
 
-import { ConnectorTemplateRepository, GITHUB_PUSH_TEMPLATE } from "./connector-templates.js";
+import { ConnectorTemplateRepository, GITHUB_PUSH_TEMPLATE, GITMINI_TEMPLATE } from "./connector-templates.js";
 import { parseConnectorDefinition, evaluateConnector } from "./connector-definition.js";
 
 const sourceYaml = "run: |\n  emit('sample.received', inputs)";
@@ -27,11 +27,22 @@ describe("connector template registry", () => {
         source_yaml: GITHUB_PUSH_TEMPLATE.sourceYaml,
         publisher: "on",
       },
+      {
+        namespace: "on",
+        slug: "gitmini",
+        version: 1,
+        name: GITMINI_TEMPLATE.name,
+        description: GITMINI_TEMPLATE.description,
+        source_yaml: GITMINI_TEMPLATE.sourceYaml,
+        publisher: "on",
+      },
     ]);
     const templates = await repository.list();
     expect(templates).toContainEqual(expect.objectContaining(GITHUB_PUSH_TEMPLATE));
+    expect(templates).toContainEqual(expect.objectContaining(GITMINI_TEMPLATE));
     expect(JSON.stringify(templates)).not.toMatch(/(?:ingress[_ -]?token|signing[_ -]?secret|credential)\s*:/i);
     expect(() => parseConnectorDefinition(GITHUB_PUSH_TEMPLATE.sourceYaml)).not.toThrow();
+    expect(() => parseConnectorDefinition(GITMINI_TEMPLATE.sourceYaml)).not.toThrow();
   });
 
   it("publishes immutable increasing versions and resolves only exact stored versions", async () => {
@@ -154,5 +165,179 @@ describe("connector template registry", () => {
         }),
       ).rejects.toThrow();
     }
+  });
+
+  it("normalizes signed GitMini branch pushes for the shared Docker recipe", async () => {
+    const crypto = await import("node:crypto");
+    const secret = "gitmini-test-secret";
+    const payload = {
+      id: "delivery-1",
+      org: "team",
+      event: "git.push",
+      action: "pushed",
+      occurredAt: "2026-10-31T00:00:00.000Z",
+      object: "team/service",
+      details: {
+        changes: [
+          {
+            ref: "refs/heads/release",
+            before: "a".repeat(40),
+            after: "b".repeat(40),
+            action: "updated",
+          },
+          { ref: "refs/heads/feature", before: "c".repeat(40), after: "d".repeat(40), action: "updated" },
+          { ref: "refs/tags/v1", before: null, after: "e".repeat(40), action: "created" },
+        ],
+      },
+    };
+    const body = Buffer.from(JSON.stringify(payload));
+    const signature = `sha256=${crypto.createHmac("sha256", secret).update(body).digest("hex")}`;
+    const context = {
+      inputs: payload,
+      body,
+      headers: { "x-gitmini-signature": signature, "x-gitmini-event": "git.push" },
+      secrets: { WEBHOOK_SECRET: secret },
+    };
+    expect(() => parseConnectorDefinition(GITMINI_TEMPLATE.sourceYaml)).not.toThrow();
+    await expect(evaluateConnector(GITMINI_TEMPLATE.sourceYaml, context)).resolves.toEqual([
+      {
+        type: "git.push",
+        data: {
+          owner: "team",
+          repo: "service",
+          branch: "release",
+          ref: "refs/heads/release",
+          repository: "team/service",
+          clone_url: "https://git.api.apphor.de/git/team/service.git",
+          commitSha: "b".repeat(40),
+          commit_sha: "b".repeat(40),
+          source: "gitmini",
+          event_id: "delivery-1",
+        },
+      },
+      {
+        type: "git.push",
+        data: {
+          owner: "team",
+          repo: "service",
+          branch: "feature",
+          ref: "refs/heads/feature",
+          repository: "team/service",
+          clone_url: "https://git.api.apphor.de/git/team/service.git",
+          commitSha: "d".repeat(40),
+          commit_sha: "d".repeat(40),
+          source: "gitmini",
+          event_id: "delivery-1",
+        },
+      },
+    ]);
+  });
+
+  it("fails closed for GitMini invalid signatures and malformed/deleted push refs", async () => {
+    const crypto = await import("node:crypto");
+    const secret = "gitmini-test-secret";
+    const payload = {
+      id: "delivery-2",
+      event: "git.push",
+      action: "pushed",
+      object: "team/service",
+      details: { changes: [{ ref: "refs/heads/main", before: "a".repeat(40), after: "b".repeat(40) }] },
+    };
+    const sign = (value: unknown) => {
+      const body = Buffer.from(JSON.stringify(value));
+      return {
+        inputs: value,
+        body,
+        headers: {
+          "x-gitmini-signature": `sha256=${crypto.createHmac("sha256", secret).update(body).digest("hex")}`,
+          "x-gitmini-event": "git.push",
+        },
+        secrets: { WEBHOOK_SECRET: secret },
+      };
+    };
+    const valid = sign(payload);
+    await expect(
+      evaluateConnector(GITMINI_TEMPLATE.sourceYaml, {
+        ...valid,
+        headers: { ...valid.headers, "x-gitmini-signature": "sha256=invalid" },
+      }),
+    ).rejects.toThrow("Invalid GitMini webhook signature");
+    for (const value of [
+      { ...payload, details: { changes: [] } },
+      { ...payload, details: { changes: [{ ref: "refs/heads/main", after: null, action: "deleted" }] } },
+      {
+        ...payload,
+        details: {
+          changes: [{ ref: "refs/heads/main", after: "0000000000000000000000000000000000000000", action: "created" }],
+        },
+      },
+      { ...payload, object: "invalid-repository" },
+      { ...payload, object: "../service" },
+      { ...payload, object: "team/../service" },
+      { ...payload, action: "created" },
+      { ...payload, details: { changes: [{ ref: "refs/heads/main", after: "b".repeat(39), action: "updated" }] } },
+      {
+        ...payload,
+        details: { changes: [{ ref: "refs/heads/main", after: "g" + "b".repeat(39), action: "updated" }] },
+      },
+    ]) {
+      await expect(evaluateConnector(GITMINI_TEMPLATE.sourceYaml, sign(value))).rejects.toThrow();
+    }
+    await expect(
+      evaluateConnector(
+        GITMINI_TEMPLATE.sourceYaml,
+        sign({ ...payload, details: { changes: [{ ref: "refs/tags/v1", after: "b".repeat(40), action: "created" }] } }),
+      ),
+    ).resolves.toEqual([]);
+  });
+
+  it("uses one signed GitMini connector for supported non-push event types without treating them as builds", async () => {
+    const crypto = await import("node:crypto");
+    const secret = "gitmini-test-secret";
+    for (const [event, expected] of [
+      ["git.branch", "gitmini.git.branch"],
+      ["git.tag", "gitmini.git.tag"],
+      ["repo", "gitmini.repo"],
+    ]) {
+      const payload = {
+        id: "delivery-3",
+        object: "team/service",
+        event,
+        action: "created",
+        details: { ref: "refs/x" },
+      };
+      const body = Buffer.from(JSON.stringify(payload));
+      const signature = `sha256=${crypto.createHmac("sha256", secret).update(body).digest("hex")}`;
+      await expect(
+        evaluateConnector(GITMINI_TEMPLATE.sourceYaml, {
+          inputs: payload,
+          body,
+          headers: { "x-gitmini-signature": signature, "x-gitmini-event": event },
+          secrets: { WEBHOOK_SECRET: secret },
+        }),
+      ).resolves.toEqual([
+        {
+          type: expected,
+          data: {
+            object: "team/service",
+            action: "created",
+            details: { ref: "refs/x" },
+            event_id: "delivery-3",
+            source: "gitmini",
+          },
+        },
+      ]);
+    }
+    const payload = { id: "delivery-4", object: "team/service" };
+    const body = Buffer.from(JSON.stringify(payload));
+    const signature = `sha256=${crypto.createHmac("sha256", secret).update(body).digest("hex")}`;
+    await expect(
+      evaluateConnector(GITMINI_TEMPLATE.sourceYaml, {
+        inputs: payload,
+        body,
+        headers: { "x-gitmini-signature": signature, "x-gitmini-event": "thread" },
+        secrets: { WEBHOOK_SECRET: secret },
+      }),
+    ).rejects.toThrow("Unsupported GitMini event");
   });
 });

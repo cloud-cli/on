@@ -25,9 +25,9 @@ secret, `verifyBody(body, signature)` is available for checking a signature, and
 domain event. Other headers, including authorization/cookie headers, remain available to the connector program. Event
 `data` should contain only suitable domain data; avoid forwarding credentials or other secrets.
 
-Programs are interpreted by a restricted AST interpreter. It supports block, `if`, expression, and `throw`
-statements; it does not execute `Function` or arbitrary JavaScript. Use the runtime-provided verification and emission
-helpers rather than assuming general-purpose APIs are available.
+Programs are interpreted by a restricted AST interpreter. It supports block, `if`, expression, `throw`, and bounded
+`for...of` statements (at most 64 array items); it does not execute `Function` or arbitrary JavaScript. Use the
+runtime-provided verification and emission helpers rather than assuming general-purpose APIs are available.
 
 Previously published step-based connector definitions remain executable for compatibility if they have no webhook
 secret. New saves and publishes require the `run` format. Legacy connectors with a configured webhook secret fail
@@ -61,35 +61,52 @@ steps:
     run: ./deploy "$REPOSITORY" "$REVISION"
 ```
 
-GitMini signs the exact JSON body with HMAC-SHA-256 in `X-GitMini-Signature` and identifies the event in
-`X-GitMini-Event`. A separate connector can verify that header and normalize a branch push to the same `git.push`
-contract. For example, when a subscription is limited to one GitMini repository and its `main` branch:
+GitMini signs the exact JSON body with HMAC-SHA-256 in `X-GitMini-Signature` (`sha256=<hex>`) and identifies each
+delivery with `X-GitMini-Event` and `X-GitMini-Delivery`. The shared **GitMini webhook** template verifies the raw-body
+signature and accepts the service's supported `git.push`, `git.branch`, `git.tag`, and `repo` deliveries. Pushes emit
+one `git.push` per changed branch (at most 64 refs per payload) with `owner`, `repo`, `branch`, `ref`, `repository`,
+`clone_url`, `commitSha`, `commit_sha`, and `source`;
+branch, tag, and repository changes emit distinct `gitmini.git.branch`, `gitmini.git.tag`, and `gitmini.repo` events.
+Deleted/non-branch pushes and zero/missing commit IDs fail closed. The template does not hard-code an organization or
+branch. GitMini's `thread` subscription is currently selectable by the service but has no event source and therefore is
+not part of the connector contract.
+
+Use the installed connector URL and one-time signing secret when creating a GitMini organization webhook subscription;
+subscribe to `git` and `repo`. Each workspace install has fresh credentials. The normalized push includes the clone URL
+`https://git.api.apphor.de/git/<org>/<repo>.git` and the exact changed branch commit SHA, which can be passed to the
+shared Docker recipe. GitMini Smart HTTP requires a scoped GitMini token for private clones; do not embed that token in a
+clone URL or event data. Supply it through a workflow secret and a credential helper that does not persist it in event
+history. Registry credentials for GHCR remain a separate recipe secret.
+
+Subscribe a workflow to `git.push` and explicitly map the normalized data to the same Docker recipe used for other Git
+providers, for example `cloneUrl: ${inputs.data.clone_url}` and `commitSha: ${inputs.data.commitSha}`. Restrict
+organization hooks and workflow event filters to the repositories/branches intended for builds. GitMini delivers
+webhooks best-effort (up to three attempts); event consumers should use the delivery ID for deduplication where needed.
+
+Example recipe call (replace the GHCR owner/namespace mapping for your organization):
 
 ```yaml
-run: |
-  if (!verifyBody(body, headers["x-gitmini-signature"])) {
-    throw new Error("Invalid GitMini webhook signature.");
-  }
-
-  if (headers["x-gitmini-event"] === "git.push" && inputs.object === "example/test-repo" &&
-      inputs.details.changes[0].ref === "refs/heads/main") {
-    emit("git.push", {
-      owner: "example",
-      repo: "test-repo",
-      branch: "main",
-      clone_url: "https://git.example/git/example/test-repo.git",
-      commitSha: inputs.details.changes[0].after,
-      commit_sha: inputs.details.changes[0].after,
-      source: "gitmini"
-    });
-  }
+id: gitmini-docker-build
+name: Build GitMini push
+on:
+  events: [git.push]
+tags: [alpha]
+using: on/docker-build@v3
+with:
+  image: "ghcr.io/${inputs.data.owner}/${inputs.data.repo}"
+  imageTag: "${inputs.data.branch === 'main' ? 'latest' : inputs.data.commitSha}"
+  registryUsername: "${inputs.data.owner}"
+  cloneUrl: "${inputs.data.clone_url}"
+  commitSha: "${inputs.data.commitSha}"
+secrets:
+  registryToken: "${secrets.GITHUB_TOKEN}"
+  gitMiniToken: "${secrets.GITMINI_TOKEN}"
 ```
 
-The GitHub and GitMini examples use the same event type and normalized `inputs.data` fields; each connector still has its
-own signing secret. Keep source filters narrow when an organization-level GitHub hook forwards pushes from many
-repositories. Do not include a GitMini access token in a clone URL or event data; workflows that need authenticated
-GitMini clones should use a separately scoped secret and a credential mechanism that does not persist credentials in
-event history.
+This publishes default-branch builds as `latest` so services configured with that exact image can be refreshed; other
+branches get unique commit-SHA tags and do not collide with production `latest`. GitMini's Basic Smart HTTP requires a
+PAT with repository read access for clones. GHCR requires a separate package-write token. Store both as workspace
+secrets, and confirm the chosen GHCR namespace is writable by the registry identity before enabling the workflow.
 
 ## Manage and receive requests
 

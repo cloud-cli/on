@@ -49,6 +49,96 @@ export const GITHUB_PUSH_TEMPLATE = {
 `,
 };
 
+export const GITMINI_TEMPLATE = {
+  namespace: "on",
+  slug: "gitmini",
+  version: 1,
+  name: "GitMini webhook",
+  description:
+    "Verify GitMini webhook signatures and normalize repository push, ref, and repository events. Each installation receives its own signing secret.",
+  sourceYaml: `run: |
+  if (!verifyBody(body, headers['x-gitmini-signature'])) {
+    throw new Error('Invalid GitMini webhook signature.');
+  }
+  if (headers['x-gitmini-event'] === 'git.push' && inputs.event === 'git.push') {
+    if (inputs.action !== 'pushed' || !inputs.object || !inputs.details || !inputs.details.changes || inputs.details.changes.length === 0) {
+      throw new Error('Incomplete GitMini push payload');
+    }
+    if (inputs.object.length > 164 || inputs.object.indexOf('/') < 1 || inputs.object.indexOf('/') === inputs.object.length - 1) {
+      throw new Error('Invalid GitMini repository name');
+    }
+    if (inputs.object.slice(0, inputs.object.indexOf('/')).length > 63 ||
+        inputs.object.slice(inputs.object.indexOf('/') + 1).length > 100 ||
+        inputs.object.slice(inputs.object.indexOf('/') + 1).includes('/')) {
+      throw new Error('Invalid GitMini repository name');
+    }
+    if (!'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.includes(inputs.object.slice(0, 1)) ||
+        !'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.includes(inputs.object.slice(inputs.object.indexOf('/') - 1, inputs.object.indexOf('/'))) ||
+        !'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.includes(inputs.object.slice(inputs.object.indexOf('/') + 1, inputs.object.indexOf('/') + 2)) ||
+        !'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.includes(inputs.object.slice(-1))) {
+      throw new Error('Invalid GitMini repository name');
+    }
+    for (const character of inputs.object) {
+      if (!'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/'.includes(character)) {
+        throw new Error('Invalid GitMini repository name');
+      }
+    }
+    for (const change of inputs.details.changes) {
+      if (change.ref && change.ref.startsWith('refs/heads/')) {
+        if (!change.after || change.after.length !== 40 || change.after === '0000000000000000000000000000000000000000') {
+          throw new Error('Missing, invalid, or zero GitMini commit SHA');
+        }
+        for (const digit of change.after) {
+          if (!'0123456789abcdef'.includes(digit)) {
+            throw new Error('Invalid GitMini commit SHA');
+          }
+        }
+        if (change.action === 'deleted') {
+          throw new Error('Deleted GitMini refs are not supported');
+        }
+        emit('git.push', {
+          owner: inputs.object.slice(0, inputs.object.indexOf('/')),
+          repo: inputs.object.slice(inputs.object.indexOf('/') + 1),
+          branch: change.ref.slice('refs/heads/'.length),
+          ref: change.ref,
+          repository: inputs.object,
+          clone_url: 'https://git.api.apphor.de/git/' + inputs.object + '.git',
+          commitSha: change.after,
+          commit_sha: change.after,
+          source: 'gitmini',
+          event_id: inputs.id
+        });
+      }
+    }
+  } else if (headers['x-gitmini-event'] === 'git.branch' && inputs.event === 'git.branch') {
+    emit('gitmini.git.branch', {
+      object: inputs.object,
+      action: inputs.action,
+      details: inputs.details,
+      event_id: inputs.id,
+      source: 'gitmini'
+    });
+  } else if (headers['x-gitmini-event'] === 'git.tag' && inputs.event === 'git.tag') {
+    emit('gitmini.git.tag', {
+      object: inputs.object,
+      action: inputs.action,
+      details: inputs.details,
+      event_id: inputs.id,
+      source: 'gitmini'
+    });
+  } else if (headers['x-gitmini-event'] === 'repo' && inputs.event === 'repo') {
+    emit('gitmini.repo', {
+      object: inputs.object,
+      action: inputs.action,
+      details: inputs.details,
+      event_id: inputs.id,
+      source: 'gitmini'
+    });
+  } else {
+    throw new Error('Unsupported GitMini event');
+  }
+`,
+};
 function validateTemplate(slug: string, name: string, description: string, sourceYaml: string): void {
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) {
     throw new Error("Invalid connector template slug");

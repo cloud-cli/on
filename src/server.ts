@@ -2915,7 +2915,11 @@ sessionStorage.removeItem('runner-pending-team-invite');
       });
       const receivedAt =
         (await this.incomingEvents.receivedAtForTeam(connector.workspaceId, receiptId)) || new Date().toISOString();
-      const deliveryId = safeHeaders["idempotency-key"] || safeHeaders["x-delivery-id"];
+      const deliveryId =
+        safeHeaders["idempotency-key"] ||
+        safeHeaders["x-delivery-id"] ||
+        safeHeaders["x-github-delivery"] ||
+        safeHeaders["x-gitmini-delivery"];
       const publishedEvents: Array<{ id: string; type: string }> = [];
       let queuedDeliveries = 0;
       for (let index = 0; index < emittedEvents.length; index += 1) {

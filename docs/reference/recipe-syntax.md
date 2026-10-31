@@ -3,11 +3,13 @@
 Recipes are globally published, immutable versions of reusable workflow steps. The editor stores the recipe display
 name and slug separately from the YAML. A workflow calls a pinned version using `namespace/slug@vN`.
 
-The built-in `on/docker-build@v2` recipe checks out an exact commit, builds and pushes a GHCR image, then pulls and
+The built-in `on/docker-build@v3` recipe checks out an exact commit, builds and pushes a GHCR image, then pulls and
 restarts only services whose configured image exactly matches that image tag. It requires `image`, `registryUsername`,
-`cloneUrl`, and `commitSha` inputs plus a workspace `githubToken` secret. If no service matches the image, the image is
-still published and no service is restarted. For repositories without a Dockerfile, it creates the same generic Node.js
-Dockerfile used by the original `cloud-cli` image workflow.
+`cloneUrl`, and `commitSha` inputs plus a workspace `registryToken` secret for GHCR. Private GitMini clones may also map
+the optional `gitMiniToken` secret; it is supplied to Git through a temporary `GIT_ASKPASS` helper and is never placed
+in the clone URL or event data. If no service matches the image, the image is still published and no service is
+restarted. For repositories without a Dockerfile, it creates the same generic Node.js Dockerfile used by the original
+`cloud-cli` image workflow.
 
 ## Inputs, secrets, and shared environment
 
