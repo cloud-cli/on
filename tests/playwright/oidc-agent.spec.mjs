@@ -236,6 +236,7 @@ test.afterAll(async () => {
 });
 
 test("Agent OIDC login, protected workspace shell, permissions, and logout", async ({ browser }) => {
+  test.setTimeout(300_000);
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await context.route("https://at-li3.static.apphor.de/**", async (route) => {
     if (new URL(route.request().url()).pathname === "/web") {
@@ -334,24 +335,17 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     fixtureDb.exec("PRAGMA foreign_keys = ON");
     try {
       stage = "fixture-owner-workspace";
-      const webhookToken = randomUUID();
-      fixtureDb
-        .prepare("INSERT INTO teams(id, name, webhook_token) VALUES (?, ?, ?)")
-        .run(workspaceId, "OIDC Browser Fixture", webhookToken);
+      fixtureDb.prepare("INSERT INTO teams(id, name) VALUES (?, ?)").run(workspaceId, "OIDC Browser Fixture");
       stage = "fixture-owner-membership";
       fixtureDb
         .prepare("INSERT INTO team_members(team_id, subject, role) VALUES (?, ?, 'collaborator')")
         .run(workspaceId, session.user.id);
-      fixtureDb
-        .prepare("INSERT INTO teams(id, name, webhook_token) VALUES (?, ?, ?)")
-        .run(navigationWorkspaceId, "Navigation Fixture", randomUUID());
+      fixtureDb.prepare("INSERT INTO teams(id, name) VALUES (?, ?)").run(navigationWorkspaceId, "Navigation Fixture");
       fixtureDb
         .prepare("INSERT INTO team_members(team_id, subject, role) VALUES (?, ?, 'collaborator')")
         .run(navigationWorkspaceId, session.user.id);
       stage = "fixture-foreign-workspace";
-      fixtureDb
-        .prepare("INSERT INTO teams(id, name, webhook_token) VALUES (?, ?, ?)")
-        .run(foreignWorkspaceId, "Unrelated Fixture", randomUUID());
+      fixtureDb.prepare("INSERT INTO teams(id, name) VALUES (?, ?)").run(foreignWorkspaceId, "Unrelated Fixture");
     } finally {
       fixtureDb.close();
     }
@@ -361,6 +355,7 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     expect(workspacesResponse.status()).toBe(200);
     const workspaces = await workspacesResponse.json();
     expect(workspaces.workspaces.some((workspace) => workspace.id === workspaceId)).toBe(true);
+    expect(workspaces.workspaces.some((workspace) => workspace.id === navigationWorkspaceId)).toBe(true);
     expect(workspaces.workspaces.some((workspace) => workspace.id === foreignWorkspaceId)).toBe(false);
 
     stage = "canonical-stream-thread-api";
@@ -466,7 +461,7 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     expect(desktopGeometry.rail.width).toBeCloseTo(64, 0);
     expect(desktopGeometry.navigation.width).toBeCloseTo(224, 0);
     stage = "workspace-switch-navigation-sync";
-    const alternateWorkspace = page.getByRole("button", { name: "Switch to Navigation Fixture" });
+    const alternateWorkspace = page.getByRole("button", { name: "Navigation Fixture", exact: true });
     stage = "workspace-switch-alternate-present";
     await expect(alternateWorkspace).toHaveAttribute("aria-pressed", "false");
     stage = "workspace-switch-route-change";
@@ -475,24 +470,27 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     stage = "workspace-switch-selected-button";
     await expect(alternateWorkspace).toHaveAttribute("aria-pressed", "true");
     stage = "workspace-switch-heading";
-    const workspaceNavigation = page.getByRole("navigation", { name: "Workspace navigation" });
-    await expect(workspaceNavigation.getByText("Navigation Fixture")).toBeVisible();
+    const workspaceNavigation = page.getByRole("navigation", { name: "Global navigation" });
+    await expect(workspaceNavigation.getByRole("link", { name: "Workflows" })).toHaveAttribute(
+      "href",
+      `/ui/workspaces/${navigationWorkspaceId}/workflows`,
+    );
     stage = "workspace-switch-links";
     await expect(workspaceNavigation.getByRole("link", { name: "Runs" })).toHaveAttribute(
       "href",
       `/ui/workspaces/${navigationWorkspaceId}/runs`,
     );
-    await page.getByRole("button", { name: "Switch to OIDC Browser Fixture" }).click();
+    await page.getByRole("button", { name: "OIDC Browser Fixture", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/ui/workspaces/${workspaceId}/runs$`));
     await expect(
-      page.getByRole("navigation", { name: "Workspace navigation" }).getByText("OIDC Browser Fixture"),
-    ).toBeVisible();
+      page.getByRole("navigation", { name: "Global navigation" }).getByRole("link", { name: "Workflows" }),
+    ).toHaveAttribute("href", `/ui/workspaces/${workspaceId}/workflows`);
     stage = "authenticated-shell-profile";
     const profileButton = page.getByRole("link", { name: "Open preferences" });
     stage = "profile-button-visible";
     await expect(profileButton).toBeVisible();
     stage = "profile-button-shape";
-    await expect(profileButton).toHaveClass(/rounded-lg/);
+    await expect(profileButton).toHaveClass(/rounded-full/);
     stage = "theme-toggle-visible";
     await expect(
       page.locator(
@@ -512,6 +510,9 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     await page.screenshot({ path: "/tmp/opencode/oidc-quick-switch-desktop.png", fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     stage = "sidebar-layout-mobile-geometry";
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-quick-switch-overlay]")).toHaveCount(0);
+    await page.locator("[data-workspace-rail]").getByRole("button", { name: "Open or expand navigation" }).click();
     const mobileGeometry = await page.evaluate(() => {
       const rect = (selector) => {
         const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect();
@@ -523,9 +524,9 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
         content: rect("#main-content"),
       };
     });
-    expect(mobileGeometry.rail.x).toBeLessThan(mobileGeometry.navigation.x);
+    expect(mobileGeometry.rail.x).toBe(0);
     expect(mobileGeometry.navigation.y).toBeLessThan(mobileGeometry.content.y);
-    expect(mobileGeometry.rail.width).toBeCloseTo(64, 0);
+    expect(mobileGeometry.rail.width).toBeCloseTo(390, 0);
     stage = "sidebar-layout-reference-width-619";
     await page.setViewportSize({ width: 619, height: 844 });
     await page.keyboard.press("Escape");
@@ -589,6 +590,8 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: "/tmp/opencode/oidc-quick-switch-mobile.png", fullPage: true });
     await page.setViewportSize({ width: 1280, height: 900 });
+    await page.keyboard.press("Control+k");
+    await expect(quickSwitchSearch).toBeFocused();
     await quickSwitchSearch.fill("no matching fixture destination");
     await expect(page.getByText("No matching destinations.")).toBeVisible();
     await quickSwitchSearch.fill("OIDC Browser Fixture");

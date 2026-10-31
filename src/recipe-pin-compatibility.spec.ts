@@ -2,19 +2,32 @@ import { describe, expect, it, vi } from "vitest";
 import type { Processable, WorkflowExecutionReport } from "./types.js";
 import { processJob } from "./worker.js";
 
+const database = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock("./db-client.js", () => ({ default: database }));
+
+import { RecipeRepository } from "./recipes.js";
+
 describe("queued recipe pin compatibility", () => {
   it("executes an exact-main snapshot captured from a persisted legacy row", async () => {
     const legacyRow = {
+      namespace: "other",
+      slug: "legacy",
+      version: 7,
+      name: "Legacy",
+      source_yaml: "",
+      env_json: "{}",
+      revoked: 0,
       inputs_json: JSON.stringify({ type: "object", properties: {} }),
       steps_json: JSON.stringify([{ id: "legacy-body", eval: '"legacy implementation"' }]),
       functions_json: null,
     };
-    // This is the compatibility snapshot produced for a pre-functions_json recipe row.
-    const pinnedFunction = {
-      inputs: JSON.parse(legacyRow.inputs_json),
-      outputs: { type: "object" },
-      steps: JSON.parse(legacyRow.steps_json),
-    };
+    database.get.mockResolvedValue(legacyRow);
+    const recipe = await new RecipeRepository().get("other", "legacy", 7);
+    expect(database.get).toHaveBeenCalledWith(
+      "SELECT * FROM recipe_versions WHERE namespace=? AND slug=? AND version=?",
+      ["other", "legacy", 7],
+    );
+    const pinnedFunction = recipe!.functions.main;
     const queue = {
       saveReport: vi.fn(async () => {}),
       saveStepLog: vi.fn(async () => {}),
