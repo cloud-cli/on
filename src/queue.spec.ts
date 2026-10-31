@@ -279,7 +279,7 @@ describe("QueueManager concurrency groups", () => {
   ])("cancels older %s concurrency jobs according to cancel-in-progress", async (cancelInProgress) => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ lastInsertRowid: 42 }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 42 }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ changes: 1 }) });
     vi.stubGlobal("fetch", fetchMock);
 
