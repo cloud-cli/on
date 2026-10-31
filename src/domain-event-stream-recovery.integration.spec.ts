@@ -7,17 +7,22 @@ import path from "node:path";
 const testDb = vi.hoisted(() => ({ database: null as DatabaseSync | null }));
 let temporaryDirectory: string | null = null;
 vi.mock("./db-client.js", () => {
-  const execute = (sql: string, values: unknown[] = []) => testDb.database!.prepare(sql).run(...(values as any[]));
+  const execute = (sql: string, values: unknown[] = []) =>
+    testDb.database!.prepare(sql).run(...(values as any[]));
   return {
     default: {
-      all: async (sql: string, values: unknown[] = []) => testDb.database!.prepare(sql).all(...(values as any[])),
-      get: async (sql: string, values: unknown[] = []) => testDb.database!.prepare(sql).get(...(values as any[])),
+      all: async (sql: string, values: unknown[] = []) =>
+        testDb.database!.prepare(sql).all(...(values as any[])),
+      get: async (sql: string, values: unknown[] = []) =>
+        testDb.database!.prepare(sql).get(...(values as any[])),
       run: async (sql: string, values: unknown[] = []) => execute(sql, values),
       transaction: async (statements: Array<{ s: string; d: unknown[] }>) => {
         testDb.database!.exec("BEGIN IMMEDIATE");
         try {
           for (const statement of statements) {
-            testDb.database!.prepare(statement.s).run(...(statement.d as any[]));
+            testDb
+              .database!.prepare(statement.s)
+              .run(...(statement.d as any[]));
           }
           testDb.database!.exec("COMMIT");
         } catch (error) {
@@ -34,7 +39,12 @@ import { WebhookServer } from "./server.js";
 import { WorkflowRunAdmissionRepository } from "./workflow-run-admission-repository.js";
 import { QueueManager } from "./queue.js";
 
-const response = () => ({ writeHead: vi.fn().mockReturnThis(), end: vi.fn(), headersSent: false }) as any;
+const response = () =>
+  ({
+    writeHead: vi.fn().mockReturnThis(),
+    end: vi.fn(),
+    headersSent: false,
+  }) as any;
 
 afterEach(() => {
   testDb.database?.close();
@@ -47,7 +57,9 @@ afterEach(() => {
 
 describe("persisted Stream event reconciliation", () => {
   it("resumes by durable sequence after SQLite reopen and isolates workspace cursors", async () => {
-    temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "stream-event-recovery-"));
+    temporaryDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stream-event-recovery-"),
+    );
     const databasePath = path.join(temporaryDirectory, "events.sqlite");
     testDb.database = new DatabaseSync(databasePath);
     testDb.database.exec(`
@@ -90,39 +102,109 @@ describe("persisted Stream event reconciliation", () => {
     `);
 
     const repository = new DomainEventRepository();
-    const firstPage = await repository.listChannelEvents("team-a", "stream-a", 1);
+    const firstPage = await repository.listChannelEvents(
+      "team-a",
+      "stream-a",
+      1,
+    );
     expect(firstPage.events.map(({ id }) => id)).toEqual(["event-a1"]);
     expect(firstPage.nextCursor).toBeTruthy();
-    testDb.database.prepare("INSERT INTO stream_event_bindings VALUES ('team-a', 'stream-a', 'event-a2')").run();
+    testDb.database
+      .prepare(
+        "INSERT INTO stream_event_bindings VALUES ('team-a', 'stream-a', 'event-a2')",
+      )
+      .run();
 
     testDb.database.close();
     testDb.database = new DatabaseSync(databasePath);
     const afterRestart = new DomainEventRepository();
     const queue = new QueueManager("test-worker");
-    await expect(afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1")).resolves.toMatchObject({
+    await expect(
+      afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1"),
+    ).resolves.toMatchObject({
       variants: [{ jobStatus: "running", completedAt: null }],
     });
     await queue.finishJob(42, "success");
-    await expect(afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1")).resolves.toMatchObject({
+    await expect(
+      afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1"),
+    ).resolves.toMatchObject({
       variants: [{ jobStatus: "success", completedAt: expect.any(String) }],
     });
-    testDb.database.prepare("INSERT INTO jobs (id, team_id, status) VALUES (43, 'team-a', 'running')").run();
-    testDb.database.prepare(`UPDATE workflow_run_admissions SET job_id = 43 WHERE event_id = 'request-event-1'`).run();
+    testDb.database
+      .prepare(
+        "INSERT INTO jobs (id, team_id, status) VALUES (43, 'team-a', 'running')",
+      )
+      .run();
+    testDb.database
+      .prepare(
+        `UPDATE workflow_run_admissions SET job_id = 43 WHERE event_id = 'request-event-1'`,
+      )
+      .run();
     await queue.finishJob(43, "failed");
-    await expect(afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1")).resolves.toMatchObject({
+    await expect(
+      afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1"),
+    ).resolves.toMatchObject({
       variants: [{ jobStatus: "failed", completedAt: expect.any(String) }],
     });
-    testDb.database.prepare("INSERT INTO jobs (id, team_id, status) VALUES (44, 'team-b', 'success')").run();
-    testDb.database.prepare(`UPDATE workflow_run_admissions SET job_id = 44 WHERE event_id = 'request-event-1'`).run();
-    await expect(afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1")).resolves.toMatchObject({
+    testDb.database
+      .prepare(
+        "INSERT INTO jobs (id, team_id, status) VALUES (45, 'team-a', 'running')",
+      )
+      .run();
+    testDb.database
+      .prepare(
+        `UPDATE workflow_run_admissions SET job_id = 45 WHERE event_id = 'request-event-1'`,
+      )
+      .run();
+    await expect(
+      afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1"),
+    ).resolves.toMatchObject({
+      variants: [{ jobStatus: "running", completedAt: null }],
+    });
+    await expect(queue.cancelJob(45)).resolves.toBe("cancelled");
+    await expect(
+      afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1"),
+    ).resolves.toMatchObject({
+      variants: [{ jobStatus: "cancelled", completedAt: expect.any(String) }],
+    });
+    testDb.database
+      .prepare(
+        "INSERT INTO jobs (id, team_id, status) VALUES (44, 'team-b', 'success')",
+      )
+      .run();
+    testDb.database
+      .prepare(
+        `UPDATE workflow_run_admissions SET job_id = 44 WHERE event_id = 'request-event-1'`,
+      )
+      .run();
+    await expect(
+      afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1"),
+    ).resolves.toMatchObject({
       variants: [{ jobStatus: null, completedAt: null }],
     });
-    testDb.database.prepare(`UPDATE workflow_run_admissions SET job_id = 42 WHERE event_id = 'request-event-1'`).run();
-    const resumed = await afterRestart.listChannelEvents("team-a", "stream-a", 10, firstPage.nextCursor!);
-    expect(resumed.events.map(({ id }) => id)).toEqual(["event-a2", "event-a3"]);
-    expect(resumed.events[0].links).toMatchObject({ invocationIds: ["invocation-1"], runIds: ["42"] });
+    testDb.database
+      .prepare(
+        `UPDATE workflow_run_admissions SET job_id = 42 WHERE event_id = 'request-event-1'`,
+      )
+      .run();
+    const resumed = await afterRestart.listChannelEvents(
+      "team-a",
+      "stream-a",
+      10,
+      firstPage.nextCursor!,
+    );
+    expect(resumed.events.map(({ id }) => id)).toEqual([
+      "event-a2",
+      "event-a3",
+    ]);
+    expect(resumed.events[0].links).toMatchObject({
+      invocationIds: ["invocation-1"],
+      runIds: ["42"],
+    });
     expect(resumed.events.some(({ id }) => id === "event-b1")).toBe(false);
-    await expect(afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1")).resolves.toEqual({
+    await expect(
+      afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1"),
+    ).resolves.toEqual({
       id: "invocation-1",
       teamId: "team-a",
       requestEventId: "request-event-1",
@@ -141,8 +223,15 @@ describe("persisted Stream event reconciliation", () => {
         },
       ],
     });
-    await expect(afterRestart.getWorkflowInvocationForTeam("team-b", "invocation-1")).resolves.toBeNull();
-    await expect(afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-rejected")).resolves.toMatchObject({
+    await expect(
+      afterRestart.getWorkflowInvocationForTeam("team-b", "invocation-1"),
+    ).resolves.toBeNull();
+    await expect(
+      afterRestart.getWorkflowInvocationForTeam(
+        "team-a",
+        "invocation-rejected",
+      ),
+    ).resolves.toMatchObject({
       id: "invocation-rejected",
       requestEventId: "request-event-rejected",
       variants: [
@@ -155,14 +244,23 @@ describe("persisted Stream event reconciliation", () => {
         },
       ],
     });
-    await expect(afterRestart.listChannelEvents("team-b", "stream-a", 10, firstPage.nextCursor!)).rejects.toThrow(
-      "Invalid event cursor",
-    );
+    await expect(
+      afterRestart.listChannelEvents(
+        "team-b",
+        "stream-a",
+        10,
+        firstPage.nextCursor!,
+      ),
+    ).rejects.toThrow("Invalid event cursor");
   });
 
   it("links an authorized Agent invocation to an admitted job through the scoped projection", async () => {
-    temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "agent-invocation-result-"));
-    testDb.database = new DatabaseSync(path.join(temporaryDirectory, "agent.sqlite"));
+    temporaryDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "agent-invocation-result-"),
+    );
+    testDb.database = new DatabaseSync(
+      path.join(temporaryDirectory, "agent.sqlite"),
+    );
     testDb.database.exec(`
       CREATE TABLE domain_events (
         sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL, team_id TEXT NOT NULL,
@@ -188,17 +286,25 @@ describe("persisted Stream event reconciliation", () => {
     const domainEventRepository = new DomainEventRepository();
     const workflowRunAdmissions = new WorkflowRunAdmissionRepository();
     const server = {
-      requireWorkspaceCapability: vi.fn(async (_req: unknown, _res: unknown, _capability: string) => ({
-        teamId: workspaceId,
-        principal: { kind: "agent", subject: "agent-1" },
-        capabilities: ["runs.dispatch", "runs.view"],
+      requireWorkspaceCapability: vi.fn(
+        async (_req: unknown, _res: unknown, _capability: string) => ({
+          teamId: workspaceId,
+          principal: { kind: "agent", subject: "agent-1" },
+          capabilities: ["runs.dispatch", "runs.view"],
+        }),
+      ),
+      readJson: vi.fn(async () => ({
+        inputs: { privateValue: "do-not-return" },
       })),
-      readJson: vi.fn(async () => ({ inputs: { privateValue: "do-not-return" } })),
       workflowsLoaded: Promise.resolve(),
       workflows: {
         getForTeam: vi.fn(async () => ({ id: "workflow-1" })),
         latestRevision: vi.fn(async () => ({ revision: 1 })),
-        getRevision: vi.fn(async () => ({ id: "workflow-1", tags: [], steps: [] })),
+        getRevision: vi.fn(async () => ({
+          id: "workflow-1",
+          tags: [],
+          steps: [],
+        })),
       },
       agentWorkflowGrantRepository: { has: vi.fn(async () => granted) },
       domainEventRepository,
@@ -210,21 +316,45 @@ describe("persisted Stream event reconciliation", () => {
         decryptValue: (value: string) => value.replace(/^cipher:/, ""),
       },
     };
-    const request = { method: "POST", headers: { "idempotency-key": "agent-run-1" } } as any;
+    const request = {
+      method: "POST",
+      headers: { "idempotency-key": "agent-run-1" },
+    } as any;
     const acceptedResponse = response();
-    await (WebhookServer.prototype as any).handleWorkflowRun.call(server, request, acceptedResponse, "workflow-1");
+    await (WebhookServer.prototype as any).handleWorkflowRun.call(
+      server,
+      request,
+      acceptedResponse,
+      "workflow-1",
+    );
     const accepted = JSON.parse(acceptedResponse.end.mock.calls[0][0]);
-    expect(acceptedResponse.writeHead).toHaveBeenCalledWith(202, expect.any(Object));
-    expect(accepted).toMatchObject({ accepted: true, admissionStatus: "pending", workflowId: "workflow-1" });
+    expect(acceptedResponse.writeHead).toHaveBeenCalledWith(
+      202,
+      expect.any(Object),
+    );
+    expect(accepted).toMatchObject({
+      accepted: true,
+      admissionStatus: "pending",
+      workflowId: "workflow-1",
+    });
     expect(accepted.invocationId).toBeTruthy();
 
     const retryResponse = response();
-    await (WebhookServer.prototype as any).handleWorkflowRun.call(server, request, retryResponse, "workflow-1");
+    await (WebhookServer.prototype as any).handleWorkflowRun.call(
+      server,
+      request,
+      retryResponse,
+      "workflow-1",
+    );
     expect(JSON.parse(retryResponse.end.mock.calls[0][0])).toMatchObject({
       eventId: accepted.eventId,
       invocationId: accepted.invocationId,
     });
-    expect(testDb.database.prepare("SELECT COUNT(*) AS count FROM domain_events").get()?.count).toBe(1);
+    expect(
+      testDb.database
+        .prepare("SELECT COUNT(*) AS count FROM domain_events")
+        .get()?.count,
+    ).toBe(1);
 
     await workflowRunAdmissions.persistPlan([
       {
@@ -239,12 +369,22 @@ describe("persisted Stream event reconciliation", () => {
     ]);
     const claim = await workflowRunAdmissions.claimVariant(accepted.eventId, 0);
     expect(claim).not.toBeNull();
-    (server as any).processWorkflowRunAdmission = WebhookServer.prototype.processWorkflowRunAdmission;
-    await (WebhookServer.prototype as any).processWorkflowRunAdmission.call(server, claim);
+    (server as any).processWorkflowRunAdmission =
+      WebhookServer.prototype.processWorkflowRunAdmission;
+    await (WebhookServer.prototype as any).processWorkflowRunAdmission.call(
+      server,
+      claim,
+    );
     expect(server.queue.enqueueDispatch).toHaveBeenCalledWith(
       "workflow-1",
       1,
-      { inputs: { privateValue: "do-not-return", trigger: { type: "manual", source: "api" } }, matrix: {} },
+      {
+        inputs: {
+          privateValue: "do-not-return",
+          trigger: { type: "manual", source: "api" },
+        },
+        matrix: {},
+      },
       [],
       "team-a",
       accepted.eventId,
@@ -253,7 +393,9 @@ describe("persisted Stream event reconciliation", () => {
     );
     // Queue admission is exercised above; this terminal job row represents the
     // worker result fixture, so this test verifies correlation, not execution.
-    testDb.database.prepare("INSERT INTO jobs (id, team_id, status) VALUES (?, ?, ?)").run(42, "team-a", "success");
+    testDb.database
+      .prepare("INSERT INTO jobs (id, team_id, status) VALUES (?, ?, ?)")
+      .run(42, "team-a", "success");
 
     const resultResponse = response();
     await (WebhookServer.prototype as any).handleWorkflowInvocationGet.call(
@@ -262,17 +404,29 @@ describe("persisted Stream event reconciliation", () => {
       resultResponse,
       accepted.invocationId,
     );
-    expect(resultResponse.writeHead).toHaveBeenCalledWith(200, expect.any(Object));
+    expect(resultResponse.writeHead).toHaveBeenCalledWith(
+      200,
+      expect.any(Object),
+    );
     const invocation = JSON.parse(resultResponse.end.mock.calls[0][0]);
     expect(invocation).toMatchObject({
       id: accepted.invocationId,
       requestEventId: accepted.eventId,
       teamId: "team-a",
-      variants: [{ admissionStatus: "admitted", admissionOutcome: "accepted", runId: "42" }],
+      variants: [
+        {
+          admissionStatus: "admitted",
+          admissionOutcome: "accepted",
+          runId: "42",
+        },
+      ],
     });
     expect(JSON.stringify(invocation)).not.toContain("do-not-return");
     expect(JSON.stringify(invocation)).not.toContain("cipher:");
-    expect(testDb.database.prepare("SELECT status FROM jobs WHERE id = ?").get(42)?.status).toBe("success");
+    expect(
+      testDb.database.prepare("SELECT status FROM jobs WHERE id = ?").get(42)
+        ?.status,
+    ).toBe("success");
 
     workspaceId = "team-b";
     const isolatedResponse = response();
@@ -282,13 +436,32 @@ describe("persisted Stream event reconciliation", () => {
       isolatedResponse,
       accepted.invocationId,
     );
-    expect(isolatedResponse.writeHead).toHaveBeenCalledWith(404, expect.any(Object));
+    expect(isolatedResponse.writeHead).toHaveBeenCalledWith(
+      404,
+      expect.any(Object),
+    );
 
     granted = false;
     const deniedResponse = response();
-    await (WebhookServer.prototype as any).handleWorkflowRun.call(server, request, deniedResponse, "workflow-1");
-    expect(deniedResponse.writeHead).toHaveBeenCalledWith(403, expect.any(Object));
-    expect(server.agentWorkflowGrantRepository.has).toHaveBeenCalledWith("team-b", "agent-1", "workflow-1");
-    expect(testDb.database.prepare("SELECT COUNT(*) AS count FROM domain_events").get()?.count).toBe(1);
+    await (WebhookServer.prototype as any).handleWorkflowRun.call(
+      server,
+      request,
+      deniedResponse,
+      "workflow-1",
+    );
+    expect(deniedResponse.writeHead).toHaveBeenCalledWith(
+      403,
+      expect.any(Object),
+    );
+    expect(server.agentWorkflowGrantRepository.has).toHaveBeenCalledWith(
+      "team-b",
+      "agent-1",
+      "workflow-1",
+    );
+    expect(
+      testDb.database
+        .prepare("SELECT COUNT(*) AS count FROM domain_events")
+        .get()?.count,
+    ).toBe(1);
   });
 });

@@ -4,7 +4,11 @@ import db from "./db-client.js";
 const serializeJson = (value: unknown): string | undefined =>
   JSON.stringify(value, (_key, nested) => {
     if (nested && typeof nested === "object" && !Array.isArray(nested)) {
-      return Object.fromEntries(Object.entries(nested).sort(([left], [right]) => left.localeCompare(right)));
+      return Object.fromEntries(
+        Object.entries(nested).sort(([left], [right]) =>
+          left.localeCompare(right),
+        ),
+      );
     }
     return nested;
   });
@@ -23,7 +27,10 @@ export type DomainEvent<T = unknown> = {
   data: T;
 };
 
-export type PublishDomainEvent<T> = Omit<DomainEvent<T>, "id" | "teamId" | "recordedAt"> & {
+export type PublishDomainEvent<T> = Omit<
+  DomainEvent<T>,
+  "id" | "teamId" | "recordedAt"
+> & {
   id?: string;
 };
 
@@ -33,8 +40,14 @@ export type DomainEventPage<T = unknown> = {
   resumeCursor: string | null;
 };
 
-function encodeSequenceCursor(teamId: string, channelId: string, sequence: number): string {
-  return Buffer.from(JSON.stringify({ v: 1, teamId, channelId, sequence })).toString("base64url");
+function encodeSequenceCursor(
+  teamId: string,
+  channelId: string,
+  sequence: number,
+): string {
+  return Buffer.from(
+    JSON.stringify({ v: 1, teamId, channelId, sequence }),
+  ).toString("base64url");
 }
 
 export type WorkflowRunRequest<T = unknown> = DomainEvent<T> & {
@@ -72,7 +85,10 @@ export type WorkflowInvocationView = {
  */
 export class DomainEventRepository {
   /** Returns invocation admission and run references without exposing request inputs. */
-  async getWorkflowInvocationForTeam(teamId: string, invocationId: string): Promise<WorkflowInvocationView | null> {
+  async getWorkflowInvocationForTeam(
+    teamId: string,
+    invocationId: string,
+  ): Promise<WorkflowInvocationView | null> {
     const event = await db.get(
       `SELECT id, team_id, recorded_at,
               CASE WHEN json_valid(data_json) THEN json_extract(data_json, '$.workflowId') END AS workflow_id,
@@ -85,7 +101,12 @@ export class DomainEventRepository {
       [teamId, invocationId, invocationId, invocationId],
     );
     const revision = Number(event?.revision);
-    if (!event || typeof event.workflow_id !== "string" || !Number.isInteger(revision) || revision < 1) {
+    if (
+      !event ||
+      typeof event.workflow_id !== "string" ||
+      !Number.isInteger(revision) ||
+      revision < 1
+    ) {
       return null;
     }
     const rows = await db.all(
@@ -113,11 +134,22 @@ export class DomainEventRepository {
               ? "accepted"
               : null
             : String(row.admission_outcome),
-        errorCode: row.error_code === null || row.error_code === undefined ? null : String(row.error_code),
-        runId: row.job_id === null || row.job_id === undefined ? null : String(row.job_id),
-        jobStatus: row.job_status === null || row.job_status === undefined ? null : String(row.job_status),
+        errorCode:
+          row.error_code === null || row.error_code === undefined
+            ? null
+            : String(row.error_code),
+        runId:
+          row.job_id === null || row.job_id === undefined
+            ? null
+            : String(row.job_id),
+        jobStatus:
+          row.job_status === null || row.job_status === undefined
+            ? null
+            : String(row.job_status),
         completedAt:
-          row.job_status === "success" || row.job_status === "failed"
+          row.job_status === "success" ||
+          row.job_status === "failed" ||
+          row.job_status === "cancelled"
             ? row.job_finished_at === null || row.job_finished_at === undefined
               ? null
               : String(row.job_finished_at)
@@ -166,7 +198,10 @@ export class DomainEventRepository {
     const hasMore = rows.length > boundedLimit;
     const pageRows = hasMore ? rows.slice(0, boundedLimit) : rows;
     const last = pageRows.at(-1);
-    const nextCursor = hasMore && last ? encodeSequenceCursor(teamId, channelId, Number(last.sequence)) : null;
+    const nextCursor =
+      hasMore && last
+        ? encodeSequenceCursor(teamId, channelId, Number(last.sequence))
+        : null;
     const events = await Promise.all(
       pageRows.map(async (row: any) => {
         const event = this.parse<T>(row);
@@ -197,12 +232,17 @@ export class DomainEventRepository {
           [teamId, event.id],
         );
         const causationEventId =
-          event.causationId && (await this.getForTeam(teamId, event.causationId)) ? event.causationId : null;
+          event.causationId &&
+          (await this.getForTeam(teamId, event.causationId))
+            ? event.causationId
+            : null;
         return {
           ...event,
           links: {
             messageIds: messages.map((message: any) => String(message.id)),
-            invocationIds: invocations.map((invocation: any) => String(invocation.id)),
+            invocationIds: invocations.map((invocation: any) =>
+              String(invocation.id),
+            ),
             runIds: runs.map((run: any) => String(run.id)),
             causationEventId,
           },
@@ -212,12 +252,18 @@ export class DomainEventRepository {
     return {
       events,
       nextCursor,
-      resumeCursor: last ? encodeSequenceCursor(teamId, channelId, Number(last.sequence)) : cursor || null,
+      resumeCursor: last
+        ? encodeSequenceCursor(teamId, channelId, Number(last.sequence))
+        : cursor || null,
     };
   }
 
   /** Bind a canonical event to a workspace Stream without copying or redispatching it. */
-  async bindEventToStream(teamId: string, streamId: string, eventId: string): Promise<boolean> {
+  async bindEventToStream(
+    teamId: string,
+    streamId: string,
+    eventId: string,
+  ): Promise<boolean> {
     const result = await db.run(
       `INSERT OR IGNORE INTO stream_event_bindings (team_id, stream_id, event_id)
        SELECT e.team_id, c.id, e.id
@@ -236,7 +282,10 @@ export class DomainEventRepository {
     );
   }
 
-  async publish<T>(teamId: string, event: PublishDomainEvent<T>): Promise<DomainEvent<T>> {
+  async publish<T>(
+    teamId: string,
+    event: PublishDomainEvent<T>,
+  ): Promise<DomainEvent<T>> {
     const id = event.id || crypto.randomUUID();
     const recordedAt = new Date().toISOString();
     const dataJson = serializeJson(event.data);
@@ -287,7 +336,11 @@ export class DomainEventRepository {
     return this.parse<T>(row);
   }
 
-  private assertSameEvent(row: any, event: PublishDomainEvent<unknown>, dataJson: string): void {
+  private assertSameEvent(
+    row: any,
+    event: PublishDomainEvent<unknown>,
+    dataJson: string,
+  ): void {
     if (
       row.type !== event.type ||
       Number(row.schema_version) !== event.schemaVersion ||
@@ -298,11 +351,16 @@ export class DomainEventRepository {
       (row.causation_id ?? null) !== event.causationId ||
       serializeJson(JSON.parse(row.data_json)) !== dataJson
     ) {
-      throw new Error("Domain event idempotency key conflicts with an existing event");
+      throw new Error(
+        "Domain event idempotency key conflicts with an existing event",
+      );
     }
   }
 
-  async getForTeam<T = unknown>(teamId: string, id: string): Promise<DomainEvent<T> | null> {
+  async getForTeam<T = unknown>(
+    teamId: string,
+    id: string,
+  ): Promise<DomainEvent<T> | null> {
     const row = await db.get(
       `SELECT id, team_id, type, schema_version, source, occurred_at, recorded_at,
               correlation_id, causation_id, idempotency_key, data_json
@@ -312,7 +370,10 @@ export class DomainEventRepository {
     return row ? this.parse<T>(row) : null;
   }
 
-  async getByIdempotencyKey<T = unknown>(teamId: string, idempotencyKey: string): Promise<DomainEvent<T> | null> {
+  async getByIdempotencyKey<T = unknown>(
+    teamId: string,
+    idempotencyKey: string,
+  ): Promise<DomainEvent<T> | null> {
     const row = await db.get(
       `SELECT id, team_id, type, schema_version, source, occurred_at, recorded_at,
               correlation_id, causation_id, idempotency_key, data_json
@@ -322,7 +383,10 @@ export class DomainEventRepository {
     return row ? this.parse<T>(row) : null;
   }
 
-  async listForTeam<T = unknown>(teamId: string, limit = 50): Promise<DomainEvent<T>[]> {
+  async listForTeam<T = unknown>(
+    teamId: string,
+    limit = 50,
+  ): Promise<DomainEvent<T>[]> {
     const boundedLimit = Math.max(1, Math.min(100, Math.floor(limit)));
     const rows = await db.all(
       `SELECT id, team_id, type, schema_version, source, occurred_at, recorded_at,
