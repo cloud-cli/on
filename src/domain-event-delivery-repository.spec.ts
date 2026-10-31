@@ -4,6 +4,7 @@ const database = vi.hoisted(() => ({
   all: vi.fn(),
   get: vi.fn(),
   run: vi.fn(),
+  transaction: vi.fn(),
 }));
 vi.mock("./db-client.js", () => ({ default: database }));
 
@@ -12,6 +13,8 @@ import { DomainEventDeliveryRepository } from "./domain-event-delivery-repositor
 describe("DomainEventDeliveryRepository", () => {
   const repository = new DomainEventDeliveryRepository();
   beforeEach(() => vi.resetAllMocks());
+
+  beforeEach(() => database.transaction.mockResolvedValue(undefined));
 
   it("scopes subscription creation and listing to the requested team", async () => {
     database.get.mockResolvedValueOnce({ present: 1 }).mockResolvedValueOnce({
@@ -90,28 +93,30 @@ describe("DomainEventDeliveryRepository", () => {
   });
 
   it("fans out only currently matching subscriptions and tolerates duplicates", async () => {
-    database.get.mockResolvedValueOnce({ sequence: 9, type: "order.created" }).mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ status: "matched", delivery_count: 1 });
+    database.get
+      .mockResolvedValueOnce({ sequence: 9, type: "order.created" })
+      .mockResolvedValueOnce({ status: "matched", delivery_count: 1 });
     await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({ status: "matched", deliveryCount: 1 });
-    expect(database.run.mock.calls[0][0]).toContain("INSERT OR IGNORE");
-    expect(database.run.mock.calls[0][0]).toContain("? > s.high_water_event_sequence");
-    expect(database.run.mock.calls[0][1]).toEqual(["team-a", "event-a", "team-a", "order.created", 9]);
+    const statements = database.transaction.mock.calls[0][0];
+    expect(statements[0].s).toContain("INSERT OR IGNORE");
+    expect(statements[0].s).toContain("? > s.high_water_event_sequence");
+    expect(statements[0].d).toEqual(["team-a", "event-a", "team-a", "order.created", 9]);
+    expect(statements[1].s).toContain("ON CONFLICT(team_id, event_id)");
+    expect(statements[1].d).toEqual(["team-a", "event-a", "team-a", "event-a", "team-a", "event-a"]);
     expect(database.get.mock.calls[1][1]).toEqual(["team-a", "event-a"]);
-    expect(database.run.mock.calls[1][1]).toEqual(["team-a", "event-a", "matched", 1]);
   });
 
   it("records distinct unmatched and repeated fanout outcomes within the workspace", async () => {
     database.get
       .mockResolvedValueOnce({ sequence: 10, type: "missing.type" })
-      .mockResolvedValueOnce({ count: 0 })
       .mockResolvedValueOnce({ status: "unmatched", delivery_count: 0 });
     await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({ status: "unmatched", deliveryCount: 0 });
-    expect(database.run.mock.calls[1][1]).toEqual(["team-a", "event-a", "unmatched", 0]);
+    expect(database.transaction.mock.calls[0][0][1].s).toContain("THEN 'matched' ELSE 'unmatched'");
     database.get
       .mockResolvedValueOnce({ sequence: 10, type: "missing.type" })
-      .mockResolvedValueOnce({ count: 0 })
       .mockResolvedValueOnce({ status: "repeat", delivery_count: 0 });
     await expect(repository.fanout("team-a", "event-a")).resolves.toEqual({ status: "repeat", deliveryCount: 0 });
-    expect(database.run.mock.calls[1][0]).toContain("status = 'repeat'");
+    expect(database.transaction.mock.calls[0][0][1].s).toContain("status = 'repeat'");
     expect(database.get.mock.calls.at(-1)?.[1]).toEqual(["team-a", "event-a"]);
   });
 
@@ -123,15 +128,19 @@ describe("DomainEventDeliveryRepository", () => {
   });
 
   it("uses a durable event sequence high-water mark rather than timestamps", async () => {
-    database.get.mockResolvedValueOnce({ sequence: 4, type: "order.created" }).mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ status: "unmatched", delivery_count: 0 });
+    database.get
+      .mockResolvedValueOnce({ sequence: 4, type: "order.created" })
+      .mockResolvedValueOnce({ status: "unmatched", delivery_count: 0 });
     await repository.fanout("team-a", "before-subscription");
-    expect(database.run.mock.calls[0][0]).toContain("? > s.high_water_event_sequence");
-    expect(database.run.mock.calls[0][1].at(-1)).toBe(4);
+    expect(database.transaction.mock.calls[0][0][0].d.at(-1)).toBe(4);
     database.get.mockReset();
-    database.run.mockReset();
-    database.get.mockResolvedValueOnce({ sequence: 5, type: "order.created" }).mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ status: "matched", delivery_count: 1 });
+    database.transaction.mockReset();
+    database.transaction.mockResolvedValue(undefined);
+    database.get
+      .mockResolvedValueOnce({ sequence: 5, type: "order.created" })
+      .mockResolvedValueOnce({ status: "matched", delivery_count: 1 });
     await repository.fanout("team-a", "after-subscription");
-    expect(database.run.mock.calls[0][1].at(-1)).toBe(5);
+    expect(database.transaction.mock.calls[0][0][0].d.at(-1)).toBe(5);
   });
 
   it("atomically claims pending and expired leases, and increments attempts", async () => {
