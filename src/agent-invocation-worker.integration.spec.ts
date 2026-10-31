@@ -539,25 +539,33 @@ describe("agent invocation worker integration", () => {
     });
   });
 
-  describe("actual worker invocation completion", () => {
-    it("persists worker-produced terminal status and correlates it to the admitted invocation", async () => {
+  describe("generic workflow-run worker completion", () => {
+    it("persists worker-produced terminal status for a job admitted through the workflow-run queue", async () => {
       const queue = new QueueManager("invocation-worker");
       const admissions = new WorkflowRunAdmissionRepository();
       const eventId = `agent-worker-${Date.now()}`;
-      await admissions.persistPlan([{
-        eventId,
-        teamId: "workspace-1",
-        workflowId: "test-workflow",
-        revision: 1,
-        index: 0,
-        matrix: {},
-        tags: [],
-      }]);
+      await admissions.persistPlan([
+        {
+          eventId,
+          teamId: "workspace-1",
+          workflowId: "test-workflow",
+          revision: 1,
+          index: 0,
+          matrix: {},
+          tags: [],
+        },
+      ]);
       const admission = await admissions.claimVariant(eventId, 0);
       expect(admission).not.toBeNull();
       const jobId = await queue.enqueueDispatch(
-        "test-workflow", 1, { inputs: { message: "synthetic" }, matrix: {} }, [], "workspace-1", eventId,
-        `workflow-run:${eventId}:0`, { eventId, variantIndex: 0, leaseToken: admission!.token },
+        "test-workflow",
+        1,
+        { inputs: { message: "synthetic" }, matrix: {} },
+        [],
+        "workspace-1",
+        eventId,
+        `workflow-run:${eventId}:0`,
+        { eventId, variantIndex: 0, leaseToken: admission!.token },
       );
       await admissions.finish(admission!, "admitted", jobId);
       const job = await queue.claimNextJob([]);
@@ -571,7 +579,9 @@ describe("agent invocation worker integration", () => {
         config: { storagePath: temporaryDirectory!, serverUrl: "http://runner.test", env: {}, plugins: [] },
         driver: { execute: vi.fn(), readLog: async () => "" },
         workflow: {
-          id: "test-workflow", name: "Synthetic workflow", on: {},
+          id: "test-workflow",
+          name: "Synthetic workflow",
+          on: {},
           steps: [{ id: "result", eval: '"worker-result"' }],
         },
       } as any);
@@ -580,6 +590,8 @@ describe("agent invocation worker integration", () => {
       expect(completed?.status).toBe("success");
       const admissionResult = await admissions.get(eventId, 0);
       expect(admissionResult).toMatchObject({ status: "admitted", jobId });
+      // This fixture exercises generic job reporting, not Agent principal authorization,
+      // request provenance, or an Agent-specific result resource/protocol.
       const report = JSON.parse(String((completed as any).report));
       expect(report.status).toBe("success");
       expect(report.steps).toContainEqual(expect.objectContaining({ id: "result", status: "success" }));
