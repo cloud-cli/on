@@ -307,6 +307,74 @@ describe("global recipe repository identity and versioning", () => {
     }
   });
 
+  it("checks out only the requested immutable commit and fails closed until a delayed mirror has it", async () => {
+    database.all.mockResolvedValue([]);
+    database.get.mockImplementation(async (sql: string) =>
+      sql.includes("recipe_publishers") || sql.includes("FROM recipes")
+        ? { owner_subject: "system:built-in-recipes" }
+        : null,
+    );
+    await new RecipeRepository().init();
+    const seed = database.run.mock.calls.find(
+      ([sql, params]) => String(sql).includes("INSERT INTO recipe_versions") && params[2] === 4,
+    );
+    const recipe = parseRecipe(String(seed?.[1]?.[4]));
+    const checkoutScript = (recipe.functions.main.steps[0] as { run: string }).run;
+    const root = mkdtempSync(join(tmpdir(), "on-exact-commit-"));
+    try {
+      let remote = join(root, "mirror.git");
+      const source = join(root, "source-work");
+      const work = join(root, "work");
+      const run = (commitSha: string) => {
+        rmSync(join(work, "source"), { recursive: true, force: true });
+        execFileSync("bash", ["-euo", "pipefail", "-c", checkoutScript], {
+          cwd: work,
+          env: { PATH: process.env.PATH, GITMINI_TOKEN: "", CLONE_URL: remote, COMMIT_SHA: commitSha },
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        return execFileSync("git", ["-C", join(work, "source"), "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+      };
+      execFileSync("git", ["init", "--bare", remote], { stdio: "ignore" });
+      execFileSync("git", ["init", source], { stdio: "ignore" });
+      execFileSync(
+        "git",
+        [
+          "-C",
+          source,
+          "-c",
+          "user.name=Fixture",
+          "-c",
+          "user.email=fixture@example.test",
+          "commit",
+          "--allow-empty",
+          "-m",
+          "requested",
+        ],
+        {
+          stdio: "ignore",
+          env: { ...process.env, GIT_AUTHOR_DATE: "2000-01-01T00:00:00Z", GIT_COMMITTER_DATE: "2000-01-01T00:00:00Z" },
+        },
+      );
+      const requested = execFileSync("git", ["-C", source, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+      execFileSync("git", ["-C", source, "remote", "add", "origin", remote], { stdio: "ignore" });
+      execFileSync("git", ["-C", source, "push", "origin", "HEAD:refs/heads/main"], { stdio: "ignore" });
+      execFileSync("git", ["init", work], { stdio: "ignore" });
+      expect(() => run("f".repeat(40))).toThrow();
+      expect(run(requested)).toBe(requested);
+
+      // A delayed mirror has no requested object initially: fail without checking out its branch head.
+      remote = join(root, "delayed-mirror.git");
+      execFileSync("git", ["init", "--bare", remote], { stdio: "ignore" });
+      execFileSync("git", ["-C", source, "remote", "set-url", "origin", remote], { stdio: "ignore" });
+      expect(() => run(requested)).toThrow();
+      execFileSync("git", ["-C", source, "push", "origin", "HEAD:refs/heads/main"], { stdio: "ignore" });
+      expect(run(requested)).toBe(requested);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("fails closed when the reserved built-in namespace is owned by another publisher", async () => {
     database.all.mockResolvedValue([]);
     database.get.mockResolvedValue({ owner_subject: "human-publisher" });

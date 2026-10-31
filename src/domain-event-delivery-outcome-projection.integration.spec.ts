@@ -47,9 +47,12 @@ describe("domain event outcome projection in SQLite", () => {
         team_id TEXT NOT NULL, event_id TEXT NOT NULL, status TEXT NOT NULL, delivery_count INTEGER NOT NULL,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(team_id, event_id)
       );
-      INSERT INTO domain_events VALUES ('event', 'team', 1, 'changed'), ('unmatched', 'team', 2, 'other');
+      INSERT INTO domain_events VALUES
+        ('event', 'team', 1, 'changed'), ('unmatched', 'team', 2, 'other'),
+        ('foreign-event', 'other-team', 1, 'changed');
       INSERT INTO domain_event_subscriptions(id, team_id, workflow_id, workflow_revision, event_type)
-        VALUES ('sub-a', 'team', 'wf-a', 1, 'changed'), ('sub-b', 'team', 'wf-b', 1, 'changed');
+        VALUES ('sub-a', 'team', 'wf-a', 1, 'changed'), ('sub-b', 'team', 'wf-b', 1, 'changed'),
+          ('foreign-sub', 'other-team', 'wf-foreign', 1, 'changed');
     `);
     const repository = new DomainEventDeliveryRepository();
     expect(await repository.fanout("team", "event")).toEqual({ status: "matched", deliveryCount: 2 });
@@ -89,6 +92,8 @@ describe("domain event outcome projection in SQLite", () => {
       repeatSemantics: null,
       deliveries: [],
     });
+    expect(await reopened.getOutcomeProjection("team", "foreign-event")).toBeNull();
+    expect(await reopened.getOutcomeProjection("other-team", "event")).toBeNull();
     const serialized = JSON.stringify(await reopened.getOutcomeProjection("team", "event"));
     expect(serialized).not.toContain("private");
     expect(serialized).not.toContain("sensitive");
