@@ -32,6 +32,8 @@ vi.mock("./db-client.js", () => ({
 
 import { WebhookServer } from "./server.js";
 import { WorkflowRunAdmissionRepository } from "./workflow-run-admission-repository.js";
+import { DomainEventDeliveryRepository } from "./domain-event-delivery-repository.js";
+import { DomainEventDispatcher } from "./domain-event-dispatcher.js";
 
 const response = () =>
   ({
@@ -71,6 +73,71 @@ function createTables(database: DatabaseSync) {
 }
 
 describe("workflow-run admission cross-path SQLite integration", () => {
+  it("persists filtered event-delivery outcome across dispatcher retry and SQLite reopen", async () => {
+    temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-admission-filtered-path-"));
+    const databasePath = path.join(temporaryDirectory, "test.sqlite");
+    testDb.database = new DatabaseSync(databasePath);
+    createTables(testDb.database);
+    testDb.database.exec(`
+      CREATE TABLE domain_event_subscriptions (
+        id TEXT PRIMARY KEY, team_id TEXT NOT NULL, workflow_id TEXT NOT NULL, workflow_revision INTEGER NOT NULL,
+        event_type TEXT NOT NULL, enabled INTEGER DEFAULT 1, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE domain_event_deliveries (
+        id TEXT PRIMARY KEY, team_id TEXT, event_id TEXT, subscription_id TEXT,
+        status TEXT DEFAULT 'pending', attempt_count INTEGER DEFAULT 0, lease_until TEXT,
+        job_ids_json TEXT DEFAULT '[]', invocation_id TEXT, last_error TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO domain_event_subscriptions(id, team_id, workflow_id, workflow_revision, event_type)
+        VALUES ('subscription-filtered', 'team-1', 'workflow-1', 1, 'ticket.created');
+      INSERT INTO domain_event_deliveries(id, team_id, event_id, subscription_id)
+        VALUES ('delivery-filtered', 'team-1', 'event-filtered', 'subscription-filtered');
+    `);
+    const deliveries = new DomainEventDeliveryRepository();
+    const claim = await deliveries.claimNext("team-1");
+    expect(claim).not.toBeNull();
+    const dispatcher = new DomainEventDispatcher({
+      events: {
+        getForTeam: async () => ({
+          id: "event-filtered",
+          teamId: "team-1",
+          type: "ticket.created",
+          schemaVersion: 1,
+          source: "test/synthetic",
+          occurredAt: "2026-01-01T00:00:00.000Z",
+          recordedAt: "2026-01-01T00:00:00.000Z",
+          correlationId: null,
+          causationId: null,
+          idempotencyKey: "ticket-filtered",
+          data: { ticket: 1 },
+        }),
+      },
+      subscriptions: deliveries,
+      deliveries,
+      resolveWorkflow: async () => ({ name: "workflow-1", tags: [], steps: [] }) as any,
+      admitInvocation: vi.fn(async () => ({ eventId: "request-event", invocationId: "invocation" })),
+      matches: () => false,
+    });
+
+    await dispatcher.process(claim!);
+    expect(await deliveries.listForEvent("team-1", "event-filtered")).toMatchObject([
+      { id: "delivery-filtered", status: "filtered", attemptCount: 1, invocationId: null },
+    ]);
+    await dispatcher.process(claim!);
+    expect(await deliveries.listForEvent("team-1", "event-filtered")).toMatchObject([
+      { id: "delivery-filtered", status: "filtered", attemptCount: 1, invocationId: null },
+    ]);
+
+    testDb.database.close();
+    testDb.database = new DatabaseSync(databasePath);
+    const reopened = new DomainEventDeliveryRepository();
+    await expect(reopened.listForEvent("team-1", "event-filtered")).resolves.toMatchObject([
+      { id: "delivery-filtered", status: "filtered", attemptCount: 1, invocationId: null },
+    ]);
+    expect(await new WorkflowRunAdmissionRepository().list("event-filtered")).toEqual([]);
+  });
+
   it("retains rejected API admission across an idempotent API retry", async () => {
     temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-admission-paths-"));
     const databasePath = path.join(temporaryDirectory, "test.sqlite");
