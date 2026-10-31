@@ -5,6 +5,7 @@ import { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
 import { validateRecipeSchema, validateRecipeInputs } from "./recipe-schema.js";
 
 const BUILT_IN_RECIPE_OWNER = "system:built-in-recipes";
+const DOCKER_BUILD_RECIPE_VERSION = 2;
 const DOCKER_BUILD_RECIPE = `inputs:
   image: { type: string, required: true }
   imageTag: { type: string, default: latest }
@@ -375,7 +376,7 @@ export class RecipeRepository {
       [
         "on",
         "docker-build",
-        1,
+        DOCKER_BUILD_RECIPE_VERSION,
         "Docker Build",
         DOCKER_BUILD_RECIPE,
         JSON.stringify(parseRecipe(DOCKER_BUILD_RECIPE).inputs),
@@ -384,7 +385,7 @@ export class RecipeRepository {
         JSON.stringify(parseRecipe(DOCKER_BUILD_RECIPE).env),
         "on",
         "docker-build",
-        1,
+        DOCKER_BUILD_RECIPE_VERSION,
       ],
     );
   }

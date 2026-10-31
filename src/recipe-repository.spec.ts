@@ -136,6 +136,7 @@ describe("global recipe repository identity and versioning", () => {
     );
     expect(seedVersionRuns).toHaveLength(2);
     expect(seedVersionRuns[0][0]).toContain("WHERE NOT EXISTS");
+    expect(seedVersionRuns[0][1][2]).toBe(2);
     expect(
       database.run.mock.calls.some(
         ([sql, params]) => String(sql).includes("recipe_publishers") && params.includes("system:built-in-recipes"),
