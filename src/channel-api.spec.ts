@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { WebhookServer } from "./server.js";
+import { internalApiPath, WebhookServer } from "./server.js";
+
+describe("versioned channel event binding route", () => {
+  it("preserves the documented POST route through API prefix normalization", () => {
+    expect(internalApiPath("/api/v1/channels/chan/event-bindings", "POST")).toBe(
+      "/api/v1/channels/chan/event-bindings",
+    );
+    expect(internalApiPath("/api/v1/channels/chan/messages", "POST")).toBe("/api/channels/chan/messages");
+  });
+});
 
 const response = () =>
   ({

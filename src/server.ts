@@ -158,7 +158,7 @@ function isSafeChannelBody(value: unknown): boolean {
   }
 }
 
-function internalApiPath(pathname: string, method: string): string {
+export function internalApiPath(pathname: string, method: string): string {
   if (pathname === "/api/v1") {
     return pathname;
   }
@@ -195,6 +195,7 @@ function internalApiPath(pathname: string, method: string): string {
     pathname.startsWith("/api/v1/runners") ||
     pathname === "/api/v1/streams" ||
     pathname.startsWith("/api/v1/streams/") ||
+    (method.toUpperCase() === "POST" && /^\/api\/v1\/channels\/[^/]+\/event-bindings$/.test(pathname)) ||
     pathname.startsWith("/api/v1/workflow-invocations/") ||
     pathname === "/api/v1/agent-workflow-grants" ||
     pathname === "/api/v1/runner-enrollments" ||
