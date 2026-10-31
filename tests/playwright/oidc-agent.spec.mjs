@@ -334,24 +334,23 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     fixtureDb.exec("PRAGMA foreign_keys = ON");
     try {
       stage = "fixture-owner-workspace";
-      const webhookToken = randomUUID();
       fixtureDb
-        .prepare("INSERT INTO teams(id, name, webhook_token) VALUES (?, ?, ?)")
-        .run(workspaceId, "OIDC Browser Fixture", webhookToken);
+        .prepare("INSERT INTO teams(id, name) VALUES (?, ?)")
+        .run(workspaceId, "OIDC Browser Fixture");
       stage = "fixture-owner-membership";
       fixtureDb
-        .prepare("INSERT INTO team_members(team_id, subject, role) VALUES (?, ?, 'collaborator')")
+        .prepare("INSERT INTO team_members(team_id, subject, role) VALUES (?, ?, 'admin')")
         .run(workspaceId, session.user.id);
       fixtureDb
-        .prepare("INSERT INTO teams(id, name, webhook_token) VALUES (?, ?, ?)")
-        .run(navigationWorkspaceId, "Navigation Fixture", randomUUID());
+        .prepare("INSERT INTO teams(id, name) VALUES (?, ?)")
+        .run(navigationWorkspaceId, "Navigation Fixture");
       fixtureDb
-        .prepare("INSERT INTO team_members(team_id, subject, role) VALUES (?, ?, 'collaborator')")
+        .prepare("INSERT INTO team_members(team_id, subject, role) VALUES (?, ?, 'admin')")
         .run(navigationWorkspaceId, session.user.id);
       stage = "fixture-foreign-workspace";
       fixtureDb
-        .prepare("INSERT INTO teams(id, name, webhook_token) VALUES (?, ?, ?)")
-        .run(foreignWorkspaceId, "Unrelated Fixture", randomUUID());
+        .prepare("INSERT INTO teams(id, name) VALUES (?, ?)")
+        .run(foreignWorkspaceId, "Unrelated Fixture");
     } finally {
       fixtureDb.close();
     }
