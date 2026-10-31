@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { RequestAuthorizer } from "./authorization.js";
 import { WebhookServer } from "./server.js";
+import { processJob } from "./worker.js";
+import type { Processable } from "./types.js";
 
 const response = () => ({ writeHead: vi.fn().mockReturnThis(), end: vi.fn(), headersSent: false }) as any;
 const principal = (overrides: Record<string, unknown> = {}) => ({
@@ -15,6 +17,138 @@ const request = (url: string, method = "GET", headers: Record<string, string> = 
   ({ url, method, headers: { host: "app.test", ...headers } }) as any;
 
 describe("current IAM route authorization", () => {
+  it("correlates an authorized agent request through a real worker to invocation retrieval", async () => {
+    const completed = vi.fn(async (_jobId: string | number, _status: string, _report: unknown) => {});
+    const workerQueue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {}),
+      saveStepAttempt: vi.fn(async () => {}),
+      completeJob: completed,
+      isCancelled: vi.fn(async () => false),
+    };
+    let terminalStatus: string | null = null;
+    const server: any = {
+      requireWorkspaceCapability: vi.fn(async () => ({
+        principal: { subject: "agent:build", kind: "agent" },
+        teamId: "team-1",
+        capabilities: ["runs.dispatch"],
+      })),
+      handleWorkflowRun(req: unknown, res: unknown, workflowId: string) {
+        return (WebhookServer.prototype as any).handleWorkflowRun.call(this, req, res, workflowId);
+      },
+      handleWorkflowInvocationGet(req: unknown, res: unknown, id: string) {
+        return (WebhookServer.prototype as any).handleWorkflowInvocationGet.call(this, req, res, id);
+      },
+      handleJobStatus(req: unknown, id: string, res: unknown) {
+        return (WebhookServer.prototype as any).handleJobStatus.call(this, req, id, res);
+      },
+      workflowsLoaded: Promise.resolve(),
+      readJson: vi.fn(async () => ({ inputs: {} })),
+      workflows: {
+        getForTeam: vi.fn(async () => ({ id: "workflow-1" })),
+        latestRevision: vi.fn(async () => ({ revision: 1 })),
+        getRevision: vi.fn(async () => ({ tags: [], steps: [{ id: "complete", eval: "true" }] })),
+      },
+      agentWorkflowGrantRepository: { has: vi.fn(async () => true) },
+      workflowRunAdmissions: { claimNext: vi.fn(), finish: vi.fn() },
+      domainEventRepository: {
+        getByIdempotencyKey: vi.fn(async () => null),
+        publish: vi.fn(async (_teamId: string, event: any) => ({ id: "event-agent-1", ...event })),
+        getWorkflowInvocationForTeam: vi.fn(async (teamId: string, id: string) => ({
+          id,
+          teamId,
+          requestEventId: "event-agent-1",
+          workflowId: "workflow-1",
+          revision: 1,
+          recordedAt: "2026-01-01T00:00:00.000Z",
+          variants: [
+            {
+              variantIndex: 0,
+              admissionStatus: "admitted",
+              admissionOutcome: "accepted",
+              errorCode: null,
+              runId: "801",
+            },
+          ],
+        })),
+      },
+      secretRepository: {
+        encryptValue: (value: string) => value,
+        decryptValue: () => JSON.stringify({ trigger: { type: "manual", source: "api" } }),
+      },
+      queue: { getJobForTeam: vi.fn(async () => ({ id: 801, status: terminalStatus ?? "running" })) },
+    };
+    const res = response();
+    await (WebhookServer.prototype as any).handleWorkflowRun.call(
+      server,
+      request("/api/v1/workflows/workflow-1/run", "POST", { "idempotency-key": "agent-request-1" }),
+      res,
+      "workflow-1",
+    );
+    const accepted = JSON.parse(res.end.mock.calls[0][0]);
+    expect(res.writeHead).toHaveBeenCalledWith(202, expect.any(Object));
+    expect(accepted).toMatchObject({ accepted: true, admissionStatus: "pending", invocationId: expect.any(String) });
+
+    await processJob({
+      workerId: "agent-integration-worker",
+      job: {
+        id: 801,
+        workflow_id: "workflow-1",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "agent-integration-worker",
+        payload: JSON.stringify({ inputs: {}, matrix: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue: workerQueue,
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
+      config: { storagePath: "/tmp/agent-worker-integration", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
+      workflow: { id: "workflow-1", name: "Agent workflow", on: {}, steps: [{ id: "complete", eval: "true" }] },
+    } as Processable);
+    expect(completed).toHaveBeenCalledWith(801, "success", expect.any(Object));
+    terminalStatus = "success";
+
+    const fetched = response();
+    await (WebhookServer.prototype as any).handleWorkflowInvocationGet.call(
+      server,
+      request(`/api/v1/workflow-invocations/${accepted.invocationId}`),
+      fetched,
+      accepted.invocationId,
+    );
+    expect(server.domainEventRepository.getWorkflowInvocationForTeam).toHaveBeenCalledWith(
+      "team-1",
+      accepted.invocationId,
+    );
+    expect(JSON.parse(fetched.end.mock.calls[0][0])).toMatchObject({
+      id: accepted.invocationId,
+      variants: [{ admissionOutcome: "accepted", runId: "801" }],
+    });
+    const status = response();
+    await (WebhookServer.prototype as any).handleJobStatus.call(server, request("/api/jobs/801/status"), "801", status);
+    expect(server.queue.getJobForTeam).toHaveBeenCalledWith("team-1", "801");
+    expect(JSON.parse(status.end.mock.calls[0][0])).toMatchObject({ id: 801, status: "success" });
+    expect(terminalStatus).toBe("success");
+
+    const denied = response();
+    server.requireWorkspaceCapability.mockImplementationOnce(async (_req: unknown, deniedResponse: any) => {
+      deniedResponse.writeHead(403, { "Content-Type": "application/json" });
+      deniedResponse.end(JSON.stringify({ error: "Forbidden" }));
+      return null;
+    });
+    await (WebhookServer.prototype as any).handleWorkflowRun.call(
+      server,
+      request("/api/v1/workflows/workflow-1/run", "POST", { "idempotency-key": "agent-request-denied" }),
+      denied,
+      "workflow-1",
+    );
+    expect(denied.writeHead).toHaveBeenCalledWith(403, expect.any(Object));
+    expect(completed).toHaveBeenCalledOnce();
+  });
+
   it("routes the documented versioned connector ingress URL to the connector handler", async () => {
     const connector = {
       id: "normalize",
