@@ -89,9 +89,16 @@ async function locateTemporaryClient() {
     throw new Error(`Unable to locate the temporary OIDC client for cleanup (status ${response.status})`);
   }
   const payload = await response.json();
-  const records = Array.isArray(payload) ? payload : payload.apps || payload.applications || [];
+  const records = Array.isArray(payload) ? payload : payload.apps || payload.applications;
+  if (!Array.isArray(records)) {
+    throw new Error("Temporary OIDC client cleanup could not verify the applications response shape");
+  }
   const match = records.find((record) => record?.name === clientName);
-  clientId = match?.id || match?.clientId;
+  const identifier = match?.id ?? match?.clientId;
+  if (match && typeof identifier !== "string") {
+    throw new Error("Temporary OIDC client cleanup could not verify a stable client identifier");
+  }
+  clientId = identifier;
 }
 
 async function cleanupTemporaryClient() {
@@ -120,8 +127,11 @@ async function cleanupTemporaryClient() {
     throw new Error(`Temporary OIDC client cleanup could not be verified (status ${verification.status})`);
   }
   const payload = await verification.json();
-  const records = Array.isArray(payload) ? payload : payload.apps || payload.applications || [];
-  if (records.some((record) => record?.name === clientName)) {
+  const records = Array.isArray(payload) ? payload : payload.apps || payload.applications;
+  if (!Array.isArray(records)) {
+    throw new Error("Temporary OIDC client cleanup response could not be verified");
+  }
+  if (records.some((record) => record?.id === clientId || record?.clientId === clientId)) {
     throw new Error("Temporary OIDC client remains after cleanup");
   }
   clientId = undefined;
@@ -222,8 +232,9 @@ test.beforeAll(async () => {
     try {
       await stopApplication();
       await cleanupTemporaryClient();
-    } catch {
-      throw new Error("OIDC test setup failed and temporary-client cleanup also failed");
+    } catch (cleanupError) {
+      const detail = cleanupError instanceof Error ? cleanupError.message : "unknown cleanup error";
+      throw new Error(`OIDC test setup failed and temporary-client cleanup also failed: ${detail}`);
     }
     throw new Error("OIDC Agent sign-in test setup failed");
   }
@@ -233,8 +244,9 @@ test.afterAll(async () => {
   let cleanupFailure;
   try {
     await cleanupTemporaryClient();
-  } catch {
-    cleanupFailure = new Error("Temporary OIDC client cleanup failed");
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "unknown cleanup error";
+    cleanupFailure = new Error(`Temporary OIDC client cleanup failed: ${detail}`);
   } finally {
     await stopApplication();
     if (temporaryRoot) {
@@ -632,6 +644,8 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     await page.screenshot({ path: "/tmp/opencode/oidc-quick-switch-narrow.png", fullPage: true });
     stage = `sidebar-layout-narrow-overflow-${narrowGeometry.viewport}-${narrowGeometry.documentWidth}-${JSON.stringify({ rect: narrowGeometry.sidebarRect, width: narrowGeometry.sidebarWidth, scrollWidth: narrowGeometry.sidebarScrollWidth, display: narrowGeometry.sidebarDisplay, visibility: narrowGeometry.sidebarVisibility, transform: narrowGeometry.sidebarTransform, descendants: narrowGeometry.sidebarDescendants })}-${JSON.stringify(narrowGeometry.layoutChain)}-${JSON.stringify(narrowGeometry.overflows)}`;
     expect(narrowGeometry.documentWidth).toBeLessThanOrEqual(narrowGeometry.viewport);
+    expect(narrowGeometry.sidebarRect.x).toBeGreaterThanOrEqual(0);
+    expect(narrowGeometry.sidebarRect.right).toBeLessThanOrEqual(narrowGeometry.viewport);
     expect(narrowGeometry.sidebarDisplay).not.toBe("none");
     expect(narrowGeometry.sidebarVisibility).toBe("visible");
     expect(narrowGeometry.sidebarScrollWidth).toBeLessThanOrEqual(narrowGeometry.sidebarWidth);
