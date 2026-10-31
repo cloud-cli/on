@@ -299,7 +299,7 @@ describe("incremental workflow reports", () => {
     );
   });
 
-  it("records a distinct parent-child call tree for nested recipe invocations", async () => {
+  it("records failed nested child calls without reporting the parent as successful", async () => {
     const queue = {
       saveReport: vi.fn(async () => {}),
       saveStepLog: vi.fn(async () => {}),
@@ -330,7 +330,14 @@ describe("incremental workflow reports", () => {
         env: {},
         plugins: [],
       },
-      driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
+      driver: {
+        execute: vi.fn(() => ({
+          done: Promise.resolve({ exitCode: 1, durationMs: 1 }),
+          cancel: vi.fn(),
+          logFilePath: "",
+        })),
+        readLog: vi.fn(async () => ""),
+      },
       workflow: {
         id: "nested-tree",
         name: "Nested tree",
@@ -367,27 +374,36 @@ describe("incremental workflow reports", () => {
               additionalProperties: false,
             },
             returns: {},
-            steps: [{ id: "work", eval: "true" }],
+            steps: [{ id: "work", run: "exit 1" }],
           },
         },
       } as Processable,
     } as Processable);
 
     const report = queue.completeJob.mock.calls[0][2] as WorkflowExecutionReport;
-    expect(queue.completeJob.mock.calls[0][1]).toBe("success");
+    expect(queue.completeJob.mock.calls[0][1]).toBe("failed");
+    expect(report.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "outer#attempt-1/invoke-inner",
+          status: "failed",
+        }),
+        expect.objectContaining({ id: "outer", status: "failed" }),
+      ]),
+    );
     expect(report.callInstances).toEqual([
       expect.objectContaining({
         callId: "132:outer#attempt-1",
         parentCallId: undefined,
         target: "team/outer@1#main",
-        status: "success",
+        status: "failed",
         stepIds: ["outer#attempt-1/invoke-inner"],
       }),
       expect.objectContaining({
         callId: "132:outer#attempt-1/invoke-inner#attempt-1",
         parentCallId: "132:outer#attempt-1",
         target: "team/inner@2#run",
-        status: "success",
+        status: "failed",
         stepIds: ["outer#attempt-1/invoke-inner#attempt-1/work"],
       }),
     ]);
