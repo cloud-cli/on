@@ -61,6 +61,8 @@ export type WorkflowInvocationView = {
     admissionOutcome: string | null;
     errorCode: string | null;
     runId: string | null;
+    jobStatus: string | null;
+    completedAt: string | null;
   }>;
 };
 
@@ -87,8 +89,10 @@ export class DomainEventRepository {
       return null;
     }
     const rows = await db.all(
-      `SELECT a.variant_index, a.status AS admission_status, a.admission_outcome, a.error_code, a.job_id
+      `SELECT a.variant_index, a.status AS admission_status, a.admission_outcome, a.error_code, a.job_id,
+              j.status AS job_status, j.finished_at AS job_finished_at
          FROM workflow_run_admissions a
+         LEFT JOIN jobs j ON j.id = a.job_id AND j.team_id = a.team_id
         WHERE a.team_id = ? AND a.event_id = ?
         ORDER BY a.variant_index`,
       [teamId, event.id],
@@ -111,6 +115,13 @@ export class DomainEventRepository {
             : String(row.admission_outcome),
         errorCode: row.error_code === null || row.error_code === undefined ? null : String(row.error_code),
         runId: row.job_id === null || row.job_id === undefined ? null : String(row.job_id),
+        jobStatus: row.job_status === null || row.job_status === undefined ? null : String(row.job_status),
+        completedAt:
+          row.job_status === "success" || row.job_status === "failed"
+            ? row.job_finished_at === null || row.job_finished_at === undefined
+              ? null
+              : String(row.job_finished_at)
+            : null,
       })),
     };
   }

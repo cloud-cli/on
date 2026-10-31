@@ -113,6 +113,8 @@ describe("DomainEventRepository", () => {
         admission_outcome: "accepted",
         error_code: null,
         job_id: 71,
+        job_status: "running",
+        job_finished_at: "2026-01-01T00:00:00.000Z",
       },
       {
         variant_index: 1,
@@ -120,6 +122,8 @@ describe("DomainEventRepository", () => {
         admission_outcome: "rejected",
         error_code: "invalid_input",
         job_id: null,
+        job_status: null,
+        job_finished_at: null,
       },
     ]);
 
@@ -137,6 +141,8 @@ describe("DomainEventRepository", () => {
           admissionOutcome: "accepted",
           errorCode: null,
           runId: "71",
+          jobStatus: "running",
+          completedAt: null,
         },
         {
           variantIndex: 1,
@@ -144,6 +150,8 @@ describe("DomainEventRepository", () => {
           admissionOutcome: "rejected",
           errorCode: "invalid_input",
           runId: null,
+          jobStatus: null,
+          completedAt: null,
         },
       ],
     });

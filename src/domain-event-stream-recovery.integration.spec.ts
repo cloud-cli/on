@@ -32,6 +32,7 @@ vi.mock("./db-client.js", () => {
 import { DomainEventRepository } from "./domain-event-repository.js";
 import { WebhookServer } from "./server.js";
 import { WorkflowRunAdmissionRepository } from "./workflow-run-admission-repository.js";
+import { QueueManager } from "./queue.js";
 
 const response = () => ({ writeHead: vi.fn().mockReturnThis(), end: vi.fn(), headersSent: false }) as any;
 
@@ -65,7 +66,7 @@ describe("persisted Stream event reconciliation", () => {
       CREATE TABLE domain_event_deliveries (
         team_id TEXT, event_id TEXT, status TEXT, job_ids_json TEXT, invocation_id TEXT
       );
-      CREATE TABLE jobs (id INTEGER PRIMARY KEY, team_id TEXT, status TEXT);
+      CREATE TABLE jobs (id INTEGER PRIMARY KEY, team_id TEXT, status TEXT, updated_at TEXT, finished_at TEXT, report TEXT);
       CREATE TABLE workflow_run_admissions (
         team_id TEXT, event_id TEXT, workflow_id TEXT, revision INTEGER, variant_index INTEGER,
         status TEXT, job_id INTEGER, error_code TEXT, admission_outcome TEXT
@@ -80,7 +81,7 @@ describe("persisted Stream event reconciliation", () => {
          '{"workflowId":"deploy","revision":7,"invocationId":"invocation-1","inputsCiphertext":"do-not-return"}'),
         (6, 'request-event-rejected', 'team-a', 'workflow.run.requested', 1, 'api', '2026-01-05T00:00:00Z', '2026-01-05T00:00:00Z', NULL, NULL, NULL,
          '{"workflowId":"deploy","revision":7,"invocationId":"invocation-rejected","inputsCiphertext":"do-not-return"}');
-      INSERT INTO jobs VALUES (42, 'team-a', 'running');
+      INSERT INTO jobs (id, team_id, status) VALUES (42, 'team-a', 'running');
       INSERT INTO workflow_run_admissions VALUES ('team-a', 'request-event-1', 'deploy', 7, 0, 'admitted', 42, NULL, 'accepted');
       INSERT INTO workflow_run_admissions VALUES ('team-a', 'request-event-rejected', 'deploy', 7, -1, 'failed', NULL, 'invalid_inputs', 'rejected');
       INSERT INTO domain_event_deliveries VALUES ('team-a', 'event-a2', 'admitted', '[]', 'invocation-1');
@@ -97,6 +98,26 @@ describe("persisted Stream event reconciliation", () => {
     testDb.database.close();
     testDb.database = new DatabaseSync(databasePath);
     const afterRestart = new DomainEventRepository();
+    const queue = new QueueManager("test-worker");
+    await expect(afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1")).resolves.toMatchObject({
+      variants: [{ jobStatus: "running", completedAt: null }],
+    });
+    await queue.finishJob(42, "success");
+    await expect(afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1")).resolves.toMatchObject({
+      variants: [{ jobStatus: "success", completedAt: expect.any(String) }],
+    });
+    testDb.database.prepare("INSERT INTO jobs (id, team_id, status) VALUES (43, 'team-a', 'running')").run();
+    testDb.database.prepare(`UPDATE workflow_run_admissions SET job_id = 43 WHERE event_id = 'request-event-1'`).run();
+    await queue.finishJob(43, "failed");
+    await expect(afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1")).resolves.toMatchObject({
+      variants: [{ jobStatus: "failed", completedAt: expect.any(String) }],
+    });
+    testDb.database.prepare("INSERT INTO jobs (id, team_id, status) VALUES (44, 'team-b', 'success')").run();
+    testDb.database.prepare(`UPDATE workflow_run_admissions SET job_id = 44 WHERE event_id = 'request-event-1'`).run();
+    await expect(afterRestart.getWorkflowInvocationForTeam("team-a", "invocation-1")).resolves.toMatchObject({
+      variants: [{ jobStatus: null, completedAt: null }],
+    });
+    testDb.database.prepare(`UPDATE workflow_run_admissions SET job_id = 42 WHERE event_id = 'request-event-1'`).run();
     const resumed = await afterRestart.listChannelEvents("team-a", "stream-a", 10, firstPage.nextCursor!);
     expect(resumed.events.map(({ id }) => id)).toEqual(["event-a2", "event-a3"]);
     expect(resumed.events[0].links).toMatchObject({ invocationIds: ["invocation-1"], runIds: ["42"] });
@@ -115,6 +136,8 @@ describe("persisted Stream event reconciliation", () => {
           admissionOutcome: "accepted",
           errorCode: null,
           runId: "42",
+          jobStatus: "success",
+          completedAt: expect.any(String),
         },
       ],
     });
@@ -157,7 +180,7 @@ describe("persisted Stream event reconciliation", () => {
       CREATE TABLE workflow_run_admission_plans (
         event_id TEXT PRIMARY KEY, variant_count INTEGER NOT NULL, plan_hash TEXT NOT NULL
       );
-      CREATE TABLE jobs (id INTEGER PRIMARY KEY, team_id TEXT NOT NULL, status TEXT NOT NULL);
+       CREATE TABLE jobs (id INTEGER PRIMARY KEY, team_id TEXT NOT NULL, status TEXT NOT NULL, updated_at TEXT, finished_at TEXT, report TEXT);
     `);
 
     let workspaceId = "team-a";

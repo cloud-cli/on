@@ -82,6 +82,7 @@ describe("domain event delivery recovery in SQLite", () => {
         PRIMARY KEY(event_id, variant_index)
       );
       CREATE TABLE workflow_run_admission_plans (event_id TEXT PRIMARY KEY, variant_count INTEGER NOT NULL, plan_hash TEXT NOT NULL);
+      CREATE TABLE jobs (id INTEGER PRIMARY KEY, team_id TEXT NOT NULL, status TEXT NOT NULL, finished_at TEXT, report TEXT);
       INSERT INTO domain_event_subscriptions(id, team_id, workflow_id, workflow_revision, event_type)
         VALUES ('subscription-1', 'workspace-1', 'workflow-1', 7, 'ticket.created');
     `);
