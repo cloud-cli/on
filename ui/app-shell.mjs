@@ -18,6 +18,7 @@ export default function setup() {
   let channelsRequestId = 0;
   let lastSyncedPath = "";
   const quickSwitchOpen = ref(false);
+  let quickSwitchFocusGeneration = 0;
   const workspaceRailExpanded = ref(false);
   const navigationOpen = ref(false);
   const desktopNavigationMedia = window.matchMedia("(min-width: 768px)");
@@ -312,9 +313,10 @@ export default function setup() {
   };
   const openQuickSwitch = () => {
     quickSwitchOpen.value = true;
+    const generation = ++quickSwitchFocusGeneration;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        if (!quickSwitchOpen.value) {
+        if (!quickSwitchOpen.value || generation !== quickSwitchFocusGeneration) {
           return;
         }
         filterQuickSwitch();
@@ -327,7 +329,12 @@ export default function setup() {
       return;
     }
     quickSwitchOpen.value = false;
-    requestAnimationFrame(() => document.querySelector("[data-quick-switch-open]")?.focus());
+    const generation = ++quickSwitchFocusGeneration;
+    requestAnimationFrame(() => {
+      if (!quickSwitchOpen.value && generation === quickSwitchFocusGeneration) {
+        document.querySelector("[data-quick-switch-open]")?.focus();
+      }
+    });
   };
   const selectQuickSwitchItem = (item) => {
     closeQuickSwitch();

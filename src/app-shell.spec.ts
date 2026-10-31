@@ -307,6 +307,9 @@ describe("On application shell", () => {
     expect(shellSetup).toContain('event.key === "ArrowDown" || event.key === "ArrowUp"');
     expect(shellSetup).toContain('event.key === "Enter"');
     expect(shellSetup).toContain('event.key === "Escape"');
+    expect(shellSetup).toContain("let quickSwitchFocusGeneration = 0");
+    expect(shellSetup).toContain("generation !== quickSwitchFocusGeneration");
+    expect(shellSetup).toContain("generation === quickSwitchFocusGeneration");
     expect(shellSetup).toContain('removeEventListener("keydown", handleGlobalQuickSwitch)');
   });
 
