@@ -91,7 +91,7 @@ name: Build GitMini push
 on:
   events: [git.push]
 tags: [alpha]
-using: on/docker-build@v3
+using: on/docker-build@v4
 with:
   image: "ghcr.io/${inputs.data.owner}/${inputs.data.repo}"
   imageTag: "${inputs.data.branch === 'main' ? 'latest' : inputs.data.commitSha}"

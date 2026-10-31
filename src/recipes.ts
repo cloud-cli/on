@@ -74,6 +74,51 @@ steps:
         cy dx.restart "$service"
       done <<< "$services"
 `;
+const DOCKER_BUILD_RECIPE_V4_VERSION = 4;
+const DOCKER_BUILD_RECIPE_V4_ASKPASS_BLOCK = `        askpass="$(mktemp)"
+        trap 'rm -f "$askpass"' EXIT
+        cat > "$askpass" <<'ASKPASS'
+      #!/bin/sh
+      case "$1" in
+        *Username*) printf '%s\\n' git ;;
+        *) printf '%s\\n' "$GITMINI_TOKEN" ;;
+      esac
+      ASKPASS
+        chmod 700 "$askpass"
+        GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 git -c http.followRedirects=false clone --no-checkout "$CLONE_URL" source`;
+const DOCKER_BUILD_RECIPE_V4_AUTH_BLOCK = `        umask 077
+        git_config_dir="$(mktemp -d)"
+        trap 'rm -rf "$git_config_dir"' EXIT
+        git_config="$git_config_dir/config"
+        auth_header="$(printf '%s:%s' git "$GITMINI_TOKEN" | base64 | tr -d '\\n')"
+        printf '[http "https://git.api.apphor.de/git/"]\\n\\textraHeader = Authorization: Basic %s\\n' "$auth_header" > "$git_config"
+        chmod 600 "$git_config"
+        unset GITMINI_TOKEN auth_header
+        GIT_CONFIG_GLOBAL="$git_config" GIT_TERMINAL_PROMPT=0 git -c http.followRedirects=false clone --no-checkout "$CLONE_URL" source`;
+const DOCKER_BUILD_RECIPE_V4_TEMPLATE = DOCKER_BUILD_RECIPE.replace(
+  `  GITMINI_TOKEN: "\${String(secrets.gitMiniToken || '')}"\n`,
+  "",
+).replace(
+  `  - run: |
+      set -euo pipefail
+      if [ -n "$GITMINI_TOKEN" ]; then`,
+  `  - env:
+      GITMINI_TOKEN: "\${String(secrets.gitMiniToken || '')}"
+    run: |
+      set -euo pipefail
+      if [ -n "$GITMINI_TOKEN" ]; then`,
+);
+const DOCKER_BUILD_RECIPE_V4 = DOCKER_BUILD_RECIPE_V4_TEMPLATE.replace(
+  DOCKER_BUILD_RECIPE_V4_ASKPASS_BLOCK,
+  DOCKER_BUILD_RECIPE_V4_AUTH_BLOCK,
+);
+if (
+  DOCKER_BUILD_RECIPE_V4 === DOCKER_BUILD_RECIPE ||
+  DOCKER_BUILD_RECIPE_V4.includes('GIT_ASKPASS="$askpass"') ||
+  DOCKER_BUILD_RECIPE_V4.includes("\n  GITMINI_TOKEN:")
+) {
+  throw new Error("Could not generate docker-build v4 GitMini authentication recipe");
+}
 
 export { validateRecipeInputs, ordinaryRecipeInputSchema } from "./recipe-schema.js";
 
@@ -406,6 +451,23 @@ export class RecipeRepository {
         "on",
         "docker-build",
         DOCKER_BUILD_RECIPE_VERSION,
+      ],
+    );
+    await db.run(
+      "INSERT INTO recipe_versions(namespace,slug,version,name,source_yaml,inputs_json,steps_json,functions_json,env_json) SELECT ?,?,?,?, ?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM recipe_versions WHERE namespace=? AND slug=? AND version=?)",
+      [
+        "on",
+        "docker-build",
+        DOCKER_BUILD_RECIPE_V4_VERSION,
+        "Docker Build",
+        DOCKER_BUILD_RECIPE_V4,
+        JSON.stringify(parseRecipe(DOCKER_BUILD_RECIPE_V4).inputs),
+        JSON.stringify(parseRecipe(DOCKER_BUILD_RECIPE_V4).steps),
+        JSON.stringify(parseRecipe(DOCKER_BUILD_RECIPE_V4).functions),
+        JSON.stringify(parseRecipe(DOCKER_BUILD_RECIPE_V4).env),
+        "on",
+        "docker-build",
+        DOCKER_BUILD_RECIPE_V4_VERSION,
       ],
     );
   }
