@@ -121,10 +121,13 @@ describe("DomainEventDeliveryRepository", () => {
   });
 
   it("repairs missing fanout without backfilling events before subscription start", async () => {
-    database.run.mockResolvedValueOnce({ changes: 3 });
+    database.get.mockResolvedValueOnce({ count: 3 });
     await expect(repository.reconcileFanout(1000)).resolves.toBe(3);
-    expect(database.run.mock.calls[0][0]).toContain("e.sequence > s.high_water_event_sequence");
-    expect(database.run.mock.calls[0][1]).toEqual([500]);
+    const statements = database.transaction.mock.calls[0][0];
+    expect(statements[0].s).toContain("e.sequence > s.high_water_event_sequence");
+    expect(statements[0].d).toEqual([500]);
+    expect(statements[1].s).toContain("INSERT OR IGNORE INTO domain_event_fanout_outcomes");
+    expect(statements[1].s).toContain("THEN 'matched' ELSE 'unmatched'");
   });
 
   it("uses a durable event sequence high-water mark rather than timestamps", async () => {
