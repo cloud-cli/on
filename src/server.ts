@@ -11,6 +11,7 @@ import { WorkflowRunAdmissionRepository, type WorkflowRunVariant } from "./workf
 import { DomainEventDispatcher, type DomainEventInvocationRequest } from "./domain-event-dispatcher.js";
 import { planWorkflowInvocation } from "./workflow-invocation-admission.js";
 import { ChannelRepository } from "./channel-repository.js";
+import { isThreadAgentProviderConfigured, ThreadAgentRepository } from "./thread-agents.js";
 import { connectorContextHeaders, safeWebhookHeaders } from "./webhook-headers.js";
 import { IncomingEventRepository } from "./incoming-event-repository.js";
 import { getAppIcon, serviceWorker, webManifest } from "../ui/pwa.js";
@@ -273,6 +274,7 @@ export class WebhookServer {
   private workflowRunAdmissions = new WorkflowRunAdmissionRepository();
   private domainEventDeliveryRepository = new DomainEventDeliveryRepository();
   private channels = new ChannelRepository();
+  private threadAgents = new ThreadAgentRepository();
   private domainEventDispatcher: DomainEventDispatcher;
   private domainEventDeliveryTimer?: NodeJS.Timeout;
   private processingDomainEvents = false;
@@ -2409,7 +2411,35 @@ sessionStorage.removeItem('runner-pending-team-invite');
     }
     const canonicalThreads = url.pathname.match(/^\/api\/v1\/streams\/([^/]+)\/threads$/);
     const canonicalMessages = url.pathname.match(/^\/api\/v1\/streams\/([^/]+)\/threads\/([^/]+)\/messages$/);
+    const threadAgentSubscriptions = url.pathname.match(
+      /^\/api\/v1\/streams\/([^/]+)\/threads\/([^/]+)\/agent-subscriptions(?:\/([^/]+))?$/,
+    );
     try {
+      if (threadAgentSubscriptions && req.method === "GET" && !threadAgentSubscriptions[3]) {
+        return this.handleThreadAgentSubscription(
+          req,
+          res,
+          decodeURIComponent(threadAgentSubscriptions[1]),
+          decodeURIComponent(threadAgentSubscriptions[2]),
+        );
+      }
+      if (threadAgentSubscriptions && req.method === "POST" && !threadAgentSubscriptions[3]) {
+        return this.handleThreadAgentSubscriptionCreate(
+          req,
+          res,
+          decodeURIComponent(threadAgentSubscriptions[1]),
+          decodeURIComponent(threadAgentSubscriptions[2]),
+        );
+      }
+      if (threadAgentSubscriptions && req.method === "DELETE" && threadAgentSubscriptions[3]) {
+        return this.handleThreadAgentSubscriptionDelete(
+          req,
+          res,
+          decodeURIComponent(threadAgentSubscriptions[1]),
+          decodeURIComponent(threadAgentSubscriptions[2]),
+          decodeURIComponent(threadAgentSubscriptions[3]),
+        );
+      }
       if (canonicalThreads && req.method === "GET") {
         return this.handleCanonicalThreadList(req, res, decodeURIComponent(canonicalThreads[1]));
       }
@@ -5355,9 +5385,9 @@ sessionStorage.removeItem('runner-pending-team-invite');
       }
       return;
     }
-    const legacy = await this.channels.appendThreadMessage({
+    const legacy = await this.threadAgents.appendHumanMessage({
       teamId: auth.teamId,
-      channelId: streamId,
+      streamId,
       threadId,
       author: auth.principal.subject,
       body: body.body,
@@ -5381,6 +5411,122 @@ sessionStorage.removeItem('runner-pending-team-invite');
     });
     res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
     res.end(JSON.stringify({ message }));
+  }
+
+  private async handleThreadAgentSubscription(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    streamId: string,
+    threadId: string,
+  ) {
+    const auth = await this.requireWorkspaceCapability(req, res, "workflows.view");
+    if (!auth) {
+      return;
+    }
+    if (!(await this.channels.getThread(auth.teamId, streamId, threadId))) {
+      return deny(res, 404, "Thread not found");
+    }
+    const state = await this.threadAgents.getState(auth.teamId, streamId, threadId);
+    const notice = process.env.THREAD_AGENT_PROVIDER_NOTICE || "";
+    const agents = (await this.threadAgents.listAgents(auth.teamId)).map((agent: any) => ({
+      principalId: agent.principal_id,
+      name: agent.name,
+    }));
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      JSON.stringify({
+        ...state,
+        agents,
+        providerNotice: state.subscription?.providerNotice || notice,
+      }),
+    );
+  }
+
+  private async handleThreadAgentSubscriptionCreate(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    streamId: string,
+    threadId: string,
+  ) {
+    const auth = await this.requireWorkspaceCapability(req, res, "threads.agent.manage");
+    if (!auth) {
+      return;
+    }
+    if (auth.principal.kind !== "human") {
+      return deny(res, 403, "Only a human can consent to Thread Agent responses");
+    }
+    if (!(await this.channels.getThread(auth.teamId, streamId, threadId))) {
+      return deny(res, 404, "Thread not found");
+    }
+    const notice = process.env.THREAD_AGENT_PROVIDER_NOTICE || "";
+    if (!notice.trim() || !isThreadAgentProviderConfigured()) {
+      return deny(res, 503, "Thread Agent provider configuration is incomplete");
+    }
+    const body = await this.readJson(req, res, 4096);
+    if (
+      !body ||
+      typeof body.agentPrincipalId !== "string" ||
+      !body.agentPrincipalId ||
+      body.consent !== true ||
+      Object.keys(body).length !== 2
+    ) {
+      if (!res.headersSent) {
+        deny(res, 400, "Agent selection and explicit consent are required");
+      }
+      return;
+    }
+    try {
+      await this.threadAgents.create(
+        auth.teamId,
+        streamId,
+        threadId,
+        auth.principal.subject,
+        body.agentPrincipalId,
+        notice,
+      );
+    } catch {
+      return deny(res, 400, "Selected Agent is unavailable or Thread already has an active Agent");
+    }
+    const state = await this.threadAgents.getState(auth.teamId, streamId, threadId);
+    const agents = (await this.threadAgents.listAgents(auth.teamId)).map((agent: any) => ({
+      principalId: agent.principal_id,
+      name: agent.name,
+    }));
+    res.writeHead(201, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      JSON.stringify({
+        ...state,
+        agents,
+        providerNotice: state.subscription?.providerNotice || notice,
+      }),
+    );
+  }
+
+  private async handleThreadAgentSubscriptionDelete(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    streamId: string,
+    threadId: string,
+    subscriptionId: string,
+  ) {
+    const auth = await this.requireWorkspaceCapability(req, res, "threads.agent.manage");
+    if (!auth) {
+      return;
+    }
+    if (auth.principal.kind !== "human") {
+      return deny(res, 403, "Only a human can disable Thread Agent responses");
+    }
+    if (!(await this.channels.getThread(auth.teamId, streamId, threadId))) {
+      return deny(res, 404, "Thread not found");
+    }
+    await this.threadAgents.disable(auth.teamId, streamId, threadId, subscriptionId);
+    res.writeHead(204, { "Cache-Control": "no-store" }).end();
   }
 
   private async handleChannelList(req: http.IncomingMessage, res: http.ServerResponse) {
@@ -6362,8 +6508,10 @@ sessionStorage.removeItem('runner-pending-team-invite');
         console.log(`🌐 Webhook Ingress Server running on port ${port}`);
         this.domainEventDeliveryTimer = setInterval(() => {
           void this.processPendingDomainEvents();
+          void this.processThreadAgentTurns();
         }, 1000);
         void this.processPendingDomainEvents();
+        void this.processThreadAgentTurns();
         resolve(this);
       });
     });
@@ -6402,6 +6550,31 @@ sessionStorage.removeItem('runner-pending-team-invite');
       console.error("Domain event delivery poll failed");
     } finally {
       this.processingDomainEvents = false;
+    }
+  }
+
+  private processingThreadAgentTurns = false;
+
+  private async processThreadAgentTurns() {
+    if (this.processingThreadAgentTurns) {
+      return;
+    }
+    this.processingThreadAgentTurns = true;
+    try {
+      for (let count = 0; count < 2; count += 1) {
+        const turn = await this.threadAgents.claim();
+        if (!turn) {
+          break;
+        }
+        const result = await this.threadAgents.respond(turn);
+        if (result) {
+          this.events.publish("channel.thread.message", result);
+        }
+      }
+    } catch {
+      console.error("Thread Agent queue poll failed");
+    } finally {
+      this.processingThreadAgentTurns = false;
     }
   }
 

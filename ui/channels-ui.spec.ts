@@ -85,6 +85,46 @@ describe("channels UI", () => {
     expect(source).toContain("New Stream");
   });
 
+  it("provides a Thread-scoped Agent subscription control with safe status-only rendering", () => {
+    expect(source).toContain('setAttribute("aria-label", "Thread Agent")');
+    expect(source).toContain('setAttribute("aria-label", "Agent for this thread")');
+    expect(source).toContain('"flex min-w-0 flex-col gap-2 sm:flex-row"');
+    expect(source).toContain("/agent-subscriptions");
+    expect(source).toContain('method: "POST"');
+    expect(source).toContain("JSON.stringify({ agentPrincipalId: agentSelect.value, consent: true })");
+    expect(source).toContain('method: "DELETE"');
+    expect(source).toContain("(data.agents || []).filter");
+    expect(source).toContain('typeof agent.principalId === "string"');
+    expect(source).toContain("agent.principalId === agentSelect.value");
+    expect(source).not.toContain("membersData.members");
+    expect(source).toContain("Last response failed");
+    expect(source).toContain("Response complete");
+    expect(source).toContain("Unable to load Agent subscription.");
+    expect(source).toContain("Unable to enable Agent responses.");
+    expect(source).toContain("agentSelect.disabled = agentBusy");
+    expect(source).toContain("enableAgent.disabled = agentBusy");
+    expect(source).not.toContain("turn.error");
+    expect(source).toContain("agentBusy || !selected || !selectedThread");
+    expect(source).toContain("operationGeneration === agentOperationGeneration");
+    expect(source).toContain("const invalidateAgentOperations = () =>");
+    expect(source).toContain("invalidateAgentOperations();\n    selectedThread = thread;");
+  });
+
+  it("requires the backend disclosure and unchecked-by-default explicit consent before activation", () => {
+    expect(source).toContain('typeof data.providerNotice === "string" && data.providerNotice.trim()');
+    expect(source).toContain("agentProviderNotice.textContent = agentProviderNoticeText");
+    expect(source).toContain("agentProviderNotice.hidden = !agentProviderNoticeText");
+    expect(source).toContain('element("p", "Agent replies are saved in this Thread.", "text-sm text-app-secondary")');
+    expect(source).toContain("agentConsent.checked = false");
+    expect(source).toContain('agentConsent.type = "checkbox"');
+    expect(source).toContain("agentConsentLabel.hidden = !agentProviderNoticeText");
+    expect(source).toContain("enableAgent.hidden = Boolean(subscription) || !agentProviderNoticeText");
+    expect(source).toContain("!agentProviderNoticeText ||");
+    expect(source).toContain("!agentConsent.checked ||");
+    expect(source).toContain("agentBusy ||");
+    expect(source).toContain("agentPanel.append(");
+  });
+
   it("loads saved events with opaque cursor pagination and text-only rendering", () => {
     expect(source).toContain('"Event history"');
     expect(source).toContain("/api/channels/${encodeURIComponent(channelId)}/events?${query}");

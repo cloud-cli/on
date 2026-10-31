@@ -14,7 +14,7 @@ function makeServer(capabilities = ["workflows.view", "workflows.edit"]) {
       if (capabilities.includes(capability)) {
         return {
           teamId: "team-a",
-          principal: { subject: "actor-a" },
+          principal: { subject: "actor-a", kind: "human" },
           capabilities,
         };
       }
@@ -74,6 +74,20 @@ function makeServer(capabilities = ["workflows.view", "workflows.edit"]) {
       appendThreadMessage: vi.fn(async (input) => ({ ...input, id: "reply-1" })),
     },
     events: { publish: vi.fn() },
+    threadAgents: {
+      listAgents: vi.fn(async () => [{ principal_id: "agent-a", name: "Helper" }]),
+      getState: vi.fn(async () => ({ subscription: null, turns: [] })),
+      create: vi.fn(async () => ({ subscription: { id: "sub-1" }, turns: [] })),
+      disable: vi.fn(async () => undefined),
+      appendHumanMessage: vi.fn(async (input) => ({
+        ...input,
+        channelId: input.streamId,
+        id: "reply-1",
+        createdAt: "now",
+        causedByEventId: null,
+        causedByJobId: null,
+      })),
+    },
     domainEventRepository: {
       listChannelEvents: vi.fn(async (...args) => ({
         events: [],
@@ -89,6 +103,92 @@ function makeServer(capabilities = ["workflows.view", "workflows.edit"]) {
 }
 
 describe("workspace channel APIs", () => {
+  it("returns eligible Agents and the configured plain-text disclosure for a scoped Thread", async () => {
+    const prior = process.env.THREAD_AGENT_PROVIDER_NOTICE;
+    process.env.THREAD_AGENT_PROVIDER_NOTICE = "Provider disclosure text.";
+    try {
+      const server = makeServer();
+      const res = response();
+      await WebhookServer.prototype.handleThreadAgentSubscription.call(server, {}, res, "chan", "thread-1");
+      expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({
+        subscription: null,
+        turns: [],
+        agents: [{ principalId: "agent-a", name: "Helper" }],
+        providerNotice: "Provider disclosure text.",
+      });
+    } finally {
+      if (prior === undefined) {
+        delete process.env.THREAD_AGENT_PROVIDER_NOTICE;
+      } else {
+        process.env.THREAD_AGENT_PROVIDER_NOTICE = prior;
+      }
+    }
+  });
+
+  it("requires explicit human consent and the dedicated Agent-management capability", async () => {
+    const prior = process.env.THREAD_AGENT_PROVIDER_NOTICE;
+    const priorUrl = process.env.OPENAI_API_URL;
+    const priorModel = process.env.OPENAI_API_MODEL;
+    process.env.THREAD_AGENT_PROVIDER_NOTICE = "Notice.";
+    process.env.OPENAI_API_URL = "https://provider.example/v1";
+    process.env.OPENAI_API_MODEL = "test-model";
+    try {
+      const server = makeServer(["threads.agent.manage"]);
+      server.readJson.mockResolvedValue({ agentPrincipalId: "agent-a", consent: true });
+      await WebhookServer.prototype.handleThreadAgentSubscriptionCreate.call(
+        server,
+        {},
+        response(),
+        "chan",
+        "thread-1",
+      );
+      expect(server.threadAgents.create).toHaveBeenCalledWith(
+        "team-a",
+        "chan",
+        "thread-1",
+        "actor-a",
+        "agent-a",
+        "Notice.",
+      );
+      delete process.env.OPENAI_API_URL;
+      const unconfigured = makeServer(["threads.agent.manage"]);
+      unconfigured.readJson.mockResolvedValue({ agentPrincipalId: "agent-a", consent: true });
+      const unavailable = response();
+      await WebhookServer.prototype.handleThreadAgentSubscriptionCreate.call(
+        unconfigured,
+        {},
+        unavailable,
+        "chan",
+        "thread-1",
+      );
+      expect(unavailable.writeHead).toHaveBeenCalledWith(503, expect.anything());
+      expect(unconfigured.threadAgents.create).not.toHaveBeenCalled();
+
+      process.env.OPENAI_API_URL = "https://provider.example/v1";
+      const denied = makeServer(["threads.agent.manage"]);
+      denied.readJson.mockResolvedValue({ agentPrincipalId: "agent-a", consent: false });
+      const res = response();
+      await WebhookServer.prototype.handleThreadAgentSubscriptionCreate.call(denied, {}, res, "chan", "thread-1");
+      expect(res.writeHead).toHaveBeenCalledWith(400, expect.anything());
+    } finally {
+      if (prior === undefined) {
+        delete process.env.THREAD_AGENT_PROVIDER_NOTICE;
+      } else {
+        process.env.THREAD_AGENT_PROVIDER_NOTICE = prior;
+      }
+      if (priorUrl === undefined) {
+        delete process.env.OPENAI_API_URL;
+      } else {
+        process.env.OPENAI_API_URL = priorUrl;
+      }
+      if (priorModel === undefined) {
+        delete process.env.OPENAI_API_MODEL;
+      } else {
+        process.env.OPENAI_API_MODEL = priorModel;
+      }
+    }
+  });
+
   it("exposes canonical Streams using workspace naming while retaining shared identifiers", async () => {
     const server = makeServer();
     const res = response();
@@ -242,19 +342,11 @@ describe("workspace channel APIs", () => {
 
   it("rejects secret canonical message bodies and derives author and scope from authentication", async () => {
     const server = makeServer();
-    server.channels.appendThreadMessage.mockResolvedValue({
-      id: "reply-1",
-      teamId: "team-a",
-      channelId: "chan",
-      threadId: "thread-1",
-      author: "actor-a",
-      body: { text: "ok" },
-    });
     server.readJson.mockResolvedValueOnce({ body: { api_key: "secret" } });
     const rejected = response();
     await WebhookServer.prototype.handleCanonicalThreadMessageAppend.call(server, {}, rejected, "chan", "thread-1");
     expect(rejected.writeHead).toHaveBeenCalledWith(400, expect.anything());
-    expect(server.channels.appendThreadMessage).not.toHaveBeenCalled();
+    expect(server.threadAgents.appendHumanMessage).not.toHaveBeenCalled();
 
     server.readJson.mockResolvedValueOnce({ body: { text: "ok" }, author: "forged", workspaceId: "team-b" });
     const forged = response();
@@ -263,9 +355,9 @@ describe("workspace channel APIs", () => {
     server.readJson.mockResolvedValueOnce({ body: { text: "ok" } });
     const accepted = response();
     await WebhookServer.prototype.handleCanonicalThreadMessageAppend.call(server, {}, accepted, "chan", "thread-1");
-    expect(server.channels.appendThreadMessage).toHaveBeenCalledWith({
+    expect(server.threadAgents.appendHumanMessage).toHaveBeenCalledWith({
       teamId: "team-a",
-      channelId: "chan",
+      streamId: "chan",
       threadId: "thread-1",
       author: "actor-a",
       body: { text: "ok" },

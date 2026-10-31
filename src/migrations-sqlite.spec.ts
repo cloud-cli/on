@@ -191,6 +191,7 @@ describe("v3 migrations against SQLite", () => {
     expect(versions.map(({ version }) => version)).toContain("033_stream_event_bindings");
     expect(versions.map(({ version }) => version)).toContain("034_stream_event_binding_integrity");
     expect(versions.map(({ version }) => version)).toContain("042_gitmini_connector_template");
+    expect(versions.map(({ version }) => version)).toContain("043_thread_agent_subscriptions");
     expect(versions.map(({ version }) => version)).toContain("033_stream_event_bindings");
     expect(database.prepare("PRAGMA table_info(step_execution_attempt_starts)").all()).toEqual(
       expect.arrayContaining([
@@ -248,6 +249,76 @@ describe("v3 migrations against SQLite", () => {
         .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_domain_events_channel_sequence'")
         .get(),
     ).toBeTruthy();
+  });
+
+  it("enforces Thread Agent isolation, one active subscription, and source-message idempotency", async () => {
+    createPreV3Database(true);
+    (dbTestHooks.currentDatabase() as DatabaseSync).exec(
+      "CREATE TABLE oidc_users(subject TEXT PRIMARY KEY, kind TEXT NOT NULL DEFAULT 'human', disabled_at TEXT)",
+    );
+    await runMigrations();
+    const database = dbTestHooks.currentDatabase() as DatabaseSync;
+    database.exec(`
+      INSERT INTO oidc_users(subject, kind) VALUES ('agent-a', 'agent');
+      INSERT INTO team_members(team_id, subject, role) VALUES ('team-a', 'agent-a', 'member');
+      INSERT INTO channels(id, team_id, name) VALUES ('stream-a', 'team-a', 'Stream');
+      INSERT INTO channel_threads(id, team_id, channel_id, title, created_by)
+        VALUES ('thread-a', 'team-a', 'stream-a', 'Thread', 'human-a');
+      INSERT INTO channel_thread_messages(id, team_id, channel_id, thread_id, author, body_json)
+        VALUES ('message-a', 'team-a', 'stream-a', 'thread-a', 'human-a', '{"text":"hello"}');
+      INSERT INTO thread_agent_subscriptions(id, team_id, stream_id, thread_id, agent_principal_id,
+        consent_actor, consented_at, disclosure_version, provider_notice, provider_fingerprint)
+        VALUES ('sub-a', 'team-a', 'stream-a', 'thread-a', 'agent-a', 'human-a', CURRENT_TIMESTAMP, 'v1', 'notice', 'fingerprint');
+      INSERT INTO thread_agent_turns(id, team_id, stream_id, thread_id, subscription_id, source_message_id)
+        VALUES ('turn-a', 'team-a', 'stream-a', 'thread-a', 'sub-a', 'message-a');
+    `);
+    expect(() =>
+      database.exec(`INSERT INTO thread_agent_subscriptions(id, team_id, stream_id, thread_id,
+      agent_principal_id, consent_actor, consented_at, disclosure_version, provider_notice, provider_fingerprint)
+      VALUES ('sub-b', 'team-a', 'stream-a', 'thread-a', 'agent-a', 'human-a', CURRENT_TIMESTAMP, 'v1', 'notice', 'fingerprint')`),
+    ).toThrow();
+    expect(() =>
+      database.exec(`INSERT INTO thread_agent_turns(id, team_id, stream_id, thread_id, subscription_id, source_message_id)
+      VALUES ('turn-b', 'team-a', 'stream-a', 'thread-a', 'sub-a', 'message-a')`),
+    ).toThrow();
+    database.exec(`
+      INSERT INTO channels(id, team_id, name) VALUES ('stream-b', 'team-a', 'Other stream');
+      INSERT INTO channel_threads(id, team_id, channel_id, title, created_by)
+        VALUES ('thread-b', 'team-a', 'stream-b', 'Other thread', 'human-a');
+      INSERT INTO channel_thread_messages(id, team_id, channel_id, thread_id, author, body_json)
+        VALUES ('message-b', 'team-a', 'stream-b', 'thread-b', 'human-a', '{"text":"other"}');
+    `);
+    expect(() =>
+      database.exec(`INSERT INTO thread_agent_turns(id, team_id, stream_id, thread_id, subscription_id, source_message_id)
+      VALUES ('cross-thread-turn', 'team-a', 'stream-b', 'thread-b', 'sub-a', 'message-b')`),
+    ).toThrow();
+    expect(() =>
+      database.exec(`INSERT INTO thread_agent_turns(id, team_id, stream_id, thread_id, subscription_id, source_message_id)
+      VALUES ('cross-message-turn', 'team-a', 'stream-a', 'thread-a', 'sub-a', 'message-b')`),
+    ).toThrow();
+    expect(() =>
+      database.exec(
+        "UPDATE thread_agent_turns SET status = 'complete', reply_message_id = 'missing' WHERE id = 'turn-a'",
+      ),
+    ).toThrow(/requires its Agent reply/);
+    await expect(runMigrations()).resolves.toBeUndefined();
+    expect(database.prepare("SELECT COUNT(*) AS count FROM thread_agent_turns").get()).toEqual({ count: 1 });
+    database.prepare("DELETE FROM team_members WHERE team_id = ? AND subject = ?").run("team-a", "agent-a");
+    expect(database.prepare("SELECT COUNT(*) AS count FROM team_members WHERE subject = 'agent-a'").get()).toEqual({
+      count: 0,
+    });
+    expect(database.prepare("SELECT enabled FROM thread_agent_subscriptions WHERE id = 'sub-a'").get()).toEqual({
+      enabled: 0,
+    });
+    expect(database.prepare("SELECT status FROM thread_agent_turns WHERE id = 'turn-a'").get()).toEqual({
+      status: "disabled",
+    });
+    expect(
+      database.prepare("SELECT COUNT(*) AS count FROM thread_agent_subscriptions WHERE id = 'sub-a'").get(),
+    ).toEqual({
+      count: 1,
+    });
+    expect(() => database.prepare("DELETE FROM oidc_users WHERE subject = ?").run("agent-a")).not.toThrow();
   });
 
   it("assigns durable increasing event sequences independently of SQLite rowids", async () => {
@@ -535,6 +606,11 @@ describe("v3 migrations against SQLite", () => {
       version: "042_gitmini_connector_template",
       objectType: "table",
       objectName: "connector_template_versions",
+    },
+    {
+      version: "043_thread_agent_subscriptions",
+      objectType: "table",
+      objectName: "thread_agent_turns",
     },
   ])(
     "retries additive migration $version after its schema applied but marker failed",

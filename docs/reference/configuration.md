@@ -45,24 +45,30 @@ The config is executable JavaScript loaded by Node. Only use configuration files
 
 ### Control plane and scheduler
 
-| Variable                   | Purpose                                                                                                               |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`             | Required by the server, scheduler, and legacy worker. URL of an importable JavaScript database module, not a SQL DSN. |
-| `PORT`                     | Ingress/API listen port. Default: `11235`.                                                                            |
-| `RUNNER_SERVER_URL`        | Public coordinator origin used to construct run links and by workers. Set it to the HTTPS origin behind your proxy.   |
-| `OIDC_ISSUER`              | OIDC issuer URL. Preferred over the legacy `RUNNER_OIDC_PROVIDER_URL`.                                                |
-| `OIDC_CLIENT_ID`           | OIDC client ID; preferred over `RUNNER_OIDC_CLIENT_ID`.                                                               |
-| `OIDC_CLIENT_SECRET`       | OIDC client secret; preferred over `RUNNER_OIDC_CLIENT_SECRET`.                                                       |
-| `RUNNER_MASTER_KEY`        | Master key for encrypted workspace secrets. Use the systemd credential instead when available. Control plane only.    |
-| `RUNNER_VAPID_PUBLIC_KEY`  | Optional Web Push public key.                                                                                         |
-| `RUNNER_VAPID_PRIVATE_KEY` | Optional Web Push private key. Keep private; used with the public key.                                                |
-| `RUNNER_VAPID_SUBJECT`     | Optional Web Push contact, such as `mailto:admin@example.net`.                                                        |
-| `RUNNER_FILE_API_URL`      | Optional shared FileBin API base URL for artifact/cache storage.                                                      |
-| `RUNNER_FILE_BIN`          | Optional FileBin bin ID; enables FileBin storage when set.                                                            |
-| `RUNNER_FILE_PASSWORD`     | Optional FileBin password.                                                                                            |
+| Variable                       | Purpose                                                                                                                                         |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                 | Required by the server, scheduler, and legacy worker. URL of an importable JavaScript database module, not a SQL DSN.                           |
+| `PORT`                         | Ingress/API listen port. Default: `11235`.                                                                                                      |
+| `RUNNER_SERVER_URL`            | Public coordinator origin used to construct run links and by workers. Set it to the HTTPS origin behind your proxy.                             |
+| `OIDC_ISSUER`                  | OIDC issuer URL. Preferred over the legacy `RUNNER_OIDC_PROVIDER_URL`.                                                                          |
+| `OIDC_CLIENT_ID`               | OIDC client ID; preferred over `RUNNER_OIDC_CLIENT_ID`.                                                                                         |
+| `OIDC_CLIENT_SECRET`           | OIDC client secret; preferred over `RUNNER_OIDC_CLIENT_SECRET`.                                                                                 |
+| `RUNNER_MASTER_KEY`            | Master key for encrypted workspace secrets. Use the systemd credential instead when available. Control plane only.                              |
+| `RUNNER_VAPID_PUBLIC_KEY`      | Optional Web Push public key.                                                                                                                   |
+| `RUNNER_VAPID_PRIVATE_KEY`     | Optional Web Push private key. Keep private; used with the public key.                                                                          |
+| `RUNNER_VAPID_SUBJECT`         | Optional Web Push contact, such as `mailto:admin@example.net`.                                                                                  |
+| `RUNNER_FILE_API_URL`          | Optional shared FileBin API base URL for artifact/cache storage.                                                                                |
+| `RUNNER_FILE_BIN`              | Optional FileBin bin ID; enables FileBin storage when set.                                                                                      |
+| `RUNNER_FILE_PASSWORD`         | Optional FileBin password.                                                                                                                      |
+| `OPENAI_API_URL`               | Optional Thread Agent provider base URL. HTTPS is required except for loopback development endpoints.                                           |
+| `OPENAI_API_MODEL`             | Model name used for explicitly enabled Thread Agent responses.                                                                                  |
+| `OPENAI_API_KEY`               | Optional provider credential. Keep it in the service secret mechanism; never put it in Thread data or logs.                                     |
+| `THREAD_AGENT_PROVIDER_NOTICE` | Required to enable Thread Agents. Operator-authored plain text naming the provider and explaining which Thread messages/context are sent there. |
 
 The supplied server unit loads `/etc/on/credentials/on-master-key` as a systemd credential. Do not give the master
 key, OIDC client secret, or `DATABASE_URL` to API-only workers.
+
+Thread Agent subscriptions are unavailable unless both the provider endpoint/model and the disclosure are configured. The disclosure is shown verbatim before a human can enable an Agent; changing the endpoint/model or disclosure invalidates existing consent. Describe provider retention and use accurately in the notice. On stores consent provenance and bounds provider context to the selected Thread, but does not guarantee provider-side retention or deletion.
 
 ### API-only runners
 

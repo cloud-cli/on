@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
+import { createServer as createHttpServer } from "node:http";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -36,6 +37,33 @@ let appPortReady = false;
 let temporaryRoot;
 let databasePath;
 let li3WebSource;
+let providerServer;
+let providerPort;
+const providerRequests = [];
+const providerResponse = "Synthetic Agent response: I received the thread message.";
+const providerNotice =
+  "Human-authored messages and relevant context from this Thread are sent to Synthetic Provider (local test service) for processing.";
+
+async function startProviderMock() {
+  providerServer = createHttpServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) {
+      chunks.push(chunk);
+    }
+    providerRequests.push({
+      method: request.method,
+      url: request.url,
+      body: JSON.parse(Buffer.concat(chunks).toString()),
+    });
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: providerResponse } }] }));
+  });
+  await new Promise((resolve, reject) => {
+    providerServer.once("error", reject);
+    providerServer.listen(0, appHost, resolve);
+  });
+  providerPort = providerServer.address().port;
+}
 
 function findNested(value, predicate) {
   if (!value || typeof value !== "object") {
@@ -161,6 +189,10 @@ async function startApplication() {
       OIDC_ISSUER: authOrigin,
       OIDC_CLIENT_ID: clientId,
       OIDC_CLIENT_SECRET: clientSecret,
+      OPENAI_API_URL: `http://127.0.0.1:${providerPort}/v1`,
+      OPENAI_API_MODEL: "synthetic-thread-model",
+      OPENAI_API_KEY: "synthetic-thread-key",
+      THREAD_AGENT_PROVIDER_NOTICE: providerNotice,
     },
     stdio: "ignore",
   });
@@ -206,6 +238,7 @@ test.beforeAll(async () => {
     li3WebSource = await li3Response.text();
     await createAgentSession();
     await createTemporaryClient();
+    await startProviderMock();
     await startApplication();
   } catch {
     try {
@@ -213,6 +246,8 @@ test.beforeAll(async () => {
       await cleanupTemporaryClient();
     } catch {
       throw new Error("OIDC test setup failed and temporary-client cleanup also failed");
+    } finally {
+      await new Promise((resolve) => providerServer?.close(resolve));
     }
     throw new Error("OIDC Agent sign-in test setup failed");
   }
@@ -226,6 +261,7 @@ test.afterAll(async () => {
     cleanupFailure = new Error("Temporary OIDC client cleanup failed");
   } finally {
     await stopApplication();
+    await new Promise((resolve) => providerServer?.close(resolve));
     if (temporaryRoot) {
       fs.rmSync(temporaryRoot, { recursive: true, force: true });
     }
@@ -340,6 +376,19 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
       fixtureDb
         .prepare("INSERT INTO team_members(team_id, subject, role) VALUES (?, ?, 'collaborator')")
         .run(workspaceId, session.user.id);
+      const agentPrincipalId = `synthetic-agent-${unique}`;
+      fixtureDb
+        .prepare("INSERT INTO oidc_users(subject, name, kind) VALUES (?, ?, 'agent')")
+        .run(agentPrincipalId, "Synthetic Thread Agent");
+      fixtureDb
+        .prepare("INSERT INTO team_members(team_id, subject, role) VALUES (?, ?, 'collaborator')")
+        .run(workspaceId, agentPrincipalId);
+      fixtureDb
+        .prepare(
+          `INSERT INTO workspace_permission_overrides(team_id, subject, capability, effect, granted_by)
+        VALUES (?, ?, 'threads.agent.manage', 'allow', ?)`,
+        )
+        .run(workspaceId, session.user.id, session.user.id);
       fixtureDb.prepare("INSERT INTO teams(id, name) VALUES (?, ?)").run(navigationWorkspaceId, "Navigation Fixture");
       fixtureDb
         .prepare("INSERT INTO team_members(team_id, subject, role) VALUES (?, ?, 'collaborator')")
@@ -485,6 +534,61 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     await expect(
       page.getByRole("navigation", { name: "Global navigation" }).getByRole("link", { name: "Workflows" }),
     ).toHaveAttribute("href", `/ui/workspaces/${workspaceId}/workflows`);
+    stage = "thread-agent-browser-journey";
+    await page.goto(`${appOrigin}/ui/workspaces/${workspaceId}/channels/${stream.id}`);
+    stage = "thread-agent-thread-visible";
+    await expect(page.getByRole("button", { name: "Synthetic discussion", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Synthetic discussion", exact: true }).click();
+    stage = "thread-agent-panel-visible";
+    const agentPanel = page.getByRole("region", { name: "Thread Agent" });
+    await expect(agentPanel).toBeVisible();
+    await expect(agentPanel).toContainText(providerNotice);
+    const consent = agentPanel.getByRole("checkbox", { name: "Consent to enable Agent responses for this Thread" });
+    const enable = agentPanel.getByRole("button", { name: "Enable Agent" });
+    await expect(consent).not.toBeChecked();
+    await expect(enable).toBeDisabled();
+    stage = "thread-agent-options-rendered";
+    const agentSelect = agentPanel.getByLabel("Agent for this thread");
+    await expect(agentSelect.locator("option").filter({ hasText: "Synthetic Thread Agent" })).toHaveCount(1);
+    stage = "thread-agent-selection-action";
+    await agentSelect.selectOption({ label: "Synthetic Thread Agent" });
+    stage = "thread-agent-consent";
+    await consent.check();
+    stage = "thread-agent-enable-ready";
+    await expect(enable).toBeEnabled();
+    stage = "thread-agent-enable";
+    const enableResponsePromise = page.waitForResponse(
+      (response) => response.url().includes("/agent-subscriptions") && response.request().method() === "POST",
+    );
+    await enable.click();
+    const enableResponse = await enableResponsePromise;
+    stage = `thread-agent-enable-response-${enableResponse.status()}`;
+    expect(enableResponse.status()).toBe(201);
+    stage = "thread-agent-enabled-visible";
+    await expect(agentPanel.getByRole("button", { name: "Disable Agent" })).toBeVisible();
+    const composer = page.getByRole("textbox", { name: /reply/i });
+    await composer.fill("Synthetic human Thread prompt");
+    await page.getByRole("button", { name: "Reply", exact: true }).click();
+    await expect.poll(() => providerRequests.length, { timeout: 30_000 }).toBe(1);
+    await expect(page.getByText(providerResponse, { exact: true })).toBeVisible({ timeout: 60_000 });
+    expect(providerRequests[0].url).toBe("/v1/chat/completions");
+    expect(providerRequests[0].body.model).toBe("synthetic-thread-model");
+    expect(JSON.stringify(providerRequests[0].body)).toContain("Synthetic human Thread prompt");
+    expect(JSON.stringify(providerRequests[0].body)).not.toMatch(/oidc-test-|synthetic-agent-|other stream/i);
+    expect(providerRequests[0].body.tools).toBeUndefined();
+    const desktopExchange = "/tmp/opencode/thread-agent-exchange-desktop.png";
+    await page.screenshot({ path: desktopExchange, fullPage: true });
+    await page.reload();
+    await expect(page.getByText(providerResponse, { exact: true })).toBeVisible({ timeout: 20_000 });
+    await agentPanel.getByRole("button", { name: "Disable Agent" }).click();
+    const requestCount = providerRequests.length;
+    await page.getByRole("textbox", { name: /reply/i }).fill("No agent should answer this");
+    await page.getByRole("button", { name: "Reply", exact: true }).click();
+    await delay(1500);
+    expect(providerRequests).toHaveLength(requestCount);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: "/tmp/opencode/thread-agent-exchange-mobile.png", fullPage: true });
+    await page.setViewportSize({ width: 1280, height: 900 });
     stage = "authenticated-shell-profile";
     const profileButton = page.getByRole("link", { name: "Open preferences" });
     stage = "profile-button-visible";

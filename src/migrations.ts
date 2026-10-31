@@ -1178,6 +1178,101 @@ const migrations: Migration[] = [
       );
     },
   },
+  {
+    version: "043_thread_agent_subscriptions",
+    apply: async () => {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS thread_agent_subscriptions (
+          id TEXT NOT NULL PRIMARY KEY,
+          team_id TEXT NOT NULL,
+          stream_id TEXT NOT NULL,
+          thread_id TEXT NOT NULL,
+          agent_principal_id TEXT NOT NULL,
+          consent_actor TEXT NOT NULL,
+          consented_at TEXT NOT NULL,
+          disclosure_version TEXT NOT NULL,
+          provider_notice TEXT NOT NULL,
+          provider_fingerprint TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+          fence INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          disabled_at TEXT,
+          UNIQUE(team_id, id),
+          UNIQUE(team_id, stream_id, thread_id, id),
+          FOREIGN KEY(team_id, stream_id, thread_id)
+            REFERENCES channel_threads(team_id, channel_id, id) ON DELETE CASCADE
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_thread_agent_one_active
+          ON thread_agent_subscriptions(team_id, stream_id, thread_id) WHERE enabled = 1;
+        CREATE TABLE IF NOT EXISTS thread_agent_turns (
+          id TEXT NOT NULL PRIMARY KEY,
+          team_id TEXT NOT NULL,
+          stream_id TEXT NOT NULL,
+          thread_id TEXT NOT NULL,
+          subscription_id TEXT NOT NULL,
+          source_message_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending'
+            CHECK(status IN ('pending','claimed','calling','complete','failed','disabled')),
+          attempt_count INTEGER NOT NULL DEFAULT 0,
+          max_attempts INTEGER NOT NULL DEFAULT 3,
+          lease_until TEXT,
+          lease_token TEXT,
+          fence INTEGER NOT NULL DEFAULT 1,
+          last_error_code TEXT,
+          reply_message_id TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          completed_at TEXT,
+          UNIQUE(subscription_id, source_message_id),
+          UNIQUE(reply_message_id),
+          FOREIGN KEY(team_id, stream_id, thread_id, subscription_id)
+            REFERENCES thread_agent_subscriptions(team_id, stream_id, thread_id, id) ON DELETE CASCADE,
+          FOREIGN KEY(team_id, stream_id, thread_id, source_message_id)
+            REFERENCES channel_thread_messages(team_id, channel_id, thread_id, id) ON DELETE CASCADE,
+          FOREIGN KEY(team_id, stream_id, thread_id, reply_message_id)
+            REFERENCES channel_thread_messages(team_id, channel_id, thread_id, id) ON DELETE CASCADE,
+          FOREIGN KEY(team_id, stream_id, thread_id)
+            REFERENCES channel_threads(team_id, channel_id, id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_thread_agent_turn_claim
+          ON thread_agent_turns(status, lease_until, created_at);
+      `);
+      const threadMessageColumns = await db.all("PRAGMA table_info(channel_thread_messages)");
+      if (threadMessageColumns.length) {
+        await db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_thread_message_tuple
+          ON channel_thread_messages(team_id, channel_id, thread_id, id)`);
+        await db.exec(`CREATE TRIGGER IF NOT EXISTS thread_agent_turn_complete_requires_reply
+          BEFORE UPDATE OF status ON thread_agent_turns
+          WHEN NEW.status = 'complete' AND NOT EXISTS (
+            SELECT 1 FROM channel_thread_messages m
+            JOIN thread_agent_subscriptions s ON s.team_id = m.team_id
+              AND s.stream_id = m.channel_id AND s.thread_id = m.thread_id
+             WHERE m.team_id = NEW.team_id AND m.channel_id = NEW.stream_id AND m.thread_id = NEW.thread_id
+               AND m.id = NEW.reply_message_id AND s.id = NEW.subscription_id AND m.author = s.agent_principal_id
+          )
+          BEGIN SELECT RAISE(ABORT, 'Thread Agent completion requires its Agent reply'); END`);
+      }
+      const teamMemberTables = await db.all(
+        "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'team_members'",
+      );
+      if (teamMemberTables.length) {
+        await db.exec(`CREATE TRIGGER IF NOT EXISTS thread_agent_membership_removed
+          AFTER DELETE ON team_members
+          BEGIN
+            UPDATE thread_agent_subscriptions SET enabled = 0, fence = fence + 1,
+              disabled_at = COALESCE(disabled_at, CURRENT_TIMESTAMP)
+              WHERE team_id = OLD.team_id AND agent_principal_id = OLD.subject AND enabled = 1;
+            UPDATE thread_agent_turns SET status = 'disabled', fence = fence + 1,
+              lease_token = NULL, lease_until = NULL, updated_at = CURRENT_TIMESTAMP
+              WHERE team_id = OLD.team_id AND status IN ('pending','claimed','calling')
+                AND subscription_id IN (
+                  SELECT id FROM thread_agent_subscriptions
+                   WHERE team_id = OLD.team_id AND agent_principal_id = OLD.subject
+                );
+          END`);
+      }
+    },
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

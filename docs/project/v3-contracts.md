@@ -280,6 +280,33 @@ through normal workspace authorization. Subscription configuration,
 concurrency limits, cancellation, and result protocol details are deferred to
 milestone 6.
 
+### Thread Agent conversation responses — decided now
+
+A Thread Agent subscription is a distinct workspace-scoped conversation consumer,
+not a workflow run or an implicit workflow tool. The first slice permits one
+active Agent per Thread and admits turns only for newly appended human messages
+after activation. It sends a bounded window from that Thread alone to the
+operator-configured provider; it does not include authorship identifiers,
+Stream events, other Threads, runs, secrets, or workflow tools. Thread contents
+remain untrusted prompt data.
+
+An authorized human must explicitly consent after seeing an operator-authored
+provider/data disclosure. The durable subscription records the consenting
+principal, timestamp, disclosure version/text, and a fingerprint of the
+configured endpoint/model. A missing or changed disclosure/provider
+configuration disables the subscription and fences outstanding turns. The
+Agent identity and workspace membership are revalidated before provider access
+and before a reply is committed. Replies are stored as immutable Thread
+messages authored by that verified Agent principal and are linked to one turn.
+
+Turn admission is durable and idempotent by subscription plus source message;
+claims use leases and fencing. A turn produces at most one durable reply, but a
+provider request whose result is lost can have an uncertain external outcome.
+Such a turn is not blindly retried: provider execution is not exactly-once.
+Disable, membership removal, or provider-configuration changes fence queued and
+in-flight results. Retention/deletion of provider-side data is governed by the
+operator's disclosure and provider terms, not guaranteed by On.
+
 ## 5. Checkpoint references and retention
 
 ### Contract boundaries — decided now

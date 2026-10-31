@@ -172,6 +172,59 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
   const threadTranscript = element("ol", undefined, "max-h-[40vh] space-y-2 overflow-auto");
   threadTranscript.setAttribute("aria-label", "Thread messages");
   threadTranscript.hidden = true;
+  const agentPanel = element(
+    "section",
+    undefined,
+    "min-w-0 space-y-2 rounded-lg border border-app-border bg-app-panel p-3",
+  );
+  agentPanel.setAttribute("aria-label", "Thread Agent");
+  agentPanel.hidden = true;
+  const agentPanelTitle = element("h4", "Thread Agent", "font-semibold");
+  const agentPanelStatus = element(
+    "p",
+    "Choose an active workspace Agent to enable responses in this thread.",
+    "text-sm text-app-secondary",
+  );
+  agentPanelStatus.setAttribute("role", "status");
+  const agentProviderNotice = element("p", "", "text-sm text-app-secondary");
+  agentProviderNotice.hidden = true;
+  const agentReplyPersistence = element("p", "Agent replies are saved in this Thread.", "text-sm text-app-secondary");
+  agentReplyPersistence.hidden = true;
+  const agentConsentLabel = document.createElement("label");
+  agentConsentLabel.className = "flex min-h-11 items-center gap-2 text-sm";
+  const agentConsent = document.createElement("input");
+  agentConsent.type = "checkbox";
+  agentConsent.checked = false;
+  agentConsent.setAttribute("aria-label", "Consent to enable Agent responses for this Thread");
+  const agentConsentText = element("span", "I understand and consent to enabling Agent responses for this Thread.");
+  agentConsentLabel.append(agentConsent, agentConsentText);
+  agentConsentLabel.hidden = true;
+  const agentControls = element("div", undefined, "flex min-w-0 flex-col gap-2 sm:flex-row");
+  const agentSelect = document.createElement("select");
+  agentSelect.setAttribute("aria-label", "Agent for this thread");
+  agentSelect.className = "min-h-11 min-w-0 flex-1 rounded-lg border border-app-border px-3 py-2";
+  const enableAgent = element(
+    "button",
+    "Enable Agent",
+    "min-h-11 rounded-lg bg-app-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50",
+  );
+  enableAgent.type = "button";
+  const disableAgent = element(
+    "button",
+    "Disable Agent",
+    "min-h-11 rounded-lg border border-app-border px-3 py-2 text-sm disabled:opacity-50",
+  );
+  disableAgent.type = "button";
+  disableAgent.hidden = true;
+  agentControls.append(agentSelect, enableAgent, disableAgent);
+  agentPanel.append(
+    agentPanelTitle,
+    agentPanelStatus,
+    agentProviderNotice,
+    agentReplyPersistence,
+    agentConsentLabel,
+    agentControls,
+  );
   const threadMore = element(
     "button",
     "Load more thread messages",
@@ -243,6 +296,14 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
 
   let selected = null;
   let selectedThread = null;
+  let activeAgentMembers = [];
+  let agentSubscription = null;
+  let agentTurns = [];
+  let agentRequestGeneration = 0;
+  let agentOperationGeneration = 0;
+  let agentBusy = false;
+  let agentLoadError = "";
+  let agentProviderNoticeText = "";
   let threadCursor = null;
   let threadLatestMessageId = null;
   let threadRequestGeneration = 0;
@@ -418,7 +479,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
           button.addEventListener("click", () => void selectThread(value));
           item.append(button);
           if (selectedThread?.id === value.id) {
-            item.append(threadTranscript, threadMore, threadComposer);
+            item.append(agentPanel, threadTranscript, threadMore, threadComposer);
           }
         } else {
           const runIds = value.links?.runIds || [];
@@ -493,6 +554,193 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     }
     return data;
   };
+  const invalidateAgentOperations = () => {
+    agentOperationGeneration += 1;
+    agentRequestGeneration += 1;
+    agentBusy = false;
+  };
+  const subscriptionUrl = (channelId, threadId) =>
+    `/api/v1/streams/${encodeURIComponent(channelId)}/threads/${encodeURIComponent(threadId)}/agent-subscriptions`;
+  const drawAgentSubscription = () => {
+    if (agentLoadError) {
+      agentPanelStatus.textContent = agentLoadError;
+      agentPanelStatus.setAttribute("role", "alert");
+    } else {
+      agentPanelStatus.setAttribute("role", "status");
+    }
+    const subscription = agentSubscription;
+    const latestTurn = agentTurns.find((turn) =>
+      [
+        "pending",
+        "queued",
+        "claimed",
+        "calling",
+        "running",
+        "responding",
+        "failed",
+        "complete",
+        "completed",
+        "success",
+      ].includes(turn.status),
+    );
+    const status = String(latestTurn?.status || "").toLowerCase();
+    const responding = ["pending", "queued", "claimed", "calling", "running", "responding"].includes(status);
+    const failed = status === "failed";
+    const complete = ["complete", "completed", "success"].includes(status);
+    const selectedMember = activeAgentMembers.find((agent) => agent.principalId === subscription?.agentPrincipalId);
+    if (!agentLoadError) {
+      agentPanelStatus.textContent = subscription
+        ? `${selectedMember?.name || "Agent"} is enabled${responding ? " · Responding" : failed ? " · Last response failed" : complete ? " · Response complete" : ""}.`
+        : !agentProviderNoticeText
+          ? "Agent activation is unavailable because the provider disclosure is not configured."
+          : activeAgentMembers.length
+            ? "Choose an active workspace Agent to enable responses in this thread."
+            : "No active workspace Agents are available.";
+    }
+    agentProviderNotice.textContent = agentProviderNoticeText;
+    agentProviderNotice.hidden = !agentProviderNoticeText;
+    agentReplyPersistence.hidden = !agentProviderNoticeText;
+    agentConsentLabel.hidden = !agentProviderNoticeText || Boolean(subscription);
+    agentSelect.hidden = Boolean(subscription) || !agentProviderNoticeText;
+    enableAgent.hidden = Boolean(subscription) || !agentProviderNoticeText;
+    disableAgent.hidden = !subscription;
+    agentSelect.disabled = agentBusy || !activeAgentMembers.length;
+    enableAgent.disabled = agentBusy || !agentProviderNoticeText || !agentConsent.checked || !agentSelect.value;
+    disableAgent.disabled = agentBusy;
+  };
+  const loadAgentSubscription = async () => {
+    if (!selected || !selectedThread) {
+      agentPanel.hidden = true;
+      return;
+    }
+    const channelId = selected.id;
+    const threadId = selectedThread.id;
+    const generation = ++agentRequestGeneration;
+    agentLoadError = "";
+    agentPanel.hidden = false;
+    agentBusy = true;
+    agentPanelStatus.textContent = "Loading Agent subscription…";
+    try {
+      const data = await request(subscriptionUrl(channelId, threadId));
+      if (generation !== agentRequestGeneration || selected?.id !== channelId || selectedThread?.id !== threadId) {
+        return;
+      }
+      activeAgentMembers = (data.agents || []).filter(
+        (agent) =>
+          typeof agent.principalId === "string" &&
+          agent.principalId &&
+          (!agent.kind || agent.kind === "agent") &&
+          !agent.disabled,
+      );
+      agentSubscription = data.subscription || null;
+      agentTurns = Array.isArray(data.turns) ? data.turns : [];
+      agentProviderNoticeText =
+        typeof data.providerNotice === "string" && data.providerNotice.trim() ? data.providerNotice : "";
+      if (!agentSubscription) {
+        agentConsent.checked = false;
+      }
+      const previousValue = agentSelect.value;
+      agentSelect.replaceChildren(
+        element("option", "Select an Agent", ""),
+        ...activeAgentMembers.map((agent) => {
+          const option = element("option", agent.name || "Agent");
+          option.value = agent.principalId;
+          return option;
+        }),
+      );
+      agentSelect.value = activeAgentMembers.some((agent) => agent.principalId === previousValue)
+        ? previousValue
+        : activeAgentMembers[0]?.principalId || "";
+      drawAgentSubscription();
+    } catch {
+      if (generation === agentRequestGeneration && selected?.id === channelId && selectedThread?.id === threadId) {
+        agentSubscription = null;
+        agentTurns = [];
+        agentLoadError = "Unable to load Agent subscription.";
+      }
+    } finally {
+      if (generation === agentRequestGeneration) {
+        agentBusy = false;
+        drawAgentSubscription();
+      }
+    }
+  };
+  agentSelect.addEventListener("change", () => {
+    agentConsent.checked = false;
+    drawAgentSubscription();
+  });
+  agentConsent.addEventListener("change", drawAgentSubscription);
+  enableAgent.addEventListener("click", async () => {
+    if (
+      agentBusy ||
+      !selected ||
+      !selectedThread ||
+      !agentProviderNoticeText ||
+      !agentConsent.checked ||
+      !activeAgentMembers.some((agent) => agent.principalId === agentSelect.value)
+    ) {
+      return;
+    }
+    const channelId = selected.id;
+    const threadId = selectedThread.id;
+    const operationGeneration = ++agentOperationGeneration;
+    const ownsOperation = () =>
+      operationGeneration === agentOperationGeneration && selected?.id === channelId && selectedThread?.id === threadId;
+    agentBusy = true;
+    agentLoadError = "";
+    drawAgentSubscription();
+    try {
+      await request(subscriptionUrl(channelId, threadId), {
+        method: "POST",
+        body: JSON.stringify({ agentPrincipalId: agentSelect.value, consent: true }),
+      });
+      if (!ownsOperation()) {
+        return;
+      }
+      await loadAgentSubscription();
+    } catch {
+      if (ownsOperation()) {
+        agentLoadError = "Unable to enable Agent responses.";
+      }
+    } finally {
+      if (ownsOperation()) {
+        agentBusy = false;
+        drawAgentSubscription();
+      }
+    }
+  });
+  disableAgent.addEventListener("click", async () => {
+    const subscriptionId = agentSubscription?.id || agentSubscription?.subscriptionId;
+    if (agentBusy || !selected || !selectedThread || !subscriptionId) {
+      return;
+    }
+    const channelId = selected.id;
+    const threadId = selectedThread.id;
+    const operationGeneration = ++agentOperationGeneration;
+    const ownsOperation = () =>
+      operationGeneration === agentOperationGeneration && selected?.id === channelId && selectedThread?.id === threadId;
+    agentBusy = true;
+    agentLoadError = "";
+    drawAgentSubscription();
+    try {
+      await request(`${subscriptionUrl(channelId, threadId)}/${encodeURIComponent(subscriptionId)}`, {
+        method: "DELETE",
+      });
+      if (!ownsOperation()) {
+        return;
+      }
+      await loadAgentSubscription();
+    } catch {
+      if (ownsOperation()) {
+        agentLoadError = "Unable to disable Agent responses.";
+      }
+    } finally {
+      if (ownsOperation()) {
+        agentBusy = false;
+        drawAgentSubscription();
+      }
+    }
+  });
   const drawMessages = (messages, append = false) => {
     const existing = append
       ? new Set([...transcript.querySelectorAll("[data-message-id]")].map((node) => node.dataset.messageId))
@@ -660,13 +908,21 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     }
   };
   const selectThread = async (thread) => {
+    invalidateAgentOperations();
     selectedThread = thread;
+    agentSubscription = null;
+    agentTurns = [];
+    agentProviderNoticeText = "";
+    agentConsent.checked = false;
+    agentControls.hidden = false;
+    agentPanelStatus.setAttribute("role", "status");
     threadCursor = null;
     threadLatestMessageId = null;
     threadMore.hidden = true;
     threadTranscript.replaceChildren();
     threadTranscript.hidden = false;
     drawTimeline();
+    void loadAgentSubscription();
     void installEditor(threadPayload);
     await loadThreadMessages();
   };
@@ -739,6 +995,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
         if (error.status === 401 || error.status === 403) {
           timelineThreads = [];
           openingMessages.clear();
+          invalidateAgentOperations();
           selectedThread = null;
           threadTranscript.replaceChildren();
           threadComposer.hidden = true;
@@ -922,7 +1179,13 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       history.pushState(null, "", target);
       window.dispatchEvent(new PopStateEvent("popstate"));
     }
+    invalidateAgentOperations();
     selectedThread = null;
+    agentSubscription = null;
+    agentTurns = [];
+    agentProviderNoticeText = "";
+    agentConsent.checked = false;
+    agentPanel.hidden = true;
     cursor = null;
     latestMessageId = null;
     transcript.replaceChildren();
@@ -1120,6 +1383,12 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
       eventGeneration += 1;
       selected = null;
       selectedThread = null;
+      invalidateAgentOperations();
+      agentSubscription = null;
+      agentTurns = [];
+      agentProviderNoticeText = "";
+      agentConsent.checked = false;
+      agentPanel.hidden = true;
       timelineThreads = [];
       timelineEvents = [];
       title.textContent = "Select a channel";
