@@ -441,6 +441,22 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     stage = "authenticated-workspace-shell";
     const shellResponse = await page.goto(`${appOrigin}/ui/workspaces/${encodeURIComponent(workspaceId)}/runs`);
     expect(shellResponse?.status()).toBe(200);
+    stage = "authenticated-stream-history-view";
+    const streamPage = await page.goto(
+      `${appOrigin}/ui/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(stream.id)}`,
+    );
+    expect(streamPage?.status()).toBe(200);
+    await expect(page.getByRole("heading", { name: "Synthetic browser stream" })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Stream threads" })).toContainText("Synthetic discussion");
+    await page.getByRole("list", { name: "Stream threads" }).getByText("Synthetic discussion").click();
+    await expect(page.getByRole("list", { name: "Thread messages" })).toContainText("First synthetic message");
+    await expect(page.getByRole("list", { name: "Thread messages" })).toContainText("Second synthetic message");
+    const savedHistory = page.getByText("Event history", { exact: true });
+    await expect(savedHistory).toBeVisible();
+    await savedHistory.click();
+    await expect(page.getByText("No saved events in this channel yet.")).toBeVisible();
+    stage = "authenticated-workspace-shell";
+    await page.goto(`${appOrigin}/ui/workspaces/${encodeURIComponent(workspaceId)}/runs`);
     stage = "sidebar-layout-desktop";
     await expect(page.locator("[data-workspace-rail]")).toBeVisible();
     await expect(page.locator("#primary-sidebar")).toBeVisible();
