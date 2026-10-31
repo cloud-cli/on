@@ -67,12 +67,11 @@ for (const viewport of [
     expect(Math.abs(remove.y + remove.height / 2 - (row.y + row.height / 2))).toBeLessThanOrEqual(1);
     expect(remove.x).toBeGreaterThan(edit.x + edit.width);
     expect(await page.locator("body").evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(viewport.width);
-    expect(
-      await page
-        .locator('[data-testid="edit-connector"]')
-        .first()
-        .evaluate((element) => getComputedStyle(element).backgroundColor),
-    ).not.toBe("rgba(0, 0, 0, 0)");
+    const editButton = page.locator('[data-testid="edit-connector"]').first();
+    await editButton.hover();
+    expect(await editButton.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(
+      "rgba(0, 0, 0, 0)",
+    );
     await expect(page.getByText("New connector")).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`connector-list-${viewport.name}.png`), fullPage: true });
   });
