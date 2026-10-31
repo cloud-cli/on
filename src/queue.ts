@@ -581,7 +581,8 @@ export class QueueManager {
     teamId: string,
   ): Promise<Array<{ jobId: number; teamId: string; leaseId: string }>> {
     return db.all(
-      `UPDATE jobs SET status = 'cancelled', lease_fenced = 1, updated_at = CURRENT_TIMESTAMP
+      `UPDATE jobs SET status = 'cancelled', finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP),
+        lease_fenced = 1, updated_at = CURRENT_TIMESTAMP
        WHERE worker_id = ? AND team_id = ? AND status IN ('running', 'cancelled') AND lease_completed = 0 AND lease_id IS NOT NULL
        RETURNING id AS jobId, team_id AS teamId, lease_id AS leaseId`,
       [runnerId, teamId],
@@ -590,7 +591,8 @@ export class QueueManager {
 
   async revokeRunnerLeases(runnerId: string): Promise<Array<{ jobId: number; teamId: string; leaseId: string }>> {
     return db.all(
-      `UPDATE jobs SET status = 'cancelled', lease_fenced = 1, updated_at = CURRENT_TIMESTAMP
+      `UPDATE jobs SET status = 'cancelled', finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP),
+        lease_fenced = 1, updated_at = CURRENT_TIMESTAMP
        WHERE worker_id = ? AND status IN ('running', 'cancelled') AND lease_completed = 0 AND lease_id IS NOT NULL
        RETURNING id AS jobId, team_id AS teamId, lease_id AS leaseId`,
       [runnerId],

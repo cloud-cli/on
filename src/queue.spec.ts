@@ -430,7 +430,8 @@ describe("API runner lease fencing", () => {
       { jobId: 8, teamId: "team-a", leaseId: "lease-1" },
     ]);
     const query = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(query.s).toContain("status = 'cancelled', lease_fenced = 1");
+    expect(query.s).toContain("status = 'cancelled', finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP)");
+    expect(query.s).toContain("lease_fenced = 1");
     expect(query.s).not.toContain("status = 'pending'");
     expect(query.s).toContain("RETURNING id AS jobId");
   });
