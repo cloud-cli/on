@@ -3,6 +3,9 @@ import { DatabaseSync } from "node:sqlite";
 import FS from "node:fs";
 import OS from "node:os";
 import Path from "node:path";
+import type { Processable } from "./types.js";
+import { processJob } from "./worker.js";
+import { SecretStore } from "./secrets.js";
 
 const testDb = vi.hoisted(() => ({ database: null as DatabaseSync | null }));
 vi.mock("./db-client.js", () => ({
@@ -10,6 +13,19 @@ vi.mock("./db-client.js", () => ({
     get: async (sql: string, values: unknown[] = []) => testDb.database!.prepare(sql).get(...(values as any[])),
     run: async (sql: string, values: unknown[] = []) => testDb.database!.prepare(sql).run(...(values as any[])),
     all: async (sql: string, values: unknown[] = []) => testDb.database!.prepare(sql).all(...(values as any[])),
+    exec: async (sql: string) => testDb.database!.exec(sql),
+    transaction: async (statements: Array<{ s: string; d?: unknown[] }>) => {
+      testDb.database!.exec("BEGIN IMMEDIATE");
+      try {
+        for (const statement of statements) {
+          testDb.database!.prepare(statement.s).run(...((statement.d || []) as any[]));
+        }
+        testDb.database!.exec("COMMIT");
+      } catch (error) {
+        testDb.database!.exec("ROLLBACK");
+        throw error;
+      }
+    },
   },
 }));
 
@@ -25,8 +41,9 @@ afterEach(() => {
 });
 
 describe("interrupted step attempt persistence and recovery", () => {
-  it("keeps an immutable start visible after restart without inventing completion", async () => {
+  it("refuses to invoke a reclaimed step with an existing start marker and records the worker failure truthfully", async () => {
     testDb.database = new DatabaseSync(databasePath);
+    // Minimal SQLite fixture for the queue/worker integration; migration execution is covered separately.
     testDb.database.exec(`
       CREATE TABLE teams (id TEXT PRIMARY KEY, deleting_at TEXT);
       CREATE TABLE jobs (
@@ -47,6 +64,15 @@ describe("interrupted step attempt persistence and recovery", () => {
         duration_ms INTEGER NOT NULL, exit_code INTEGER, error TEXT, log_content TEXT NOT NULL,
         attempt_id TEXT NOT NULL, snapshot_json TEXT, UNIQUE(job_id, step_id, attempt)
       );
+      CREATE TABLE step_logs (
+        id INTEGER PRIMARY KEY, job_id INTEGER NOT NULL, step_id TEXT NOT NULL, log_content TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(job_id, step_id)
+      );
+      CREATE TABLE domain_events (
+        id TEXT PRIMARY KEY, team_id TEXT NOT NULL, type TEXT NOT NULL, schema_version INTEGER NOT NULL,
+        source TEXT NOT NULL, occurred_at TEXT NOT NULL, recorded_at TEXT NOT NULL, correlation_id TEXT,
+        causation_id TEXT, idempotency_key TEXT NOT NULL, data_json TEXT NOT NULL
+      );
       INSERT INTO teams VALUES ('team-a', NULL);
       INSERT INTO jobs (id, team_id, status, workflow_id, workflow_revision, payload, worker_id, lease_id,
         lease_token_hash, lease_expires_at, started_at)
@@ -54,7 +80,13 @@ describe("interrupted step attempt persistence and recovery", () => {
         datetime('now', '-2 hours'), datetime('now', '-2 hours'));
     `);
     const queue = new QueueManager("dead-worker");
-    const marker = { jobId: 73, stepId: "publish", attempt: 1, startedAt: "2026-10-31T10:00:00.000Z", attemptId: "attempt-uuid" };
+    const marker = {
+      jobId: 73,
+      stepId: "publish",
+      attempt: 1,
+      startedAt: "2026-10-31T10:00:00.000Z",
+      attemptId: "attempt-uuid",
+    };
     await queue.saveStepAttemptStart(marker);
     testDb.database.close();
 
@@ -76,8 +108,45 @@ describe("interrupted step attempt persistence and recovery", () => {
       { status: "interrupted_or_unknown", lifecycle_status: "started", attempt_id: "attempt-uuid" },
     ]);
     expect(testDb.database.prepare("SELECT COUNT(*) AS count FROM step_execution_attempts").get()).toMatchObject({ count: 0 });
-    await expect(reopenedQueue.saveStepAttemptStart({ ...marker, attemptId: "different-attempt" })).rejects.toThrow(
-      "Step attempt start already exists or could not be persisted",
+
+    let sideEffectCount = 0;
+    const driver = {
+      name: "counter-driver",
+      execute() {
+        sideEffectCount++;
+        return {
+          done: Promise.resolve({ exitCode: 0, durationMs: 1 }),
+          cancel: async () => {},
+          logFilePath: "",
+        };
+      },
+      readLog: async () => "",
+    };
+    await processJob({
+      workerId: "replacement-worker",
+      job: reclaimed!,
+      queue: reopenedQueue,
+      secrets: new SecretStore(),
+      config: { storagePath: directory, serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver,
+      workflow: { id: "deploy", name: "Deploy", on: {}, steps: [{ id: "publish", run: "publish" }] },
+    } as Processable);
+
+    expect(sideEffectCount).toBe(0);
+    expect(testDb.database.prepare("SELECT status, report FROM jobs WHERE id = 73").get()).toMatchObject({
+      status: "failed",
+    });
+    const terminalReport = JSON.parse(
+      (testDb.database.prepare("SELECT report FROM jobs WHERE id = 73").get() as { report: string }).report,
     );
+    expect(terminalReport.status).toBe("failed");
+    expect(terminalReport.steps[0].status).not.toBe("success");
+    const attemptEvidence = await reopenedQueue.getStepAttemptsForTeam("team-a", 73);
+    expect(attemptEvidence).toMatchObject([
+      { status: "interrupted_or_unknown", lifecycle_status: "started", attempt_id: "attempt-uuid" },
+    ]);
+    expect(testDb.database.prepare("SELECT COUNT(*) AS count FROM step_execution_attempts").get()).toMatchObject({
+      count: 0,
+    });
   });
 });
