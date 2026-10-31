@@ -177,19 +177,45 @@ export class DomainEventDeliveryRepository {
   /** Repairs the publish/fanout crash window without backfilling pre-subscription events. */
   async reconcileFanout(limit = 100): Promise<number> {
     const boundedLimit = Math.max(1, Math.min(500, Math.floor(limit)));
-    const result = await db.run(
-      `INSERT OR IGNORE INTO domain_event_deliveries (id, team_id, event_id, subscription_id)
-       SELECT lower(hex(randomblob(16))), s.team_id, e.id, s.id
-       FROM domain_events e JOIN domain_event_subscriptions s ON s.team_id = e.team_id
-        WHERE s.enabled = 1 AND s.event_type = e.type AND e.sequence > s.high_water_event_sequence
-         AND NOT EXISTS (
-           SELECT 1 FROM domain_event_deliveries d
-           WHERE d.team_id = s.team_id AND d.event_id = e.id AND d.subscription_id = s.id
-         )
-        ORDER BY e.sequence LIMIT ?`,
-      [boundedLimit],
-    );
-    return Number(result?.changes ?? 0);
+    await db.transaction([
+      {
+        s: `INSERT OR IGNORE INTO domain_event_deliveries (id, team_id, event_id, subscription_id)
+            SELECT lower(hex(randomblob(16))), s.team_id, e.id, s.id
+            FROM domain_events e JOIN domain_event_subscriptions s ON s.team_id = e.team_id
+            WHERE s.enabled = 1 AND s.event_type = e.type AND e.sequence > s.high_water_event_sequence
+              AND (e.team_id, e.id) IN (
+                SELECT candidate.team_id, candidate.id FROM domain_events candidate
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM domain_event_fanout_outcomes o
+                  WHERE o.team_id = candidate.team_id AND o.event_id = candidate.id
+                )
+                ORDER BY candidate.sequence, candidate.team_id, candidate.id LIMIT ?
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM domain_event_deliveries d
+                WHERE d.team_id = s.team_id AND d.event_id = e.id AND d.subscription_id = s.id
+              )
+            ORDER BY e.sequence`,
+        d: [boundedLimit],
+      },
+      {
+        s: `INSERT OR IGNORE INTO domain_event_fanout_outcomes (team_id, event_id, status, delivery_count)
+            SELECT e.team_id, e.id,
+              CASE WHEN COUNT(d.id) > 0 THEN 'matched' ELSE 'unmatched' END,
+              COUNT(d.id)
+            FROM domain_events e
+            LEFT JOIN domain_event_deliveries d ON d.team_id = e.team_id AND d.event_id = e.id
+            WHERE NOT EXISTS (
+              SELECT 1 FROM domain_event_fanout_outcomes o
+              WHERE o.team_id = e.team_id AND o.event_id = e.id
+            )
+            GROUP BY e.team_id, e.id
+            ORDER BY MIN(e.sequence), e.team_id, e.id LIMIT ?`,
+        d: [boundedLimit],
+      },
+    ]);
+    const repaired = await db.get("SELECT changes() AS count");
+    return Number(repaired?.count ?? 0);
   }
 
   /** Atomic one-row claim; work is performed by the caller after this statement returns. */
