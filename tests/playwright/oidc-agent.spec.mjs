@@ -427,6 +427,61 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     stage = "canonical-stream-persisted";
     streamList = await page.request.get(streamsUrl, { headers: workspaceHeaders });
     expect((await streamList.json()).streams.map(({ id }) => id)).toContain(stream.id);
+    stage = "stream-event-binding-fixture";
+    const fixtureDbForEvent = new DatabaseSync(databasePath);
+    const eventId = `synthetic-event-${unique}`;
+    try {
+      const recordedAt = new Date().toISOString();
+      fixtureDbForEvent
+        .prepare(
+          `INSERT INTO domain_events
+            (id, team_id, type, schema_version, source, occurred_at, recorded_at, data_json)
+           VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
+        )
+        .run(eventId, workspaceId, "browser.fixture", "synthetic-test", recordedAt, recordedAt, JSON.stringify({ note: "Persisted synthetic history" }));
+      fixtureDbForEvent
+        .prepare(
+          `INSERT INTO domain_events
+            (id, team_id, type, schema_version, source, occurred_at, recorded_at, data_json)
+           VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
+        )
+        .run(`${eventId}-second`, workspaceId, "browser.fixture", "synthetic-test", recordedAt, recordedAt, JSON.stringify({ note: "Cursor page two" }));
+    } finally {
+      fixtureDbForEvent.close();
+    }
+    stage = "stream-event-binding-endpoint";
+    const bindingResponse = await page.request.post(`${appOrigin}/api/v1/channels/${encodeURIComponent(stream.id)}/event-bindings`, {
+      headers: workspaceHeaders,
+      data: { eventId },
+    });
+    expect(bindingResponse.status()).toBe(200);
+    expect(await bindingResponse.json()).toMatchObject({ bound: true, eventId, channelId: stream.id });
+    const secondBindingResponse = await page.request.post(
+      `${appOrigin}/api/v1/channels/${encodeURIComponent(stream.id)}/event-bindings`,
+      { headers: workspaceHeaders, data: { eventId: `${eventId}-second` } },
+    );
+    expect(secondBindingResponse.status()).toBe(200);
+    stage = "stream-event-history-authorized-and-persisted";
+    const eventHistoryUrl = `${appOrigin}/api/channels/${encodeURIComponent(stream.id)}/events`;
+    const firstEventPage = await page.request.get(`${eventHistoryUrl}?limit=1`, { headers: workspaceHeaders });
+    expect(firstEventPage.status()).toBe(200);
+    const firstEventPayload = await firstEventPage.json();
+    expect(firstEventPayload.events.map(({ id }) => id)).toContain(eventId);
+    expect(firstEventPayload.nextCursor).toBeTruthy();
+    const secondEventPage = await page.request.get(
+      `${eventHistoryUrl}?limit=1&cursor=${encodeURIComponent(firstEventPayload.nextCursor)}`,
+      { headers: workspaceHeaders },
+    );
+    expect(secondEventPage.status()).toBe(200);
+    expect((await secondEventPage.json()).events.map(({ id }) => id)).toContain(`${eventId}-second`);
+    const invalidEventCursor = await page.request.get(`${eventHistoryUrl}?cursor=not-a-valid-cursor`, {
+      headers: workspaceHeaders,
+    });
+    expect(invalidEventCursor.status()).toBe(400);
+    const foreignEventHistory = await page.request.get(eventHistoryUrl, {
+      headers: { "X-Workspace-ID": foreignWorkspaceId },
+    });
+    expect([403, 404]).toContain(foreignEventHistory.status());
     stage = "canonical-thread-persisted";
     await page.reload();
     const persistedThreads = await page.request.get(threadUrl, { headers: workspaceHeaders });
@@ -470,7 +525,8 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     const savedHistory = page.getByText("Event history", { exact: true });
     await expect(savedHistory).toBeVisible();
     await savedHistory.click();
-    await expect(page.getByText("No saved events in this channel yet.")).toBeVisible();
+    await expect(page.locator(`[data-event-id="${eventId}"]`)).toBeVisible();
+    await expect(page.locator(`[data-event-id="${eventId}-second"]`)).toBeVisible();
     stage = "authenticated-workspace-shell";
     await page.goto(`${appOrigin}/ui/workspaces/${encodeURIComponent(workspaceId)}/runs`);
     stage = "sidebar-layout-desktop";
