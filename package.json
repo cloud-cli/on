@@ -34,6 +34,7 @@
     "workspace:adopt": "node scripts/adopt-default-workspace.mjs",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:compatibility:source": "tsx tests/compatibility/paired-version-source-smoke.mjs",
     "test:e2e": "docker build --no-cache -t on:e2e . && node tests/docker-smoke.mjs",
     "test:e2e:webhook": "tsx tests/docker-webhook-workflow.ts",
     "test:e2e:channels": "playwright test --config=playwright.config.mjs",
