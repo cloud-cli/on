@@ -159,6 +159,18 @@
             <p class="mt-1 text-sm text-rose-800">{{ failedStepMessage }}</p>
           </aside>
         </template>
+        <template if="hasUnrecordedCompletion">
+          <aside
+            class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"
+            role="status"
+            aria-label="Completion not recorded"
+          >
+            <strong>Completion not recorded</strong>
+            <p class="mt-1 text-sm">
+              Completion was not recorded for one or more steps. The external outcome may be unknown.
+            </p>
+          </aside>
+        </template>
         <template if="manualRestartOpen">
           <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80 p-4" role="presentation">
             <div
@@ -423,7 +435,7 @@
                         <li class="rounded-lg border border-[#3a423b] p-3" aria-label="Step attempt">
                           <div class="flex flex-wrap justify-between gap-2 text-sm">
                             <span class="font-semibold"
-                              >Attempt {{ attempt.attempt }} · {{ upper(attempt.status) }}</span
+                              >Attempt {{ attempt.attempt }} · {{ attemptStatusLabel(attempt.status) }}</span
                             >
                             <span class="text-xs text-[#98a393]">
                               {{ formatDate(attempt.started_at) }} – {{ formatDate(attempt.completed_at) }} · {{

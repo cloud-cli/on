@@ -93,6 +93,12 @@ export default function setup() {
     })),
   );
   const attemptsForStep = (step) => stepAttempts.value.filter((attempt) => String(attempt.step_id) === String(step.id));
+  const hasUnrecordedCompletion = computed(
+    () =>
+      report.value.canViewLogs &&
+      !["pending", "running"].includes(report.value.status) &&
+      stepAttempts.value.some((attempt) => attempt.status === "interrupted_or_unknown"),
+  );
   const loadStepAttempts = async (id = report.value.jobId) => {
     if (
       loadingAttemptsId === String(id) ||
@@ -155,6 +161,8 @@ export default function setup() {
       : "A step failed. Review its log output below.";
   });
   const upper = (value) => String(value || "").toUpperCase();
+  const attemptStatusLabel = (status) =>
+    status === "interrupted_or_unknown" ? "Completion not recorded" : upper(status);
   const selectStep = (index) => {
     selectedStep.value = Number(index);
   };
@@ -606,6 +614,7 @@ export default function setup() {
   return {
     report,
     attemptsForStep,
+    hasUnrecordedCompletion,
     attemptLog,
     attemptsState,
     attemptsError,
@@ -626,6 +635,7 @@ export default function setup() {
     timing,
     failedStepMessage,
     upper,
+    attemptStatusLabel,
     timezone,
     formatDate,
     artifactUrl,

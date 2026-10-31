@@ -95,6 +95,28 @@ describe("run detail step attempts", () => {
     expect(vm.attemptsError.value).toMatch(/could not be loaded/i);
   });
 
+  it("treats unmatched starts as unknown only for terminal runs with log access", async () => {
+    mocks.fetch.mockImplementation(async (url: string) =>
+      url.includes("step-attempts")
+        ? response({ attempts: [{ step_id: "a", attempt: 1, status: "interrupted_or_unknown" }] })
+        : response({
+            jobId: "42",
+            status: "failed",
+            canViewLogs: true,
+            steps: [{ id: "a", status: "failed" }],
+          }),
+    );
+    const vm = setup();
+    mocks.init?.();
+    await vi.waitFor(() => expect(vm.attemptsState.value).toBe("loaded"));
+    expect(vm.hasUnrecordedCompletion.value).toBe(true);
+    expect(vm.attemptStatusLabel("interrupted_or_unknown")).toBe("Completion not recorded");
+    vm.report.value = { ...vm.report.value, status: "running" };
+    expect(vm.hasUnrecordedCompletion.value).toBe(false);
+    vm.report.value = { ...vm.report.value, status: "failed", canViewLogs: false };
+    expect(vm.hasUnrecordedCompletion.value).toBe(false);
+  });
+
   it("does not wait for a delayed attempt response to reconcile tabs and failed-step selection", async () => {
     let finish!: (value: any) => void;
     mocks.fetch.mockImplementation((url: string) =>
