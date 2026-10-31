@@ -71,6 +71,31 @@ const CURRENT_RUNNER_AUTHORIZATION = `EXISTS (
     )
 )`;
 
+// Evaluated in each INSERT ... SELECT to close the admission/revocation race.
+// Pre-metadata revisions remain compatible; declared pins must resolve exactly.
+const PINNED_RECIPES_AVAILABLE = `EXISTS (
+  SELECT 1 FROM workflow_revisions pinned_revision
+  WHERE pinned_revision.workflow_id = workflows.id AND pinned_revision.revision = ?
+    AND NOT EXISTS (
+      SELECT 1 FROM (
+        SELECT json_extract(pinned_revision.normalized_json, '$._recipeRef.namespace') AS namespace,
+               json_extract(pinned_revision.normalized_json, '$._recipeRef.slug') AS slug,
+               json_extract(pinned_revision.normalized_json, '$._recipeRef.version') AS version
+        WHERE json_type(pinned_revision.normalized_json, '$._recipeRef') = 'object'
+        UNION ALL
+        SELECT json_extract(reference.value, '$.namespace'), json_extract(reference.value, '$.slug'),
+               json_extract(reference.value, '$.version')
+        FROM json_each(COALESCE(json_extract(pinned_revision.normalized_json, '$._pinnedReferences'), '[]')) reference
+      ) required_pin
+      WHERE required_pin.namespace IS NULL OR required_pin.slug IS NULL OR required_pin.version IS NULL
+        OR NOT EXISTS (
+          SELECT 1 FROM recipe_versions rv
+          WHERE rv.namespace = required_pin.namespace AND rv.slug = required_pin.slug
+            AND rv.version = required_pin.version AND rv.revoked = 0
+        )
+    )
+)`;
+
 export class QueueManager {
   private readonly purgingTeams = new Set<string>();
   private readonly activeStorageWrites = new Map<string, Set<Promise<void>>>();
@@ -101,13 +126,7 @@ export class QueueManager {
        SELECT ?, ?, ?, ?, ?, workflows.team_id FROM workflows
        JOIN teams ON teams.id = workflows.team_id
         WHERE workflows.id = ? AND teams.deleting_at IS NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM workflow_revisions wr
-            JOIN recipe_versions rv ON rv.namespace = json_extract(wr.normalized_json, '$._recipeRef.namespace')
-              AND rv.slug = json_extract(wr.normalized_json, '$._recipeRef.slug')
-              AND rv.version = json_extract(wr.normalized_json, '$._recipeRef.version')
-            WHERE wr.workflow_id = workflows.id AND wr.revision = ? AND rv.revoked = 1
-          )`,
+           AND ${PINNED_RECIPES_AVAILABLE}`,
       [
         workflowId,
         workflowRevision,
@@ -155,13 +174,7 @@ export class QueueManager {
         WHERE EXISTS (
           SELECT 1 FROM workflows JOIN teams ON teams.id = workflows.team_id
           WHERE workflows.id = ? AND workflows.team_id = ? AND teams.deleting_at IS NULL
-            AND NOT EXISTS (
-              SELECT 1 FROM workflow_revisions wr
-              JOIN recipe_versions rv ON rv.namespace = json_extract(wr.normalized_json, '$._recipeRef.namespace')
-                AND rv.slug = json_extract(wr.normalized_json, '$._recipeRef.slug')
-                AND rv.version = json_extract(wr.normalized_json, '$._recipeRef.version')
-              WHERE wr.workflow_id = workflows.id AND wr.revision = ? AND rv.revoked = 1
-        )
+             AND ${PINNED_RECIPES_AVAILABLE}
         AND (? IS NULL OR EXISTS (
           SELECT 1 FROM workflow_run_admissions a
            WHERE a.event_id = ? AND a.variant_index = ? AND a.status = 'claimed'
@@ -452,16 +465,10 @@ export class QueueManager {
          parentId, workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id,
          status, worker_id, report, started_at, finished_at
        )
-       SELECT jobs.id, workflow_id, ?, required_tags, concurrency_key, ?, team_id,
+         SELECT jobs.id, jobs.workflow_id, ?, jobs.required_tags, jobs.concurrency_key, ?, jobs.team_id,
                'pending', NULL, NULL, NULL, NULL
-        FROM jobs JOIN teams ON teams.id = jobs.team_id
-         WHERE jobs.id = ? AND teams.deleting_at IS NULL AND NOT EXISTS (
-           SELECT 1 FROM workflow_revisions wr JOIN recipe_versions rv
-             ON rv.namespace = json_extract(wr.normalized_json, '$._recipeRef.namespace')
-             AND rv.slug = json_extract(wr.normalized_json, '$._recipeRef.slug')
-             AND rv.version = json_extract(wr.normalized_json, '$._recipeRef.version')
-           WHERE wr.workflow_id = jobs.workflow_id AND wr.revision = ? AND rv.revoked = 1
-         )
+         FROM jobs JOIN teams ON teams.id = jobs.team_id JOIN workflows ON workflows.id = jobs.workflow_id
+          WHERE jobs.id = ? AND teams.deleting_at IS NULL AND ${PINNED_RECIPES_AVAILABLE}
         RETURNING *`,
       [activeRevision, encryptPayload(payload), jobId, activeRevision],
     );
