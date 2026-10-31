@@ -1095,7 +1095,7 @@
         },
         "responses": {
           "202": {
-            "description": "Run request durably accepted for asynchronous admission; jobs are initially empty and this does not indicate run completion.",
+            "description": "Run request durably accepted for asynchronous admission. admissionStatus is pending at response time, jobs is empty, and this does not indicate that admission or execution completed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1130,7 +1130,7 @@
                     },
                     "admissionStatus": {
                       "type": "string",
-                      "enum": ["admitted", "pending"]
+                      "enum": ["pending"]
                     },
                     "accepted": {
                       "type": "boolean",

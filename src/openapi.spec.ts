@@ -127,6 +127,14 @@ describe("OpenAPI specification", () => {
     ]);
   });
 
+  it("documents asynchronous workflow run acceptance as pending at response time", () => {
+    const response = spec.paths["/api/v1/workflows/{workflowId}/run"].post.responses["202"];
+    const schema = response.content["application/json"].schema;
+    expect(response.description).toContain("pending at response time");
+    expect(schema.properties.admissionStatus.enum).toEqual(["pending"]);
+    expect(schema.properties.jobs).toMatchObject({ type: "array", items: { type: "integer" } });
+  });
+
   it("documents scoped workflow access and OIDC-session secret settings", () => {
     expect(spec.components.parameters.WorkspaceId.name).toBe("X-Workspace-ID");
     expect(spec.components.securitySchemes.oidcSessionCookie).toEqual({
