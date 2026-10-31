@@ -73,19 +73,32 @@ const CURRENT_RUNNER_AUTHORIZATION = `EXISTS (
 
 // Evaluated in each INSERT ... SELECT to close the admission/revocation race.
 // Pre-metadata revisions remain compatible; declared pins must resolve exactly.
+// CASE ensures malformed persisted JSON cannot escape the admission predicate as a
+// SQLite "malformed JSON" exception (and cannot be mistaken for an unpinned row).
 const PINNED_RECIPES_AVAILABLE = `EXISTS (
   SELECT 1 FROM workflow_revisions pinned_revision
   WHERE pinned_revision.workflow_id = workflows.id AND pinned_revision.revision = ?
+    AND json_valid(pinned_revision.normalized_json)
     AND NOT EXISTS (
       SELECT 1 FROM (
-        SELECT json_extract(pinned_revision.normalized_json, '$._recipeRef.namespace') AS namespace,
-               json_extract(pinned_revision.normalized_json, '$._recipeRef.slug') AS slug,
-               json_extract(pinned_revision.normalized_json, '$._recipeRef.version') AS version
-        WHERE json_type(pinned_revision.normalized_json, '$._recipeRef') = 'object'
+        SELECT CASE WHEN json_type(pinned_revision.normalized_json, '$._recipeRef') = 'object'
+                    THEN json_extract(pinned_revision.normalized_json, '$._recipeRef.namespace') END AS namespace,
+               CASE WHEN json_type(pinned_revision.normalized_json, '$._recipeRef') = 'object'
+                    THEN json_extract(pinned_revision.normalized_json, '$._recipeRef.slug') END AS slug,
+               CASE WHEN json_type(pinned_revision.normalized_json, '$._recipeRef') = 'object'
+                    THEN json_extract(pinned_revision.normalized_json, '$._recipeRef.version') END AS version
+        WHERE json_type(pinned_revision.normalized_json, '$._recipeRef') IS NOT NULL
+          AND json_type(pinned_revision.normalized_json, '$._recipeRef') <> 'null'
         UNION ALL
-        SELECT json_extract(reference.value, '$.namespace'), json_extract(reference.value, '$.slug'),
-               json_extract(reference.value, '$.version')
-        FROM json_each(COALESCE(json_extract(pinned_revision.normalized_json, '$._pinnedReferences'), '[]')) reference
+        SELECT CASE WHEN reference.type = 'object' THEN json_extract(reference.value, '$.namespace') END,
+               CASE WHEN reference.type = 'object' THEN json_extract(reference.value, '$.slug') END,
+               CASE WHEN reference.type = 'object' THEN json_extract(reference.value, '$.version') END
+        FROM json_each(CASE WHEN json_type(pinned_revision.normalized_json, '$._pinnedReferences') = 'array'
+                            THEN json_extract(pinned_revision.normalized_json, '$._pinnedReferences') ELSE '[]' END) reference
+        UNION ALL
+        SELECT NULL, NULL, NULL
+        WHERE json_type(pinned_revision.normalized_json, '$._pinnedReferences') IS NOT NULL
+          AND json_type(pinned_revision.normalized_json, '$._pinnedReferences') NOT IN ('array', 'null')
       ) required_pin
       WHERE required_pin.namespace IS NULL OR required_pin.slug IS NULL OR required_pin.version IS NULL
         OR NOT EXISTS (
