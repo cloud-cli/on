@@ -58,6 +58,23 @@ vi.mock("./db-client.js", () => {
 
 const dbTestHooks = ((await import("./db-client.js")) as any).__test;
 
+function snapshotDatabase(database: DatabaseSync) {
+  const objects = database
+    .prepare(
+      "SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' ORDER BY type, name",
+    )
+    .all();
+  const tables = database
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' ORDER BY name",
+    )
+    .all() as Array<{ name: string }>;
+  return {
+    objects,
+    rows: Object.fromEntries(tables.map(({ name }) => [name, database.prepare(`SELECT * FROM "${name}"`).all()])),
+  };
+}
+
 const baselineVersions = [
   "001_add_workflow_enabled",
   "002_add_push_subscriptions",
@@ -143,7 +160,12 @@ describe("v3 migrations against SQLite", () => {
       .prepare(
         "SELECT namespace, slug, version, source_yaml FROM connector_template_versions WHERE slug = 'github-push'",
       )
-      .get() as { namespace: string; slug: string; version: number; source_yaml: string };
+      .get() as {
+      namespace: string;
+      slug: string;
+      version: number;
+      source_yaml: string;
+    };
     expect(githubTemplate).toEqual({
       namespace: GITHUB_PUSH_TEMPLATE.namespace,
       slug: GITHUB_PUSH_TEMPLATE.slug,
@@ -152,7 +174,12 @@ describe("v3 migrations against SQLite", () => {
     });
     const gitMiniTemplate = database
       .prepare("SELECT namespace, slug, version, source_yaml FROM connector_template_versions WHERE slug = 'gitmini'")
-      .get() as { namespace: string; slug: string; version: number; source_yaml: string };
+      .get() as {
+      namespace: string;
+      slug: string;
+      version: number;
+      source_yaml: string;
+    };
     expect(gitMiniTemplate).toEqual({
       namespace: GITMINI_TEMPLATE.namespace,
       slug: GITMINI_TEMPLATE.slug,
@@ -262,7 +289,11 @@ describe("v3 migrations against SQLite", () => {
       { id: "legacy-message", body_json: '{"text":"legacy stream note"}' },
     ]);
     expect(database.prepare("SELECT id, thread_id, body_json FROM channel_thread_messages").all()).toEqual([
-      { id: "thread-message", thread_id: "thread-a", body_json: '{"text":"thread reply"}' },
+      {
+        id: "thread-message",
+        thread_id: "thread-a",
+        body_json: '{"text":"thread reply"}',
+      },
     ]);
     expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
@@ -290,7 +321,12 @@ describe("v3 migrations against SQLite", () => {
         "SELECT draft_yaml, draft_name, published, signing_secret_ciphertext FROM connectors WHERE connector_id = 'legacy'",
       )
       .get();
-    expect(row).toEqual({ draft_yaml: null, draft_name: null, published: 1, signing_secret_ciphertext: null });
+    expect(row).toEqual({
+      draft_yaml: null,
+      draft_name: null,
+      published: 1,
+      signing_secret_ciphertext: null,
+    });
 
     database.exec(
       "DELETE FROM schema_migrations WHERE version IN ('039_connector_drafts', '040_connector_webhook_signing_secret')",
@@ -440,16 +476,66 @@ describe("v3 migrations against SQLite", () => {
   });
 
   it.each([
-    { version: "031_stream_threads", objectType: "table", objectName: "channel_thread_messages" },
-    { version: "032_step_attempt_snapshots", objectType: "column", objectName: "snapshot_json" },
-    { version: "033_stream_event_bindings", objectType: "index", objectName: "idx_stream_event_bindings_event" },
+    {
+      version: "031_stream_threads",
+      objectType: "table",
+      objectName: "channel_thread_messages",
+    },
+    {
+      version: "032_step_attempt_snapshots",
+      objectType: "column",
+      objectName: "snapshot_json",
+    },
+    {
+      version: "033_stream_event_bindings",
+      objectType: "index",
+      objectName: "idx_stream_event_bindings_event",
+    },
     {
       version: "034_stream_event_binding_integrity",
       objectType: "trigger",
       objectName: "stream_event_binding_team_guard",
     },
-    { version: "035_domain_event_fanout_outcomes", objectType: "table", objectName: "domain_event_fanout_outcomes" },
-    { version: "041_connector_template_registry", objectType: "table", objectName: "connector_template_versions" },
+    {
+      version: "035_domain_event_fanout_outcomes",
+      objectType: "table",
+      objectName: "domain_event_fanout_outcomes",
+    },
+    {
+      version: "036_workflow_run_admission_outcomes",
+      objectType: "column",
+      objectName: "admission_outcome",
+    },
+    {
+      version: "037_workspace_logos",
+      objectType: "table",
+      objectName: "workspace_logos",
+    },
+    {
+      version: "038_yaml_connectors",
+      objectType: "table",
+      objectName: "connectors",
+    },
+    {
+      version: "039_connector_drafts",
+      objectType: "column",
+      objectName: "draft_yaml",
+    },
+    {
+      version: "040_connector_webhook_signing_secret",
+      objectType: "column",
+      objectName: "signing_secret_ciphertext",
+    },
+    {
+      version: "041_connector_template_registry",
+      objectType: "table",
+      objectName: "connector_template_versions",
+    },
+    {
+      version: "042_gitmini_connector_template",
+      objectType: "table",
+      objectName: "connector_template_versions",
+    },
   ])(
     "retries additive migration $version after its schema applied but marker failed",
     async ({ version, objectType, objectName }) => {
@@ -460,10 +546,18 @@ describe("v3 migrations against SQLite", () => {
       const database = dbTestHooks.currentDatabase() as DatabaseSync;
       expect(database.prepare("SELECT 1 FROM schema_migrations WHERE version = ?").get(version)).toBeUndefined();
       if (objectType === "column") {
+        const tableName =
+          version === "036_workflow_run_admission_outcomes"
+            ? "workflow_run_admissions"
+            : version === "032_step_attempt_snapshots"
+              ? "step_execution_attempts"
+              : "connectors";
         expect(
-          (database.prepare("PRAGMA table_info(step_execution_attempts)").all() as Array<{ name: string }>).some(
-            ({ name }) => name === objectName,
-          ),
+          (
+            database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{
+              name: string;
+            }>
+          ).some(({ name }) => name === objectName),
         ).toBe(true);
       } else {
         expect(
@@ -471,14 +565,46 @@ describe("v3 migrations against SQLite", () => {
         ).toBeTruthy();
       }
 
+      if (version === "036_workflow_run_admission_outcomes") {
+        database.exec(`INSERT INTO workflow_run_admissions
+          (event_id, team_id, workflow_id, revision, variant_index, matrix_json, tags_json, status)
+          VALUES ('retry-event', 'team-a', 'workflow-a', 1, 0, '{}', '[]', 'admitted')`);
+      }
+      if (version === "038_yaml_connectors") {
+        database.exec(`INSERT INTO connectors(team_id, connector_id, name, source_yaml, revision)
+          VALUES ('team-a', 'retry-connector', 'Retry connector', 'name: retry', 1)`);
+      }
       await expect(runMigrations()).resolves.toBeUndefined();
+      const afterRetry = snapshotDatabase(database);
       await expect(runMigrations()).resolves.toBeUndefined();
+      expect(snapshotDatabase(database)).toEqual(afterRetry);
       expect(
         database.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = ?").get(version),
       ).toEqual({
         count: 1,
       });
       expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+      if (version === "036_workflow_run_admission_outcomes") {
+        expect(
+          database
+            .prepare("SELECT admission_outcome FROM workflow_run_admissions WHERE event_id = 'retry-event'")
+            .get(),
+        ).toEqual({
+          admission_outcome: "accepted",
+        });
+      }
+      if (version === "038_yaml_connectors") {
+        expect(
+          database
+            .prepare("SELECT revision, source_yaml FROM connector_revisions WHERE connector_id = 'retry-connector'")
+            .all(),
+        ).toEqual([{ revision: 1, source_yaml: "name: retry" }]);
+      }
+      if (version === "041_connector_template_registry" || version === "042_gitmini_connector_template") {
+        expect(database.prepare("SELECT COUNT(*) AS count FROM connector_template_versions").get()).toEqual({
+          count: 2,
+        });
+      }
     },
   );
 
