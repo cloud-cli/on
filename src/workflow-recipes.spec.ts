@@ -242,6 +242,93 @@ secrets: { credential: "\u0024{secrets.SIGNING_KEY}" }
     });
   });
 
+  it("pins sibling and nested call sites as one independently inspectable dependency tree", async () => {
+    const root = recipeRow();
+    root.functions_json = JSON.stringify({
+      main: {
+        inputs: JSON.parse(root.inputs_json),
+        outputs: { type: "object" },
+        steps: [
+          { id: "left", call: "other/branch@3#left", with: {} },
+          { id: "right", call: "other/branch@3#right", with: {} },
+        ],
+      },
+    });
+    const branch = {
+      ...recipeRow(),
+      namespace: "other",
+      slug: "branch",
+      version: 3,
+      functions_json: JSON.stringify({
+        left: {
+          inputs: { type: "object" },
+          outputs: { type: "object" },
+          steps: [{ id: "nested", call: "tools/leaf@4#publish", with: {} }],
+        },
+        right: {
+          inputs: { type: "object" },
+          outputs: { type: "object" },
+          steps: [{ run: "right" }],
+        },
+      }),
+    };
+    const leaf = {
+      ...recipeRow(),
+      namespace: "tools",
+      slug: "leaf",
+      version: 4,
+      functions_json: JSON.stringify({
+        publish: {
+          inputs: { type: "object" },
+          outputs: { type: "object" },
+          steps: [{ run: "publish" }],
+        },
+      }),
+    };
+    database.get.mockImplementation(async (sql: string, values: string[]) => {
+      if (sql.includes("recipe_versions")) {
+        if (values[0] === "tools" && values[1] === "deploy") {
+          return root;
+        }
+        return values[0] === "other" ? branch : leaf;
+      }
+      if (sql.includes("COALESCE(MAX(revision)")) {
+        return { revision: 0 };
+      }
+      if (sql.includes("SELECT team_id FROM workflows")) {
+        return { team_id: "team-a" };
+      }
+      return null;
+    });
+    database.all.mockResolvedValue([]);
+
+    await new WorkflowRepository().saveDraftForTeam("team-a", "deploy-flow", source());
+    const revisionInsert = database.transaction.mock.calls[0][0][1];
+    const snapshot = JSON.parse(revisionInsert.d[3] as string);
+    expect(snapshot._pinnedReferences).toEqual([
+      { namespace: "other", slug: "branch", version: 3, function: "left" },
+      { namespace: "tools", slug: "leaf", version: 4, function: "publish" },
+      { namespace: "other", slug: "branch", version: 3, function: "right" },
+    ]);
+    expect(snapshot._pinnedRecipeFunctions).toEqual({
+      "other/branch@3#left": {
+        inputs: { type: "object" },
+        outputs: { type: "object" },
+        steps: [{ id: "nested", call: "tools/leaf@4#publish", with: {} }],
+      },
+      "tools/leaf@4#publish": {
+        inputs: { type: "object" },
+        outputs: { type: "object" },
+        steps: [{ run: "publish" }],
+      },
+      "other/branch@3#right": {
+        inputs: { type: "object" },
+        outputs: { type: "object" },
+        steps: [{ run: "right" }],
+      },
+    });
+  });
+
   it("pins legacy nested recipe rows as main with their exact contracts and body", async () => {
     const root = recipeRow();
     root.functions_json = JSON.stringify({
