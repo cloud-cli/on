@@ -274,9 +274,12 @@
             <section class="mb-4 space-y-2" aria-label="Nested recipe calls" class-hidden="!callInstances.length">
               <h2 class="text-sm font-semibold text-app-foreground">Nested recipe calls</h2>
               <template for="call of callInstances">
-                <details class="rounded-lg border border-app-border bg-app-panel p-3">
+                <details
+                  class="rounded-lg border border-app-border bg-app-panel p-3"
+                  attr-class="call.depth ? 'ml-4 border-l-2 border-l-app-primary' : ''"
+                >
                   <summary class="cursor-pointer text-sm font-medium">
-                    {{ call.target }} · {{ upper(call.status) }}
+                    {{ call.depth ? '↳ ' : '' }}{{ call.target }} · {{ upper(call.status) }}
                   </summary>
                   <p class="mt-1 text-xs text-app-secondary">{{ call.functionName }} · {{ call.callId }}</p>
                   <p class="mt-2 text-sm" class-hidden="!call.error || !report.canViewLogs">{{ call.error }}</p>

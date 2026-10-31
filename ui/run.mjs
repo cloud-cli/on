@@ -86,12 +86,33 @@ export default function setup() {
       isSelected: Number(selectedStep.value) === Number(index),
     })),
   );
-  const callInstances = computed(() =>
-    (report.value.callInstances || []).map((call) => ({
+  const callInstances = computed(() => {
+    const calls = (report.value.callInstances || []).map((call, index) => ({
       ...call,
+      index,
       childSteps: steps.value.filter((step) => (call.stepIds || []).includes(step.id)),
-    })),
-  );
+      children: [],
+      depth: 0,
+    }));
+    const byId = new Map(calls.map((call) => [call.callId, call]));
+    const roots = [];
+    for (const call of calls) {
+      const parent = call.parentCallId ? byId.get(call.parentCallId) : null;
+      if (parent && parent !== call) {
+        parent.children.push(call);
+      } else {
+        roots.push(call);
+      }
+    }
+    const ordered = [];
+    const visit = (call, depth) => {
+      call.depth = depth;
+      ordered.push(call);
+      call.children.forEach((child) => visit(child, depth + 1));
+    };
+    roots.forEach((call) => visit(call, 0));
+    return ordered;
+  });
   const attemptsForStep = (step) => stepAttempts.value.filter((attempt) => String(attempt.step_id) === String(step.id));
   const loadStepAttempts = async (id = report.value.jobId) => {
     if (

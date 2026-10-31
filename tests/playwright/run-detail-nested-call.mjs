@@ -33,6 +33,7 @@ for (const viewport of [
     await expect(page.getByRole("heading", { name: /Nested recipe run/ })).toBeVisible();
     const call = page.locator("summary", { hasText: "deploy-service@1.2.3" });
     await expect(call).toContainText("SUCCESS");
+    await expect(call.locator("..")).not.toHaveClass(/ml-4/);
     await call.click();
     await expect(page.getByText("nested-input-value")).toBeVisible();
     await expect(page.getByText("nested-output-value")).toBeVisible();
@@ -41,6 +42,7 @@ for (const viewport of [
     await expect(page.locator(".log-panel pre").first()).toContainText("child step output");
     const failedCall = page.locator("summary", { hasText: "notify-operator@3.1.0" });
     await expect(failedCall).toContainText("FAILED");
+    await expect(failedCall.locator("..")).toHaveClass(/ml-4/);
     await failedCall.click();
     await expect(page.getByText("Synthetic nested-call failure")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);

@@ -242,7 +242,7 @@ describe("run detail step attempts", () => {
     expect(copied[0]).toContain("Attempt 2 (success):");
   });
 
-  it("links nested call instances to their flattened child step reports", async () => {
+  it("nests call instances in stable parent order and links each child step report", async () => {
     mocks.fetch.mockImplementation(async (url: string) =>
       url.includes("step-attempts")
         ? response({ attempts: [] })
@@ -252,20 +252,69 @@ describe("run detail step attempts", () => {
             canViewInputs: true,
             callInstances: [
               {
-                callId: "42:invoke#attempt-1",
-                target: "team/build@2#main",
-                functionName: "main",
+                callId: "A",
+                target: "A",
+                functionName: "a",
                 status: "success",
-                stepIds: ["invoke#attempt-1/compile"],
+                stepIds: ["step-a"],
+              },
+              {
+                callId: "C",
+                parentCallId: "B",
+                target: "C",
+                functionName: "c",
+                status: "success",
+                stepIds: ["step-c"],
+              },
+              { callId: "S", target: "Sibling", functionName: "s", status: "success", stepIds: ["step-s"] },
+              {
+                callId: "B",
+                parentCallId: "A",
+                target: "B",
+                functionName: "b",
+                status: "success",
+                stepIds: ["step-b"],
               },
             ],
-            steps: [{ id: "invoke#attempt-1/compile", name: "Compile", status: "success" }],
+            steps: [
+              { id: "step-a", name: "Step A", status: "success" },
+              { id: "step-b", name: "Step B", status: "success" },
+              { id: "step-c", name: "Step C", status: "success" },
+              { id: "step-s", name: "Sibling step", status: "success" },
+            ],
           }),
     );
     const vm = setup();
     mocks.init?.();
 
-    await vi.waitFor(() => expect(vm.callInstances.value).toHaveLength(1));
-    expect(vm.callInstances.value[0].childSteps.map((step: any) => step.id)).toEqual(["invoke#attempt-1/compile"]);
+    await vi.waitFor(() => expect(vm.callInstances.value).toHaveLength(4));
+    expect(vm.callInstances.value.map((call: any) => [call.callId, call.depth])).toEqual([
+      ["A", 0],
+      ["B", 1],
+      ["C", 2],
+      ["S", 0],
+    ]);
+    expect(vm.callInstances.value.map((call: any) => call.childSteps[0].id)).toEqual([
+      "step-a",
+      "step-b",
+      "step-c",
+      "step-s",
+    ]);
+    vm.selectStep(vm.callInstances.value[2].childSteps[0].index);
+    expect(vm.selectedStepReport.value.id).toBe("step-c");
+  });
+
+  it("keeps legacy reports without call instances unchanged", async () => {
+    mocks.fetch.mockImplementation(async (url: string) =>
+      url.includes("step-attempts")
+        ? response({ attempts: [] })
+        : response({ jobId: "42", canViewLogs: true, steps: [{ id: "legacy", name: "Legacy", status: "success" }] }),
+    );
+    const vm = setup();
+    mocks.init?.();
+
+    await vi.waitFor(() => expect(vm.steps.value).toHaveLength(1));
+    expect(vm.callInstances.value).toEqual([]);
+    expect(vm.steps.value[0].id).toBe("legacy");
   });
 });
