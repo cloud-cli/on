@@ -393,6 +393,72 @@ describe("incremental workflow reports", () => {
     ]);
   });
 
+  it("retains the failed child and parent statuses when a nested return contract fails", async () => {
+    const queue = {
+      saveReport: vi.fn(async () => {}),
+      saveStepLog: vi.fn(async () => {}),
+      saveStepAttemptStart: vi.fn(async () => {}),
+      saveStepAttempt: vi.fn(async () => {}),
+      completeJob: vi.fn(async () => {}),
+      isCancelled: vi.fn(async () => false),
+      isRecipeVersionRevoked: vi.fn(async () => false),
+    };
+    await processJob({
+      workerId: "nested-failure-worker",
+      job: {
+        id: 133,
+        workflow_id: "nested-failure",
+        workflow_revision: 1,
+        required_tags: "[]",
+        concurrency_key: null,
+        status: "running",
+        worker_id: "nested-failure-worker",
+        payload: JSON.stringify({ inputs: {} }),
+        created_at: new Date().toISOString(),
+      },
+      queue,
+      secrets: { getAll: () => ({}), redactText: (text: string) => text },
+      config: { storagePath: "/tmp/nested-call-failure", serverUrl: "http://runner.test", env: {}, plugins: [] },
+      driver: { execute: vi.fn(), readLog: vi.fn(async () => "") },
+      workflow: {
+        id: "nested-failure",
+        name: "Nested failure",
+        on: {},
+        steps: [{ id: "outer", call: "team/outer@1#main", with: {} }],
+        _pinnedReferences: [
+          { namespace: "team", slug: "outer", version: 1, function: "main" },
+          { namespace: "team", slug: "inner", version: 2, function: "run" },
+        ],
+        _pinnedRecipeFunctions: {
+          "team/outer@1#main": {
+            inputs: { type: "object", properties: {}, additionalProperties: false },
+            outputs: { type: "object", properties: {}, additionalProperties: false },
+            returns: {},
+            steps: [{ id: "invoke-inner", call: "team/inner@2#run", with: {} }],
+          },
+          "team/inner@2#run": {
+            inputs: { type: "object", properties: {}, additionalProperties: false },
+            outputs: { type: "object", properties: {}, additionalProperties: false },
+            returns: { result: "unsupported-expression" },
+            steps: [],
+          },
+        },
+      } as Processable,
+    } as Processable);
+
+    const [, status, report] = queue.completeJob.mock.calls[0] as [number, string, WorkflowExecutionReport];
+    expect(status).toBe("failed");
+    expect(report.callInstances).toEqual([
+      expect.objectContaining({ callId: "133:outer#attempt-1", status: "failed" }),
+      expect.objectContaining({
+        callId: "133:outer#attempt-1/invoke-inner#attempt-1",
+        parentCallId: "133:outer#attempt-1",
+        status: "failed",
+        error: "Unsupported nested recipe return expression: unsupported-expression",
+      }),
+    ]);
+  });
+
   it.each([
     [
       "revoked",
