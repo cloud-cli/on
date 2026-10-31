@@ -148,25 +148,25 @@ export class DomainEventDeliveryRepository {
     if (!event) {
       throw new Error("Event not found for team");
     }
-    await db.run(
-      `INSERT OR IGNORE INTO domain_event_deliveries (id, team_id, event_id, subscription_id)
-       SELECT lower(hex(randomblob(16))), ?, ?, s.id FROM domain_event_subscriptions s
-       WHERE s.team_id = ? AND s.event_type = ? AND s.enabled = 1
-           AND ? > s.high_water_event_sequence`,
-      [teamId, eventId, teamId, event.type, event.sequence],
-    );
-    const count = await db.get(
-      "SELECT COUNT(*) AS count FROM domain_event_deliveries WHERE team_id = ? AND event_id = ?",
-      [teamId, eventId],
-    );
-    const deliveryCount = Number(count?.count ?? 0);
-    await db.run(
-      `INSERT INTO domain_event_fanout_outcomes (team_id, event_id, status, delivery_count)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(team_id, event_id) DO UPDATE SET status = 'repeat', delivery_count = excluded.delivery_count,
-         updated_at = CURRENT_TIMESTAMP`,
-      [teamId, eventId, deliveryCount ? "matched" : "unmatched", deliveryCount],
-    );
+    await db.transaction([
+      {
+        s: `INSERT OR IGNORE INTO domain_event_deliveries (id, team_id, event_id, subscription_id)
+            SELECT lower(hex(randomblob(16))), ?, ?, s.id FROM domain_event_subscriptions s
+            WHERE s.team_id = ? AND s.event_type = ? AND s.enabled = 1
+              AND ? > s.high_water_event_sequence`,
+        d: [teamId, eventId, teamId, event.type, event.sequence],
+      },
+      {
+        s: `INSERT INTO domain_event_fanout_outcomes (team_id, event_id, status, delivery_count)
+            VALUES (?, ?,
+              CASE WHEN (SELECT COUNT(*) FROM domain_event_deliveries WHERE team_id = ? AND event_id = ?) > 0
+                THEN 'matched' ELSE 'unmatched' END,
+              (SELECT COUNT(*) FROM domain_event_deliveries WHERE team_id = ? AND event_id = ?))
+            ON CONFLICT(team_id, event_id) DO UPDATE SET status = 'repeat', delivery_count = excluded.delivery_count,
+              updated_at = CURRENT_TIMESTAMP`,
+        d: [teamId, eventId, teamId, eventId, teamId, eventId],
+      },
+    ]);
     const outcome = await db.get(
       "SELECT status, delivery_count FROM domain_event_fanout_outcomes WHERE team_id = ? AND event_id = ?",
       [teamId, eventId],

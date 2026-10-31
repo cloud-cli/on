@@ -11,6 +11,18 @@ vi.mock("./db-client.js", () => ({
     all: async (sql: string, values: unknown[] = []) => testDb.database!.prepare(sql).all(...(values as any[])),
     get: async (sql: string, values: unknown[] = []) => testDb.database!.prepare(sql).get(...(values as any[])),
     run: async (sql: string, values: unknown[] = []) => testDb.database!.prepare(sql).run(...(values as any[])),
+    transaction: async (statements: Array<{ s: string; d: unknown[] }>) => {
+      testDb.database!.exec("BEGIN IMMEDIATE");
+      try {
+        for (const statement of statements) {
+          testDb.database!.prepare(statement.s).run(...(statement.d as any[]));
+        }
+        testDb.database!.exec("COMMIT");
+      } catch (error) {
+        testDb.database!.exec("ROLLBACK");
+        throw error;
+      }
+    },
   },
 }));
 
@@ -50,8 +62,15 @@ describe("domain event outcome projection in SQLite", () => {
       INSERT INTO domain_events VALUES ('event', 'team', 1, 'changed'), ('unmatched', 'team', 2, 'other');
       INSERT INTO domain_event_subscriptions(id, team_id, workflow_id, workflow_revision, event_type)
         VALUES ('sub-a', 'team', 'wf-a', 1, 'changed'), ('sub-b', 'team', 'wf-b', 1, 'changed');
-    `);
+      `);
     const repository = new DomainEventDeliveryRepository();
+    testDb.database.exec(`CREATE TRIGGER reject_fanout_outcome BEFORE INSERT ON domain_event_fanout_outcomes
+      BEGIN SELECT RAISE(ABORT, 'injected fanout outcome failure'); END`);
+    await expect(repository.fanout("team", "event")).rejects.toThrow("injected fanout outcome failure");
+    expect(
+      testDb.database.prepare("SELECT COUNT(*) AS count FROM domain_event_deliveries WHERE event_id = 'event'").get(),
+    ).toEqual({ count: 0 });
+    testDb.database.exec("DROP TRIGGER reject_fanout_outcome");
     expect(await repository.fanout("team", "event")).toEqual({ status: "matched", deliveryCount: 2 });
     expect(await repository.fanout("team", "event")).toEqual({ status: "repeat", deliveryCount: 2 });
     expect(await repository.fanout("team", "unmatched")).toEqual({ status: "unmatched", deliveryCount: 0 });
