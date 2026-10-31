@@ -598,6 +598,7 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.keyboard.press("Control+k");
     await quickSwitchSearch.fill("no matching fixture destination");
+    await expect(page.getByText("No matching destinations.", { exact: true })).toBeVisible();
     await quickSwitchSearch.fill("OIDC Browser Fixture");
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
