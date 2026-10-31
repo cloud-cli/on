@@ -29,13 +29,20 @@ export type EventDelivery = {
   updatedAt: string;
 };
 
-export type EventFanoutOutcome = { status: "matched" | "repeat" | "unmatched"; deliveryCount: number };
+export type EventFanoutOutcome = {
+  status: "matched" | "repeat" | "unmatched";
+  deliveryCount: number;
+  routingStatus: "matched" | "unmatched" | null;
+};
 
 export type EventOutcomeProjection = {
   eventId: string;
   fanout: "matched" | "repeat" | "unmatched" | null;
+  routingStatus: "matched" | "unmatched" | null;
   repeatSemantics: "idempotent-repeat" | null;
-  deliveries: Array<{ status: "pending" | "in-progress" | "accepted" | "filtered" | "failed" }>;
+  deliveries: Array<{
+    status: "pending" | "in-progress" | "accepted" | "filtered" | "failed";
+  }>;
 };
 
 export class DomainEventDeliveryRepository {
@@ -58,10 +65,18 @@ export class DomainEventDeliveryRepository {
 
   async getFanoutOutcome(teamId: string, eventId: string): Promise<EventFanoutOutcome | null> {
     const row = await db.get(
-      "SELECT status, delivery_count FROM domain_event_fanout_outcomes WHERE team_id = ? AND event_id = ?",
+      `SELECT status, delivery_count,
+         COALESCE(routing_status, CASE WHEN status IN ('matched','unmatched') THEN status END) AS routing_status
+       FROM domain_event_fanout_outcomes WHERE team_id = ? AND event_id = ?`,
       [teamId, eventId],
     );
-    return row ? { status: row.status, deliveryCount: Number(row.delivery_count) } : null;
+    return row
+      ? {
+          status: row.status,
+          deliveryCount: Number(row.delivery_count),
+          routingStatus: row.routing_status ?? null,
+        }
+      : null;
   }
 
   /** Read-only normalized outcome summary; deliberately excludes event payloads and delivery errors. */
@@ -77,6 +92,7 @@ export class DomainEventDeliveryRepository {
     return {
       eventId,
       fanout: outcome?.status ?? null,
+      routingStatus: outcome?.routingStatus ?? null,
       repeatSemantics: outcome?.status === "repeat" ? "idempotent-repeat" : null,
       deliveries: rows.map((row: any) => ({
         status:
@@ -157,21 +173,29 @@ export class DomainEventDeliveryRepository {
         d: [teamId, eventId, teamId, event.type, event.sequence],
       },
       {
-        s: `INSERT INTO domain_event_fanout_outcomes (team_id, event_id, status, delivery_count)
+        s: `INSERT INTO domain_event_fanout_outcomes (team_id, event_id, status, delivery_count, routing_status)
             VALUES (?, ?,
               CASE WHEN (SELECT COUNT(*) FROM domain_event_deliveries WHERE team_id = ? AND event_id = ?) > 0
                 THEN 'matched' ELSE 'unmatched' END,
-              (SELECT COUNT(*) FROM domain_event_deliveries WHERE team_id = ? AND event_id = ?))
+              (SELECT COUNT(*) FROM domain_event_deliveries WHERE team_id = ? AND event_id = ?),
+              CASE WHEN (SELECT COUNT(*) FROM domain_event_deliveries WHERE team_id = ? AND event_id = ?) > 0
+                THEN 'matched' ELSE 'unmatched' END)
             ON CONFLICT(team_id, event_id) DO UPDATE SET status = 'repeat', delivery_count = excluded.delivery_count,
               updated_at = CURRENT_TIMESTAMP`,
-        d: [teamId, eventId, teamId, eventId, teamId, eventId],
+        d: [teamId, eventId, teamId, eventId, teamId, eventId, teamId, eventId],
       },
     ]);
     const outcome = await db.get(
-      "SELECT status, delivery_count FROM domain_event_fanout_outcomes WHERE team_id = ? AND event_id = ?",
+      `SELECT status, delivery_count,
+         COALESCE(routing_status, CASE WHEN status IN ('matched','unmatched') THEN status END) AS routing_status
+       FROM domain_event_fanout_outcomes WHERE team_id = ? AND event_id = ?`,
       [teamId, eventId],
     );
-    return { status: outcome.status, deliveryCount: Number(outcome.delivery_count) };
+    return {
+      status: outcome.status,
+      deliveryCount: Number(outcome.delivery_count),
+      routingStatus: outcome.routing_status ?? null,
+    };
   }
 
   /** Repairs the publish/fanout crash window without backfilling pre-subscription events. */
@@ -199,10 +223,11 @@ export class DomainEventDeliveryRepository {
         d: [boundedLimit],
       },
       {
-        s: `INSERT OR IGNORE INTO domain_event_fanout_outcomes (team_id, event_id, status, delivery_count)
+        s: `INSERT OR IGNORE INTO domain_event_fanout_outcomes (team_id, event_id, status, delivery_count, routing_status)
             SELECT e.team_id, e.id,
               CASE WHEN COUNT(d.id) > 0 THEN 'matched' ELSE 'unmatched' END,
-              COUNT(d.id)
+              COUNT(d.id),
+              CASE WHEN COUNT(d.id) > 0 THEN 'matched' ELSE 'unmatched' END
             FROM domain_events e
             LEFT JOIN domain_event_deliveries d ON d.team_id = e.team_id AND d.event_id = e.id
             WHERE NOT EXISTS (

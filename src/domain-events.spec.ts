@@ -7,8 +7,19 @@ import { WebhookServer } from "./server.js";
 import { DomainEventDeliveryRepository } from "./domain-event-delivery-repository.js";
 import { DomainEventRepository } from "./domain-event-repository.js";
 
-const response = () => ({ writeHead: vi.fn().mockReturnThis(), end: vi.fn(), headersSent: false }) as any;
-const user = { subject: "user-1", kind: "human", platformRole: "user", platformCapabilities: [], disabled: false };
+const response = () =>
+  ({
+    writeHead: vi.fn().mockReturnThis(),
+    end: vi.fn(),
+    headersSent: false,
+  }) as any;
+const user = {
+  subject: "user-1",
+  kind: "human",
+  platformRole: "user",
+  platformCapabilities: [],
+  disabled: false,
+};
 
 function makeServer(capabilities = ["webhooks.manage", "webhooks.view", "workflows.edit", "runs.view"]) {
   const server: any = {
@@ -24,7 +35,12 @@ function makeServer(capabilities = ["webhooks.manage", "webhooks.view", "workflo
     authorizer: {
       workspace: vi.fn(async (_req: unknown, res: any, capability: string) => {
         if (capabilities.includes(capability)) {
-          return { principal: user, teamId: "workspace-a", role: "admin", capabilities };
+          return {
+            principal: user,
+            teamId: "workspace-a",
+            role: "admin",
+            capabilities,
+          };
         }
         res.writeHead(403, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Forbidden" }));
@@ -93,8 +109,13 @@ describe("POST /api/v1/domain-events", () => {
 
   it("publishes in the authenticated workspace and returns only event metadata", async () => {
     const server = makeServer();
-    vi.spyOn(server.domainEventRepository, "publish").mockResolvedValue({ id: "evt-1" } as any);
-    vi.spyOn(server.domainEventDeliveryRepository, "fanout").mockResolvedValue({ status: "matched", deliveryCount: 2 });
+    vi.spyOn(server.domainEventRepository, "publish").mockResolvedValue({
+      id: "evt-1",
+    } as any);
+    vi.spyOn(server.domainEventDeliveryRepository, "fanout").mockResolvedValue({
+      status: "matched",
+      deliveryCount: 2,
+    });
     const res = await request(server, "POST", "/api/v1/domain-events", {
       type: "order.created",
       source: "orders",
@@ -112,7 +133,11 @@ describe("POST /api/v1/domain-events", () => {
     expect(server.domainEventDeliveryRepository.fanout).toHaveBeenCalledWith("workspace-a", "evt-1");
     expect(res.writeHead).toHaveBeenCalledWith(202, expect.any(Object));
     const body = JSON.parse(res.end.mock.calls[0][0]);
-    expect(body).toEqual({ eventId: "evt-1", deliveryCount: 2, fanoutStatus: "matched" });
+    expect(body).toEqual({
+      eventId: "evt-1",
+      deliveryCount: 2,
+      fanoutStatus: "matched",
+    });
     expect(JSON.stringify(body)).not.toContain("orderId");
   });
 
@@ -121,10 +146,16 @@ describe("POST /api/v1/domain-events", () => {
     vi.spyOn(server.domainEventDeliveryRepository, "getFanoutOutcome").mockResolvedValue({
       status: "unmatched",
       deliveryCount: 0,
+      routingStatus: "unmatched",
     });
     const res = await request(server, "GET", "/api/v1/domain-events/evt-1/fanout-outcome");
     expect(server.domainEventDeliveryRepository.getFanoutOutcome).toHaveBeenCalledWith("workspace-a", "evt-1");
-    expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({ eventId: "evt-1", status: "unmatched", deliveryCount: 0 });
+    expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({
+      eventId: "evt-1",
+      status: "unmatched",
+      deliveryCount: 0,
+      routingStatus: "unmatched",
+    });
   });
 
   it("returns a workspace-scoped normalized external outcome projection without event data", async () => {
@@ -132,6 +163,7 @@ describe("POST /api/v1/domain-events", () => {
     vi.spyOn(server.domainEventDeliveryRepository, "getOutcomeProjection").mockResolvedValue({
       eventId: "evt-1",
       fanout: "repeat",
+      routingStatus: "matched",
       repeatSemantics: "idempotent-repeat",
       deliveries: [{ status: "filtered" }, { status: "failed" }],
     });
@@ -140,6 +172,7 @@ describe("POST /api/v1/domain-events", () => {
     expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({
       eventId: "evt-1",
       fanout: "repeat",
+      routingStatus: "matched",
       repeatSemantics: "idempotent-repeat",
       deliveries: [{ status: "filtered" }, { status: "failed" }],
     });
@@ -178,13 +211,22 @@ describe("POST /api/v1/domain-events", () => {
     );
     expect(JSON.parse(response.end.mock.calls[0][0])).toMatchObject({
       id: "invocation-1",
-      variants: [{ runId: "42", admissionStatus: "admitted", admissionOutcome: "accepted" }],
+      variants: [
+        {
+          runId: "42",
+          admissionStatus: "admitted",
+          admissionOutcome: "accepted",
+        },
+      ],
     });
     expect(response.end.mock.calls[0][0]).not.toContain("inputsCiphertext");
 
     const runStatus = await request(server, "GET", "/api/jobs/42/status");
     expect(server.queue.getJobForTeam).toHaveBeenCalledWith("workspace-a", "42");
-    expect(JSON.parse(runStatus.end.mock.calls[0][0])).toMatchObject({ id: 42, status: "success" });
+    expect(JSON.parse(runStatus.end.mock.calls[0][0])).toMatchObject({
+      id: 42,
+      status: "success",
+    });
 
     const denied = makeServer(["workflows.view"]);
     const deniedLookup = vi.spyOn(denied.domainEventRepository, "getWorkflowInvocationForTeam");
@@ -234,25 +276,50 @@ describe("POST /api/v1/domain-event-subscriptions", () => {
       expect.any(Object),
     );
 
-    database.get.mockResolvedValueOnce({ id: "wf", revision: 2, status: "draft", enabled: 1 });
+    database.get.mockResolvedValueOnce({
+      id: "wf",
+      revision: 2,
+      status: "draft",
+      enabled: 1,
+    });
     expect((await request(server, "POST", "/api/v1/domain-event-subscriptions", body)).writeHead).toHaveBeenCalledWith(
       403,
       expect.any(Object),
     );
-    database.get.mockResolvedValueOnce({ id: "wf", revision: 2, status: "published", enabled: 0 });
+    database.get.mockResolvedValueOnce({
+      id: "wf",
+      revision: 2,
+      status: "published",
+      enabled: 0,
+    });
     expect((await request(server, "POST", "/api/v1/domain-event-subscriptions", body)).writeHead).toHaveBeenCalledWith(
       403,
       expect.any(Object),
     );
-    database.get.mockResolvedValueOnce({ id: "wf", revision: 2, status: "published", enabled: 1 });
+    database.get.mockResolvedValueOnce({
+      id: "wf",
+      revision: 2,
+      status: "published",
+      enabled: 1,
+    });
     expect(
-      (await request(server, "POST", "/api/v1/domain-event-subscriptions", { ...body, workflowRevision: 1 })).writeHead,
+      (
+        await request(server, "POST", "/api/v1/domain-event-subscriptions", {
+          ...body,
+          workflowRevision: 1,
+        })
+      ).writeHead,
     ).toHaveBeenCalledWith(403, expect.any(Object));
   });
 
   it("creates an owned future-only subscription and returns metadata", async () => {
     const server = makeServer();
-    database.get.mockResolvedValue({ id: "wf", revision: 2, status: "published", enabled: 1 });
+    database.get.mockResolvedValue({
+      id: "wf",
+      revision: 2,
+      status: "published",
+      enabled: 1,
+    });
     vi.spyOn(server.domainEventDeliveryRepository, "createSubscription").mockResolvedValue({
       id: "sub-1",
       teamId: "workspace-a",
@@ -272,7 +339,10 @@ describe("POST /api/v1/domain-event-subscriptions", () => {
       eventType: "order.created",
     });
     expect(res.writeHead).toHaveBeenCalledWith(201, expect.any(Object));
-    expect(JSON.parse(res.end.mock.calls[0][0])).toMatchObject({ id: "sub-1", workflowRevision: 2 });
+    expect(JSON.parse(res.end.mock.calls[0][0])).toMatchObject({
+      id: "sub-1",
+      workflowRevision: 2,
+    });
   });
 });
 
@@ -324,6 +394,9 @@ describe("durable event delivery inspection and retry", () => {
     const res = await request(server, "POST", "/api/v1/domain-events/event-1/deliveries/delivery-1/retry");
     expect(server.domainEventDeliveryRepository.retryFailed).toHaveBeenCalledWith("workspace-a", "delivery-1");
     expect(res.writeHead).toHaveBeenCalledWith(202, expect.any(Object));
-    expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({ deliveryId: "delivery-1", status: "pending" });
+    expect(JSON.parse(res.end.mock.calls[0][0])).toEqual({
+      deliveryId: "delivery-1",
+      status: "pending",
+    });
   });
 });
