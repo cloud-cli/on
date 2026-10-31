@@ -132,10 +132,12 @@ describe("QueueManager.restartJob SQLite integration", () => {
       INSERT INTO workflow_revisions VALUES ('workflow-1', 3,
         '{"_recipeRef":{"namespace":"on","slug":"root","version":1},"_pinnedReferences":[{"namespace":"on","slug":"nested","version":2}]}');
       INSERT INTO recipe_versions VALUES ('on', 'root', '1', 1);
+      INSERT INTO jobs (id, workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id, status)
+        VALUES (41, 'workflow-1', 2, '[]', NULL, '{"inputs":{}}', 'team-1', 'success');
     `);
 
-    await new QueueManager("test").enqueue("workflow-1", 3, { inputs: {} });
-    expect(testDb.database.prepare("SELECT COUNT(*) AS count FROM jobs").get()).toMatchObject({ count: 0 });
+    await expect(new QueueManager("test").enqueue("workflow-1", 3, { inputs: {} })).rejects.toThrow();
+    expect(testDb.database.prepare("SELECT COUNT(*) AS count FROM jobs").get()).toMatchObject({ count: 1 });
     expect(
       await new QueueManager("test").enqueueDispatch(
         "workflow-1",
@@ -147,6 +149,6 @@ describe("QueueManager.restartJob SQLite integration", () => {
         "dispatch-test",
       ),
     ).toBe(0);
-    expect(testDb.database.prepare("SELECT COUNT(*) AS count FROM jobs").get()).toMatchObject({ count: 0 });
+    expect(testDb.database.prepare("SELECT COUNT(*) AS count FROM jobs").get()).toMatchObject({ count: 1 });
   });
 });

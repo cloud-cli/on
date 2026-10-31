@@ -121,12 +121,13 @@ export class QueueManager {
     concurrencyKey?: string,
     cancelInProgress = false,
   ) {
-    const res = await db.run(
+    const inserted = await db.get(
       `INSERT INTO jobs (workflow_id, workflow_revision, required_tags, concurrency_key, payload, team_id)
        SELECT ?, ?, ?, ?, ?, workflows.team_id FROM workflows
        JOIN teams ON teams.id = workflows.team_id
         WHERE workflows.id = ? AND teams.deleting_at IS NULL
-           AND ${PINNED_RECIPES_AVAILABLE}`,
+           AND ${PINNED_RECIPES_AVAILABLE}
+       RETURNING id`,
       [
         workflowId,
         workflowRevision,
@@ -138,7 +139,7 @@ export class QueueManager {
       ],
     );
 
-    const jobId = Number(res?.lastInsertRowid ?? res?.id ?? 0);
+    const jobId = Number(inserted?.id ?? 0);
     if (!jobId) {
       throw new Error("Workflow workspace is unavailable or being deleted");
     }
