@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const database = vi.hoisted(() => ({
   get: vi.fn(),
@@ -9,7 +13,7 @@ const database = vi.hoisted(() => ({
 }));
 vi.mock("./db-client.js", () => ({ default: database }));
 
-import { RecipeRepository } from "./recipes.js";
+import { parseRecipe, RecipeRepository } from "./recipes.js";
 
 describe("global recipe repository identity and versioning", () => {
   beforeEach(() => vi.resetAllMocks());
@@ -136,7 +140,7 @@ describe("global recipe repository identity and versioning", () => {
     );
     expect(seedVersionRuns).toHaveLength(2);
     expect(seedVersionRuns[0][0]).toContain("WHERE NOT EXISTS");
-    expect(seedVersionRuns[0][1][2]).toBe(2);
+    expect(seedVersionRuns[0][1][2]).toBe(3);
     expect(
       database.run.mock.calls.some(
         ([sql, params]) => String(sql).includes("recipe_publishers") && params.includes("system:built-in-recipes"),
@@ -148,16 +152,78 @@ describe("global recipe repository identity and versioning", () => {
     expect(recipe.functions.main.inputs.required).toEqual(["image", "registryUsername", "cloneUrl", "commitSha"]);
     expect(recipe.functions.main.inputs.properties.imageTag.default).toBe("latest");
     expect(recipe.functions.main.secrets).toEqual({
-      githubToken: { type: "string", required: true },
+      registryToken: { type: "string", required: true },
+      gitMiniToken: { type: "string", required: false },
     });
     expect(yaml).not.toContain("cloudyToken");
     expect(yaml).toContain('git checkout --detach "$COMMIT_SHA"');
+    expect(yaml).toContain("https://git.api.apphor.de/git/*");
+    expect(yaml).toContain("gitMiniToken may only authenticate GitMini clone URLs.");
+    expect(yaml).toContain('GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 git -c http.followRedirects=false clone');
     expect(yaml).toContain("if [ ! -f Dockerfile ]; then");
     expect(yaml).toContain('cy dx.list --image "$IMAGE_TAG"');
     expect(yaml).toContain("| jq -r '.[].name'");
     expect(yaml).toContain("No services match image $IMAGE_TAG");
     expect(yaml).toContain('cy dx.pull "$service"');
     expect(yaml).toContain('cy dx.restart "$service"');
+  });
+
+  it("uses a temporary askpass helper for private GitMini clones and rejects non-GitMini token targets", async () => {
+    database.all.mockResolvedValue([]);
+    database.get.mockImplementation(async (sql: string) =>
+      sql.includes("recipe_publishers") || sql.includes("FROM recipes")
+        ? { owner_subject: "system:built-in-recipes" }
+        : null,
+    );
+    await new RecipeRepository().init();
+    const seed = database.run.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO recipe_versions"));
+    const recipe = parseRecipe(String(seed?.[1]?.[4]));
+    const cloneScript = (recipe.functions.main.steps[0] as { run: string }).run;
+    const root = mkdtempSync(join(tmpdir(), "on-gitmini-askpass-"));
+    try {
+      const bin = join(root, "bin");
+      const work = join(root, "work");
+      const answersFile = join(root, "answers");
+      const argsFile = join(root, "args");
+      const helperPathFile = join(root, "helper-path");
+      const git = join(bin, "git");
+      const askpassToken = "private-gitmini-token-fixture";
+      await import("node:fs/promises").then(({ mkdir }) => mkdir(bin));
+      await import("node:fs/promises").then(({ mkdir }) => mkdir(work));
+      writeFileSync(
+        git,
+        `#!/bin/sh\nif [ "$1" = "-c" ]; then shift 2; fi\ncase "$1" in\n  clone)\n    printf '%s\\n' "$@" > "${argsFile}"\n    printf '%s\\n' "$GIT_ASKPASS" > "${helperPathFile}"\n    printf '%s\\n' "$("$GIT_ASKPASS" 'Username for https://git.api.apphor.de:')" "$("$GIT_ASKPASS" 'Password for https://git.api.apphor.de:')" > "${answersFile}"\n    mkdir source\n    ;;\n  checkout) ;;\nesac\n`,
+        { mode: 0o700 },
+      );
+      const runClone = (cloneUrl: string) =>
+        execFileSync("bash", ["-euo", "pipefail", "-c", cloneScript], {
+          cwd: work,
+          env: {
+            PATH: `${bin}:/usr/bin:/bin`,
+            GITMINI_TOKEN: askpassToken,
+            CLONE_URL: cloneUrl,
+            COMMIT_SHA: "a".repeat(40),
+          },
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      const output = runClone("https://git.api.apphor.de/git/team/repository.git");
+      expect(output).not.toContain(askpassToken);
+      expect(readFileSync(argsFile, "utf8")).toContain("https://git.api.apphor.de/git/team/repository.git");
+      expect(readFileSync(argsFile, "utf8")).not.toContain(askpassToken);
+      expect(readFileSync(answersFile, "utf8")).toBe(`git\n${askpassToken}\n`);
+      const helperPath = readFileSync(helperPathFile, "utf8").trim();
+      expect(() => readFileSync(helperPath)).toThrow();
+
+      rmSync(join(work, "source"), { recursive: true, force: true });
+      rmSync(argsFile, { force: true });
+      rmSync(answersFile, { force: true });
+      rmSync(helperPathFile, { force: true });
+      expect(() => runClone("https://attacker.example/git/team/repository.git")).toThrow();
+      expect(() => readFileSync(argsFile)).toThrow();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("fails closed when the reserved built-in namespace is owned by another publisher", async () => {

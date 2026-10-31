@@ -127,4 +127,29 @@ describe("connector definitions", () => {
     ).rejects.toThrow(/Buffer/);
     expect(() => parseConnectorDefinition(" ".repeat(256001))).toThrow();
   });
+
+  it("supports bounded for-of loops for batched webhook changes", async () => {
+    const source = yaml("for (const change of inputs.changes) { emit('change.seen', {ref: change.ref}); }");
+    await expect(
+      evaluateConnector(
+        source,
+        context({ inputs: { changes: [{ ref: "refs/heads/main" }, { ref: "refs/tags/v1" }] } }),
+      ),
+    ).resolves.toEqual([
+      { type: "change.seen", data: { ref: "refs/heads/main" } },
+      { type: "change.seen", data: { ref: "refs/tags/v1" } },
+    ]);
+    await expect(
+      evaluateConnector(
+        source,
+        context({ inputs: { changes: Array.from({ length: 65 }, (_, i) => ({ ref: String(i) })) } }),
+      ),
+    ).rejects.toThrow("at most 64 items");
+    await expect(
+      evaluateConnector(yaml("for (const value of inputs.values) { emit('ok', {value}); }"), context()),
+    ).rejects.toThrow();
+    await expect(
+      evaluateConnector(yaml("for (let value of inputs.values) { emit('ok', {value}); }"), context()),
+    ).rejects.toThrow();
+  });
 });

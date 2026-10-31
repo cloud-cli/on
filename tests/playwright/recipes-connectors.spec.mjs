@@ -35,6 +35,7 @@ async function setup(page, { delayedRecipes = false } = {}) {
   page.on("pageerror", (error) => errors.push(`page: ${error.message}`));
   page.on("requestfailed", (request) => errors.push(`network: ${request.url()} ${request.failure()?.errorText}`));
   const installations = [];
+  const publications = [];
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -45,8 +46,13 @@ async function setup(page, { delayedRecipes = false } = {}) {
           expires_at: Date.now() + 3600000,
         },
       });
-    } else if (url.pathname === "/api/v1/connector-templates") {
+    } else if (url.pathname === "/api/v1/connector-templates" && request.method() === "GET") {
       await route.fulfill({ json: templates });
+    } else if (url.pathname === "/api/v1/connector-templates/validate" && request.method() === "POST") {
+      await route.fulfill({ json: { valid: true } });
+    } else if (url.pathname === "/api/v1/connector-templates" && request.method() === "POST") {
+      publications.push(request.postDataJSON());
+      await route.fulfill({ status: 201, json: { namespace: "fixture-team", slug: "new-hook", version: 1 } });
     } else if (url.pathname === "/api/v1/recipes") {
       if (delayedRecipes) {
         await new Promise((resolve) => setTimeout(resolve, 300));
@@ -78,7 +84,7 @@ async function setup(page, { delayedRecipes = false } = {}) {
     }
   });
   await page.goto("/tests/playwright/recipes-harness.html");
-  return { errors, installations };
+  return { errors, installations, publications };
 }
 
 for (const viewport of [
@@ -142,5 +148,61 @@ test("installs into selected workspace and copies then clears one-time credentia
   await expect(page.locator("[data-secret-dialog]")).not.toHaveAttribute("open", "");
   await expect(page.locator("[data-secret-url]")).toHaveValue("");
   await expect(page.locator("[data-secret-value]")).toHaveValue("");
+  expect(errors).toEqual([]);
+});
+
+test("creates and publishes a connector template from the shared recipe catalog", async ({ page }) => {
+  const { errors, publications } = await setup(page);
+  await page.getByRole("button", { name: "Connector templates" }).click();
+  await page.getByRole("button", { name: "Publish connector template" }).click();
+  const create = page.getByRole("dialog", { name: "Create connector template" });
+  await create.locator("[data-slug]").fill("new-hook");
+  await create.locator("[data-name]").fill("New hook");
+  await create.locator("[data-description]").fill("Normalize incoming test hooks.");
+  await create.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Publish connector template" })).toBeVisible();
+  await page.locator("[data-source]").evaluate((element) => {
+    element.value = "run: |\n  emit('sample.received', inputs)";
+    element.dispatchEvent(new CustomEvent("change", { detail: element.value }));
+  });
+  await expect(page.getByText("Connector YAML is valid.")).toBeVisible();
+  await page.getByRole("button", { name: "Save version" }).click();
+  await expect(page).toHaveURL(/\/ui\/recipes\?catalog=connectors$/);
+  expect(publications).toEqual([
+    {
+      slug: "new-hook",
+      name: "New hook",
+      description: "Normalize incoming test hooks.",
+      sourceYaml: "run: |\n  emit('sample.received', inputs)",
+    },
+  ]);
+  await expect(page.getByRole("button", { name: "Connector templates" })).toHaveAttribute("aria-pressed", "true");
+  expect(errors).toEqual([]);
+});
+
+test("forks a connector template into a new publishable version", async ({ page }) => {
+  const { errors, publications } = await setup(page);
+  await page.getByRole("button", { name: "Connector templates" }).click();
+  await page.getByRole("button", { name: "Fork as new template version" }).click();
+  await expect(page.getByRole("heading", { name: "Publish connector template version" })).toBeVisible();
+  await expect(page.locator("[data-template-description]")).toHaveValue("A fixture connector template.");
+  await expect
+    .poll(() => page.locator("[data-source]").evaluate((element) => element.value))
+    .toBe("name: deploy-hook\n");
+  await page.locator("[data-source]").evaluate((element) => {
+    element.value = "run: |\n  emit('sample.received', inputs)";
+    element.dispatchEvent(new CustomEvent("change", { detail: element.value }));
+  });
+  await expect(page.getByText("Connector YAML is valid.")).toBeVisible();
+  await page.getByRole("button", { name: "Save version" }).click();
+  await expect(page).toHaveURL(/\/ui\/recipes\?catalog=connectors$/);
+  expect(publications).toEqual([
+    {
+      slug: "deploy-hook",
+      name: "Deploy hook",
+      description: "A fixture connector template.",
+      sourceYaml: "run: |\n  emit('sample.received', inputs)",
+    },
+  ]);
   expect(errors).toEqual([]);
 });

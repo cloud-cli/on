@@ -1,5 +1,5 @@
 import db from "./db-client.js";
-import { GITHUB_PUSH_TEMPLATE } from "./connector-templates.js";
+import { GITHUB_PUSH_TEMPLATE, GITMINI_TEMPLATE } from "./connector-templates.js";
 import YAML from "yaml";
 
 type Migration = {
@@ -1156,7 +1156,30 @@ const migrations: Migration[] = [
     },
   },
   {
-    version: "042_domain_event_fanout_routing_provenance",
+    version: "042_gitmini_connector_template",
+    apply: async () => {
+      await db.run(`INSERT OR IGNORE INTO connector_template_publishers(owner_subject, namespace) VALUES (?, ?)`, [
+        "system:connector-templates",
+        GITMINI_TEMPLATE.namespace,
+      ]);
+      await db.run(
+        `INSERT OR IGNORE INTO connector_template_versions
+          (namespace, slug, version, name, description, source_yaml, publisher_subject)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          GITMINI_TEMPLATE.namespace,
+          GITMINI_TEMPLATE.slug,
+          GITMINI_TEMPLATE.version,
+          GITMINI_TEMPLATE.name,
+          GITMINI_TEMPLATE.description,
+          GITMINI_TEMPLATE.sourceYaml,
+          "system:connector-templates",
+        ],
+      );
+    },
+  },
+  {
+    version: "043_domain_event_fanout_routing_provenance",
     async apply() {
       const columns = await db.all("PRAGMA table_info(domain_event_fanout_outcomes)");
       if (!columns.length) {

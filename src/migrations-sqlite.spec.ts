@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { runMigrations } from "./migrations.js";
-import { GITHUB_PUSH_TEMPLATE } from "./connector-templates.js";
+import { GITHUB_PUSH_TEMPLATE, GITMINI_TEMPLATE } from "./connector-templates.js";
 
 vi.mock("./db-client.js", () => {
   let database = new DatabaseSync(":memory:");
@@ -150,10 +150,20 @@ describe("v3 migrations against SQLite", () => {
       version: GITHUB_PUSH_TEMPLATE.version,
       source_yaml: GITHUB_PUSH_TEMPLATE.sourceYaml,
     });
+    const gitMiniTemplate = database
+      .prepare("SELECT namespace, slug, version, source_yaml FROM connector_template_versions WHERE slug = 'gitmini'")
+      .get() as { namespace: string; slug: string; version: number; source_yaml: string };
+    expect(gitMiniTemplate).toEqual({
+      namespace: GITMINI_TEMPLATE.namespace,
+      slug: GITMINI_TEMPLATE.slug,
+      version: GITMINI_TEMPLATE.version,
+      source_yaml: GITMINI_TEMPLATE.sourceYaml,
+    });
     expect(versions.map(({ version }) => version)).toContain("031_stream_threads");
     expect(versions.map(({ version }) => version)).toContain("032_step_attempt_snapshots");
     expect(versions.map(({ version }) => version)).toContain("033_stream_event_bindings");
     expect(versions.map(({ version }) => version)).toContain("034_stream_event_binding_integrity");
+    expect(versions.map(({ version }) => version)).toContain("042_gitmini_connector_template");
     expect(versions.map(({ version }) => version)).toContain("033_stream_event_bindings");
     expect(database.prepare("PRAGMA table_info(step_execution_attempt_starts)").all()).toEqual(
       expect.arrayContaining([

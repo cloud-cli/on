@@ -5,7 +5,7 @@ import { DEFAULT_STEP_TIMEOUT_MS } from "./workflow-constants.js";
 import { validateRecipeSchema, validateRecipeInputs } from "./recipe-schema.js";
 
 const BUILT_IN_RECIPE_OWNER = "system:built-in-recipes";
-const DOCKER_BUILD_RECIPE_VERSION = 2;
+const DOCKER_BUILD_RECIPE_VERSION = 3;
 const DOCKER_BUILD_RECIPE = `inputs:
   image: { type: string, required: true }
   imageTag: { type: string, default: latest }
@@ -13,23 +13,43 @@ const DOCKER_BUILD_RECIPE = `inputs:
   cloneUrl: { type: string, required: true }
   commitSha: { type: string, required: true }
 secrets:
-  githubToken: { type: string, required: true }
+  registryToken: { type: string, required: true }
+  gitMiniToken: { type: string, required: false }
 env:
   IMAGE: "\${inputs.image}"
   IMAGE_TAG: "\${inputs.imageTag}"
   REGISTRY_USERNAME: "\${inputs.registryUsername}"
   CLONE_URL: "\${inputs.cloneUrl}"
   COMMIT_SHA: "\${inputs.commitSha}"
-  GITHUB_TOKEN: "\${secrets.githubToken}"
+  REGISTRY_TOKEN: "\${secrets.registryToken}"
+  GITMINI_TOKEN: "\${String(secrets.gitMiniToken || '')}"
 steps:
   - run: |
       set -euo pipefail
-      git clone --no-checkout "$CLONE_URL" source
+      if [ -n "$GITMINI_TOKEN" ]; then
+        case "$CLONE_URL" in
+          https://git.api.apphor.de/git/*) ;;
+          *) echo "gitMiniToken may only authenticate GitMini clone URLs." >&2; exit 1 ;;
+        esac
+        askpass="$(mktemp)"
+        trap 'rm -f "$askpass"' EXIT
+        cat > "$askpass" <<'ASKPASS'
+      #!/bin/sh
+      case "$1" in
+        *Username*) printf '%s\\n' git ;;
+        *) printf '%s\\n' "$GITMINI_TOKEN" ;;
+      esac
+      ASKPASS
+        chmod 700 "$askpass"
+        GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0 git -c http.followRedirects=false clone --no-checkout "$CLONE_URL" source
+      else
+        git clone --no-checkout "$CLONE_URL" source
+      fi
       cd source
       git checkout --detach "$COMMIT_SHA"
   - run: |
       set -euo pipefail
-      printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io -u "$REGISTRY_USERNAME" --password-stdin
+      printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USERNAME" --password-stdin
   - run: |
       set -euo pipefail
       cd source

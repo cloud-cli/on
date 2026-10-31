@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import crypto from "node:crypto";
 import { WebhookServer } from "./server.js";
+import { GITMINI_TEMPLATE } from "./connector-templates.js";
 
 const connector = {
   id: "normalize",
@@ -135,6 +136,60 @@ describe("connector webhook ingress", () => {
     expect(invalid.domainEventRepository.publish).not.toHaveBeenCalled();
     expect(invalid.incomingEvents.finish).toHaveBeenCalledWith("workspace-a", "receipt-1", "valid", "failed", []);
     expect(invalidRes.writeHead).toHaveBeenCalledWith(422, expect.any(Object));
+  });
+
+  it("publishes one normalized git.push domain event per changed GitMini branch ref", async () => {
+    const secret = "gitmini-secret";
+    const payload = {
+      id: "gitmini-delivery-1",
+      org: "team",
+      event: "git.push",
+      action: "pushed",
+      occurredAt: "2026-10-31T00:00:00.000Z",
+      object: "team/service",
+      details: {
+        changes: [
+          { ref: "refs/heads/main", before: "a".repeat(40), after: "b".repeat(40), action: "updated" },
+          { ref: "refs/heads/release", before: "c".repeat(40), after: "d".repeat(40), action: "updated" },
+          { ref: "refs/tags/v1", before: null, after: "e".repeat(40), action: "created" },
+        ],
+      },
+    };
+    const rawBuffer = Buffer.from(JSON.stringify(payload));
+    const signature = `sha256=${crypto.createHmac("sha256", secret).update(rawBuffer).digest("hex")}`;
+    const server = createServer();
+    server.readRequest.mockResolvedValue({
+      rawBuffer,
+      headers: {
+        "content-type": "application/json",
+        "x-gitmini-signature": signature,
+        "x-gitmini-event": "git.push",
+        "x-gitmini-delivery": "gitmini-delivery-1",
+      },
+    });
+    const res = response();
+    await (WebhookServer.prototype as any).handleConnectorWebhook.call(
+      server,
+      { ...connector, id: "gitmini", sourceYaml: GITMINI_TEMPLATE.sourceYaml, signingSecret: secret },
+      {},
+      res,
+    );
+
+    expect(server.domainEventRepository.publish).toHaveBeenCalledTimes(2);
+    expect(server.domainEventRepository.publish.mock.calls.map(([, event]: any[]) => event)).toEqual([
+      expect.objectContaining({
+        type: "git.push",
+        data: expect.objectContaining({ owner: "team", repo: "service", branch: "main", commitSha: "b".repeat(40) }),
+        idempotencyKey: "connector:gitmini:delivery:gitmini-delivery-1:0",
+      }),
+      expect.objectContaining({
+        type: "git.push",
+        data: expect.objectContaining({ owner: "team", repo: "service", branch: "release", commitSha: "d".repeat(40) }),
+        idempotencyKey: "connector:gitmini:delivery:gitmini-delivery-1:1",
+      }),
+    ]);
+    expect(server.domainEventDeliveryRepository.fanout).toHaveBeenCalledTimes(2);
+    expect(res.writeHead).toHaveBeenCalledWith(202, expect.any(Object));
   });
 
   it("allows valid connectors to intentionally emit no events", async () => {
