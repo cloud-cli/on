@@ -113,6 +113,17 @@ async function cleanupTemporaryClient() {
   if (response.status !== 204) {
     throw new Error(`Temporary OIDC client cleanup failed with status ${response.status}`);
   }
+  const verification = await fetch(`${authOrigin}/api/v1/oidc/apps`, {
+    headers: { Origin: playwrightOrigin, Cookie: authSessionCookie },
+  });
+  if (!verification.ok) {
+    throw new Error(`Temporary OIDC client cleanup could not be verified (status ${verification.status})`);
+  }
+  const payload = await verification.json();
+  const records = Array.isArray(payload) ? payload : payload.apps || payload.applications || [];
+  if (records.some((record) => record?.name === clientName)) {
+    throw new Error("Temporary OIDC client remains after cleanup");
+  }
   clientId = undefined;
   clientSecret = undefined;
   clientCreationAttempted = false;
@@ -547,8 +558,32 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     await page.screenshot({ path: "/tmp/opencode/oidc-sidebar-619.png", fullPage: true });
     stage = "sidebar-layout-narrow-overflow";
     await page.setViewportSize({ width: 320, height: 720 });
+    const narrowMenuButton = page.locator("[data-nav-open]");
+    await narrowMenuButton.click();
+    await expect(narrowMenuButton).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator("#primary-sidebar")).toBeVisible();
     const narrowGeometry = await page.evaluate(() => {
       const sidebar = document.querySelector("#primary-sidebar");
+      const sidebarStyle = getComputedStyle(sidebar);
+      const sidebarRect = sidebar.getBoundingClientRect();
+      const sidebarDescendants = [...sidebar.querySelectorAll("*")].map((node) => {
+        const rect = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        return {
+          tag: node.tagName,
+          id: node.id,
+          className: String(node.className),
+          x: Math.round(rect.x),
+          width: Math.round(rect.width),
+          right: Math.round(rect.right),
+          scrollWidth: node.scrollWidth,
+          clientWidth: node.clientWidth,
+          display: style.display,
+          visibility: style.visibility,
+          position: style.position,
+          whiteSpace: style.whiteSpace,
+        };
+      });
       const overflowingSection = document.querySelector("#main-content")?.firstElementChild;
       const layoutChain = [];
       for (let node = overflowingSection; node && layoutChain.length < 8; node = node.parentElement) {
@@ -583,23 +618,35 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
       return {
         viewport: innerWidth,
         documentWidth: document.documentElement.scrollWidth,
+        sidebarRect: { x: sidebarRect.x, width: sidebarRect.width, right: sidebarRect.right },
         sidebarWidth: sidebar.clientWidth,
         sidebarScrollWidth: sidebar.scrollWidth,
+        sidebarDisplay: sidebarStyle.display,
+        sidebarVisibility: sidebarStyle.visibility,
+        sidebarTransform: sidebarStyle.transform,
+        sidebarDescendants,
         layoutChain,
         overflows,
       };
     });
     await page.screenshot({ path: "/tmp/opencode/oidc-quick-switch-narrow.png", fullPage: true });
-    stage = `sidebar-layout-narrow-overflow-${narrowGeometry.viewport}-${narrowGeometry.documentWidth}-${JSON.stringify(narrowGeometry.layoutChain)}-${JSON.stringify(narrowGeometry.overflows)}`;
+    stage = `sidebar-layout-narrow-overflow-${narrowGeometry.viewport}-${narrowGeometry.documentWidth}-${JSON.stringify({ rect: narrowGeometry.sidebarRect, width: narrowGeometry.sidebarWidth, scrollWidth: narrowGeometry.sidebarScrollWidth, display: narrowGeometry.sidebarDisplay, visibility: narrowGeometry.sidebarVisibility, transform: narrowGeometry.sidebarTransform, descendants: narrowGeometry.sidebarDescendants })}-${JSON.stringify(narrowGeometry.layoutChain)}-${JSON.stringify(narrowGeometry.overflows)}`;
     expect(narrowGeometry.documentWidth).toBeLessThanOrEqual(narrowGeometry.viewport);
+    expect(narrowGeometry.sidebarDisplay).not.toBe("none");
+    expect(narrowGeometry.sidebarVisibility).toBe("visible");
     expect(narrowGeometry.sidebarScrollWidth).toBeLessThanOrEqual(narrowGeometry.sidebarWidth);
+    await page.locator("[data-nav-close]").click();
+    await expect(page.locator("[data-nav-open]")).toHaveAttribute("aria-expanded", "false");
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: "/tmp/opencode/oidc-quick-switch-mobile.png", fullPage: true });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.keyboard.press("Control+k");
-    await quickSwitchSearch.fill("no matching fixture destination");
-    await expect(page.getByText("No matching destinations.", { exact: true })).toBeVisible();
+    stage = "quick-switch-empty-results";
+    await quickSwitchSearch.fill("");
+    await quickSwitchSearch.pressSequentially("no matching fixture destination");
+    await expect(page.getByRole("option")).toHaveCount(0);
     await quickSwitchSearch.fill("OIDC Browser Fixture");
+    await expect(page.getByRole("option").first()).toContainText("OIDC Browser Fixture");
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(new RegExp(`/ui/workspaces/${workspaceId}/runs$`));
@@ -627,11 +674,21 @@ test("Agent OIDC login, protected workspace shell, permissions, and logout", asy
     stage = "browser-console-and-network";
     expect(agentWorkerListStatus).toBe(403);
     expect(browserErrors.filter((error) => error !== "agent-worker-list-console-error")).toEqual([]);
-  } catch {
+  } catch (error) {
     const diagnostics = stage === "browser-console-and-network" ? ` (${browserErrors.join(",") || "unknown"})` : "";
-    throw new Error(
-      `Agent OIDC browser journey failed at ${stage}${diagnostics}; sensitive redirect and session values were suppressed`,
-    );
+    const detail = error instanceof Error ? error.message : String(error);
+    const sanitizedDetail = detail
+      .replaceAll(process.env.AUTH_AGENT_KEY || "\0", "[redacted]")
+      .replaceAll(clientSecret || "\0", "[redacted]")
+      .replace(/https?:\/\/[^\s"'`]+/g, (value) => {
+        try {
+          const url = new URL(value);
+          return `${url.origin}${url.pathname}`;
+        } catch {
+          return "[redacted-url]";
+        }
+      });
+    throw new Error(`Agent OIDC browser journey failed at ${stage}${diagnostics}: ${sanitizedDetail}`);
   } finally {
     await context.close();
   }
