@@ -237,7 +237,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     more,
     refresh,
   );
-  conversation.append(emptyState, title, status, threadsSection, eventHistory, legacyHistory, threadForm);
+  conversation.append(emptyState, title, status, threadsSection, eventHistory, legacyHistory, threadForm, composer);
   layout.append(sidebar, conversation);
   root.replaceChildren(heading, emptyState, layout);
 
@@ -392,7 +392,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     });
     threadList.replaceChildren(
       ...entries.map(({ kind, value }) => {
-        const item = element("li", undefined, "min-w-0 rounded-lg bg-app-panel p-3");
+        const item = element("li", undefined, "min-w-0 border-b border-app-border py-3 last:border-0");
         item.dataset.timelineKind = kind;
         item.dataset.timelineId = String(value.id);
         if (kind === "thread") {
@@ -421,11 +421,50 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
             item.append(threadTranscript, threadMore, threadComposer);
           }
         } else {
-          item.append(element("p", value.type || "Event", "font-semibold"));
-          item.append(element("p", value.occurredAt || "", "text-xs text-app-secondary"));
-          item.append(
-            element("pre", JSON.stringify(value.data ?? value, null, 2), "whitespace-pre-wrap break-all text-sm"),
-          );
+          const runIds = value.links?.runIds || [];
+          item.append(element("p", value.type || "Event", "text-sm text-app-secondary"));
+          if (runIds.length) {
+            for (const runId of runIds) {
+              const card = element(
+                "article",
+                undefined,
+                "mt-2 min-w-0 rounded-lg border border-app-border bg-app-panel p-3",
+              );
+              card.dataset.runId = String(runId);
+              card.setAttribute("aria-label", `Run ${runId} status`);
+              card.append(
+                element("p", `Run ${runId}`, "font-semibold"),
+                element("p", "Loading current run status…", "text-sm text-app-secondary"),
+              );
+              item.append(card);
+              void request(`/api/v1/runs/${encodeURIComponent(runId)}`)
+                .then((report) => {
+                  if (!card.isConnected) {
+                    return;
+                  }
+                  const detail = element("p", `Status: ${report.status || "unknown"}`, "text-sm text-app-secondary");
+                  card.replaceChildren(element("p", `Run ${runId}`, "font-semibold"), detail);
+                  if (report.steps?.length) {
+                    const steps = element("ul", undefined, "mt-2 space-y-1 text-sm");
+                    for (const step of report.steps) {
+                      steps.append(element("li", `${step.name || step.id || "Step"}: ${step.status || "unknown"}`));
+                    }
+                    card.append(steps);
+                  }
+                  const link = element("a", "Open run details", "mt-2 inline-block underline");
+                  link.href = `/ui/runs/${encodeURIComponent(runId)}`;
+                  card.append(link);
+                })
+                .catch(() => {
+                  if (card.isConnected) {
+                    card.lastChild.textContent = "Current run status unavailable.";
+                  }
+                });
+            }
+          } else {
+            item.append(element("p", value.occurredAt || "", "text-xs text-app-secondary"));
+            item.append(element("p", messageText(value.data ?? value), "whitespace-pre-wrap break-words text-sm"));
+          }
         }
         return item;
       }),
@@ -892,7 +931,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
     title.textContent = channel.name;
     eventHistory.hidden = false;
     void loadEvents(null, true);
-    composer.hidden = true;
+    composer.hidden = !canEdit;
     threadList.replaceChildren();
     threadForm.hidden = !canEdit;
     requestAnimationFrame(() => void installEditor(newThreadText));
@@ -1027,7 +1066,7 @@ export function mountChannels(root, routeParams = root.routeParams || {}) {
           threadList.replaceChildren();
           more.hidden = true;
           refresh.hidden = true;
-          composer.hidden = true;
+          composer.hidden = !canEdit;
           threadForm.hidden = true;
           eventHistory.hidden = true;
           eventList.replaceChildren();

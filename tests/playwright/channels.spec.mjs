@@ -1199,6 +1199,8 @@ test("revoked Stream history access clears saved events and linked runs on live 
           streams: [{ id: "revoked", name: "Revoked" }],
         },
       });
+    } else if (url.pathname === "/api/v1/runs/private-run") {
+      await route.fulfill({ json: { status: "success", steps: [] } });
     } else if (url.pathname.endsWith("/threads")) {
       await route.fulfill({ json: { threads: [] } });
     } else if (url.pathname.endsWith("/messages")) {

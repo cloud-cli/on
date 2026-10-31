@@ -104,4 +104,14 @@ describe("channels UI", () => {
     expect(source).toContain("entry.occurredAt");
     expect(source).toContain("the timeline is incomplete until all pages are loaded");
   });
+
+  it("keeps the composer available in the selected Stream and projects linked runs inline", () => {
+    expect(source).toContain(
+      "conversation.append(emptyState, title, status, threadsSection, eventHistory, legacyHistory, threadForm, composer)",
+    );
+    expect(source).toContain("request(`/api/v1/runs/${encodeURIComponent(runId)}`)");
+    expect(source).toContain('card.setAttribute("aria-label", `Run ${runId} status`)');
+    expect(source).toContain('"mt-2 min-w-0 rounded-lg border border-app-border bg-app-panel p-3"');
+    expect(source).toContain('element("li", undefined, "min-w-0 border-b border-app-border py-3 last:border-0")');
+  });
 });
