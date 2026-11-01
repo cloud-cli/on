@@ -230,6 +230,7 @@ import recipesTemplate from "../ui/recipes.html?raw";
 import recipesSetup from "../ui/recipes-ui.mjs?raw";
 import incomingEventsTemplate from "../ui/incoming-events.html?raw";
 import incomingEventsSetup from "../ui/incoming-events.mjs?raw";
+import incomingEventPayloadSetup from "../ui/incoming-event-payload.mjs?raw";
 import connectorsTemplate from "../ui/connectors-ui.html?raw";
 import connectorsSetup from "../ui/connectors-ui.mjs?raw";
 import timezoneFormatSource from "../ui/timezone-format.mjs?raw";
@@ -639,6 +640,13 @@ export class WebhookServer {
         "Content-Type": "text/javascript; charset=utf-8",
       });
       return res.end(incomingEventsSetup);
+    }
+    if (req.method === "GET" && url.pathname === "/pages/incoming-event-payload.mjs") {
+      res.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/javascript; charset=utf-8",
+      });
+      return res.end(incomingEventPayloadSetup);
     }
     if (req.method === "GET" && ["/pages/recipe-insertion.mjs", "/recipe-insertion.mjs"].includes(url.pathname)) {
       res.writeHead(200, {

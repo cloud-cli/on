@@ -5,6 +5,8 @@ import recipeTemplate from "../ui/recipes.html?raw";
 import recipeSetup from "../ui/recipes-ui.mjs?raw";
 import channelsSetup from "../ui/channels-ui.mjs?raw";
 import invocationSetup from "../ui/invocation-ui.mjs?raw";
+import incomingEventsSetup from "../ui/incoming-events.mjs?raw";
+import incomingEventPayloadSetup from "../ui/incoming-event-payload.mjs?raw";
 import routeTableSource from "../ui/route-table.mjs?raw";
 
 const htmlFiles = [
@@ -110,6 +112,17 @@ describe("canonical setup-script asset routes", () => {
       "Content-Type": "text/javascript; charset=utf-8",
     });
     expect(response.end).toHaveBeenCalledWith(invocationSetup);
+  });
+
+  it("serves the payload formatter imported by the incoming events page", async () => {
+    expect(incomingEventsSetup).toContain('from "./incoming-event-payload.mjs"');
+    const response = await request("/assets/pages/incoming-event-payload.mjs");
+
+    expect(response.writeHead).toHaveBeenCalledWith(200, {
+      "Cache-Control": "no-cache",
+      "Content-Type": "text/javascript; charset=utf-8",
+    });
+    expect(response.end).toHaveBeenCalledWith(incomingEventPayloadSetup);
   });
 
   it("serves the URLPattern route table imported by the application router", async () => {
